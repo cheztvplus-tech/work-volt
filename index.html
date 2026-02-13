@@ -670,7 +670,7 @@
         }
 
         // ==========================================
-        // PAYROLL MODULE - NEW
+        // PAYROLL MODULE - NEW WITH FULL FORM
         // ==========================================
         async function loadPayroll(container) {
             const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
@@ -682,7 +682,7 @@
                         <h2 class="text-2xl font-bold text-slate-900">Payroll</h2>
                         <p class="text-slate-500">Manage employee compensation</p>
                     </div>
-                    <button onclick="createPayrollPeriod()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                    <button onclick="createPayrollForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
                         <i class="fas fa-plus mr-2"></i>New Payroll
                     </button>
                 </div>
@@ -773,43 +773,162 @@
             return 'Salary';
         }
 
-        async function createPayrollPeriod() {
-            const periodStart = prompt('Period start date (YYYY-MM-DD):', '2026-02-01');
-            if (!periodStart) return;
+        // NEW: Full payroll form with all fields
+        function createPayrollForm() {
+            // Create modal
+            const modal = document.createElement('div');
+            modal.id = 'payroll-modal';
+            modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold text-slate-900 mb-4">Create Payroll</h3>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Period Start</label>
+                                <input type="date" id="pp-start" value="2026-02-01" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Period End</label>
+                                <input type="date" id="pp-end" value="2026-02-15" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Pay Type</label>
+                                <select id="pp-type" onchange="updatePayrollFormFields()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                    <option value="salary">Salary</option>
+                                    <option value="hourly">Hourly</option>
+                                    <option value="task_based">Task Based</option>
+                                </select>
+                            </div>
+                            
+                            <div id="field-salary">
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Base Salary ($)</label>
+                                <input type="number" id="pp-salary" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            </div>
+                            
+                            <div id="field-hourly" class="hidden">
+                                <div class="mb-2">
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Hourly Rate ($)</label>
+                                    <input type="number" id="pp-rate" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Hours Worked</label>
+                                    <input type="number" id="pp-hours" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                </div>
+                            </div>
+                            
+                            <div id="field-task" class="hidden">
+                                <div class="mb-2">
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Tasks Completed</label>
+                                    <input type="number" id="pp-task-count" value="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Total Task Payments ($)</label>
+                                    <input type="number" id="pp-task-pay" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Deductions ($)</label>
+                                <input type="number" id="pp-deductions" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Bonus ($)</label>
+                                <input type="number" id="pp-bonus" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            </div>
+                            
+                            <div class="bg-slate-50 p-3 rounded-lg">
+                                <p class="text-sm font-medium text-slate-700">Total Pay: <span id="pp-total" class="text-lg font-bold text-green-600">$0.00</span></p>
+                            </div>
+                        </div>
+                        
+                        <div class="flex gap-3 mt-6">
+                            <button onclick="submitPayrollForm()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Create</button>
+                            <button onclick="closePayrollForm()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            calculatePayrollTotal();
+        }
+
+        function updatePayrollFormFields() {
+            const type = document.getElementById('pp-type').value;
+            document.getElementById('field-salary').classList.toggle('hidden', type !== 'salary');
+            document.getElementById('field-hourly').classList.toggle('hidden', type !== 'hourly');
+            document.getElementById('field-task').classList.toggle('hidden', type !== 'task_based');
+            calculatePayrollTotal();
+        }
+
+        function calculatePayrollTotal() {
+            const type = document.getElementById('pp-type').value;
+            let base = 0;
             
-            const periodEnd = prompt('Period end date (YYYY-MM-DD):', '2026-02-15');
-            if (!periodEnd) return;
+            if (type === 'salary') {
+                base = parseFloat(document.getElementById('pp-salary').value) || 0;
+            } else if (type === 'hourly') {
+                const rate = parseFloat(document.getElementById('pp-rate').value) || 0;
+                const hours = parseFloat(document.getElementById('pp-hours').value) || 0;
+                base = rate * hours;
+            } else if (type === 'task_based') {
+                base = parseFloat(document.getElementById('pp-task-pay').value) || 0;
+            }
+            
+            const deductions = parseFloat(document.getElementById('pp-deductions').value) || 0;
+            const bonus = parseFloat(document.getElementById('pp-bonus').value) || 0;
+            const total = base - deductions + bonus;
+            
+            document.getElementById('pp-total').textContent = '$' + total.toFixed(2);
+        }
+
+        function closePayrollForm() {
+            document.getElementById('payroll-modal')?.remove();
+        }
+
+        async function submitPayrollForm() {
+            const type = document.getElementById('pp-type').value;
+            let baseAmount = 0;
+            let hoursWorked = 0;
+            let tasksCompleted = 0;
+            let taskPayments = 0;
+            
+            if (type === 'salary') {
+                baseAmount = parseFloat(document.getElementById('pp-salary').value) || 0;
+            } else if (type === 'hourly') {
+                const rate = parseFloat(document.getElementById('pp-rate').value) || 0;
+                hoursWorked = parseFloat(document.getElementById('pp-hours').value) || 0;
+                baseAmount = rate * hoursWorked;
+            } else if (type === 'task_based') {
+                tasksCompleted = parseFloat(document.getElementById('pp-task-count').value) || 0;
+                taskPayments = parseFloat(document.getElementById('pp-task-pay').value) || 0;
+                baseAmount = taskPayments;
+            }
+            
+            const deductions = parseFloat(document.getElementById('pp-deductions').value) || 0;
+            const bonus = parseFloat(document.getElementById('pp-bonus').value) || 0;
+            const totalPay = baseAmount - deductions + bonus;
+            
+            const payload = {
+                method: 'POST',
+                period_start: document.getElementById('pp-start').value,
+                period_end: document.getElementById('pp-end').value,
+                base_amount: baseAmount,
+                hours_worked: hoursWorked,
+                tasks_completed: tasksCompleted,
+                task_payments: taskPayments,
+                deductions: deductions,
+                bonus: bonus,
+                total_pay: totalPay
+            };
             
             try {
-                const preview = await apiCall('payroll/calculate', {
-                    period_start: periodStart,
-                    period_end: periodEnd
-                });
-                
-                const confirmMsg = `Preview:
-Pay Type: ${preview.pay_type}
-Base Amount: $${preview.base_amount.toFixed(2)}
-Hours: ${preview.hours_worked}
-Tasks: ${preview.tasks_completed}
-Total: $${preview.total_pay.toFixed(2)}
-
-Create payroll?`;
-                
-                if (!confirm(confirmMsg)) return;
-                
-                await apiCall('payroll', {
-                    method: 'POST',
-                    period_start: periodStart,
-                    period_end: periodEnd,
-                    base_amount: preview.base_amount,
-                    hours_worked: preview.hours_worked,
-                    tasks_completed: preview.tasks_completed,
-                    task_payments: preview.task_payments,
-                    deductions: 0,
-                    bonus: 0,
-                    total_pay: preview.total_pay
-                });
-                
+                await apiCall('payroll', payload);
+                closePayrollForm();
                 showToast('Payroll created');
                 showModule('payroll');
             } catch (e) {
