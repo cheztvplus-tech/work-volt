@@ -214,18 +214,21 @@
         }
 
         // ==========================================
-        // NAVIGATION
+        // NAVIGATION - UPDATED WITH PAYROLL
         // ==========================================
         const modules = {
-            SuperAdmin: ['dashboard', 'tasks', 'pipeline'],
-            Admin: ['dashboard', 'tasks', 'pipeline'],
-            Manager: ['dashboard', 'tasks', 'pipeline'],
-            Employee: ['dashboard', 'tasks'],
-            Contractor: ['dashboard', 'tasks']
+            SuperAdmin: ['dashboard', 'tasks', 'pipeline', 'payroll'],
+            Admin: ['dashboard', 'tasks', 'pipeline', 'payroll'],
+            Manager: ['dashboard', 'tasks', 'pipeline', 'payroll'],
+            Employee: ['dashboard', 'tasks', 'payroll'],
+            Contractor: ['dashboard', 'tasks', 'payroll']
         };
 
         const moduleIcons = {
-            dashboard: 'fa-grid-2', tasks: 'fa-check-circle', pipeline: 'fa-users'
+            dashboard: 'fa-grid-2', 
+            tasks: 'fa-check-circle', 
+            pipeline: 'fa-users',
+            payroll: 'fa-money-bill'
         };
 
         function renderNav() {
@@ -252,6 +255,7 @@
                 case 'dashboard': loadDashboard(main); break;
                 case 'tasks': loadTasks(main); break;
                 case 'pipeline': loadPipeline(main); break;
+                case 'payroll': loadPayroll(main); break;
                 default: main.innerHTML = '<div class="text-center py-20 text-slate-400">Module coming soon</div>';
             }
         }
@@ -307,13 +311,11 @@
         }
 
         async function loadAllWidgetData() {
-            // Load tasks for My Tasks and Stats widgets
             let tasks = [];
             try {
                 const tasksData = await apiCall('tasks', {assignee: currentUser.user_id});
                 tasks = tasksData.tasks || [];
                 
-                // My Tasks widget
                 const myTasksHtml = tasks.slice(0, 3).map(t => `
                     <div class="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border-l-4 ${getPriorityColor(t.priority)} mb-2">
                         <input type="checkbox" class="mt-1 rounded text-blue-600" onchange="completeTask(${t.task_id})">
@@ -326,7 +328,6 @@
                 
                 document.getElementById('widget-my-tasks').innerHTML = myTasksHtml;
                 
-                // Stats widget
                 const todoCount = tasks.filter(t => t.status === 'Todo').length;
                 const inProgressCount = tasks.filter(t => t.status === 'In Progress').length;
                 const doneCount = tasks.filter(t => t.status === 'Done').length;
@@ -357,7 +358,6 @@
                 document.getElementById('widget-stats').innerHTML = `<p class="text-sm text-slate-400">${msg}</p>`;
             }
             
-            // Pipeline widget - separate try/catch so failure doesn't break others
             try {
                 const pipeData = await apiCall('pipeline');
                 const candidates = pipeData.candidates || [];
@@ -665,6 +665,177 @@
                 showModule('pipeline');
             } catch(e) {
                 const msg = e.message || 'Failed to add candidate';
+                showToast(msg, 'error');
+            }
+        }
+
+        // ==========================================
+        // PAYROLL MODULE - NEW
+        // ==========================================
+        async function loadPayroll(container) {
+            const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
+            const isManager = currentUser.role === 'Manager' || isAdmin;
+            
+            container.innerHTML = `
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold text-slate-900">Payroll</h2>
+                        <p class="text-slate-500">Manage employee compensation</p>
+                    </div>
+                    <button onclick="createPayrollPeriod()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                        <i class="fas fa-plus mr-2"></i>New Payroll
+                    </button>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                    <th class="px-4 py-3 font-medium text-slate-700">Employee</th>
+                                    <th class="px-4 py-3 font-medium text-slate-700">Period</th>
+                                    <th class="px-4 py-3 font-medium text-slate-700">Type</th>
+                                    <th class="px-4 py-3 font-medium text-slate-700 text-right">Base</th>
+                                    <th class="px-4 py-3 font-medium text-slate-700 text-right">Total</th>
+                                    <th class="px-4 py-3 font-medium text-slate-700">Status</th>
+                                    ${isManager ? '<th class="px-4 py-3 font-medium text-slate-700">Actions</th>' : ''}
+                                </tr>
+                            </thead>
+                            <tbody id="payroll-table-body" class="divide-y divide-slate-100">
+                                <tr><td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center text-slate-400">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            
+            try {
+                const params = isAdmin ? {} : {user_id: currentUser.user_id};
+                const data = await apiCall('payroll', params);
+                const payrolls = data.payroll || [];
+                
+                if (payrolls.length === 0) {
+                    document.getElementById('payroll-table-body').innerHTML = `
+                        <tr><td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center text-slate-400">No payroll records found</td></tr>
+                    `;
+                    return;
+                }
+                
+                const rows = payrolls.map(p => {
+                    const statusColors = {
+                        'Draft': 'bg-slate-100 text-slate-600',
+                        'Pending': 'bg-amber-100 text-amber-600',
+                        'Approved': 'bg-blue-100 text-blue-600',
+                        'Paid': 'bg-green-100 text-green-600'
+                    };
+                    
+                    let actions = '';
+                    if (isManager) {
+                        if (p.status === 'Draft' || p.status === 'Pending') {
+                            actions = `<button onclick="approvePayroll(${p.payroll_id})" class="text-blue-600 hover:text-blue-800 font-medium">Approve</button>`;
+                        } else if (p.status === 'Approved' && isAdmin) {
+                            actions = `<button onclick="markPaid(${p.payroll_id})" class="text-green-600 hover:text-green-800 font-medium">Mark Paid</button>`;
+                        } else {
+                            actions = '-';
+                        }
+                    }
+                    
+                    return `
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-4 py-3 font-medium text-slate-900">Employee #${p.user_id}</td>
+                            <td class="px-4 py-3 text-slate-600">${p.period_start} to ${p.period_end}</td>
+                            <td class="px-4 py-3 text-slate-600">${getPayType(p)}</td>
+                            <td class="px-4 py-3 text-right text-slate-900">$${p.base_amount.toFixed(2)}</td>
+                            <td class="px-4 py-3 text-right font-bold text-slate-900">$${p.total_pay.toFixed(2)}</td>
+                            <td class="px-4 py-3">
+                                <span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[p.status] || 'bg-slate-100 text-slate-600'}">
+                                    ${p.status}
+                                </span>
+                            </td>
+                            ${isManager ? `<td class="px-4 py-3">${actions}</td>` : ''}
+                        </tr>
+                    `;
+                }).join('');
+                
+                document.getElementById('payroll-table-body').innerHTML = rows;
+                
+            } catch (e) {
+                const msg = e.message || 'Failed to load payroll';
+                document.getElementById('payroll-table-body').innerHTML = `
+                    <tr><td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center text-red-500">${msg}</td></tr>
+                `;
+            }
+        }
+
+        function getPayType(p) {
+            if (p.hours_worked > 0) return 'Hourly';
+            if (p.tasks_completed > 0) return 'Task';
+            return 'Salary';
+        }
+
+        async function createPayrollPeriod() {
+            const periodStart = prompt('Period start date (YYYY-MM-DD):', '2026-02-01');
+            if (!periodStart) return;
+            
+            const periodEnd = prompt('Period end date (YYYY-MM-DD):', '2026-02-15');
+            if (!periodEnd) return;
+            
+            try {
+                const preview = await apiCall('payroll/calculate', {
+                    period_start: periodStart,
+                    period_end: periodEnd
+                });
+                
+                const confirmMsg = `Preview:
+Pay Type: ${preview.pay_type}
+Base Amount: $${preview.base_amount.toFixed(2)}
+Hours: ${preview.hours_worked}
+Tasks: ${preview.tasks_completed}
+Total: $${preview.total_pay.toFixed(2)}
+
+Create payroll?`;
+                
+                if (!confirm(confirmMsg)) return;
+                
+                await apiCall('payroll', {
+                    method: 'POST',
+                    period_start: periodStart,
+                    period_end: periodEnd,
+                    base_amount: preview.base_amount,
+                    hours_worked: preview.hours_worked,
+                    tasks_completed: preview.tasks_completed,
+                    task_payments: preview.task_payments,
+                    deductions: 0,
+                    bonus: 0,
+                    total_pay: preview.total_pay
+                });
+                
+                showToast('Payroll created');
+                showModule('payroll');
+            } catch (e) {
+                const msg = e.message || 'Failed to create payroll';
+                showToast(msg, 'error');
+            }
+        }
+
+        async function approvePayroll(payrollId) {
+            try {
+                await apiCall('payroll/approve', {payroll_id: payrollId});
+                showToast('Payroll approved');
+                showModule('payroll');
+            } catch (e) {
+                const msg = e.message || 'Approval failed';
+                showToast(msg, 'error');
+            }
+        }
+
+        async function markPaid(payrollId) {
+            try {
+                await apiCall('payroll/pay', {payroll_id: payrollId});
+                showToast('Payroll marked as paid');
+                showModule('payroll');
+            } catch (e) {
+                const msg = e.message || 'Failed to mark paid';
                 showToast(msg, 'error');
             }
         }
