@@ -22,7 +22,6 @@
     </style>
 </head>
 <body class="bg-slate-50 font-sans text-slate-800">
-    <!-- Login Screen -->
     <div id="login-screen" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-700">
         <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md mx-4">
             <div class="text-center mb-8">
@@ -32,60 +31,41 @@
                 <h1 class="text-3xl font-bold text-slate-900">Work Volt</h1>
                 <p class="text-slate-500 mt-2">Power your operations</p>
             </div>
-            
             <form id="login-form" class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                    <input type="email" id="login-email" value="admin@workvolt.com" 
-                           class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                    <input type="email" id="login-email" value="admin@workvolt.com" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Password</label>
-                    <input type="password" id="login-password" value="password" 
-                           class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                    <input type="password" id="login-password" value="password" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
                 <div id="login-error" class="hidden text-red-600 text-sm bg-red-50 p-2 rounded"></div>
-                <button type="submit" id="login-btn" class="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-                    Sign In
-                </button>
+                <button type="submit" id="login-btn" class="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors">Sign In</button>
             </form>
         </div>
     </div>
 
-    <!-- Main App -->
     <div id="app-screen" class="hidden min-h-screen flex flex-col">
-        <!-- Topbar -->
         <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
             <div class="flex items-center justify-between px-4 py-3">
                 <div class="flex items-center gap-4">
-                    <button onclick="toggleSidebar()" class="lg:hidden p-2 hover:bg-slate-100 rounded-lg">
-                        <i class="fas fa-bars text-slate-600"></i>
-                    </button>
+                    <button onclick="toggleSidebar()" class="lg:hidden p-2 hover:bg-slate-100 rounded-lg"><i class="fas fa-bars text-slate-600"></i></button>
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-bolt text-white text-sm"></i>
-                        </div>
+                        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center"><i class="fas fa-bolt text-white text-sm"></i></div>
                         <span class="text-xl font-bold text-slate-900">Work Volt</span>
                     </div>
                 </div>
-                
                 <div class="flex-1 max-w-xl mx-4 hidden md:block">
                     <div class="relative">
                         <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                        <input type="text" placeholder="Search..." 
-                               class="w-full pl-10 pr-4 py-2 bg-slate-100 border-0 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                        <input type="text" placeholder="Search..." class="w-full pl-10 pr-4 py-2 bg-slate-100 border-0 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                     </div>
                 </div>
-                
                 <div class="flex items-center gap-3">
-                    <button class="relative p-2 hover:bg-slate-100 rounded-lg">
-                        <i class="fas fa-bell text-slate-600"></i>
-                        <span id="notif-badge" class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full hidden"></span>
-                    </button>
+                    <button class="relative p-2 hover:bg-slate-100 rounded-lg"><i class="fas fa-bell text-slate-600"></i><span id="notif-badge" class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full hidden"></span></button>
                     <div class="flex items-center gap-2 pl-3 border-l border-slate-200">
-                        <div id="user-avatar" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-                            JD
-                        </div>
+                        <div id="user-avatar" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-medium text-sm">JD</div>
                         <span id="user-name" class="hidden md:block text-sm font-medium text-slate-700">John Doe</span>
                     </div>
                 </div>
@@ -93,111 +73,73 @@
         </header>
 
         <div class="flex flex-1 overflow-hidden">
-            <!-- Sidebar -->
             <aside id="sidebar" class="w-64 bg-white border-r border-slate-200 flex-shrink-0 hidden lg:flex flex-col">
-                <nav class="flex-1 overflow-y-auto p-4 space-y-1" id="nav-menu">
-                </nav>
+                <nav class="flex-1 overflow-y-auto p-4 space-y-1" id="nav-menu"></nav>
             </aside>
-
-            <!-- Main Content -->
-            <main class="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-6" id="main-content">
-            </main>
+            <main class="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-6" id="main-content"></main>
         </div>
     </div>
 
     <script>
-        // ==========================================
-        // CONFIG
-        // ==========================================
         const API_URL = 'https://script.google.com/macros/s/AKfycbwY-oCLRpuxl8ghe-avGACVid5F2WPqE01V1P5s42QJFjl0U6RA2WBJ1M6SNWMOkOMz/exec';
-        
         let currentUser = null;
         let currentToken = localStorage.getItem('workvolt_token');
         let dashboardSortable = null;
-        let allUsers = []; // Cache for employee dropdown
+        let allUsers = [];
 
-        // ==========================================
-        // API HELPER with retry logic
-        // ==========================================
         async function apiCall(path, params = {}, retries = 2) {
             const url = new URL(API_URL);
             url.searchParams.append('path', path);
-            
-            if(currentToken) {
-                url.searchParams.append('token', currentToken);
-            }
-            
+            if(currentToken) url.searchParams.append('token', currentToken);
             for(let key in params) {
-                if(params[key] !== undefined && params[key] !== null) {
-                    url.searchParams.append(key, params[key]);
-                }
+                if(params[key] !== undefined && params[key] !== null) url.searchParams.append(key, params[key]);
             }
-            
             let lastError;
             for(let i = 0; i <= retries; i++) {
                 try {
-                    const response = await fetch(url.toString(), {
-                        method: 'GET',
-                        mode: 'cors',
-                        cache: 'no-cache'
-                    });
-                    
-                    if(!response.ok) {
-                        throw new Error('HTTP ' + response.status);
-                    }
-                    
+                    const response = await fetch(url.toString(), {method: 'GET', mode: 'cors', cache: 'no-cache'});
+                    if(!response.ok) throw new Error('HTTP ' + response.status);
                     const text = await response.text();
-                    if(!text || text.trim() === '') {
-                        throw new Error('Empty response');
-                    }
-                    
+                    if(!text || text.trim() === '') throw new Error('Empty response');
                     const data = JSON.parse(text);
-                    
-                    if(data.error) {
-                        throw new Error(data.error);
-                    }
-                    
+                    if(data.error) throw new Error(data.error);
                     return data;
                 } catch(err) {
                     lastError = err;
-                    console.warn(`API call failed (attempt ${i+1}/${retries+1}):`, err.message);
-                    if(i < retries) {
-                        await new Promise(r => setTimeout(r, 500));
+                    if(err.message === 'Unauthorized' || err.message === 'TOKEN_INVALID') {
+                        localStorage.removeItem('workvolt_token');
+                        localStorage.removeItem('workvolt_user');
+                        currentToken = null;
+                        currentUser = null;
+                        document.getElementById('app-screen').classList.add('hidden');
+                        document.getElementById('login-screen').classList.remove('hidden');
+                        showToast('Session expired. Please log in again.', 'error');
+                        throw new Error('Session expired');
                     }
+                    if(i < retries) await new Promise(r => setTimeout(r, 500));
                 }
             }
-            
-            console.error('API call failed after retries:', lastError);
             throw new Error('Network error - please refresh');
         }
 
-        // ==========================================
-        // AUTH
-        // ==========================================
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
             const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
             const btn = document.getElementById('login-btn');
             const errorDiv = document.getElementById('login-error');
-            
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Signing in...';
             errorDiv.classList.add('hidden');
-            
             try {
                 const data = await apiCall('auth/login', {email, password}, 0);
-                
                 currentToken = data.token;
                 currentUser = data.user;
                 localStorage.setItem('workvolt_token', currentToken);
                 localStorage.setItem('workvolt_user', JSON.stringify(currentUser));
-                
                 showApp();
             } catch(err) {
-                const msg = err.message || 'Login failed';
-                errorDiv.textContent = msg;
+                errorDiv.textContent = err.message || 'Login failed';
                 errorDiv.classList.remove('hidden');
                 btn.disabled = false;
                 btn.innerHTML = 'Sign In';
@@ -209,14 +151,10 @@
             document.getElementById('app-screen').classList.remove('hidden');
             document.getElementById('user-name').textContent = currentUser.name;
             document.getElementById('user-avatar').textContent = currentUser.name.split(' ').map(n => n[0]).join('').slice(0,2);
-            
             renderNav();
             showModule('dashboard');
         }
 
-        // ==========================================
-        // NAVIGATION - UPDATED WITH PAYROLL
-        // ==========================================
         const modules = {
             SuperAdmin: ['dashboard', 'tasks', 'pipeline', 'payroll'],
             Admin: ['dashboard', 'tasks', 'pipeline', 'payroll'],
@@ -226,16 +164,12 @@
         };
 
         const moduleIcons = {
-            dashboard: 'fa-grid-2', 
-            tasks: 'fa-check-circle', 
-            pipeline: 'fa-users',
-            payroll: 'fa-money-bill'
+            dashboard: 'fa-grid-2', tasks: 'fa-check-circle', pipeline: 'fa-users', payroll: 'fa-money-bill'
         };
 
         function renderNav() {
             const nav = document.getElementById('nav-menu');
             const allowed = modules[currentUser.role] || modules.Employee;
-            
             nav.innerHTML = allowed.map(mod => `
                 <a href="#" onclick="showModule('${mod}')" class="nav-item flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg font-medium transition-colors" data-module="${mod}">
                     <i class="fas ${moduleIcons[mod]} w-5"></i> ${mod.charAt(0).toUpperCase() + mod.slice(1)}
@@ -250,7 +184,6 @@
             });
             document.querySelector(`[data-module="${moduleName}"]`)?.classList.add('bg-blue-50', 'text-blue-700');
             document.querySelector(`[data-module="${moduleName}"]`)?.classList.remove('text-slate-600');
-            
             const main = document.getElementById('main-content');
             switch(moduleName) {
                 case 'dashboard': loadDashboard(main); break;
@@ -261,9 +194,6 @@
             }
         }
 
-        // ==========================================
-        // DASHBOARD
-        // ==========================================
         async function loadDashboard(container) {
             container.innerHTML = `
                 <div class="flex items-center justify-between mb-6">
@@ -271,9 +201,7 @@
                         <h2 class="text-2xl font-bold text-slate-900">Dashboard</h2>
                         <p class="text-slate-500">Welcome back, ${currentUser.name}</p>
                     </div>
-                    <button onclick="toggleEditMode()" id="edit-btn" class="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">
-                        <i class="fas fa-pen mr-2"></i>Customize
-                    </button>
+                    <button onclick="toggleEditMode()" id="edit-btn" class="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50"><i class="fas fa-pen mr-2"></i>Customize</button>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="dashboard-grid">
                     ${renderWidget('my-tasks', 'My Tasks', 'col-span-1 row-span-2')}
@@ -281,16 +209,9 @@
                     ${renderWidget('pipeline', 'Hiring', '')}
                 </div>
             `;
-            
             dashboardSortable = new Sortable(document.getElementById('dashboard-grid'), {
-                animation: 150,
-                handle: '.widget-handle',
-                ghostClass: 'sortable-ghost',
-                dragClass: 'sortable-drag',
-                disabled: true,
-                onEnd: saveDashboardLayout
+                animation: 150, handle: '.widget-handle', ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', disabled: true, onEnd: saveDashboardLayout
             });
-            
             await loadAllWidgetData();
         }
 
@@ -302,70 +223,44 @@
                         <i class="fas fa-grip-vertical text-slate-400 widget-handle hidden cursor-move"></i>
                     </div>
                     <div class="widget-content" id="widget-${type}">
-                        <div class="animate-pulse space-y-3">
-                            <div class="h-4 bg-slate-200 rounded w-3/4"></div>
-                            <div class="h-4 bg-slate-200 rounded w-1/2"></div>
-                        </div>
+                        <div class="animate-pulse space-y-3"><div class="h-4 bg-slate-200 rounded w-3/4"></div><div class="h-4 bg-slate-200 rounded w-1/2"></div></div>
                     </div>
                 </div>
             `;
         }
 
         async function loadAllWidgetData() {
-            let tasks = [];
             try {
                 const tasksData = await apiCall('tasks', {assignee: currentUser.user_id});
-                tasks = tasksData.tasks || [];
-                
+                const tasks = tasksData.tasks || [];
                 const myTasksHtml = tasks.slice(0, 3).map(t => `
                     <div class="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border-l-4 ${getPriorityColor(t.priority)} mb-2">
                         <input type="checkbox" class="mt-1 rounded text-blue-600" onchange="completeTask(${t.task_id})">
-                        <div class="flex-1">
-                            <p class="text-sm font-medium text-slate-900">${t.title}</p>
-                            <p class="text-xs text-slate-500 mt-1">${t.due_date || 'No due date'}</p>
-                        </div>
+                        <div class="flex-1"><p class="text-sm font-medium text-slate-900">${t.title}</p><p class="text-xs text-slate-500 mt-1">${t.due_date || 'No due date'}</p></div>
                     </div>
                 `).join('') || '<p class="text-sm text-slate-400">No pending tasks</p>';
-                
                 document.getElementById('widget-my-tasks').innerHTML = myTasksHtml;
-                
                 const todoCount = tasks.filter(t => t.status === 'Todo').length;
                 const inProgressCount = tasks.filter(t => t.status === 'In Progress').length;
                 const doneCount = tasks.filter(t => t.status === 'Done').length;
-                
                 document.getElementById('widget-stats').innerHTML = `
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="text-center p-3 bg-blue-50 rounded-lg">
-                            <p class="text-2xl font-bold text-blue-600">${tasks.length}</p>
-                            <p class="text-xs text-blue-700 font-medium">Total Tasks</p>
-                        </div>
-                        <div class="text-center p-3 bg-amber-50 rounded-lg">
-                            <p class="text-2xl font-bold text-amber-600">${inProgressCount}</p>
-                            <p class="text-xs text-amber-700 font-medium">In Progress</p>
-                        </div>
-                        <div class="text-center p-3 bg-green-50 rounded-lg">
-                            <p class="text-2xl font-bold text-green-600">${doneCount}</p>
-                            <p class="text-xs text-green-700 font-medium">Completed</p>
-                        </div>
-                        <div class="text-center p-3 bg-purple-50 rounded-lg">
-                            <p class="text-2xl font-bold text-purple-600">${todoCount}</p>
-                            <p class="text-xs text-purple-700 font-medium">To Do</p>
-                        </div>
+                        <div class="text-center p-3 bg-blue-50 rounded-lg"><p class="text-2xl font-bold text-blue-600">${tasks.length}</p><p class="text-xs text-blue-700 font-medium">Total Tasks</p></div>
+                        <div class="text-center p-3 bg-amber-50 rounded-lg"><p class="text-2xl font-bold text-amber-600">${inProgressCount}</p><p class="text-xs text-amber-700 font-medium">In Progress</p></div>
+                        <div class="text-center p-3 bg-green-50 rounded-lg"><p class="text-2xl font-bold text-green-600">${doneCount}</p><p class="text-xs text-green-700 font-medium">Completed</p></div>
+                        <div class="text-center p-3 bg-purple-50 rounded-lg"><p class="text-2xl font-bold text-purple-600">${todoCount}</p><p class="text-xs text-purple-700 font-medium">To Do</p></div>
                     </div>
                 `;
             } catch(e) {
-                const msg = e.message || 'Unable to load';
-                document.getElementById('widget-my-tasks').innerHTML = `<p class="text-sm text-slate-400">${msg}</p>`;
-                document.getElementById('widget-stats').innerHTML = `<p class="text-sm text-slate-400">${msg}</p>`;
+                document.getElementById('widget-my-tasks').innerHTML = '<p class="text-sm text-slate-400">Unable to load</p>';
+                document.getElementById('widget-stats').innerHTML = '<p class="text-sm text-slate-400">Unable to load</p>';
             }
-            
             try {
                 const pipeData = await apiCall('pipeline');
                 const candidates = pipeData.candidates || [];
                 const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'];
                 const stageCounts = {};
                 stages.forEach(s => stageCounts[s] = candidates.filter(c => c.stage === s).length);
-                
                 document.getElementById('widget-pipeline').innerHTML = `
                     <div class="flex gap-2 overflow-x-auto pb-2">
                         ${stages.map(stage => `
@@ -377,15 +272,13 @@
                     </div>
                 `;
             } catch(e) {
-                const msg = e.message || 'Unable to load';
-                document.getElementById('widget-pipeline').innerHTML = `<p class="text-sm text-slate-400">${msg}</p>`;
+                document.getElementById('widget-pipeline').innerHTML = '<p class="text-sm text-slate-400">Unable to load</p>';
             }
         }
 
         function toggleEditMode() {
             const btn = document.getElementById('edit-btn');
             const isEditing = btn.classList.contains('bg-blue-600');
-            
             if(isEditing) {
                 btn.classList.remove('bg-blue-600', 'text-white');
                 btn.classList.add('bg-white', 'text-slate-700');
@@ -403,15 +296,12 @@
 
         async function saveDashboardLayout() {
             const widgets = [];
-            document.querySelectorAll('.widget').forEach((w, i) => {
-                widgets.push({type: w.dataset.widget, index: i});
-            });
+            document.querySelectorAll('.widget').forEach((w, i) => widgets.push({type: w.dataset.widget, index: i}));
             try {
                 await apiCall('users/dashboard', {layout: JSON.stringify(widgets)});
                 showToast('Layout saved');
             } catch(e) {
-                const msg = e.message || 'Save failed';
-                showToast(msg, 'error');
+                showToast(e.message || 'Save failed', 'error');
             }
         }
 
@@ -419,19 +309,11 @@
             return {Urgent: 'border-red-500', High: 'border-amber-500', Medium: 'border-blue-500', Low: 'border-slate-300'}[p] || 'border-slate-300';
         }
 
-        // ==========================================
-        // TASKS KANBAN
-        // ==========================================
         async function loadTasks(container) {
             container.innerHTML = `
                 <div class="flex items-center justify-between mb-4">
-                    <div>
-                        <h2 class="text-2xl font-bold text-slate-900">Tasks</h2>
-                        <p class="text-slate-500">Drag cards to change status</p>
-                    </div>
-                    <button onclick="createTask()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-                        <i class="fas fa-plus mr-2"></i>New Task
-                    </button>
+                    <div><h2 class="text-2xl font-bold text-slate-900">Tasks</h2><p class="text-slate-500">Drag cards to change status</p></div>
+                    <button onclick="createTask()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"><i class="fas fa-plus mr-2"></i>New Task</button>
                 </div>
                 <div class="flex gap-6 overflow-x-auto kanban-scroll pb-4" id="task-board">
                     ${renderKanbanColumn('Backlog', 'bg-slate-400')}
@@ -441,29 +323,20 @@
                     ${renderKanbanColumn('Done', 'bg-green-400')}
                 </div>
             `;
-            
             try {
                 const data = await apiCall('tasks');
                 const tasks = data.tasks || [];
-                
                 tasks.forEach(task => {
                     const col = document.getElementById(`col-${task.status.replace(' ', '-')}`);
                     if(col) col.innerHTML += renderTaskCard(task);
                 });
-                
                 ['Backlog', 'Todo', 'In-Progress', 'Review', 'Done'].forEach(status => {
                     new Sortable(document.getElementById(`col-${status}`), {
-                        group: 'tasks',
-                        animation: 150,
-                        ghostClass: 'sortable-ghost',
-                        dragClass: 'sortable-drag',
-                        delay: 100,
-                        delayOnTouchOnly: true,
+                        group: 'tasks', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', delay: 100, delayOnTouchOnly: true,
                         onEnd: async function(evt) {
                             const taskId = evt.item.dataset.taskId;
                             const newStatus = evt.to.dataset.status;
                             const oldStatus = evt.from.dataset.status;
-                            
                             if(newStatus !== oldStatus) {
                                 evt.item.style.opacity = '0.5';
                                 try {
@@ -473,16 +346,14 @@
                                 } catch(e) {
                                     evt.from.appendChild(evt.item);
                                     evt.item.style.opacity = '1';
-                                    const msg = e.message || 'Failed to move';
-                                    showToast(msg, 'error');
+                                    showToast(e.message || 'Failed to move', 'error');
                                 }
                             }
                         }
                     });
                 });
             } catch(e) {
-                const msg = e.message || 'Failed to load tasks';
-                container.innerHTML += `<div class="text-red-500 mt-4">${msg}</div>`;
+                container.innerHTML += `<div class="text-red-500 mt-4">${e.message || 'Failed to load tasks'}</div>`;
             }
         }
 
@@ -491,28 +362,19 @@
             return `
                 <div class="flex-shrink-0 w-80">
                     <div class="flex items-center justify-between mb-3">
-                        <h3 class="font-semibold text-slate-700 flex items-center gap-2">
-                            <span class="w-2 h-2 ${colorClass} rounded-full"></span>
-                            ${status}
-                        </h3>
+                        <h3 class="font-semibold text-slate-700 flex items-center gap-2"><span class="w-2 h-2 ${colorClass} rounded-full"></span>${status}</h3>
                     </div>
-                    <div class="space-y-3 min-h-[200px] bg-slate-100/50 rounded-xl p-2" 
-                         id="col-${statusId}" 
-                         data-status="${status}">
-                    </div>
+                    <div class="space-y-3 min-h-[200px] bg-slate-100/50 rounded-xl p-2" id="col-${statusId}" data-status="${status}"></div>
                 </div>
             `;
         }
 
         function renderTaskCard(task) {
             return `
-                <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-200 card-hover cursor-move mb-2" 
-                     data-task-id="${task.task_id}">
+                <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-200 card-hover cursor-move mb-2" data-task-id="${task.task_id}">
                     <div class="flex items-start justify-between mb-2">
                         <span class="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">Task</span>
-                        <span class="text-xs ${task.priority === 'Urgent' ? 'text-red-600 font-bold' : 'text-slate-400'}">
-                            ${task.priority}
-                        </span>
+                        <span class="text-xs ${task.priority === 'Urgent' ? 'text-red-600 font-bold' : 'text-slate-400'}">${task.priority}</span>
                     </div>
                     <h4 class="font-medium text-slate-900 mb-2 text-sm">${task.title}</h4>
                     <div class="flex items-center justify-between text-xs text-slate-500">
@@ -526,35 +388,20 @@
         async function createTask() {
             const title = prompt('Task title:');
             if(!title) return;
-            
             try {
-                await apiCall('tasks', {
-                    method: 'POST',
-                    title: title,
-                    assigned_to: currentUser.user_id,
-                    status: 'Backlog'
-                });
+                await apiCall('tasks', {method: 'POST', title: title, assigned_to: currentUser.user_id, status: 'Backlog'});
                 showToast('Task created');
                 showModule('tasks');
             } catch(e) {
-                const msg = e.message || 'Failed to create task';
-                showToast(msg, 'error');
+                showToast(e.message || 'Failed to create task', 'error');
             }
         }
 
-        // ==========================================
-        // PIPELINE
-        // ==========================================
         async function loadPipeline(container) {
             container.innerHTML = `
                 <div class="flex items-center justify-between mb-4">
-                    <div>
-                        <h2 class="text-2xl font-bold text-slate-900">Hiring Pipeline</h2>
-                        <p class="text-slate-500">Drag to move, drop on Hired to convert</p>
-                    </div>
-                    <button onclick="createCandidate()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-                        <i class="fas fa-plus mr-2"></i>Add Candidate
-                    </button>
+                    <div><h2 class="text-2xl font-bold text-slate-900">Hiring Pipeline</h2><p class="text-slate-500">Drag to move, drop on Hired to convert</p></div>
+                    <button onclick="createCandidate()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"><i class="fas fa-plus mr-2"></i>Add Candidate</button>
                 </div>
                 <div class="flex gap-6 overflow-x-auto kanban-scroll pb-4" id="pipeline-board">
                     ${renderPipelineColumn('Applied')}
@@ -564,68 +411,48 @@
                     ${renderPipelineColumn('Hired', true)}
                 </div>
             `;
-            
             try {
                 const data = await apiCall('pipeline');
                 const candidates = data.candidates || [];
-                
                 candidates.forEach(c => {
                     const col = document.getElementById(`pipe-${c.stage}`);
                     if(col) col.innerHTML += renderCandidateCard(c);
                 });
-                
                 ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'].forEach(stage => {
                     new Sortable(document.getElementById(`pipe-${stage}`), {
-                        group: 'pipeline',
-                        animation: 150,
-                        delay: 100,
-                        delayOnTouchOnly: true,
+                        group: 'pipeline', animation: 150, delay: 100, delayOnTouchOnly: true,
                         onEnd: async function(evt) {
                             const candidateId = evt.item.dataset.candidateId;
                             const newStage = evt.to.dataset.stage;
-                            
                             if(newStage === 'Hired' && !confirm('Hire this candidate? Creates employee record.')) {
                                 evt.from.appendChild(evt.item);
                                 return;
                             }
-                            
                             try {
                                 const endpoint = newStage === 'Hired' ? 'pipeline/hire' : 'pipeline/move';
-                                await apiCall(endpoint, {
-                                    candidate_id: candidateId,
-                                    to_stage: newStage
-                                });
-                                
+                                await apiCall(endpoint, {candidate_id: candidateId, to_stage: newStage});
                                 showToast(newStage === 'Hired' ? 'Hired! Employee created.' : `Moved to ${newStage}`);
-                                
                                 if(newStage === 'Hired') {
                                     evt.item.classList.add('bg-green-50', 'border-green-200');
                                     evt.item.innerHTML += '<div class="mt-2 text-xs text-green-600 font-medium">✓ Employee record created</div>';
                                 }
                             } catch(e) {
                                 evt.from.appendChild(evt.item);
-                                const msg = e.message || 'Failed to move';
-                                showToast(msg, 'error');
+                                showToast(e.message || 'Failed to move', 'error');
                             }
                         }
                     });
                 });
             } catch(e) {
-                const msg = e.message || 'Failed to load pipeline';
-                container.innerHTML += `<div class="text-red-500 mt-4">${msg}</div>`;
+                container.innerHTML += `<div class="text-red-500 mt-4">${e.message || 'Failed to load pipeline'}</div>`;
             }
         }
 
         function renderPipelineColumn(stage, isFinal) {
             return `
                 <div class="flex-shrink-0 w-80">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="font-semibold ${isFinal ? 'text-green-700' : 'text-slate-700'}">${stage}</h3>
-                    </div>
-                    <div class="space-y-3 min-h-[200px] ${isFinal ? 'bg-green-50/50' : 'bg-slate-100/50'} rounded-xl p-2" 
-                         id="pipe-${stage}" 
-                         data-stage="${stage}">
-                    </div>
+                    <div class="flex items-center justify-between mb-3"><h3 class="font-semibold ${isFinal ? 'text-green-700' : 'text-slate-700'}">${stage}</h3></div>
+                    <div class="space-y-3 min-h-[200px] ${isFinal ? 'bg-green-50/50' : 'bg-slate-100/50'} rounded-xl p-2" id="pipe-${stage}" data-stage="${stage}"></div>
                 </div>
             `;
         }
@@ -633,12 +460,9 @@
         function renderCandidateCard(c) {
             const isHired = c.stage === 'Hired';
             return `
-                <div class="bg-white p-4 rounded-lg shadow-sm border ${isHired ? 'border-green-200 bg-green-50' : 'border-slate-200'} card-hover cursor-move mb-2" 
-                     data-candidate-id="${c.candidate_id}">
+                <div class="bg-white p-4 rounded-lg shadow-sm border ${isHired ? 'border-green-200 bg-green-50' : 'border-slate-200'} card-hover cursor-move mb-2" data-candidate-id="${c.candidate_id}">
                     <div class="flex items-start justify-between mb-2">
-                        <div class="w-10 h-10 ${isHired ? 'bg-green-500 text-white' : 'bg-blue-100 text-blue-600'} rounded-full flex items-center justify-center font-bold text-sm">
-                            ${c.name.split(' ').map(n => n[0]).join('')}
-                        </div>
+                        <div class="w-10 h-10 ${isHired ? 'bg-green-500 text-white' : 'bg-blue-100 text-blue-600'} rounded-full flex items-center justify-center font-bold text-sm">${c.name.split(' ').map(n => n[0]).join('')}</div>
                         ${c.rating ? `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">★ ${c.rating}</span>` : ''}
                     </div>
                     <h4 class="font-medium text-slate-900">${c.name}</h4>
@@ -654,40 +478,23 @@
             const email = prompt('Email:');
             if(!email) return;
             const position = prompt('Position:') || '';
-            
             try {
-                await apiCall('pipeline', {
-                    method: 'POST',
-                    name: name,
-                    email: email,
-                    position: position
-                });
+                await apiCall('pipeline', {method: 'POST', name: name, email: email, position: position});
                 showToast('Candidate added');
                 showModule('pipeline');
             } catch(e) {
-                const msg = e.message || 'Failed to add candidate';
-                showToast(msg, 'error');
+                showToast(e.message || 'Failed to add candidate', 'error');
             }
         }
 
-        // ==========================================
-        // PAYROLL MODULE - UPDATED WITH EMPLOYEE SELECTOR & CALCULATE BUTTON
-        // ==========================================
         async function loadPayroll(container) {
             const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
             const isManager = currentUser.role === 'Manager' || isAdmin;
-            
             container.innerHTML = `
                 <div class="flex items-center justify-between mb-4">
-                    <div>
-                        <h2 class="text-2xl font-bold text-slate-900">Payroll</h2>
-                        <p class="text-slate-500">Manage employee compensation</p>
-                    </div>
-                    <button onclick="createPayrollForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-                        <i class="fas fa-plus mr-2"></i>New Payroll
-                    </button>
+                    <div><h2 class="text-2xl font-bold text-slate-900">Payroll</h2><p class="text-slate-500">Manage employee compensation</p></div>
+                    <button onclick="createPayrollForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"><i class="fas fa-plus mr-2"></i>New Payroll</button>
                 </div>
-                
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-sm">
@@ -709,27 +516,16 @@
                     </div>
                 </div>
             `;
-            
             try {
                 const params = isAdmin ? {} : {user_id: currentUser.user_id};
                 const data = await apiCall('payroll', params);
                 const payrolls = data.payroll || [];
-                
                 if (payrolls.length === 0) {
-                    document.getElementById('payroll-table-body').innerHTML = `
-                        <tr><td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center text-slate-400">No payroll records found</td></tr>
-                    `;
+                    document.getElementById('payroll-table-body').innerHTML = `<tr><td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center text-slate-400">No payroll records found</td></tr>`;
                     return;
                 }
-                
                 const rows = payrolls.map(p => {
-                    const statusColors = {
-                        'Draft': 'bg-slate-100 text-slate-600',
-                        'Pending': 'bg-amber-100 text-amber-600',
-                        'Approved': 'bg-blue-100 text-blue-600',
-                        'Paid': 'bg-green-100 text-green-600'
-                    };
-                    
+                    const statusColors = {'Draft': 'bg-slate-100 text-slate-600', 'Pending': 'bg-amber-100 text-amber-600', 'Approved': 'bg-blue-100 text-blue-600', 'Paid': 'bg-green-100 text-green-600'};
                     let actions = '';
                     if (isManager) {
                         if (p.status === 'Draft' || p.status === 'Pending') {
@@ -740,7 +536,6 @@
                             actions = '-';
                         }
                     }
-                    
                     return `
                         <tr class="hover:bg-slate-50">
                             <td class="px-4 py-3 font-medium text-slate-900">Employee #${p.user_id}</td>
@@ -748,23 +543,14 @@
                             <td class="px-4 py-3 text-slate-600">${getPayType(p)}</td>
                             <td class="px-4 py-3 text-right text-slate-900">$${p.base_amount.toFixed(2)}</td>
                             <td class="px-4 py-3 text-right font-bold text-slate-900">$${p.total_pay.toFixed(2)}</td>
-                            <td class="px-4 py-3">
-                                <span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[p.status] || 'bg-slate-100 text-slate-600'}">
-                                    ${p.status}
-                                </span>
-                            </td>
+                            <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[p.status] || 'bg-slate-100 text-slate-600'}">${p.status}</span></td>
                             ${isManager ? `<td class="px-4 py-3">${actions}</td>` : ''}
                         </tr>
                     `;
                 }).join('');
-                
                 document.getElementById('payroll-table-body').innerHTML = rows;
-                
             } catch (e) {
-                const msg = e.message || 'Failed to load payroll';
-                document.getElementById('payroll-table-body').innerHTML = `
-                    <tr><td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center text-red-500">${msg}</td></tr>
-                `;
+                document.getElementById('payroll-table-body').innerHTML = `<tr><td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center text-red-500">${e.message || 'Failed to load payroll'}</td></tr>`;
             }
         }
 
@@ -774,26 +560,19 @@
             return 'Salary';
         }
 
-        // UPDATED: Full payroll form with employee selector and calculate button
         async function createPayrollForm() {
             const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
             const isManager = currentUser.role === 'Manager' || isAdmin;
-            
-            // Load users for dropdown if manager/admin
             let employeeOptions = '';
             if (isManager) {
                 try {
                     const userData = await apiCall('users');
                     allUsers = userData.users || [];
-                    employeeOptions = allUsers.map(u => 
-                        `<option value="${u.user_id}" ${u.user_id === currentUser.user_id ? 'selected' : ''}>${u.name} (${u.email})</option>`
-                    ).join('');
+                    employeeOptions = allUsers.map(u => `<option value="${u.user_id}" ${u.user_id === currentUser.user_id ? 'selected' : ''}>${u.name} (${u.email})</option>`).join('');
                 } catch(e) {
                     console.error('Failed to load users:', e);
                 }
             }
-            
-            // Create modal
             const modal = document.createElement('div');
             modal.id = 'payroll-modal';
             modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
@@ -801,17 +580,13 @@
                 <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
                     <div class="p-6">
                         <h3 class="text-xl font-bold text-slate-900 mb-4">Create Payroll</h3>
-                        
                         <div class="space-y-4">
                             ${isManager ? `
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 mb-1">Employee</label>
-                                <select id="pp-employee" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                                    ${employeeOptions}
-                                </select>
+                                <select id="pp-employee" class="w-full px-3 py-2 border border-slate-300 rounded-lg">${employeeOptions}</select>
                             </div>
                             ` : `<input type="hidden" id="pp-employee" value="${currentUser.user_id}">`}
-                            
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-slate-700 mb-1">Period Start</label>
@@ -822,7 +597,6 @@
                                     <input type="date" id="pp-end" value="${getDefaultPeriodEnd()}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
                                 </div>
                             </div>
-                            
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 mb-1">Pay Type</label>
                                 <select id="pp-type" onchange="updatePayrollFormFields()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
@@ -831,12 +605,10 @@
                                     <option value="task_based">Task Based</option>
                                 </select>
                             </div>
-                            
                             <div id="field-salary">
                                 <label class="block text-sm font-medium text-slate-700 mb-1">Base Salary ($)</label>
                                 <input type="number" id="pp-salary" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
                             </div>
-                            
                             <div id="field-hourly" class="hidden space-y-3">
                                 <div class="flex gap-2">
                                     <div class="flex-1">
@@ -848,11 +620,8 @@
                                         <input type="number" id="pp-hours" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
                                     </div>
                                 </div>
-                                <button onclick="calculateFromTasks()" type="button" class="w-full py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 transition-colors">
-                                    <i class="fas fa-calculator mr-2"></i>Calculate from Tasks
-                                </button>
+                                <button onclick="calculateFromTasks()" type="button" class="w-full py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 transition-colors"><i class="fas fa-calculator mr-2"></i>Calculate from Tasks</button>
                             </div>
-                            
                             <div id="field-task" class="hidden space-y-3">
                                 <div class="flex gap-2">
                                     <div class="flex-1">
@@ -864,11 +633,8 @@
                                         <input type="number" id="pp-task-pay" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
                                     </div>
                                 </div>
-                                <button onclick="calculateFromTasks()" type="button" class="w-full py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 transition-colors">
-                                    <i class="fas fa-calculator mr-2"></i>Calculate from Completed Tasks
-                                </button>
+                                <button onclick="calculateFromTasks()" type="button" class="w-full py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 transition-colors"><i class="fas fa-calculator mr-2"></i>Calculate from Completed Tasks</button>
                             </div>
-                            
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-slate-700 mb-1">Deductions ($)</label>
@@ -879,7 +645,6 @@
                                     <input type="number" id="pp-bonus" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
                                 </div>
                             </div>
-                            
                             <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
                                 <div class="flex justify-between items-center">
                                     <span class="text-sm font-medium text-slate-700">Total Pay:</span>
@@ -887,7 +652,6 @@
                                 </div>
                             </div>
                         </div>
-                        
                         <div class="flex gap-3 mt-6">
                             <button onclick="submitPayrollForm()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Create Payroll</button>
                             <button onclick="closePayrollForm()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
@@ -918,47 +682,33 @@
             calculatePayrollTotal();
         }
 
-        // NEW: Calculate from Tasks button handler
         async function calculateFromTasks() {
             const employeeId = document.getElementById('pp-employee').value || currentUser.user_id;
             const periodStart = document.getElementById('pp-start').value;
             const periodEnd = document.getElementById('pp-end').value;
             const type = document.getElementById('pp-type').value;
-            
             if (!periodStart || !periodEnd) {
                 showToast('Please select period dates first', 'error');
                 return;
             }
-            
             const btn = event.target;
             const originalText = btn.innerHTML;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Calculating...';
             btn.disabled = true;
-            
             try {
-                const data = await apiCall('payroll/calculate', {
-                    user_id: employeeId,
-                    period_start: periodStart,
-                    period_end: periodEnd
-                });
-                
+                const data = await apiCall('payroll/calculate', {user_id: employeeId, period_start: periodStart, period_end: periodEnd});
                 if (type === 'hourly') {
                     document.getElementById('pp-hours').value = data.hours_worked || 0;
-                    // Keep the rate as is, or update from employee profile if 0
                     const currentRate = parseFloat(document.getElementById('pp-rate').value) || 0;
-                    if (!currentRate && data.hourly_rate) {
-                        document.getElementById('pp-rate').value = data.hourly_rate;
-                    }
+                    if (!currentRate && data.hourly_rate) document.getElementById('pp-rate').value = data.hourly_rate;
                 } else if (type === 'task_based') {
                     document.getElementById('pp-task-count').value = data.tasks_completed || 0;
                     document.getElementById('pp-task-pay').value = data.task_payments || 0;
                 }
-                
                 calculatePayrollTotal();
                 showToast(`Calculated: ${type === 'hourly' ? data.hours_worked + ' hours' : data.tasks_completed + ' tasks'}`);
             } catch (e) {
-                const msg = e.message || 'Calculation failed';
-                showToast(msg, 'error');
+                showToast(e.message || 'Calculation failed', 'error');
             } finally {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
@@ -968,7 +718,6 @@
         function calculatePayrollTotal() {
             const type = document.getElementById('pp-type').value;
             let base = 0;
-            
             if (type === 'salary') {
                 base = parseFloat(document.getElementById('pp-salary').value) || 0;
             } else if (type === 'hourly') {
@@ -978,11 +727,9 @@
             } else if (type === 'task_based') {
                 base = parseFloat(document.getElementById('pp-task-pay').value) || 0;
             }
-            
             const deductions = parseFloat(document.getElementById('pp-deductions').value) || 0;
             const bonus = parseFloat(document.getElementById('pp-bonus').value) || 0;
             const total = base - deductions + bonus;
-            
             document.getElementById('pp-total').textContent = '$' + total.toFixed(2);
         }
 
@@ -993,11 +740,7 @@
         async function submitPayrollForm() {
             const employeeId = document.getElementById('pp-employee').value || currentUser.user_id;
             const type = document.getElementById('pp-type').value;
-            let baseAmount = 0;
-            let hoursWorked = 0;
-            let tasksCompleted = 0;
-            let taskPayments = 0;
-            
+            let baseAmount = 0, hoursWorked = 0, tasksCompleted = 0, taskPayments = 0;
             if (type === 'salary') {
                 baseAmount = parseFloat(document.getElementById('pp-salary').value) || 0;
             } else if (type === 'hourly') {
@@ -1009,11 +752,9 @@
                 taskPayments = parseFloat(document.getElementById('pp-task-pay').value) || 0;
                 baseAmount = taskPayments;
             }
-            
             const deductions = parseFloat(document.getElementById('pp-deductions').value) || 0;
             const bonus = parseFloat(document.getElementById('pp-bonus').value) || 0;
             const totalPay = baseAmount - deductions + bonus;
-            
             const payload = {
                 method: 'POST',
                 user_id: employeeId,
@@ -1027,15 +768,13 @@
                 bonus: bonus,
                 total_pay: totalPay
             };
-            
             try {
                 await apiCall('payroll', payload);
                 closePayrollForm();
                 showToast('Payroll created');
                 showModule('payroll');
             } catch (e) {
-                const msg = e.message || 'Failed to create payroll';
-                showToast(msg, 'error');
+                showToast(e.message || 'Failed to create payroll', 'error');
             }
         }
 
@@ -1045,8 +784,7 @@
                 showToast('Payroll approved');
                 showModule('payroll');
             } catch (e) {
-                const msg = e.message || 'Approval failed';
-                showToast(msg, 'error');
+                showToast(e.message || 'Approval failed', 'error');
             }
         }
 
@@ -1056,14 +794,10 @@
                 showToast('Payroll marked as paid');
                 showModule('payroll');
             } catch (e) {
-                const msg = e.message || 'Failed to mark paid';
-                showToast(msg, 'error');
+                showToast(e.message || 'Failed to mark paid', 'error');
             }
         }
 
-        // ==========================================
-        // UTILITIES
-        // ==========================================
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('hidden');
         }
@@ -1076,13 +810,24 @@
             setTimeout(() => toast.remove(), 3000);
         }
 
-        // Auto-login check
         window.onload = () => {
             if(currentToken) {
                 const savedUser = localStorage.getItem('workvolt_user');
                 if(savedUser) {
-                    currentUser = JSON.parse(savedUser);
-                    showApp();
+                    try {
+                        currentUser = JSON.parse(savedUser);
+                        apiCall('users/me').then(() => {
+                            showApp();
+                        }).catch(err => {
+                            localStorage.removeItem('workvolt_token');
+                            localStorage.removeItem('workvolt_user');
+                            currentToken = null;
+                            currentUser = null;
+                        });
+                    } catch(e) {
+                        localStorage.removeItem('workvolt_token');
+                        localStorage.removeItem('workvolt_user');
+                    }
                 }
             }
         };
