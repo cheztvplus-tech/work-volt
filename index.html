@@ -67,6 +67,7 @@
                     <div class="flex items-center gap-2 pl-3 border-l border-slate-200">
                         <div id="user-avatar" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-medium text-sm">JD</div>
                         <span id="user-name" class="hidden md:block text-sm font-medium text-slate-700">John Doe</span>
+                        <button onclick="logout()" class="ml-2 p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Logout"><i class="fas fa-sign-out-alt"></i></button>
                     </div>
                 </div>
             </div>
@@ -153,6 +154,17 @@
             document.getElementById('user-avatar').textContent = currentUser.name.split(' ').map(n => n[0]).join('').slice(0,2);
             renderNav();
             showModule('dashboard');
+        }
+        
+        function logout() {
+            localStorage.removeItem('workvolt_token');
+            localStorage.removeItem('workvolt_user');
+            currentToken = null;
+            currentUser = null;
+            document.getElementById('app-screen').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('login-email').value = '';
+            document.getElementById('login-password').value = '';
         }
 
         const modules = {
@@ -834,4 +846,5 @@
     </script>
 </body>
 </html>
+
 
