@@ -591,7 +591,7 @@
             modal.innerHTML = `
                 <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
                     <div class="p-6">
-                        <h3 class="text-xl font-bold text-slate-900 mb-4">Create Payroll</h3>
+                        <h3 class="text-xl font-bold text-slate-900 mb-4">Submit for Payment</h3>
                         <div class="space-y-4">
                             ${isManager ? `
                             <div>
@@ -647,6 +647,7 @@
                                 </div>
                                 <button onclick="calculateFromTasks()" type="button" class="w-full py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 transition-colors"><i class="fas fa-calculator mr-2"></i>Calculate from Completed Tasks</button>
                             </div>
+                                                        ${isManager ? `
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-slate-700 mb-1">Deductions ($)</label>
@@ -657,6 +658,10 @@
                                     <input type="number" id="pp-bonus" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
                                 </div>
                             </div>
+                            ` : `
+                            <input type="hidden" id="pp-deductions" value="0">
+                            <input type="hidden" id="pp-bonus" value="0">
+                            `}
                             <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
                                 <div class="flex justify-between items-center">
                                     <span class="text-sm font-medium text-slate-700">Total Pay:</span>
@@ -846,5 +851,6 @@
     </script>
 </body>
 </html>
+
 
 
