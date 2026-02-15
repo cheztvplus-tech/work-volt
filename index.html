@@ -644,6 +644,9 @@
                                         <input type="number" id="pp-task-pay" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
                                     </div>
                                 </div>
+                                <button onclick="loadDoneTasksForSelection()" type="button" class="w-full py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 transition-colors"><i class="fas fa-list-check mr-2"></i>Select from Completed Tasks</button>
+                                <div id="done-tasks-list" class="mt-2"></div>
+                                <div id="selected-tasks-count" class="text-sm text-slate-600"></div>
                             </div>
                             ${isManager ? `
                             <div class="grid grid-cols-2 gap-4">
@@ -713,6 +716,81 @@
             const bonus = parseFloat(document.getElementById('pp-bonus').value) || 0;
             const total = base - deductions + bonus;
             document.getElementById('pp-total').textContent = '$' + total.toFixed(2);
+        }
+
+                async function loadDoneTasksForSelection() {
+            const employeeId = document.getElementById('pp-employee').value || currentUser.user_id;
+            const taskListDiv = document.getElementById('done-tasks-list');
+            
+            try {
+                const data = await apiCall('tasks', {assignee: employeeId, status: 'Done'});
+                const tasks = data.tasks || [];
+                
+                if (tasks.length === 0) {
+                    taskListDiv.innerHTML = '<p class="text-sm text-slate-500 italic">No completed tasks found</p>';
+                    return;
+                }
+                
+                let html = '<div class="space-y-2 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2">';
+                let totalPay = 0;
+                
+                tasks.forEach((task, index) => {
+                    const payAmount = parseFloat(task.pay_per_task) || 0;
+                    html += `
+                        <div class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer" onclick="toggleTaskSelection(this, ${payAmount})">
+                            <input type="checkbox" class="task-select-checkbox rounded text-blue-600" data-pay="${payAmount}" onchange="updateSelectedTasksTotal()">
+                            <div class="flex-1">
+                                <p class="text-sm font-medium text-slate-900">${task.title}</p>
+                                <p class="text-xs text-slate-500">$${payAmount.toFixed(2)}</p>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                html += `<div class="mt-2 text-right"><span class="text-sm font-medium text-slate-700">Selected Total: </span><span id="selected-tasks-total" class="text-lg font-bold text-green-600">$0.00</span></div>`;
+                html += `<button onclick="applySelectedTasks()" type="button" class="mt-2 w-full py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">Apply Selected Tasks</button>`;
+                
+                taskListDiv.innerHTML = html;
+            } catch (e) {
+                taskListDiv.innerHTML = '<p class="text-sm text-red-500">Failed to load tasks</p>';
+            }
+        }
+
+        function toggleTaskSelection(row, payAmount) {
+            const checkbox = row.querySelector('.task-select-checkbox');
+            checkbox.checked = !checkbox.checked;
+            updateSelectedTasksTotal();
+        }
+
+        function updateSelectedTasksTotal() {
+            const checkboxes = document.querySelectorAll('.task-select-checkbox:checked');
+            let total = 0;
+            let count = 0;
+            checkboxes.forEach(cb => {
+                total += parseFloat(cb.dataset.pay) || 0;
+                count++;
+            });
+            document.getElementById('selected-tasks-total').textContent = '$' + total.toFixed(2);
+            document.getElementById('selected-tasks-count').textContent = count + ' tasks selected';
+        }
+
+        function applySelectedTasks() {
+            const checkboxes = document.querySelectorAll('.task-select-checkbox:checked');
+            let totalPay = 0;
+            let count = 0;
+            checkboxes.forEach(cb => {
+                totalPay += parseFloat(cb.dataset.pay) || 0;
+                count++;
+            });
+            
+            document.getElementById('pp-task-count').value = count;
+            document.getElementById('pp-task-pay').value = totalPay.toFixed(2);
+            calculatePayrollTotal();
+            
+            // Hide the task selection area
+            document.getElementById('done-tasks-list').innerHTML = '';
+            showToast(`Applied ${count} tasks, $${totalPay.toFixed(2)}`);
         }
 
         function closePayrollForm() {
@@ -816,3 +894,4 @@
     </script>
 </body>
 </html>
+
