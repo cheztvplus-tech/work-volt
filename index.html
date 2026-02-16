@@ -15,6 +15,10 @@
         .sortable-drag { cursor: grabbing; transform: rotate(2deg); }
         .widget { transition: all 0.2s; }
         .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); }
+        .page-transition { animation: fadeIn 0.2s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .loading-skeleton { background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: loading 1.5s infinite; }
+        @keyframes loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         @media (max-width: 768px) {
             .kanban-container { flex-direction: column; }
             .kanban-column { width: 100% !important; margin-bottom: 1rem; }
@@ -22,6 +26,14 @@
     </style>
 </head>
 <body class="bg-slate-50 font-sans text-slate-800">
+    <!-- Loading Overlay -->
+    <div id="global-loading" class="hidden fixed inset-0 bg-white/80 z-50 flex items-center justify-center">
+        <div class="flex flex-col items-center">
+            <i class="fas fa-circle-notch fa-spin text-4xl text-blue-600 mb-2"></i>
+            <p class="text-slate-600">Loading...</p>
+        </div>
+    </div>
+
     <div id="login-screen" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-700">
         <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md mx-4">
             <div class="text-center mb-8">
@@ -41,17 +53,20 @@
                     <input type="password" id="login-password" value="password" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
                 <div id="login-error" class="hidden text-red-600 text-sm bg-red-50 p-2 rounded"></div>
-                <button type="submit" id="login-btn" class="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors">Sign In</button>
+                <button type="submit" id="login-btn" class="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                    <span id="login-btn-text">Sign In</span>
+                    <i id="login-btn-spinner" class="fas fa-spinner fa-spin hidden"></i>
+                </button>
             </form>
         </div>
     </div>
 
     <div id="app-screen" class="hidden min-h-screen flex flex-col">
-        <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
             <div class="flex items-center justify-between px-4 py-3">
                 <div class="flex items-center gap-4">
                     <button onclick="toggleSidebar()" class="lg:hidden p-2 hover:bg-slate-100 rounded-lg"><i class="fas fa-bars text-slate-600"></i></button>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 cursor-pointer" onclick="showModule('dashboard')">
                         <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center"><i class="fas fa-bolt text-white text-sm"></i></div>
                         <span class="text-xl font-bold text-slate-900">Work Volt</span>
                     </div>
@@ -87,6 +102,32 @@
         let currentToken = localStorage.getItem('workvolt_token');
         let dashboardSortable = null;
         let allUsers = [];
+        let cache = {
+            tasks: null,
+            users: null,
+            payroll: null,
+            timesheets: null,
+            lastFetch: {}
+        };
+
+        // Cache helper
+        function getCached(key, maxAge = 30000) {
+            const cached = cache[key];
+            const lastFetch = cache.lastFetch[key];
+            if (cached && lastFetch && (Date.now() - lastFetch) < maxAge) {
+                return cached;
+            }
+            return null;
+        }
+
+        function setCached(key, data) {
+            cache[key] = data;
+            cache.lastFetch[key] = Date.now();
+        }
+
+        function clearCache() {
+            cache = { tasks: null, users: null, payroll: null, timesheets: null, lastFetch: {} };
+        }
 
         async function apiCall(path, params = {}, retries = 2) {
             const url = new URL(API_URL);
@@ -95,18 +136,40 @@
             for(let key in params) {
                 if(params[key] !== undefined && params[key] !== null) url.searchParams.append(key, params[key]);
             }
+            
             let lastError;
             for(let i = 0; i <= retries; i++) {
                 try {
-                    const response = await fetch(url.toString(), {method: 'GET', mode: 'cors', cache: 'no-cache'});
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                    
+                    const response = await fetch(url.toString(), {
+                        method: 'GET', 
+                        mode: 'cors', 
+                        cache: 'no-cache',
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
                     if(!response.ok) throw new Error('HTTP ' + response.status);
                     const text = await response.text();
                     if(!text || text.trim() === '') throw new Error('Empty response');
-                    const data = JSON.parse(text);
+                    
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch(e) {
+                        throw new Error('Invalid JSON: ' + text.substring(0, 100));
+                    }
+                    
                     if(data.error) throw new Error(data.error);
                     return data;
                 } catch(err) {
                     lastError = err;
+                    if(err.name === 'AbortError') {
+                        lastError = new Error('Request timeout - please try again');
+                    }
                     if(err.message === 'Unauthorized' || err.message === 'TOKEN_INVALID') {
                         localStorage.removeItem('workvolt_token');
                         localStorage.removeItem('workvolt_user');
@@ -117,33 +180,59 @@
                         showToast('Session expired. Please log in again.', 'error');
                         throw new Error('Session expired');
                     }
-                    if(i < retries) await new Promise(r => setTimeout(r, 500));
+                    if(i < retries) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
                 }
             }
-            throw new Error('Network error - please refresh');
+            throw lastError || new Error('Network error - please refresh');
         }
 
+        // Login with timeout protection
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
             const btn = document.getElementById('login-btn');
+            const btnText = document.getElementById('login-btn-text');
+            const btnSpinner = document.getElementById('login-btn-spinner');
             const errorDiv = document.getElementById('login-error');
+            
+            // Reset state
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Signing in...';
+            btnText.classList.add('hidden');
+            btnSpinner.classList.remove('hidden');
             errorDiv.classList.add('hidden');
+            
+            // Set timeout to reset button if stuck
+            const timeoutId = setTimeout(() => {
+                btn.disabled = false;
+                btnText.classList.remove('hidden');
+                btnSpinner.classList.add('hidden');
+                errorDiv.textContent = 'Login timed out. Please try again.';
+                errorDiv.classList.remove('hidden');
+            }, 15000);
+            
             try {
-                const data = await apiCall('auth/login', {email, password}, 0);
+                const data = await apiCall('auth/login', {email, password}, 1);
+                clearTimeout(timeoutId);
+                
                 currentToken = data.token;
                 currentUser = data.user;
                 localStorage.setItem('workvolt_token', currentToken);
                 localStorage.setItem('workvolt_user', JSON.stringify(currentUser));
+                
+                // Reset button
+                btn.disabled = false;
+                btnText.classList.remove('hidden');
+                btnSpinner.classList.add('hidden');
+                
                 showApp();
             } catch(err) {
-                errorDiv.textContent = err.message || 'Login failed';
-                errorDiv.classList.remove('hidden');
+                clearTimeout(timeoutId);
                 btn.disabled = false;
-                btn.innerHTML = 'Sign In';
+                btnText.classList.remove('hidden');
+                btnSpinner.classList.add('hidden');
+                errorDiv.textContent = err.message || 'Login failed. Please try again.';
+                errorDiv.classList.remove('hidden');
             }
         });
 
@@ -153,12 +242,17 @@
             document.getElementById('user-name').textContent = currentUser.name;
             document.getElementById('user-avatar').textContent = currentUser.name.split(' ').map(n => n[0]).join('').slice(0,2);
             renderNav();
-            showModule('dashboard');
+            
+            // Restore last module or default to dashboard
+            const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
+            showModule(lastModule);
         }
         
         function logout() {
+            clearCache();
             localStorage.removeItem('workvolt_token');
             localStorage.removeItem('workvolt_user');
+            sessionStorage.removeItem('lastModule');
             currentToken = null;
             currentUser = null;
             document.getElementById('app-screen').classList.add('hidden');
@@ -183,48 +277,69 @@
             const nav = document.getElementById('nav-menu');
             const allowed = modules[currentUser.role] || modules.Employee;
             nav.innerHTML = allowed.map(mod => `
-                <a href="#" onclick="showModule('${mod}')" class="nav-item flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg font-medium transition-colors" data-module="${mod}">
+                <a href="#" onclick="showModule('${mod}'); return false;" class="nav-item flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg font-medium transition-colors" data-module="${mod}">
                     <i class="fas ${moduleIcons[mod]} w-5"></i> ${mod.charAt(0).toUpperCase() + mod.slice(1)}
                 </a>
             `).join('');
         }
 
         function showModule(moduleName) {
+            // Save current module for refresh recovery
+            sessionStorage.setItem('lastModule', moduleName);
+            
+            // Update nav highlighting
             document.querySelectorAll('.nav-item').forEach(n => {
                 n.classList.remove('bg-blue-50', 'text-blue-700');
                 n.classList.add('text-slate-600');
             });
-            document.querySelector(`[data-module="${moduleName}"]`)?.classList.add('bg-blue-50', 'text-blue-700');
-            document.querySelector(`[data-module="${moduleName}"]`)?.classList.remove('text-slate-600');
-            const main = document.getElementById('main-content');
-            switch(moduleName) {
-                case 'dashboard': loadDashboard(main); break;
-                case 'tasks': loadTasks(main); break;
-                case 'pipeline': loadPipeline(main); break;
-                case 'payroll': loadPayroll(main); break;
-                case 'timesheets': loadTimesheets(main); break;
-                default: main.innerHTML = '<div class="text-center py-20 text-slate-400">Module coming soon</div>';
+            const navItem = document.querySelector(`[data-module="${moduleName}"]`);
+            if(navItem) {
+                navItem.classList.add('bg-blue-50', 'text-blue-700');
+                navItem.classList.remove('text-slate-600');
             }
+            
+            // Show loading
+            const main = document.getElementById('main-content');
+            main.innerHTML = '<div class="flex items-center justify-center h-64"><i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i></div>';
+            
+            // Small delay to allow UI to update
+            setTimeout(() => {
+                switch(moduleName) {
+                    case 'dashboard': loadDashboard(main); break;
+                    case 'tasks': loadTasks(main); break;
+                    case 'pipeline': loadPipeline(main); break;
+                    case 'payroll': loadPayroll(main); break;
+                    case 'timesheets': loadTimesheets(main); break;
+                    default: main.innerHTML = '<div class="text-center py-20 text-slate-400">Module coming soon</div>';
+                }
+            }, 50);
         }
 
         async function loadDashboard(container) {
             container.innerHTML = `
-                <div class="flex items-center justify-between mb-6">
-                    <div>
-                        <h2 class="text-2xl font-bold text-slate-900">Dashboard</h2>
-                        <p class="text-slate-500">Welcome back, ${currentUser.name}</p>
+                <div class="page-transition">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900">Dashboard</h2>
+                            <p class="text-slate-500">Welcome back, ${currentUser.name}</p>
+                        </div>
+                        <button onclick="toggleEditMode()" id="edit-btn" class="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">
+                            <i class="fas fa-pen mr-2"></i>Customize
+                        </button>
                     </div>
-                    <button onclick="toggleEditMode()" id="edit-btn" class="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50"><i class="fas fa-pen mr-2"></i>Customize</button>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="dashboard-grid">
-                    ${renderWidget('my-tasks', 'My Tasks', 'col-span-1 row-span-2')}
-                    ${renderWidget('stats', 'Quick Stats', '')}
-                    ${renderWidget('pipeline', 'Hiring', '')}
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="dashboard-grid">
+                        ${renderWidget('my-tasks', 'My Tasks', 'col-span-1 row-span-2')}
+                        ${renderWidget('stats', 'Quick Stats', '')}
+                        ${renderWidget('pipeline', 'Hiring', '')}
+                    </div>
                 </div>
             `;
+            
             dashboardSortable = new Sortable(document.getElementById('dashboard-grid'), {
                 animation: 150, handle: '.widget-handle', ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', disabled: true, onEnd: saveDashboardLayout
             });
+            
+            // Load data in parallel
             await loadAllWidgetData();
         }
 
@@ -236,7 +351,10 @@
                         <i class="fas fa-grip-vertical text-slate-400 widget-handle hidden cursor-move"></i>
                     </div>
                     <div class="widget-content" id="widget-${type}">
-                        <div class="animate-pulse space-y-3"><div class="h-4 bg-slate-200 rounded w-3/4"></div><div class="h-4 bg-slate-200 rounded w-1/2"></div></div>
+                        <div class="animate-pulse space-y-3">
+                            <div class="h-4 bg-slate-200 rounded w-3/4"></div>
+                            <div class="h-4 bg-slate-200 rounded w-1/2"></div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -244,30 +362,54 @@
 
         async function loadAllWidgetData() {
             try {
-                const tasksData = await apiCall('tasks', {assignee: currentUser.user_id});
-                const tasks = tasksData.tasks || [];
-                const myTasksHtml = tasks.slice(0, 3).map(t => `
-                    <div class="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border-l-4 ${getPriorityColor(t.priority)} mb-2">
-                        <input type="checkbox" class="mt-1 rounded text-blue-600" onchange="completeTask(${t.task_id})">
-                        <div class="flex-1"><p class="text-sm font-medium text-slate-900">${t.title}</p><p class="text-xs text-slate-500 mt-1">${t.due_date || 'No due date'}</p></div>
+                // Use cached tasks if available
+                let tasks = getCached('tasks');
+                if (!tasks) {
+                    const tasksData = await apiCall('tasks', {assignee: currentUser.user_id});
+                    tasks = tasksData.tasks || [];
+                    setCached('tasks', tasks);
+                }
+                
+                // My Tasks Widget
+                const myTasksHtml = tasks.filter(t => t.status !== 'Done').slice(0, 5).map(t => `
+                    <div class="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border-l-4 ${getPriorityColor(t.priority)} mb-2 cursor-pointer hover:bg-slate-100" onclick="showModule('tasks')">
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-slate-900 line-clamp-1">${t.title}</p>
+                            <p class="text-xs text-slate-500 mt-1">${t.due_date || 'No due date'} ${t.actual_hours > 0 ? `• ${t.actual_hours}h logged` : ''}</p>
+                        </div>
                     </div>
                 `).join('') || '<p class="text-sm text-slate-400">No pending tasks</p>';
                 document.getElementById('widget-my-tasks').innerHTML = myTasksHtml;
+
+                // Stats Widget
                 const todoCount = tasks.filter(t => t.status === 'Todo').length;
                 const inProgressCount = tasks.filter(t => t.status === 'In Progress').length;
                 const doneCount = tasks.filter(t => t.status === 'Done').length;
                 document.getElementById('widget-stats').innerHTML = `
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="text-center p-3 bg-blue-50 rounded-lg"><p class="text-2xl font-bold text-blue-600">${tasks.length}</p><p class="text-xs text-blue-700 font-medium">Total Tasks</p></div>
-                        <div class="text-center p-3 bg-amber-50 rounded-lg"><p class="text-2xl font-bold text-amber-600">${inProgressCount}</p><p class="text-xs text-amber-700 font-medium">In Progress</p></div>
-                        <div class="text-center p-3 bg-green-50 rounded-lg"><p class="text-2xl font-bold text-green-600">${doneCount}</p><p class="text-xs text-green-700 font-medium">Completed</p></div>
-                        <div class="text-center p-3 bg-purple-50 rounded-lg"><p class="text-2xl font-bold text-purple-600">${todoCount}</p><p class="text-xs text-purple-700 font-medium">To Do</p></div>
+                        <div class="text-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100" onclick="showModule('tasks')">
+                            <p class="text-2xl font-bold text-blue-600">${tasks.length}</p>
+                            <p class="text-xs text-blue-700 font-medium">Total Tasks</p>
+                        </div>
+                        <div class="text-center p-3 bg-amber-50 rounded-lg cursor-pointer hover:bg-amber-100" onclick="showModule('tasks')">
+                            <p class="text-2xl font-bold text-amber-600">${inProgressCount}</p>
+                            <p class="text-xs text-amber-700 font-medium">In Progress</p>
+                        </div>
+                        <div class="text-center p-3 bg-green-50 rounded-lg cursor-pointer hover:bg-green-100" onclick="showModule('tasks')">
+                            <p class="text-2xl font-bold text-green-600">${doneCount}</p>
+                            <p class="text-xs text-green-700 font-medium">Completed</p>
+                        </div>
+                        <div class="text-center p-3 bg-purple-50 rounded-lg cursor-pointer hover:bg-purple-100" onclick="showModule('tasks')">
+                            <p class="text-2xl font-bold text-purple-600">${todoCount}</p>
+                            <p class="text-xs text-purple-700 font-medium">To Do</p>
+                        </div>
                     </div>
                 `;
             } catch(e) {
-                document.getElementById('widget-my-tasks').innerHTML = '<p class="text-sm text-slate-400">Unable to load</p>';
-                document.getElementById('widget-stats').innerHTML = '<p class="text-sm text-slate-400">Unable to load</p>';
+                document.getElementById('widget-my-tasks').innerHTML = '<p class="text-sm text-slate-400">Unable to load tasks</p>';
+                document.getElementById('widget-stats').innerHTML = '<p class="text-sm text-slate-400">Unable to load stats</p>';
             }
+            
             try {
                 const pipeData = await apiCall('pipeline');
                 const candidates = pipeData.candidates || [];
@@ -275,9 +417,9 @@
                 const stageCounts = {};
                 stages.forEach(s => stageCounts[s] = candidates.filter(c => c.stage === s).length);
                 document.getElementById('widget-pipeline').innerHTML = `
-                    <div class="flex gap-2 overflow-x-auto pb-2">
+                    <div class="flex gap-2 overflow-x-auto pb-2 cursor-pointer" onclick="showModule('pipeline')">
                         ${stages.map(stage => `
-                            <div class="flex-shrink-0 w-24 p-3 ${stage === 'Hired' ? 'bg-green-50' : 'bg-slate-50'} rounded-lg text-center">
+                            <div class="flex-shrink-0 w-20 p-3 ${stage === 'Hired' ? 'bg-green-50' : 'bg-slate-50'} rounded-lg text-center hover:bg-opacity-80">
                                 <p class="text-xl font-bold ${stage === 'Hired' ? 'text-green-600' : 'text-slate-700'}">${stageCounts[stage]}</p>
                                 <p class="text-xs ${stage === 'Hired' ? 'text-green-600' : 'text-slate-500'}">${stage}</p>
                             </div>
@@ -285,7 +427,7 @@
                     </div>
                 `;
             } catch(e) {
-                document.getElementById('widget-pipeline').innerHTML = '<p class="text-sm text-slate-400">Unable to load</p>';
+                document.getElementById('widget-pipeline').innerHTML = '<p class="text-sm text-slate-400">Unable to load pipeline</p>';
             }
         }
 
@@ -324,25 +466,47 @@
 
         async function loadTasks(container) {
             container.innerHTML = `
-                <div class="flex items-center justify-between mb-4">
-                    <div><h2 class="text-2xl font-bold text-slate-900">Tasks</h2><p class="text-slate-500">Drag cards to change status</p></div>
-                    <button onclick="createTask()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"><i class="fas fa-plus mr-2"></i>New Task</button>
-                </div>
-                <div class="flex gap-6 overflow-x-auto kanban-scroll pb-4" id="task-board">
-                    ${renderKanbanColumn('Backlog', 'bg-slate-400')}
-                    ${renderKanbanColumn('Todo', 'bg-blue-400')}
-                    ${renderKanbanColumn('In Progress', 'bg-amber-400')}
-                    ${renderKanbanColumn('Review', 'bg-purple-400')}
-                    ${renderKanbanColumn('Done', 'bg-green-400')}
+                <div class="page-transition">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900">Tasks</h2>
+                            <p class="text-slate-500">Drag cards to change status</p>
+                        </div>
+                        <button onclick="createTask()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                            <i class="fas fa-plus mr-2"></i>New Task
+                        </button>
+                    </div>
+                    <div class="flex gap-6 overflow-x-auto kanban-scroll pb-4" id="task-board">
+                        ${renderKanbanColumn('Backlog', 'bg-slate-400')}
+                        ${renderKanbanColumn('Todo', 'bg-blue-400')}
+                        ${renderKanbanColumn('In Progress', 'bg-amber-400')}
+                        ${renderKanbanColumn('Review', 'bg-purple-400')}
+                        ${renderKanbanColumn('Done', 'bg-green-400')}
+                    </div>
                 </div>
             `;
+            
             try {
-                const data = await apiCall('tasks');
-                const tasks = data.tasks || [];
+                // Use cache or fetch
+                let tasks = getCached('tasks');
+                if (!tasks) {
+                    const data = await apiCall('tasks');
+                    tasks = data.tasks || [];
+                    setCached('tasks', tasks);
+                }
+                
+                // Clear and populate columns
+                ['Backlog', 'Todo', 'In-Progress', 'Review', 'Done'].forEach(status => {
+                    const col = document.getElementById(`col-${status}`);
+                    if(col) col.innerHTML = '';
+                });
+                
                 tasks.forEach(task => {
                     const col = document.getElementById(`col-${task.status.replace(' ', '-')}`);
                     if(col) col.innerHTML += renderTaskCard(task);
                 });
+                
+                // Initialize sortable
                 ['Backlog', 'Todo', 'In-Progress', 'Review', 'Done'].forEach(status => {
                     new Sortable(document.getElementById(`col-${status}`), {
                         group: 'tasks', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', delay: 100, delayOnTouchOnly: true,
@@ -355,6 +519,7 @@
                                 try {
                                     await apiCall('tasks/move', {task_id: taskId, to_status: newStatus});
                                     evt.item.style.opacity = '1';
+                                    clearCache(); // Clear cache on change
                                     showToast(`Moved to ${newStatus}`);
                                 } catch(e) {
                                     evt.from.appendChild(evt.item);
@@ -375,7 +540,9 @@
             return `
                 <div class="flex-shrink-0 w-80">
                     <div class="flex items-center justify-between mb-3">
-                        <h3 class="font-semibold text-slate-700 flex items-center gap-2"><span class="w-2 h-2 ${colorClass} rounded-full"></span>${status}</h3>
+                        <h3 class="font-semibold text-slate-700 flex items-center gap-2">
+                            <span class="w-2 h-2 ${colorClass} rounded-full"></span>${status}
+                        </h3>
                     </div>
                     <div class="space-y-3 min-h-[200px] bg-slate-100/50 rounded-xl p-2" id="col-${statusId}" data-status="${status}"></div>
                 </div>
@@ -384,7 +551,10 @@
 
         function renderTaskCard(task) {
             const hoursDisplay = task.actual_hours > 0 ? 
-                `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">${task.actual_hours}h logged</span>` : '';
+                `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">${task.actual_hours}h</span>` : '';
+            
+            const payDisplay = task.pay_per_task > 0 ? 
+                `<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">$${task.pay_per_task}</span>` : '';
             
             return `
                 <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-200 card-hover cursor-move mb-2" data-task-id="${task.task_id}">
@@ -392,15 +562,17 @@
                         <span class="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">Task</span>
                         <span class="text-xs ${task.priority === 'Urgent' ? 'text-red-600 font-bold' : 'text-slate-400'}">${task.priority}</span>
                     </div>
-                    <h4 class="font-medium text-slate-900 mb-2 text-sm">${task.title}</h4>
+                    <h4 class="font-medium text-slate-900 mb-2 text-sm line-clamp-2">${task.title}</h4>
                     <div class="flex items-center justify-between text-xs text-slate-500 mb-2">
                         <span>${task.due_date || 'No date'}</span>
-                        ${task.pay_per_task > 0 ? `<span class="text-green-600 font-medium">$${task.pay_per_task}</span>` : ''}
                     </div>
                     <div class="flex items-center justify-between">
-                        ${hoursDisplay}
-                        <button onclick="quickLogHours(${task.task_id})" class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded hover:bg-indigo-200 transition-colors">
-                            <i class="fas fa-clock mr-1"></i>Log Hours
+                        <div class="flex gap-1">
+                            ${hoursDisplay}
+                            ${payDisplay}
+                        </div>
+                        <button onclick="event.stopPropagation(); quickLogHours(${task.task_id})" class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded hover:bg-indigo-200 transition-colors">
+                            <i class="fas fa-clock mr-1"></i>Log
                         </button>
                     </div>
                 </div>
@@ -409,10 +581,14 @@
 
         async function quickLogHours(taskId) {
             try {
-                const tasksData = await apiCall('tasks', {assignee: currentUser.user_id});
-                const tasks = tasksData.tasks || [];
-                const task = tasks.find(t => t.task_id == taskId);
+                // Get fresh task data or use cache
+                let tasks = getCached('tasks');
+                if (!tasks) {
+                    const tasksData = await apiCall('tasks', {assignee: currentUser.user_id});
+                    tasks = tasksData.tasks || [];
+                }
                 
+                const task = tasks.find(t => t.task_id == taskId);
                 if (!task) {
                     showToast('Task not found', 'error');
                     return;
@@ -435,7 +611,7 @@
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-slate-700 mb-1">Hours</label>
-                                        <input type="number" id="lh-hours" step="0.25" min="0.25" max="24" placeholder="0.00" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                        <input type="number" id="lh-hours" step="0.25" min="0.25" max="24" placeholder="0.00" class="w-full px-3 py-2 border border-slate-300 rounded-lg" autofocus>
                                     </div>
                                 </div>
                                 <div>
@@ -451,6 +627,7 @@
                     </div>
                 `;
                 document.body.appendChild(modal);
+                document.getElementById('lh-hours').focus();
             } catch (e) {
                 showToast('Failed to load task details', 'error');
             }
@@ -485,13 +662,17 @@
                 }, 0);
                 
                 closeLogHoursModal();
+                clearCache(); // Clear cache to reflect new hours
                 showToast(`Logged ${hours} hours successfully`);
                 
-                if (document.getElementById('timesheet-table-body')) {
-                    loadTimesheetData();
-                }
-                if (document.getElementById('task-board')) {
+                // Refresh current view
+                const currentModule = sessionStorage.getItem('lastModule');
+                if (currentModule === 'tasks') {
                     loadTasks(document.getElementById('main-content'));
+                } else if (currentModule === 'timesheets') {
+                    loadTimesheets(document.getElementById('main-content'));
+                } else if (currentModule === 'dashboard') {
+                    loadDashboard(document.getElementById('main-content'));
                 }
             } catch (e) {
                 showToast(e.message || 'Failed to log hours', 'error');
@@ -503,8 +684,9 @@
             if(!title) return;
             try {
                 await apiCall('tasks', {method: 'POST', title: title, assigned_to: currentUser.user_id, status: 'Backlog'});
+                clearCache();
                 showToast('Task created');
-                showModule('tasks');
+                loadTasks(document.getElementById('main-content'));
             } catch(e) {
                 showToast(e.message || 'Failed to create task', 'error');
             }
@@ -512,25 +694,41 @@
 
         async function loadPipeline(container) {
             container.innerHTML = `
-                <div class="flex items-center justify-between mb-4">
-                    <div><h2 class="text-2xl font-bold text-slate-900">Hiring Pipeline</h2><p class="text-slate-500">Drag to move, drop on Hired to convert</p></div>
-                    <button onclick="createCandidate()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"><i class="fas fa-plus mr-2"></i>Add Candidate</button>
-                </div>
-                <div class="flex gap-6 overflow-x-auto kanban-scroll pb-4" id="pipeline-board">
-                    ${renderPipelineColumn('Applied')}
-                    ${renderPipelineColumn('Screening')}
-                    ${renderPipelineColumn('Interview')}
-                    ${renderPipelineColumn('Offer')}
-                    ${renderPipelineColumn('Hired', true)}
+                <div class="page-transition">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900">Hiring Pipeline</h2>
+                            <p class="text-slate-500">Drag to move, drop on Hired to convert</p>
+                        </div>
+                        <button onclick="createCandidate()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                            <i class="fas fa-plus mr-2"></i>Add Candidate
+                        </button>
+                    </div>
+                    <div class="flex gap-6 overflow-x-auto kanban-scroll pb-4" id="pipeline-board">
+                        ${renderPipelineColumn('Applied')}
+                        ${renderPipelineColumn('Screening')}
+                        ${renderPipelineColumn('Interview')}
+                        ${renderPipelineColumn('Offer')}
+                        ${renderPipelineColumn('Hired', true)}
+                    </div>
                 </div>
             `;
+            
             try {
                 const data = await apiCall('pipeline');
                 const candidates = data.candidates || [];
+                
+                // Clear columns
+                ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'].forEach(stage => {
+                    const col = document.getElementById(`pipe-${stage}`);
+                    if(col) col.innerHTML = '';
+                });
+                
                 candidates.forEach(c => {
                     const col = document.getElementById(`pipe-${c.stage}`);
                     if(col) col.innerHTML += renderCandidateCard(c);
                 });
+                
                 ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'].forEach(stage => {
                     new Sortable(document.getElementById(`pipe-${stage}`), {
                         group: 'pipeline', animation: 150, delay: 100, delayOnTouchOnly: true,
@@ -564,7 +762,9 @@
         function renderPipelineColumn(stage, isFinal) {
             return `
                 <div class="flex-shrink-0 w-80">
-                    <div class="flex items-center justify-between mb-3"><h3 class="font-semibold ${isFinal ? 'text-green-700' : 'text-slate-700'}">${stage}</h3></div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-semibold ${isFinal ? 'text-green-700' : 'text-slate-700'}">${stage}</h3>
+                    </div>
                     <div class="space-y-3 min-h-[200px] ${isFinal ? 'bg-green-50/50' : 'bg-slate-100/50'} rounded-xl p-2" id="pipe-${stage}" data-stage="${stage}"></div>
                 </div>
             `;
@@ -575,7 +775,9 @@
             return `
                 <div class="bg-white p-4 rounded-lg shadow-sm border ${isHired ? 'border-green-200 bg-green-50' : 'border-slate-200'} card-hover cursor-move mb-2" data-candidate-id="${c.candidate_id}">
                     <div class="flex items-start justify-between mb-2">
-                        <div class="w-10 h-10 ${isHired ? 'bg-green-500 text-white' : 'bg-blue-100 text-blue-600'} rounded-full flex items-center justify-center font-bold text-sm">${c.name.split(' ').map(n => n[0]).join('')}</div>
+                        <div class="w-10 h-10 ${isHired ? 'bg-green-500 text-white' : 'bg-blue-100 text-blue-600'} rounded-full flex items-center justify-center font-bold text-sm">
+                            ${c.name.split(' ').map(n => n[0]).join('')}
+                        </div>
                         ${c.rating ? `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">★ ${c.rating}</span>` : ''}
                     </div>
                     <h4 class="font-medium text-slate-900">${c.name}</h4>
@@ -594,7 +796,7 @@
             try {
                 await apiCall('pipeline', {method: 'POST', name: name, email: email, position: position});
                 showToast('Candidate added');
-                showModule('pipeline');
+                loadPipeline(document.getElementById('main-content'));
             } catch(e) {
                 showToast(e.message || 'Failed to add candidate', 'error');
             }
@@ -603,42 +805,63 @@
         async function loadPayroll(container) {
             const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
             const isManager = currentUser.role === 'Manager' || isAdmin;
+            
             container.innerHTML = `
-                <div class="flex items-center justify-between mb-4">
-                    <div><h2 class="text-2xl font-bold text-slate-900">Payroll</h2><p class="text-slate-500">Manage employee compensation</p></div>
-                    <button onclick="createPayrollForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"><i class="fas fa-plus mr-2"></i>Submit for Payment</button>
-                </div>
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm">
-                            <thead class="bg-slate-50 border-b border-slate-200">
-                                <tr>
-                                    <th class="px-4 py-3 font-medium text-slate-700">Employee</th>
-                                    <th class="px-4 py-3 font-medium text-slate-700">Period</th>
-                                    <th class="px-4 py-3 font-medium text-slate-700">Type</th>
-                                    <th class="px-4 py-3 font-medium text-slate-700 text-right">Base</th>
-                                    <th class="px-4 py-3 font-medium text-slate-700 text-right">Total</th>
-                                    <th class="px-4 py-3 font-medium text-slate-700">Status</th>
-                                    ${isManager ? '<th class="px-4 py-3 font-medium text-slate-700">Actions</th>' : ''}
-                                </tr>
-                            </thead>
-                            <tbody id="payroll-table-body" class="divide-y divide-slate-100">
-                                <tr><td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center text-slate-400">Loading...</td></tr>
-                            </tbody>
-                        </table>
+                <div class="page-transition">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900">Payroll</h2>
+                            <p class="text-slate-500">Manage employee compensation</p>
+                        </div>
+                        <button onclick="createPayrollForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                            <i class="fas fa-plus mr-2"></i>Submit for Payment
+                        </button>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Employee</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Period</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Type</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700 text-right">Base</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700 text-right">Total</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Status</th>
+                                        ${isManager ? '<th class="px-4 py-3 font-medium text-slate-700">Actions</th>' : ''}
+                                    </tr>
+                                </thead>
+                                <tbody id="payroll-table-body" class="divide-y divide-slate-100">
+                                    <tr>
+                                        <td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center">
+                                            <i class="fas fa-circle-notch fa-spin text-blue-600 mr-2"></i>Loading...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             `;
+            
             try {
                 const params = isAdmin ? {} : {user_id: currentUser.user_id};
                 const data = await apiCall('payroll', params);
                 const payrolls = data.payroll || [];
+                
                 if (payrolls.length === 0) {
-                    document.getElementById('payroll-table-body').innerHTML = `<tr><td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center text-slate-400">No payroll records found</td></tr>`;
+                    document.getElementById('payroll-table-body').innerHTML = 
+                        `<tr><td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center text-slate-400">No payroll records found</td></tr>`;
                     return;
                 }
+                
                 const rows = payrolls.map(p => {
-                    const statusColors = {'Draft': 'bg-slate-100 text-slate-600', 'Pending': 'bg-amber-100 text-amber-600', 'Approved': 'bg-blue-100 text-blue-600', 'Paid': 'bg-green-100 text-green-600'};
+                    const statusColors = {
+                        'Draft': 'bg-slate-100 text-slate-600', 
+                        'Pending': 'bg-amber-100 text-amber-600', 
+                        'Approved': 'bg-blue-100 text-blue-600', 
+                        'Paid': 'bg-green-100 text-green-600'
+                    };
                     let actions = '';
                     if (isManager) {
                         if (p.status === 'Draft' || p.status === 'Pending') {
@@ -656,14 +879,18 @@
                             <td class="px-4 py-3 text-slate-600">${getPayType(p)}</td>
                             <td class="px-4 py-3 text-right text-slate-900">$${p.base_amount.toFixed(2)}</td>
                             <td class="px-4 py-3 text-right font-bold text-slate-900">$${p.total_pay.toFixed(2)}</td>
-                            <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[p.status] || 'bg-slate-100 text-slate-600'}">${p.status}</span></td>
+                            <td class="px-4 py-3">
+                                <span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[p.status] || 'bg-slate-100 text-slate-600'}">${p.status}</span>
+                            </td>
                             ${isManager ? `<td class="px-4 py-3">${actions}</td>` : ''}
                         </tr>
                     `;
                 }).join('');
+                
                 document.getElementById('payroll-table-body').innerHTML = rows;
             } catch (e) {
-                document.getElementById('payroll-table-body').innerHTML = `<tr><td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center text-red-500">${e.message || 'Failed to load payroll'}</td></tr>`;
+                document.getElementById('payroll-table-body').innerHTML = 
+                    `<tr><td colspan="${isManager ? 7 : 6}" class="px-4 py-8 text-center text-red-500">${e.message || 'Failed to load payroll'}</td></tr>`;
             }
         }
 
@@ -677,15 +904,24 @@
             const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
             const isManager = currentUser.role === 'Manager' || isAdmin;
             let employeeOptions = '';
+            
             if (isManager) {
                 try {
-                    const userData = await apiCall('users');
-                    allUsers = userData.users || [];
-                    employeeOptions = allUsers.map(u => `<option value="${u.user_id}" ${u.user_id === currentUser.user_id ? 'selected' : ''}>${u.name} (${u.email})</option>`).join('');
+                    let users = getCached('users');
+                    if (!users) {
+                        const userData = await apiCall('users');
+                        users = userData.users || [];
+                        setCached('users', users);
+                    }
+                    allUsers = users;
+                    employeeOptions = users.map(u => 
+                        `<option value="${u.user_id}" ${u.user_id === currentUser.user_id ? 'selected' : ''}>${u.name} (${u.email})</option>`
+                    ).join('');
                 } catch(e) {
                     console.error('Failed to load users:', e);
                 }
             }
+            
             const modal = document.createElement('div');
             modal.id = 'payroll-modal';
             modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
@@ -733,7 +969,9 @@
                                         <input type="number" id="pp-hours" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
                                     </div>
                                 </div>
-                                <button onclick="loadDoneTasksForHourlySelection()" type="button" class="w-full py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 transition-colors"><i class="fas fa-list-check mr-2"></i>Select from Completed Tasks</button>
+                                <button onclick="loadDoneTasksForHourlySelection()" type="button" class="w-full py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 transition-colors">
+                                    <i class="fas fa-list-check mr-2"></i>Select from Completed Tasks
+                                </button>
                                 <div id="hourly-tasks-list" class="mt-2"></div>
                                 <div id="hourly-selected-total" class="text-sm text-slate-600"></div>
                             </div>
@@ -748,7 +986,9 @@
                                         <input type="number" id="pp-task-pay" value="0" oninput="calculatePayrollTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
                                     </div>
                                 </div>
-                                <button onclick="loadDoneTasksForSelection()" type="button" class="w-full py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 transition-colors"><i class="fas fa-list-check mr-2"></i>Select from Completed Tasks</button>
+                                <button onclick="loadDoneTasksForSelection()" type="button" class="w-full py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 transition-colors">
+                                    <i class="fas fa-list-check mr-2"></i>Select from Completed Tasks
+                                </button>
                                 <div id="done-tasks-list" class="mt-2"></div>
                                 <div id="selected-tasks-count" class="text-sm text-slate-600"></div>
                                 <input type="hidden" id="selected-task-ids" value="[]">
@@ -817,8 +1057,8 @@
             } else if (type === 'task_based') {
                 base = parseFloat(document.getElementById('pp-task-pay').value) || 0;
             }
-            const deductions = parseFloat(document.getElementById('pp-deductions').value) || 0;
-            const bonus = parseFloat(document.getElementById('pp-bonus').value) || 0;
+            const deductions = parseFloat(document.getElementById('pp-deductions')?.value) || 0;
+            const bonus = parseFloat(document.getElementById('pp-bonus')?.value) || 0;
             const total = base - deductions + bonus;
             document.getElementById('pp-total').textContent = '$' + total.toFixed(2);
         }
@@ -829,7 +1069,7 @@
             const periodEnd = document.getElementById('pp-end').value;
             const taskListDiv = document.getElementById('hourly-tasks-list');
             
-            taskListDiv.innerHTML = '<p class="text-sm text-slate-500">Loading...</p>';
+            taskListDiv.innerHTML = '<p class="text-sm text-slate-500"><i class="fas fa-spinner fa-spin mr-1"></i>Loading...</p>';
             
             try {
                 const data = await apiCall('payroll/calculate', {
@@ -844,16 +1084,19 @@
                     return;
                 }
                 
-                // Load task names
-                const tasksData = await apiCall('tasks');
+                // Get task names from cache or fetch
+                let tasks = getCached('tasks');
+                if (!tasks) {
+                    const tasksData = await apiCall('tasks');
+                    tasks = tasksData.tasks || [];
+                    setCached('tasks', tasks);
+                }
                 const tasksMap = {};
-                (tasksData.tasks || []).forEach(t => {
-                    tasksMap[t.task_id] = t.title;
-                });
+                tasks.forEach(t => tasksMap[t.task_id] = t.title);
                 
                 let html = '<div class="space-y-2 max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-2">';
                 
-                data.task_details.forEach((task, index) => {
+                data.task_details.forEach((task) => {
                     const taskName = tasksMap[task.task_id] || 'Task #' + task.task_id;
                     html += `
                         <div class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer" onclick="toggleHourlyTaskSelection(this, ${task.total_hours})">
@@ -911,9 +1154,16 @@
             const employeeId = document.getElementById('pp-employee').value || currentUser.user_id;
             const taskListDiv = document.getElementById('done-tasks-list');
             
+            taskListDiv.innerHTML = '<p class="text-sm text-slate-500"><i class="fas fa-spinner fa-spin mr-1"></i>Loading...</p>';
+            
             try {
-                const data = await apiCall('tasks', {assignee: employeeId, status: 'Done'});
-                const tasks = data.tasks || [];
+                let tasks = getCached('tasks');
+                if (!tasks) {
+                    const data = await apiCall('tasks', {assignee: employeeId, status: 'Done'});
+                    tasks = data.tasks || [];
+                } else {
+                    tasks = tasks.filter(t => t.assigned_to == employeeId && t.status === 'Done');
+                }
                 
                 const unpaidTasks = tasks.filter(t => !t.paid);
                 
@@ -924,7 +1174,7 @@
                 
                 let html = '<div class="space-y-2 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2">';
                 
-                unpaidTasks.forEach((task, index) => {
+                unpaidTasks.forEach((task) => {
                     const payAmount = parseFloat(task.pay_per_task) || 0;
                     html += `
                         <div class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer" onclick="toggleTaskSelection(this, ${payAmount})">
@@ -962,7 +1212,8 @@
                 count++;
             });
             document.getElementById('selected-tasks-total').textContent = '$' + total.toFixed(2);
-            document.getElementById('selected-tasks-count').textContent = count + ' tasks selected';
+            const countEl = document.getElementById('selected-tasks-count');
+            if (countEl) countEl.textContent = count + ' tasks selected';
         }
 
         function applySelectedTasks() {
@@ -1007,8 +1258,8 @@
                 baseAmount = taskPayments;
             }
             
-            const deductions = parseFloat(document.getElementById('pp-deductions').value) || 0;
-            const bonus = parseFloat(document.getElementById('pp-bonus').value) || 0;
+            const deductions = parseFloat(document.getElementById('pp-deductions')?.value) || 0;
+            const bonus = parseFloat(document.getElementById('pp-bonus')?.value) || 0;
             const totalPay = baseAmount - deductions + bonus;
             
             const selectedTaskIds = document.getElementById('selected-task-ids')?.value || '[]';
@@ -1031,6 +1282,7 @@
             try {
                 await apiCall('payroll', payload);
                 closePayrollForm();
+                clearCache();
                 showToast('Payment request submitted');
                 showModule('payroll');
             } catch (e) {
@@ -1041,6 +1293,7 @@
         async function approvePayroll(payrollId) {
             try {
                 await apiCall('payroll/approve', {payroll_id: payrollId});
+                clearCache();
                 showToast('Payment approved');
                 showModule('payroll');
             } catch (e) {
@@ -1051,6 +1304,7 @@
         async function markPaid(payrollId) {
             try {
                 await apiCall('payroll/pay', {payroll_id: payrollId});
+                clearCache();
                 showToast('Payment marked as paid');
                 showModule('payroll');
             } catch (e) {
@@ -1062,60 +1316,66 @@
             const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
             
             container.innerHTML = `
-                <div class="flex items-center justify-between mb-4">
-                    <div>
-                        <h2 class="text-2xl font-bold text-slate-900">Timesheets</h2>
-                        <p class="text-slate-500">Log and view work hours</p>
-                    </div>
-                    <button onclick="openLogHoursModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-                        <i class="fas fa-plus mr-2"></i>Log Hours
-                    </button>
-                </div>
-                
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-6">
-                    <div class="p-4 border-b border-slate-200">
-                        <div class="flex flex-wrap gap-4 items-end">
-                            ${isManager ? `
-                            <div>
-                                <label class="block text-xs font-medium text-slate-600 mb-1">Employee</label>
-                                <select id="ts-filter-user" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
-                                    <option value="">All Employees</option>
-                                </select>
-                            </div>
-                            ` : ''}
-                            <div>
-                                <label class="block text-xs font-medium text-slate-600 mb-1">From</label>
-                                <input type="date" id="ts-filter-from" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-600 mb-1">To</label>
-                                <input type="date" id="ts-filter-to" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
-                            </div>
-                            <button onclick="loadTimesheetData()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
-                                <i class="fas fa-filter mr-1"></i>Filter
-                            </button>
+                <div class="page-transition">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900">Timesheets</h2>
+                            <p class="text-slate-500">Log and view work hours</p>
                         </div>
+                        <button onclick="openLogHoursModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                            <i class="fas fa-plus mr-2"></i>Log Hours
+                        </button>
                     </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm">
-                            <thead class="bg-slate-50 border-b border-slate-200">
-                                <tr>
-                                    <th class="px-4 py-3 font-medium text-slate-700">Date</th>
-                                    ${isManager ? '<th class="px-4 py-3 font-medium text-slate-700">Employee</th>' : ''}
-                                    <th class="px-4 py-3 font-medium text-slate-700">Task</th>
-                                    <th class="px-4 py-3 font-medium text-slate-700 text-right">Hours</th>
-                                    <th class="px-4 py-3 font-medium text-slate-700">Notes</th>
-                                </tr>
-                            </thead>
-                            <tbody id="timesheet-table-body" class="divide-y divide-slate-100">
-                                <tr><td colspan="${isManager ? 5 : 4}" class="px-4 py-8 text-center text-slate-400">Loading...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="timesheet-summary" class="p-4 bg-slate-50 border-t border-slate-200">
-                        <div class="flex justify-between items-center">
-                            <span class="text-sm font-medium text-slate-700">Total Hours:</span>
-                            <span id="ts-total-hours" class="text-xl font-bold text-blue-600">0</span>
+                    
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+                        <div class="p-4 border-b border-slate-200">
+                            <div class="flex flex-wrap gap-4 items-end">
+                                ${isManager ? `
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Employee</label>
+                                    <select id="ts-filter-user" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                        <option value="">All Employees</option>
+                                    </select>
+                                </div>
+                                ` : ''}
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">From</label>
+                                    <input type="date" id="ts-filter-from" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">To</label>
+                                    <input type="date" id="ts-filter-to" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                </div>
+                                <button onclick="loadTimesheetData()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
+                                    <i class="fas fa-filter mr-1"></i>Filter
+                                </button>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Date</th>
+                                        ${isManager ? '<th class="px-4 py-3 font-medium text-slate-700">Employee</th>' : ''}
+                                        <th class="px-4 py-3 font-medium text-slate-700">Task</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700 text-right">Hours</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="timesheet-table-body" class="divide-y divide-slate-100">
+                                    <tr>
+                                        <td colspan="${isManager ? 5 : 4}" class="px-4 py-8 text-center">
+                                            <i class="fas fa-circle-notch fa-spin text-blue-600 mr-2"></i>Loading...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="timesheet-summary" class="p-4 bg-slate-50 border-t border-slate-200">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm font-medium text-slate-700">Total Hours:</span>
+                                <span id="ts-total-hours" class="text-xl font-bold text-blue-600">0</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1130,9 +1390,14 @@
             
             if (isManager) {
                 try {
-                    const userData = await apiCall('users');
+                    let users = getCached('users');
+                    if (!users) {
+                        const userData = await apiCall('users');
+                        users = userData.users || [];
+                        setCached('users', users);
+                    }
                     const userSelect = document.getElementById('ts-filter-user');
-                    userData.users.forEach(u => {
+                    users.forEach(u => {
                         if (u.active !== false) {
                             const option = document.createElement('option');
                             option.value = u.user_id;
@@ -1164,11 +1429,15 @@
                 const data = await apiCall('timesheets', params);
                 const entries = data.timesheets || [];
                 
-                const tasksData = await apiCall('tasks');
+                // Get task names from cache
+                let tasks = getCached('tasks');
+                if (!tasks) {
+                    const tasksData = await apiCall('tasks');
+                    tasks = tasksData.tasks || [];
+                    setCached('tasks', tasks);
+                }
                 const tasksMap = {};
-                (tasksData.tasks || []).forEach(t => {
-                    tasksMap[t.task_id] = t.title;
-                });
+                tasks.forEach(t => tasksMap[t.task_id] = t.title);
                 
                 if (entries.length === 0) {
                     document.getElementById('timesheet-table-body').innerHTML = 
@@ -1201,8 +1470,13 @@
 
         async function openLogHoursModal() {
             try {
-                const tasksData = await apiCall('tasks', {assignee: currentUser.user_id});
-                const tasks = tasksData.tasks || [];
+                let tasks = getCached('tasks');
+                if (!tasks) {
+                    const tasksData = await apiCall('tasks', {assignee: currentUser.user_id});
+                    tasks = tasksData.tasks || [];
+                } else {
+                    tasks = tasks.filter(t => t.assigned_to == currentUser.user_id);
+                }
                 
                 const modal = document.createElement('div');
                 modal.id = 'log-hours-modal';
@@ -1226,7 +1500,7 @@
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-slate-700 mb-1">Hours</label>
-                                        <input type="number" id="lh-hours" step="0.25" min="0.25" max="24" placeholder="0.00" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                        <input type="number" id="lh-hours" step="0.25" min="0.25" max="24" placeholder="0.00" class="w-full px-3 py-2 border border-slate-300 rounded-lg" autofocus>
                                     </div>
                                 </div>
                                 <div>
@@ -1242,6 +1516,7 @@
                     </div>
                 `;
                 document.body.appendChild(modal);
+                document.getElementById('lh-hours').focus();
             } catch (e) {
                 showToast('Failed to load tasks', 'error');
             }
@@ -1251,23 +1526,37 @@
             document.getElementById('sidebar').classList.toggle('hidden');
         }
 
-        function showToast(message, type) {
+        function showToast(message, type = 'success') {
             const toast = document.createElement('div');
-            toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg text-white font-medium z-50 ${type === 'error' ? 'bg-red-600' : 'bg-green-600'}`;
-            toast.textContent = message;
+            toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg text-white font-medium z-50 shadow-lg transform transition-all duration-300 translate-y-0 ${type === 'error' ? 'bg-red-600' : 'bg-green-600'}`;
+            toast.innerHTML = `<i class="fas ${type === 'error' ? 'fa-exclamation-circle' : 'fa-check-circle'} mr-2"></i>${message}`;
             document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
+            
+            // Animate in
+            requestAnimationFrame(() => {
+                toast.style.transform = 'translateY(0)';
+                toast.style.opacity = '1';
+            });
+            
+            setTimeout(() => {
+                toast.style.transform = 'translateY(100%)';
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
         }
 
+        // Initialize on load
         window.onload = () => {
             if(currentToken) {
                 const savedUser = localStorage.getItem('workvolt_user');
                 if(savedUser) {
                     try {
                         currentUser = JSON.parse(savedUser);
+                        // Validate token silently
                         apiCall('users/me').then(() => {
                             showApp();
                         }).catch(err => {
+                            // Token invalid, clear and stay on login
                             localStorage.removeItem('workvolt_token');
                             localStorage.removeItem('workvolt_user');
                             currentToken = null;
