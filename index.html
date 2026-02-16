@@ -262,15 +262,20 @@
         }
 
         const modules = {
-            SuperAdmin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets'],
-            Admin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets'],
-            Manager: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets'],
+            SuperAdmin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials'],
+            Admin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials'],
+            Manager: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials'],
             Employee: ['dashboard', 'tasks', 'payroll', 'timesheets'],
             Contractor: ['dashboard', 'tasks', 'payroll', 'timesheets']
         };
 
         const moduleIcons = {
-            dashboard: 'fa-grid-2', tasks: 'fa-check-circle', pipeline: 'fa-users', payroll: 'fa-money-bill', timesheets: 'fa-clock'
+            dashboard: 'fa-grid-2', 
+            tasks: 'fa-check-circle', 
+            pipeline: 'fa-users', 
+            payroll: 'fa-money-bill', 
+            timesheets: 'fa-clock',
+            financials: 'fa-chart-line'
         };
 
         function renderNav() {
@@ -304,13 +309,14 @@
             
             // Small delay to allow UI to update
             setTimeout(() => {
-                switch(moduleName) {
-                    case 'dashboard': loadDashboard(main); break;
-                    case 'tasks': loadTasks(main); break;
-                    case 'pipeline': loadPipeline(main); break;
-                    case 'payroll': loadPayroll(main); break;
-                    case 'timesheets': loadTimesheets(main); break;
-                    default: main.innerHTML = '<div class="text-center py-20 text-slate-400">Module coming soon</div>';
+                        switch(moduleName) {
+                            case 'dashboard': loadDashboard(main); break;
+                            case 'tasks': loadTasks(main); break;
+                            case 'pipeline': loadPipeline(main); break;
+                            case 'payroll': loadPayroll(main); break;
+                            case 'timesheets': loadTimesheets(main); break;
+                            case 'financials': loadFinancials(main); break;
+                            default: main.innerHTML = '<div class="text-center py-20 text-slate-400">Module coming soon</div>';
                 }
             }, 50);
         }
@@ -1545,6 +1551,432 @@
             }, 3000);
         }
 
+         // ==================== FINANCIALS FUNCTIONS ====================
+
+        async function loadFinancials(container) {
+            const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
+            
+            container.innerHTML = `
+                <div class="page-transition">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900">Financials</h2>
+                            <p class="text-slate-500">Track income, expenses, and cash flow</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="createInvoiceForm()" class="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">
+                                <i class="fas fa-file-invoice-dollar mr-2"></i>New Invoice
+                            </button>
+                            <button onclick="createBillForm()" class="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700">
+                                <i class="fas fa-file-invoice mr-2"></i>New Bill
+                            </button>
+                            <button onclick="createTransactionForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                                <i class="fas fa-plus mr-2"></i>Transaction
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Summary Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6" id="financials-summary">
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                            <div class="animate-pulse h-16 bg-slate-200 rounded"></div>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                            <div class="animate-pulse h-16 bg-slate-200 rounded"></div>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                            <div class="animate-pulse h-16 bg-slate-200 rounded"></div>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                            <div class="animate-pulse h-16 bg-slate-200 rounded"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Transactions Table -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-4 border-b border-slate-200 flex flex-wrap gap-4 items-center">
+                            <h3 class="font-semibold text-slate-900">Transactions</h3>
+                            <div class="flex gap-2 ml-auto">
+                                <select id="fin-type-filter" onchange="loadFinancialsData()" class="px-3 py-1 border border-slate-300 rounded-lg text-sm">
+                                    <option value="">All Types</option>
+                                    <option value="income">Income</option>
+                                    <option value="expense">Expenses</option>
+                                </select>
+                                <input type="date" id="fin-date-from" onchange="loadFinancialsData()" class="px-3 py-1 border border-slate-300 rounded-lg text-sm">
+                                <input type="date" id="fin-date-to" onchange="loadFinancialsData()" class="px-3 py-1 border border-slate-300 rounded-lg text-sm">
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Date</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Type</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Category</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Description</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700 text-right">Amount</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Status</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="financials-table-body" class="divide-y divide-slate-100">
+                                    <tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Set default dates (current month)
+            const today = new Date();
+            const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+            document.getElementById('fin-date-from').value = firstDay.toISOString().split('T')[0];
+            document.getElementById('fin-date-to').value = today.toISOString().split('T')[0];
+            
+            await loadFinancialsData();
+        }
+
+        async function loadFinancialsData() {
+            try {
+                const typeFilter = document.getElementById('fin-type-filter').value;
+                const dateFrom = document.getElementById('fin-date-from').value;
+                const dateTo = document.getElementById('fin-date-to').value;
+                
+                const params = {};
+                if (typeFilter) params.type = typeFilter;
+                if (dateFrom) params.date_from = dateFrom;
+                if (dateTo) params.date_to = dateTo;
+                
+                const [data, summaryData] = await Promise.all([
+                    apiCall('financials', params),
+                    apiCall('financials/summary', {date_from: dateFrom, date_to: dateTo})
+                ]);
+                
+                const transactions = data.transactions || [];
+                const summary = summaryData.summary || {};
+                
+                // Update summary cards
+                document.getElementById('financials-summary').innerHTML = `
+                    <div class="bg-green-50 p-4 rounded-xl border border-green-200">
+                        <p class="text-sm text-green-700 font-medium">Total Income</p>
+                        <p class="text-2xl font-bold text-green-700">$${(summary.total_income || 0).toFixed(2)}</p>
+                        ${(summary.pending_receivables || 0) > 0 ? `<p class="text-xs text-green-600 mt-1">+$${(summary.pending_receivables || 0).toFixed(2)} pending</p>` : ''}
+                    </div>
+                    <div class="bg-red-50 p-4 rounded-xl border border-red-200">
+                        <p class="text-sm text-red-700 font-medium">Total Expenses</p>
+                        <p class="text-2xl font-bold text-red-700">$${(summary.total_expenses || 0).toFixed(2)}</p>
+                        ${(summary.pending_payables || 0) > 0 ? `<p class="text-xs text-red-600 mt-1">+$${(summary.pending_payables || 0).toFixed(2)} pending</p>` : ''}
+                    </div>
+                    <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                        <p class="text-sm text-blue-700 font-medium">Net Profit</p>
+                        <p class="text-2xl font-bold text-blue-700">$${(summary.net_profit || 0).toFixed(2)}</p>
+                        <p class="text-xs text-blue-600 mt-1">Cash flow: $${(summary.cash_flow || 0).toFixed(2)}</p>
+                    </div>
+                    <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
+                        <p class="text-sm text-amber-700 font-medium">Pending</p>
+                        <p class="text-lg font-bold text-amber-700">+$${(summary.pending_receivables || 0).toFixed(2)}</p>
+                        <p class="text-lg font-bold text-amber-700">-$${(summary.pending_payables || 0).toFixed(2)}</p>
+                    </div>
+                `;
+                
+                // Update table
+                if (transactions.length === 0) {
+                    document.getElementById('financials-table-body').innerHTML = 
+                        '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">No transactions found</td></tr>';
+                    return;
+                }
+                
+                const rows = transactions.map(t => {
+                    const typeColors = {
+                        'income': 'text-green-600 bg-green-50',
+                        'expense': 'text-red-600 bg-red-50',
+                        'transfer': 'text-blue-600 bg-blue-50'
+                    };
+                    const statusColors = {
+                        'paid': 'bg-green-100 text-green-700',
+                        'pending': 'bg-amber-100 text-amber-700',
+                        'sent': 'bg-blue-100 text-blue-700',
+                        'overdue': 'bg-red-100 text-red-700'
+                    };
+                    
+                    let actions = '';
+                    if (t.status === 'pending') {
+                        if (t.type === 'expense' && t.subtype === 'bill') {
+                            actions = `<button onclick="payBill(${t.transaction_id})" class="text-green-600 hover:text-green-800 font-medium">Pay</button>`;
+                        } else if (t.type === 'income' && t.subtype === 'invoice') {
+                            actions = `<button onclick="sendInvoice(${t.transaction_id})" class="text-blue-600 hover:text-blue-800 font-medium">Send</button>`;
+                        }
+                    }
+                    
+                    return `
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-4 py-3 text-slate-900">${t.date}</td>
+                            <td class="px-4 py-3">
+                                <span class="px-2 py-1 rounded-full text-xs font-medium ${typeColors[t.type] || 'bg-slate-100 text-slate-600'}">
+                                    ${t.subtype || t.type}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-slate-600 capitalize">${t.category}</td>
+                            <td class="px-4 py-3 text-slate-900">${t.description}</td>
+                            <td class="px-4 py-3 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}">
+                                ${t.type === 'income' ? '+' : '-'}$${(t.amount || 0).toFixed(2)}
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[t.status] || 'bg-slate-100 text-slate-600'}">
+                                    ${t.status}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3">${actions}</td>
+                        </tr>
+                    `;
+                }).join('');
+                
+                document.getElementById('financials-table-body').innerHTML = rows;
+                
+            } catch (e) {
+                document.getElementById('financials-table-body').innerHTML = 
+                    `<tr><td colspan="7" class="px-4 py-8 text-center text-red-500">${e.message || 'Failed to load financials'}</td></tr>`;
+            }
+        }
+
+        function createTransactionForm() {
+            const modal = document.createElement('div');
+            modal.id = 'transaction-modal';
+            modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold text-slate-900 mb-4">New Transaction</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Type</label>
+                                <select id="trans-type" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                    <option value="expense">Expense</option>
+                                    <option value="income">Income</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                                <input type="text" id="trans-category" placeholder="e.g., supplies, services" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Amount ($)</label>
+                                    <input type="number" id="trans-amount" step="0.01" min="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Date</label>
+                                    <input type="date" id="trans-date" value="${new Date().toISOString().split('T')[0]}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                                <textarea id="trans-description" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg"></textarea>
+                            </div>
+                        </div>
+                        <div class="flex gap-3 mt-6">
+                            <button onclick="submitTransaction()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Save</button>
+                            <button onclick="closeTransactionModal()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function closeTransactionModal() {
+            document.getElementById('transaction-modal')?.remove();
+        }
+
+        async function submitTransaction() {
+            const type = document.getElementById('trans-type').value;
+            const category = document.getElementById('trans-category').value;
+            const amount = parseFloat(document.getElementById('trans-amount').value);
+            const date = document.getElementById('trans-date').value;
+            const description = document.getElementById('trans-description').value;
+            
+            if (!amount || amount <= 0) {
+                showToast('Please enter a valid amount', 'error');
+                return;
+            }
+            
+            try {
+                await apiCall('financials', {
+                    method: 'POST',
+                    type: type,
+                    category: category,
+                    amount: amount,
+                    date: date,
+                    description: description,
+                    status: 'paid'
+                });
+                
+                closeTransactionModal();
+                clearCache();
+                showToast('Transaction saved');
+                loadFinancialsData();
+            } catch (e) {
+                showToast(e.message || 'Failed to save transaction', 'error');
+            }
+        }
+
+        function createInvoiceForm() {
+            const modal = document.createElement('div');
+            modal.id = 'invoice-modal';
+            modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold text-slate-900 mb-4">New Invoice</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Client</label>
+                                <input type="text" id="inv-client" placeholder="Client name or ID" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Amount ($)</label>
+                                    <input type="number" id="inv-amount" step="0.01" min="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+                                    <input type="date" id="inv-due" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                                <textarea id="inv-description" rows="2" placeholder="Invoice for..." class="w-full px-3 py-2 border border-slate-300 rounded-lg"></textarea>
+                            </div>
+                        </div>
+                        <div class="flex gap-3 mt-6">
+                            <button onclick="submitInvoice()" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700">Create Invoice</button>
+                            <button onclick="document.getElementById('invoice-modal').remove()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function submitInvoice() {
+            const clientId = document.getElementById('inv-client').value;
+            const amount = parseFloat(document.getElementById('inv-amount').value);
+            const dueDate = document.getElementById('inv-due').value;
+            const description = document.getElementById('inv-description').value;
+            
+            if (!amount || amount <= 0) {
+                showToast('Please enter a valid amount', 'error');
+                return;
+            }
+            
+            try {
+                await apiCall('invoices', {
+                    method: 'POST',
+                    client_id: clientId,
+                    amount: amount,
+                    due_date: dueDate,
+                    description: description
+                });
+                
+                document.getElementById('invoice-modal').remove();
+                clearCache();
+                showToast('Invoice created');
+                loadFinancialsData();
+            } catch (e) {
+                showToast(e.message || 'Failed to create invoice', 'error');
+            }
+        }
+
+        function createBillForm() {
+            const modal = document.createElement('div');
+            modal.id = 'bill-modal';
+            modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold text-slate-900 mb-4">New Bill</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Vendor</label>
+                                <input type="text" id="bill-vendor" placeholder="Vendor name" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Amount ($)</label>
+                                    <input type="number" id="bill-amount" step="0.01" min="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+                                    <input type="date" id="bill-due" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                                <textarea id="bill-description" rows="2" placeholder="Bill for..." class="w-full px-3 py-2 border border-slate-300 rounded-lg"></textarea>
+                            </div>
+                        </div>
+                        <div class="flex gap-3 mt-6">
+                            <button onclick="submitBill()" class="flex-1 bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700">Create Bill</button>
+                            <button onclick="document.getElementById('bill-modal').remove()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function submitBill() {
+            const vendorId = document.getElementById('bill-vendor').value;
+            const amount = parseFloat(document.getElementById('bill-amount').value);
+            const dueDate = document.getElementById('bill-due').value;
+            const description = document.getElementById('bill-description').value;
+            
+            if (!amount || amount <= 0) {
+                showToast('Please enter a valid amount', 'error');
+                return;
+            }
+            
+            try {
+                await apiCall('bills', {
+                    method: 'POST',
+                    vendor_id: vendorId,
+                    amount: amount,
+                    due_date: dueDate,
+                    description: description
+                });
+                
+                document.getElementById('bill-modal').remove();
+                clearCache();
+                showToast('Bill created');
+                loadFinancialsData();
+            } catch (e) {
+                showToast(e.message || 'Failed to create bill', 'error');
+            }
+        }
+
+        async function payBill(billId) {
+            try {
+                await apiCall('bills/pay', {bill_id: billId});
+                clearCache();
+                showToast('Bill paid');
+                loadFinancialsData();
+            } catch (e) {
+                showToast(e.message || 'Failed to pay bill', 'error');
+            }
+        }
+
+        async function sendInvoice(invoiceId) {
+            try {
+                await apiCall('invoices/send', {invoice_id: invoiceId});
+                clearCache();
+                showToast('Invoice sent');
+                loadFinancialsData();
+            } catch (e) {
+                showToast(e.message || 'Failed to send invoice', 'error');
+            }
+        }
+        
         // Initialize on load
         window.onload = () => {
             if(currentToken) {
@@ -1572,3 +2004,4 @@
     </script>
 </body>
 </html>
+
