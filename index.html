@@ -647,6 +647,7 @@
                                 <button onclick="loadDoneTasksForSelection()" type="button" class="w-full py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 transition-colors"><i class="fas fa-list-check mr-2"></i>Select from Completed Tasks</button>
                                 <div id="done-tasks-list" class="mt-2"></div>
                                 <div id="selected-tasks-count" class="text-sm text-slate-600"></div>
+                                <input type="hidden" id="selected-task-ids" value="[]">
                             </div>
                             ${isManager ? `
                             <div class="grid grid-cols-2 gap-4">
@@ -680,7 +681,7 @@
             document.body.appendChild(modal);
             calculatePayrollTotal();
         }
-
+            
         function getDefaultPeriodStart() {
             const d = new Date();
             d.setDate(d.getDate() - 14);
@@ -718,7 +719,7 @@
             document.getElementById('pp-total').textContent = '$' + total.toFixed(2);
         }
 
-                async function loadDoneTasksForSelection() {
+        async function loadDoneTasksForSelection() {
             const employeeId = document.getElementById('pp-employee').value || currentUser.user_id;
             const taskListDiv = document.getElementById('done-tasks-list');
             
@@ -726,19 +727,21 @@
                 const data = await apiCall('tasks', {assignee: employeeId, status: 'Done'});
                 const tasks = data.tasks || [];
                 
-                if (tasks.length === 0) {
-                    taskListDiv.innerHTML = '<p class="text-sm text-slate-500 italic">No completed tasks found</p>';
+                // Filter out already paid tasks
+                const unpaidTasks = tasks.filter(t => !t.paid);
+                
+                if (unpaidTasks.length === 0) {
+                    taskListDiv.innerHTML = '<p class="text-sm text-slate-500 italic">No unpaid completed tasks found</p>';
                     return;
                 }
                 
                 let html = '<div class="space-y-2 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2">';
-                let totalPay = 0;
                 
-                tasks.forEach((task, index) => {
+                unpaidTasks.forEach((task, index) => {
                     const payAmount = parseFloat(task.pay_per_task) || 0;
                     html += `
                         <div class="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer" onclick="toggleTaskSelection(this, ${payAmount})">
-                            <input type="checkbox" class="task-select-checkbox rounded text-blue-600" data-pay="${payAmount}" onchange="updateSelectedTasksTotal()">
+                            <input type="checkbox" class="task-select-checkbox rounded text-blue-600" data-pay="${payAmount}" data-task-id="${task.task_id}" onchange="updateSelectedTasksTotal()">
                             <div class="flex-1">
                                 <p class="text-sm font-medium text-slate-900">${task.title}</p>
                                 <p class="text-xs text-slate-500">$${payAmount.toFixed(2)}</p>
@@ -779,16 +782,19 @@
             const checkboxes = document.querySelectorAll('.task-select-checkbox:checked');
             let totalPay = 0;
             let count = 0;
+            const selectedTaskIds = [];
+            
             checkboxes.forEach(cb => {
                 totalPay += parseFloat(cb.dataset.pay) || 0;
                 count++;
+                selectedTaskIds.push(cb.dataset.taskId);
             });
             
             document.getElementById('pp-task-count').value = count;
             document.getElementById('pp-task-pay').value = totalPay.toFixed(2);
+            document.getElementById('selected-task-ids').value = JSON.stringify(selectedTaskIds);
             calculatePayrollTotal();
             
-            // Hide the task selection area
             document.getElementById('done-tasks-list').innerHTML = '';
             showToast(`Applied ${count} tasks, $${totalPay.toFixed(2)}`);
         }
@@ -801,6 +807,7 @@
             const employeeId = document.getElementById('pp-employee').value || currentUser.user_id;
             const type = document.getElementById('pp-type').value;
             let baseAmount = 0, hoursWorked = 0, tasksCompleted = 0, taskPayments = 0;
+            
             if (type === 'salary') {
                 baseAmount = parseFloat(document.getElementById('pp-salary').value) || 0;
             } else if (type === 'hourly') {
@@ -812,9 +819,14 @@
                 taskPayments = parseFloat(document.getElementById('pp-task-pay').value) || 0;
                 baseAmount = taskPayments;
             }
+            
             const deductions = parseFloat(document.getElementById('pp-deductions').value) || 0;
             const bonus = parseFloat(document.getElementById('pp-bonus').value) || 0;
             const totalPay = baseAmount - deductions + bonus;
+            
+            // Get selected task IDs for task-based
+            const selectedTaskIds = document.getElementById('selected-task-ids')?.value || '[]';
+            
             const payload = {
                 method: 'POST',
                 user_id: employeeId,
@@ -826,10 +838,21 @@
                 task_payments: taskPayments,
                 deductions: deductions,
                 bonus: bonus,
-                total_pay: totalPay
+                total_pay: totalPay,
+                task_ids: selectedTaskIds
             };
+            
             try {
                 await apiCall('payroll', payload);
+                
+                // Mark tasks as paid if task-based
+                if (type === 'task_based' && selectedTaskIds !== '[]') {
+                    const taskIds = JSON.parse(selectedTaskIds);
+                    for (const taskId of taskIds) {
+                        await apiCall('tasks/mark-paid', {task_id: taskId});
+                    }
+                }
+                
                 closePayrollForm();
                 showToast('Payment request submitted');
                 showModule('payroll');
@@ -894,4 +917,5 @@
     </script>
 </body>
 </html>
+
 
