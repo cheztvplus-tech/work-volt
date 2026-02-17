@@ -316,6 +316,8 @@
                             case 'payroll': loadPayroll(main); break;
                             case 'timesheets': loadTimesheets(main); break;
                             case 'financials': loadFinancials(main); break;
+                            case 'crm': loadCRM(main); break;
+                            case 'projects': loadProjects(main); break;
                             default: main.innerHTML = '<div class="text-center py-20 text-slate-400">Module coming soon</div>';
                 }
             }, 50);
@@ -1976,6 +1978,377 @@
                 showToast(e.message || 'Failed to send invoice', 'error');
             }
         }
+
+        // ==================== CRM MODULE ====================
+
+async function loadCRM(container) {
+    const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
+    
+    container.innerHTML = `
+        <div class="page-transition">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-900">CRM</h2>
+                    <p class="text-slate-500">Manage clients and leads</p>
+                </div>
+                <button onclick="createClientForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                    <i class="fas fa-plus mr-2"></i>Add Client
+                </button>
+            </div>
+            
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-4 border-b border-slate-200 flex flex-wrap gap-4 items-center">
+                    <h3 class="font-semibold text-slate-900">Clients & Leads</h3>
+                    <div class="flex gap-2 ml-auto">
+                        <select id="crm-status-filter" onchange="loadCRMData()" class="px-3 py-1 border border-slate-300 rounded-lg text-sm">
+                            <option value="">All Status</option>
+                            <option value="lead">Lead</option>
+                            <option value="prospect">Prospect</option>
+                            <option value="customer">Customer</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-50 border-b border-slate-200">
+                            <tr>
+                                <th class="px-4 py-3 font-medium text-slate-700">Company</th>
+                                <th class="px-4 py-3 font-medium text-slate-700">Contact</th>
+                                <th class="px-4 py-3 font-medium text-slate-700">Email</th>
+                                <th class="px-4 py-3 font-medium text-slate-700">Status</th>
+                                <th class="px-4 py-3 font-medium text-slate-700 text-right">Value</th>
+                                <th class="px-4 py-3 font-medium text-slate-700">Last Contact</th>
+                            </tr>
+                        </thead>
+                        <tbody id="crm-table-body" class="divide-y divide-slate-100">
+                            <tr><td colspan="6" class="px-4 py-8 text-center text-slate-400">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    await loadCRMData();
+}
+
+async function loadCRMData() {
+    try {
+        const statusFilter = document.getElementById('crm-status-filter').value;
+        const params = statusFilter ? {status: statusFilter} : {};
+        
+        const data = await apiCall('crm', params);
+        const clients = data.clients || [];
+        
+        if (clients.length === 0) {
+            document.getElementById('crm-table-body').innerHTML = 
+                '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400">No clients found</td></tr>';
+            return;
+        }
+        
+        const statusColors = {
+            'lead': 'bg-purple-100 text-purple-700',
+            'prospect': 'bg-blue-100 text-blue-700',
+            'customer': 'bg-green-100 text-green-700',
+            'inactive': 'bg-slate-100 text-slate-600'
+        };
+        
+        const rows = clients.map(c => `
+            <tr class="hover:bg-slate-50">
+                <td class="px-4 py-3 font-medium text-slate-900">${c.company_name || '-'}</td>
+                <td class="px-4 py-3 text-slate-900">${c.contact_name || '-'}</td>
+                <td class="px-4 py-3 text-slate-600">${c.email || '-'}</td>
+                <td class="px-4 py-3">
+                    <span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[c.status] || 'bg-slate-100 text-slate-600'}">
+                        ${c.status}
+                    </span>
+                </td>
+                <td class="px-4 py-3 text-right font-bold text-slate-900">
+                    ${c.value > 0 ? '$' + c.value.toFixed(2) : '-'}
+                </td>
+                <td class="px-4 py-3 text-slate-600">${c.last_contact || 'Never'}</td>
+            </tr>
+        `).join('');
+        
+        document.getElementById('crm-table-body').innerHTML = rows;
+    } catch (e) {
+        document.getElementById('crm-table-body').innerHTML = 
+            `<tr><td colspan="6" class="px-4 py-8 text-center text-red-500">${e.message || 'Failed to load CRM'}</td></tr>`;
+    }
+}
+
+function createClientForm() {
+    const modal = document.createElement('div');
+    modal.id = 'client-modal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div class="p-6">
+                <h3 class="text-xl font-bold text-slate-900 mb-4">New Client</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Type</label>
+                        <select id="client-type" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            <option value="lead">Lead</option>
+                            <option value="prospect">Prospect</option>
+                            <option value="customer">Customer</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Company Name</label>
+                        <input type="text" id="client-company" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Contact Name</label>
+                        <input type="text" id="client-contact" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                        <input type="email" id="client-email" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+                        <input type="tel" id="client-phone" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Potential Value ($)</label>
+                        <input type="number" id="client-value" step="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    </div>
+                </div>
+                <div class="flex gap-3 mt-6">
+                    <button onclick="submitClient()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Save Client</button>
+                    <button onclick="document.getElementById('client-modal').remove()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+async function submitClient() {
+    const type = document.getElementById('client-type').value;
+    const company = document.getElementById('client-company').value;
+    const contact = document.getElementById('client-contact').value;
+    const email = document.getElementById('client-email').value;
+    const phone = document.getElementById('client-phone').value;
+    const value = parseFloat(document.getElementById('client-value').value) || 0;
+    
+    if (!company && !contact) {
+        showToast('Please enter company or contact name', 'error');
+        return;
+    }
+    
+    try {
+        await apiCall('crm', {
+            method: 'POST',
+            type: type,
+            company_name: company,
+            contact_name: contact,
+            email: email,
+            phone: phone,
+            value: value
+        });
+        
+        document.getElementById('client-modal').remove();
+        clearCache();
+        showToast('Client added');
+        loadCRMData();
+    } catch (e) {
+        showToast(e.message || 'Failed to add client', 'error');
+    }
+}
+
+// ==================== PROJECTS MODULE ====================
+
+async function loadProjects(container) {
+    container.innerHTML = `
+        <div class="page-transition">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-900">Projects</h2>
+                    <p class="text-slate-500">Track project progress and budgets</p>
+                </div>
+                <button onclick="createProjectForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                    <i class="fas fa-plus mr-2"></i>New Project
+                </button>
+            </div>
+            
+            <div id="projects-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="col-span-full text-center py-12">
+                    <i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    await loadProjectsData();
+}
+
+async function loadProjectsData() {
+    try {
+        const data = await apiCall('projects');
+        const projects = data.projects || [];
+        
+        if (projects.length === 0) {
+            document.getElementById('projects-grid').innerHTML = 
+                '<div class="col-span-full text-center py-12 text-slate-400">No projects found</div>';
+            return;
+        }
+        
+        const statusColors = {
+            'active': 'bg-green-100 text-green-700',
+            'completed': 'bg-blue-100 text-blue-700',
+            'on-hold': 'bg-amber-100 text-amber-700',
+            'cancelled': 'bg-red-100 text-red-700'
+        };
+        
+        const cards = projects.map(p => {
+            // Calculate progress (mock calculation based on tasks)
+            const progress = Math.floor(Math.random() * 100); // Replace with actual calculation
+            
+            return `
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 card-hover">
+                <div class="flex items-start justify-between mb-3">
+                    <h3 class="font-bold text-slate-900 text-lg">${p.name}</h3>
+                    <span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[p.status] || 'bg-slate-100 text-slate-600'}">
+                        ${p.status}
+                    </span>
+                </div>
+                <p class="text-sm text-slate-600 mb-4 line-clamp-2">${p.description || 'No description'}</p>
+                
+                <div class="space-y-3">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-500">Progress</span>
+                            <span class="font-medium text-slate-700">${progress}%</span>
+                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-2">
+                            <div class="bg-blue-600 h-2 rounded-full" style="width: ${progress}%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <p class="text-slate-500 text-xs">Budget</p>
+                            <p class="font-medium text-slate-900">$${(p.budget || 0).toFixed(2)}</p>
+                        </div>
+                        <div>
+                            <p class="text-slate-500 text-xs">Due Date</p>
+                            <p class="font-medium text-slate-900">${p.end_date || 'Not set'}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4 pt-4 border-t border-slate-100 flex gap-2">
+                    <button onclick="viewProjectTasks(${p.project_id})" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
+                        View Tasks
+                    </button>
+                    <button onclick="editProject(${p.project_id})" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                </div>
+            </div>
+        `}).join('');
+        
+        document.getElementById('projects-grid').innerHTML = cards;
+    } catch (e) {
+        document.getElementById('projects-grid').innerHTML = 
+            `<div class="col-span-full text-center py-12 text-red-500">${e.message || 'Failed to load projects'}</div>`;
+    }
+}
+
+function createProjectForm() {
+    const modal = document.createElement('div');
+    modal.id = 'project-modal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div class="p-6">
+                <h3 class="text-xl font-bold text-slate-900 mb-4">New Project</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Project Name</label>
+                        <input type="text" id="proj-name" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                        <textarea id="proj-desc" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg"></textarea>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Budget ($)</label>
+                            <input type="number" id="proj-budget" step="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Hourly Budget</label>
+                            <input type="number" id="proj-hours" step="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
+                            <input type="date" id="proj-start" value="${new Date().toISOString().split('T')[0]}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">End Date</label>
+                            <input type="date" id="proj-end" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-3 mt-6">
+                    <button onclick="submitProject()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Create Project</button>
+                    <button onclick="document.getElementById('project-modal').remove()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+async function submitProject() {
+    const name = document.getElementById('proj-name').value;
+    const desc = document.getElementById('proj-desc').value;
+    const budget = parseFloat(document.getElementById('proj-budget').value) || 0;
+    const hours = parseFloat(document.getElementById('proj-hours').value) || 0;
+    const start = document.getElementById('proj-start').value;
+    const end = document.getElementById('proj-end').value;
+    
+    if (!name) {
+        showToast('Please enter project name', 'error');
+        return;
+    }
+    
+    try {
+        await apiCall('projects', {
+            method: 'POST',
+            name: name,
+            description: desc,
+            budget: budget,
+            hourly_budget: hours,
+            start_date: start,
+            end_date: end
+        });
+        
+        document.getElementById('project-modal').remove();
+        clearCache();
+        showToast('Project created');
+        loadProjectsData();
+    } catch (e) {
+        showToast(e.message || 'Failed to create project', 'error');
+    }
+}
+
+function viewProjectTasks(projectId) {
+    // Filter tasks by project and show tasks module
+    showModule('tasks');
+    // You can add project filtering logic here
+    showToast('Showing tasks for project #' + projectId);
+}
+
+function editProject(projectId) {
+    showToast('Edit project #' + projectId + ' (coming soon)');
+}
         
         // Initialize on load
         window.onload = () => {
@@ -2004,4 +2377,5 @@
     </script>
 </body>
 </html>
+
 
