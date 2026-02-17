@@ -617,7 +617,7 @@
                                 <div class="grid grid-cols-2 gap-4">
                                     <div>
                                         <label class="block text-sm font-medium text-slate-700 mb-1">Date</label>
-                                        <input type="date" id="lh-date" value="${new Date().toISOString().split('T')[0]}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                        <input type="date" id="lh-date" value="${getTodayDate()}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-slate-700 mb-1">Hours</label>
@@ -1751,31 +1751,35 @@ function getDefaultPeriodEnd() {
                 ]);
                 
                 const transactions = data.transactions || [];
-                const summary = summaryData.summary || {};
+                const summary = {
+    income: transactions.filter(t => t.type === 'income' && t.status === 'paid').reduce((sum, t) => sum + t.amount, 0),
+    expenses: transactions.filter(t => t.type === 'expense' && t.status === 'paid').reduce((sum, t) => sum + t.amount, 0),
+    pending_income: transactions.filter(t => t.type === 'income' && (t.status === 'pending' || t.status === 'sent')).reduce((sum, t) => sum + t.amount, 0),
+    pending_expenses: transactions.filter(t => t.type === 'expense' && t.status === 'pending').reduce((sum, t) => sum + t.amount, 0)
+};
+summary.net = summary.income - summary.expenses;
+summary.pending_net = summary.pending_income - summary.pending_expenses;
                 
                 // Update summary cards
                 document.getElementById('financials-summary').innerHTML = `
-                    <div class="bg-green-50 p-4 rounded-xl border border-green-200">
-                        <p class="text-sm text-green-700 font-medium">Total Income</p>
-                        <p class="text-2xl font-bold text-green-700">$${(summary.total_income || 0).toFixed(2)}</p>
-                        ${(summary.pending_receivables || 0) > 0 ? `<p class="text-xs text-green-600 mt-1">+$${(summary.pending_receivables || 0).toFixed(2)} pending</p>` : ''}
-                    </div>
-                    <div class="bg-red-50 p-4 rounded-xl border border-red-200">
-                        <p class="text-sm text-red-700 font-medium">Total Expenses</p>
-                        <p class="text-2xl font-bold text-red-700">$${(summary.total_expenses || 0).toFixed(2)}</p>
-                        ${(summary.pending_payables || 0) > 0 ? `<p class="text-xs text-red-600 mt-1">+$${(summary.pending_payables || 0).toFixed(2)} pending</p>` : ''}
-                    </div>
-                    <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                        <p class="text-sm text-blue-700 font-medium">Net Profit</p>
-                        <p class="text-2xl font-bold text-blue-700">$${(summary.net_profit || 0).toFixed(2)}</p>
-                        <p class="text-xs text-blue-600 mt-1">Cash flow: $${(summary.cash_flow || 0).toFixed(2)}</p>
-                    </div>
-                    <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
-                        <p class="text-sm text-amber-700 font-medium">Pending</p>
-                        <p class="text-lg font-bold text-amber-700">+$${(summary.pending_receivables || 0).toFixed(2)}</p>
-                        <p class="text-lg font-bold text-amber-700">-$${(summary.pending_payables || 0).toFixed(2)}</p>
-                    </div>
-                `;
+    <div class="bg-green-50 p-4 rounded-xl border border-green-200">
+        <p class="text-sm text-green-700 font-medium">Total Income (Paid)</p>
+        <p class="text-2xl font-bold text-green-700">$${(summary.income || 0).toFixed(2)}</p>
+    </div>
+    <div class="bg-red-50 p-4 rounded-xl border border-red-200">
+        <p class="text-sm text-red-700 font-medium">Total Expenses (Paid)</p>
+        <p class="text-2xl font-bold text-red-700">$${(summary.expenses || 0).toFixed(2)}</p>
+    </div>
+    <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
+        <p class="text-sm text-blue-700 font-medium">Net Profit</p>
+        <p class="text-2xl font-bold text-blue-700">$${(summary.net || 0).toFixed(2)}</p>
+    </div>
+    <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
+        <p class="text-sm text-amber-700 font-medium">Pending</p>
+        <p class="text-lg font-bold text-amber-700">+$${(summary.pending_income || 0).toFixed(2)} receivable</p>
+        <p class="text-lg font-bold text-amber-700">-$${(summary.pending_expenses || 0).toFixed(2)} payable</p>
+    </div>
+`;
                 
                 // Update table
                 if (transactions.length === 0) {
@@ -2291,6 +2295,14 @@ async function loadProjectsData() {
             return;
         }
         
+        // Get tasks to calculate real progress
+        let tasks = getCached('tasks');
+        if (!tasks) {
+            const tasksData = await apiCall('tasks');
+            tasks = tasksData.tasks || [];
+            setCached('tasks', tasks);
+        }
+        
         const statusColors = {
             'active': 'bg-green-100 text-green-700',
             'completed': 'bg-blue-100 text-blue-700',
@@ -2299,8 +2311,16 @@ async function loadProjectsData() {
         };
         
         const cards = projects.map(p => {
-            // Calculate progress (mock calculation based on tasks)
-            const progress = Math.floor(Math.random() * 100); // Replace with actual calculation
+            // Calculate real progress based on tasks
+            const projectTasks = tasks.filter(t => t.project_id == p.project_id);
+            const totalTasks = projectTasks.length;
+            const completedTasks = projectTasks.filter(t => t.status === 'Done').length;
+            const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+            
+            // Calculate hours used
+            const hoursUsed = projectTasks.reduce((sum, t) => sum + (t.actual_hours || 0), 0);
+            const hoursBudget = p.hourly_budget || 0;
+            const hoursPercent = hoursBudget > 0 ? Math.round((hoursUsed / hoursBudget) * 100) : 0;
             
             return `
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 card-hover">
@@ -2315,13 +2335,25 @@ async function loadProjectsData() {
                 <div class="space-y-3">
                     <div>
                         <div class="flex justify-between text-xs mb-1">
-                            <span class="text-slate-500">Progress</span>
+                            <span class="text-slate-500">Task Progress (${completedTasks}/${totalTasks})</span>
                             <span class="font-medium text-slate-700">${progress}%</span>
                         </div>
                         <div class="w-full bg-slate-200 rounded-full h-2">
-                            <div class="bg-blue-600 h-2 rounded-full" style="width: ${progress}%"></div>
+                            <div class="bg-blue-600 h-2 rounded-full transition-all duration-500" style="width: ${progress}%"></div>
                         </div>
                     </div>
+                    
+                    ${hoursBudget > 0 ? `
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-500">Hours (${hoursUsed.toFixed(1)}/${hoursBudget}h)</span>
+                            <span class="font-medium ${hoursPercent > 90 ? 'text-red-600' : 'text-slate-700'}">${hoursPercent}%</span>
+                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-2">
+                            <div class="${hoursPercent > 90 ? 'bg-red-500' : 'bg-amber-500'} h-2 rounded-full transition-all duration-500" style="width: ${Math.min(hoursPercent, 100)}%"></div>
+                        </div>
+                    </div>
+                    ` : ''}
                     
                     <div class="grid grid-cols-2 gap-4 text-sm">
                         <div>
@@ -2337,10 +2369,7 @@ async function loadProjectsData() {
                 
                 <div class="mt-4 pt-4 border-t border-slate-100 flex gap-2">
                     <button onclick="viewProjectTasks(${p.project_id})" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
-                        View Tasks
-                    </button>
-                    <button onclick="editProject(${p.project_id})" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200">
-                        <i class="fas fa-pen"></i>
+                        View Tasks (${totalTasks})
                     </button>
                 </div>
             </div>
@@ -2472,6 +2501,7 @@ function editProject(projectId) {
     </script>
 </body>
 </html>
+
 
 
 
