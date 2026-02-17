@@ -262,20 +262,22 @@
         }
 
         const modules = {
-            SuperAdmin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials'],
-            Admin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials'],
-            Manager: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials'],
+            SuperAdmin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects'],
+            Admin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects'],
+            Manager: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects'],
             Employee: ['dashboard', 'tasks', 'payroll', 'timesheets'],
             Contractor: ['dashboard', 'tasks', 'payroll', 'timesheets']
         };
 
         const moduleIcons = {
-            dashboard: 'fa-grid-2', 
+            dashboard: 'fa-th-large', 
             tasks: 'fa-check-circle', 
             pipeline: 'fa-users', 
-            payroll: 'fa-money-bill', 
+            payroll: 'fa-money-bill-wave', 
             timesheets: 'fa-clock',
-            financials: 'fa-chart-line'
+            financials: 'fa-chart-line',
+            crm: 'fa-address-book',
+            projects: 'fa-folder-open'
         };
 
         function renderNav() {
@@ -2377,5 +2379,6 @@ function editProject(projectId) {
     </script>
 </body>
 </html>
+
 
 
