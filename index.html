@@ -1344,54 +1344,55 @@ function getDefaultPeriodEnd() {
         }
 
         async function submitPayrollForm() {
-            const employeeId = document.getElementById('pp-employee').value || currentUser.user_id;
-            const type = document.getElementById('pp-type').value;
-            let baseAmount = 0, hoursWorked = 0, tasksCompleted = 0, taskPayments = 0;
-            
-            if (type === 'salary') {
-                baseAmount = parseFloat(document.getElementById('pp-salary').value) || 0;
-            } else if (type === 'hourly') {
-                const rate = parseFloat(document.getElementById('pp-rate').value) || 0;
-                hoursWorked = parseFloat(document.getElementById('pp-hours').value) || 0;
-                baseAmount = rate * hoursWorked;
-            } else if (type === 'task_based') {
-                tasksCompleted = parseFloat(document.getElementById('pp-task-count').value) || 0;
-                taskPayments = parseFloat(document.getElementById('pp-task-pay').value) || 0;
-                baseAmount = taskPayments;
-            }
-            
-            const deductions = parseFloat(document.getElementById('pp-deductions')?.value) || 0;
-            const bonus = parseFloat(document.getElementById('pp-bonus')?.value) || 0;
-            const totalPay = baseAmount - deductions + bonus;
-            
-            const selectedTaskIds = document.getElementById('selected-task-ids')?.value || '[]';
-            
-            const payload = {
-                method: 'POST',
-                user_id: employeeId,
-                period_start: document.getElementById('pp-start').value,
-                period_end: document.getElementById('pp-end').value,
-                base_amount: baseAmount,
-                hours_worked: hoursWorked,
-                tasks_completed: tasksCompleted,
-                task_payments: taskPayments,
-                deductions: deductions,
-                bonus: bonus,
-                total_pay: totalPay,
-                task_ids: selectedTaskIds'
-                description: description
-            };
-            
-            try {
-                await apiCall('payroll', payload);
-                closePayrollForm();
-                clearCache();
-                showToast('Payment request submitted');
-                showModule('payroll');
-            } catch (e) {
-                showToast(e.message || 'Failed to submit request', 'error');
-            }
-        }
+    const employeeId = document.getElementById('pp-employee').value || currentUser.user_id;
+    const type = document.getElementById('pp-type').value;
+    const description = document.getElementById('pp-description').value || '';  // ADD THIS LINE
+    let baseAmount = 0, hoursWorked = 0, tasksCompleted = 0, taskPayments = 0;
+    
+    if (type === 'salary') {
+        baseAmount = parseFloat(document.getElementById('pp-salary').value) || 0;
+    } else if (type === 'hourly') {
+        const rate = parseFloat(document.getElementById('pp-rate').value) || 0;
+        hoursWorked = parseFloat(document.getElementById('pp-hours').value) || 0;
+        baseAmount = rate * hoursWorked;
+    } else if (type === 'task_based') {
+        tasksCompleted = parseFloat(document.getElementById('pp-task-count').value) || 0;
+        taskPayments = parseFloat(document.getElementById('pp-task-pay').value) || 0;
+        baseAmount = taskPayments;
+    }
+    
+    const deductions = parseFloat(document.getElementById('pp-deductions')?.value) || 0;
+    const bonus = parseFloat(document.getElementById('pp-bonus')?.value) || 0;
+    const totalPay = baseAmount - deductions + bonus;
+    
+    const selectedTaskIds = document.getElementById('selected-task-ids')?.value || '[]';
+    
+    const payload = {
+        method: 'POST',
+        user_id: employeeId,
+        period_start: document.getElementById('pp-start').value,
+        period_end: document.getElementById('pp-end').value,
+        base_amount: baseAmount,
+        hours_worked: hoursWorked,
+        tasks_completed: tasksCompleted,
+        task_payments: taskPayments,
+        deductions: deductions,
+        bonus: bonus,
+        total_pay: totalPay,
+        task_ids: selectedTaskIds,  // FIXED: added comma
+        description: description     // FIXED: now properly defined
+    };
+    
+    try {
+        await apiCall('payroll', payload);
+        closePayrollForm();
+        clearCache();
+        showToast('Payment request submitted');
+        showModule('payroll');
+    } catch (e) {
+        showToast(e.message || 'Failed to submit request', 'error');
+    }
+}
 
         async function approvePayroll(payrollId) {
             try {
@@ -2501,6 +2502,7 @@ function editProject(projectId) {
     </script>
 </body>
 </html>
+
 
 
 
