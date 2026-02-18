@@ -595,6 +595,14 @@ async function applyTaskFilters() {
     const assigneeId = document.getElementById('task-assignee-filter')?.value || '';
     
     try {
+        // Fetch projects first (needed for task cards)
+        let projects = getCached('projects');
+        if (!projects) {
+            const projData = await apiCall('projects');
+            projects = projData.projects || [];
+            setCached('projects', projects);
+        }
+        
         // Fetch all tasks or filtered by assignee
         let params = {};
         if (assigneeId) params.assignee = assigneeId;
@@ -619,13 +627,14 @@ async function applyTaskFilters() {
         
         tasks.forEach(task => {
             const col = document.getElementById(`col-${task.status.replace(' ', '-')}`);
-            if(col) col.innerHTML += renderTaskCard(task);
+            if(col) col.innerHTML += renderTaskCard(task, projects);  // PASS PROJECTS HERE
         });
         
-        // Initialize sortable
+        // Initialize sortable (keep existing code)
         ['Backlog', 'Todo', 'In-Progress', 'Review', 'Done'].forEach(status => {
             const columnEl = document.getElementById(`col-${status}`);
-            if (columnEl) {
+            if (columnEl && !columnEl.classList.contains('sortable-initialized')) {
+                columnEl.classList.add('sortable-initialized');
                 new Sortable(columnEl, {
                     group: 'tasks', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', delay: 100, delayOnTouchOnly: true,
                     onEnd: async function(evt) {
@@ -687,31 +696,33 @@ function clearProjectFilter() {
             `;
         }
 
-        function renderTaskCard(task) {
+        function renderTaskCard(task, projectsList = null) {
     const hoursDisplay = task.actual_hours > 0 ? 
         `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">${task.actual_hours}h</span>` : '';
     
     const payDisplay = task.pay_per_task > 0 ? 
         `<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">$${task.pay_per_task}</span>` : '';
     
-    // Get project name if available
+    // Get project name from passed list or cache
     let projectBadge = '';
     if (task.project_id) {
-        const projects = getCached('projects') || [];
+        const projects = projectsList || getCached('projects') || [];
         const project = projects.find(p => p.project_id == task.project_id);
         if (project) {
-            projectBadge = `<span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full mr-1">${project.name}</span>`;
+            projectBadge = `<span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full mr-1 truncate max-w-[100px]" title="${project.name}">${project.name}</span>`;
+        } else {
+            projectBadge = `<span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full mr-1">#${task.project_id}</span>`;
         }
     }
     
     return `
         <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-200 card-hover cursor-move mb-2" data-task-id="${task.task_id}">
             <div class="flex items-start justify-between mb-2">
-                <div class="flex flex-wrap gap-1">
+                <div class="flex flex-wrap gap-1 flex-1 min-w-0">
                     ${projectBadge}
                     <span class="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">Task</span>
                 </div>
-                <span class="text-xs ${task.priority === 'Urgent' ? 'text-red-600 font-bold' : 'text-slate-400'}">${task.priority}</span>
+                <span class="text-xs ${task.priority === 'Urgent' ? 'text-red-600 font-bold' : 'text-slate-400'} ml-2">${task.priority}</span>
             </div>
             <h4 class="font-medium text-slate-900 mb-2 text-sm line-clamp-2">${task.title}</h4>
             <div class="flex items-center justify-between text-xs text-slate-500 mb-2">
@@ -2662,6 +2673,7 @@ function editProject(projectId) {
     </script>
 </body>
 </html>
+
 
 
 
