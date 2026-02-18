@@ -2448,6 +2448,118 @@ async function loadProjects(container) {
     await loadProjectsData();
 }
 
+function createTaskForProject(projectId, projectName) {
+    const modal = document.createElement('div');
+    modal.id = 'project-task-modal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div class="p-6">
+                <h3 class="text-xl font-bold text-slate-900 mb-1">Create Task</h3>
+                <p class="text-sm text-slate-500 mb-4">For project: <span class="font-medium text-blue-600">${projectName}</span></p>
+                
+                <div class="space-y-4">
+                    <input type="hidden" id="pt-project-id" value="${projectId}">
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Task Title *</label>
+                        <input type="text" id="pt-title" class="w-full px-3 py-2 border border-slate-300 rounded-lg" placeholder="e.g., Design homepage mockups" autofocus>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                        <textarea id="pt-description" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg" placeholder="Details about this task..."></textarea>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                            <select id="pt-status" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                <option value="Backlog">Backlog</option>
+                                <option value="Todo">Todo</option>
+                                <option value="In Progress">In Progress</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Priority</label>
+                            <select id="pt-priority" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                <option value="Low">Low</option>
+                                <option value="Medium" selected>Medium</option>
+                                <option value="High">High</option>
+                                <option value="Urgent">Urgent</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+                            <input type="date" id="pt-due-date" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Est. Hours</label>
+                            <input type="number" id="pt-estimated" step="0.5" min="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg" placeholder="0">
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="pt-billable" class="rounded text-blue-600">
+                        <label for="pt-billable" class="text-sm text-slate-700">Billable task</label>
+                    </div>
+                </div>
+                
+                <div class="flex gap-3 mt-6">
+                    <button onclick="submitProjectTask()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Create Task</button>
+                    <button onclick="document.getElementById('project-task-modal').remove()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('pt-title').focus();
+}
+
+async function submitProjectTask() {
+    const projectId = document.getElementById('pt-project-id').value;
+    const title = document.getElementById('pt-title').value;
+    const description = document.getElementById('pt-description').value;
+    const status = document.getElementById('pt-status').value;
+    const priority = document.getElementById('pt-priority').value;
+    const dueDate = document.getElementById('pt-due-date').value;
+    const estimated = document.getElementById('pt-estimated').value;
+    const billable = document.getElementById('pt-billable').checked;
+    
+    if (!title) {
+        showToast('Please enter a task title', 'error');
+        return;
+    }
+    
+    try {
+        await apiCall('tasks', {
+            method: 'POST',
+            title: title,
+            description: description,
+            project_id: projectId,  // This links task to project
+            assigned_to: currentUser.user_id,
+            status: status,
+            priority: priority,
+            due_date: dueDate,
+            estimated_hours: estimated,
+            billable: billable
+        });
+        
+        document.getElementById('project-task-modal').remove();
+        clearCache();
+        showToast('Task created for project');
+        
+        // Refresh projects to show updated task count
+        loadProjectsData();
+        
+    } catch (e) {
+        showToast(e.message || 'Failed to create task', 'error');
+    }
+}
+        
 async function loadProjectsData() {
     try {
         const data = await apiCall('projects');
@@ -2531,8 +2643,11 @@ async function loadProjectsData() {
                     </div>
                 </div>
                 
-                <div class="mt-4 pt-4 border-t border-slate-100 flex gap-2">
-                    <button onclick="viewProjectTasks(${p.project_id})" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
+                <div class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-2">
+                    <button onclick="createTaskForProject(${p.project_id}, '${p.name.replace(/'/g, "\\'")}')" class="py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                        <i class="fas fa-plus mr-1"></i>Create Task
+                    </button>
+                    <button onclick="viewProjectTasks(${p.project_id})" class="py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
                         View Tasks (${totalTasks})
                     </button>
                 </div>
@@ -2673,6 +2788,7 @@ function editProject(projectId) {
     </script>
 </body>
 </html>
+
 
 
 
