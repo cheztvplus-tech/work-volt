@@ -2517,19 +2517,20 @@ async function createTaskForProject(projectId, projectName) {
                     </div>
                     
                     <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">
-                                Due Date <span class="text-slate-400 text-xs">(Project deadline)</span>
-                            </label>
-                            <input type="date" id="pt-due-date" value="${defaultDueDate}" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">
-                                Est. Hours <span class="text-slate-400 text-xs">(From project budget)</span>
-                            </label>
-                            <input type="number" id="pt-estimated" step="0.5" min="0" value="${defaultHours}" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="0">
-                        </div>
-                    </div>
+    <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">
+            Due Date <span class="text-slate-400 text-xs">(Project deadline)</span>
+        </label>
+        <input type="date" id="pt-due-date" value="${defaultDueDate}" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+    </div>
+    <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">
+            Est. Hours
+        </label>
+        <input type="number" id="pt-estimated" step="0.5" min="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="e.g., 8">
+        ${project && project.hourly_budget ? `<p class="text-xs text-slate-500 mt-1">Project budget: ${project.hourly_budget}h total</p>` : ''}
+    </div>
+</div>
                     
                     <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
                         <p class="text-xs text-blue-700">
@@ -2831,6 +2832,7 @@ function editProject(projectId) {
     </script>
 </body>
 </html>
+
 
 
 
