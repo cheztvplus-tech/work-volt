@@ -313,7 +313,15 @@
             setTimeout(() => {
                         switch(moduleName) {
                             case 'dashboard': loadDashboard(main); break;
-                            case 'tasks': loadTasks(main); break;
+                            case 'tasks': 
+    // Check if there's a preselected project from "View Tasks" button
+    const preselectedProject = sessionStorage.getItem('preselectedProjectId');
+    loadTasks(main, preselectedProject);
+    // Clear it after use so refresh doesn't keep filtering
+    if (preselectedProject) {
+        sessionStorage.removeItem('preselectedProjectId');
+    }
+    break;
                             case 'pipeline': loadPipeline(main); break;
                             case 'payroll': loadPayroll(main); break;
                             case 'timesheets': loadTimesheets(main); break;
@@ -474,76 +482,196 @@
             return {Urgent: 'border-red-500', High: 'border-amber-500', Medium: 'border-blue-500', Low: 'border-slate-300'}[p] || 'border-slate-300';
         }
 
-        async function loadTasks(container) {
-            container.innerHTML = `
-                <div class="page-transition">
-                    <div class="flex items-center justify-between mb-4">
-                        <div>
-                            <h2 class="text-2xl font-bold text-slate-900">Tasks</h2>
-                            <p class="text-slate-500">Drag cards to change status</p>
-                        </div>
-                        <button onclick="createTask()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-                            <i class="fas fa-plus mr-2"></i>New Task
-                        </button>
-                    </div>
-                    <div class="flex gap-6 overflow-x-auto kanban-scroll pb-4" id="task-board">
-                        ${renderKanbanColumn('Backlog', 'bg-slate-400')}
-                        ${renderKanbanColumn('Todo', 'bg-blue-400')}
-                        ${renderKanbanColumn('In Progress', 'bg-amber-400')}
-                        ${renderKanbanColumn('Review', 'bg-purple-400')}
-                        ${renderKanbanColumn('Done', 'bg-green-400')}
-                    </div>
+        async function loadTasks(container, preselectedProjectId = null) {
+    container.innerHTML = `
+        <div class="page-transition">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-900">Tasks</h2>
+                    <p class="text-slate-500" id="tasks-subtitle">Drag cards to change status</p>
                 </div>
-            `;
+                <div class="flex gap-2">
+                    <button onclick="clearProjectFilter()" id="clear-filter-btn" class="hidden px-4 py-2 bg-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-300">
+                        <i class="fas fa-times mr-2"></i>Clear Filter
+                    </button>
+                    <button onclick="createTask()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                        <i class="fas fa-plus mr-2"></i>New Task
+                    </button>
+                </div>
+            </div>
             
-            try {
-                // Use cache or fetch
-                let tasks = getCached('tasks');
-                if (!tasks) {
-                    const data = await apiCall('tasks');
-                    tasks = data.tasks || [];
-                    setCached('tasks', tasks);
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-4" id="tasks-filter-bar">
+                <div class="flex flex-wrap gap-4 items-end">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Project</label>
+                        <select id="task-project-filter" onchange="applyTaskFilters()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[200px]">
+                            <option value="">All Projects</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Assignee</label>
+                        <select id="task-assignee-filter" onchange="applyTaskFilters()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                            <option value="">All Assignees</option>
+                        </select>
+                    </div>
+                    <button onclick="applyTaskFilters()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
+                        <i class="fas fa-filter mr-1"></i>Apply
+                    </button>
+                </div>
+            </div>
+            
+            <div class="flex gap-6 overflow-x-auto kanban-scroll pb-4" id="task-board">
+                ${renderKanbanColumn('Backlog', 'bg-slate-400')}
+                ${renderKanbanColumn('Todo', 'bg-blue-400')}
+                ${renderKanbanColumn('In Progress', 'bg-amber-400')}
+                ${renderKanbanColumn('Review', 'bg-purple-400')}
+                ${renderKanbanColumn('Done', 'bg-green-400')}
+            </div>
+        </div>
+    `;
+    
+    // Load filter options
+    await loadTaskFilterOptions();
+    
+    // Apply preselected project if coming from Projects module
+    if (preselectedProjectId) {
+        document.getElementById('task-project-filter').value = preselectedProjectId;
+        document.getElementById('clear-filter-btn').classList.remove('hidden');
+        updateTasksSubtitle(preselectedProjectId);
+    }
+    
+    await applyTaskFilters();
+}
+
+async function loadTaskFilterOptions() {
+    const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
+    
+    try {
+        // Load projects for filter
+        let projects = getCached('projects');
+        if (!projects) {
+            const projData = await apiCall('projects');
+            projects = projData.projects || [];
+            setCached('projects', projects);
+        }
+        
+        const projectSelect = document.getElementById('task-project-filter');
+        projects.forEach(p => {
+            const option = document.createElement('option');
+            option.value = p.project_id;
+            option.textContent = p.name;
+            projectSelect.appendChild(option);
+        });
+        
+        // Load users for assignee filter (managers only)
+        if (isManager) {
+            let users = getCached('users');
+            if (!users) {
+                const userData = await apiCall('users');
+                users = userData.users || [];
+                setCached('users', users);
+            }
+            
+            const assigneeSelect = document.getElementById('task-assignee-filter');
+            users.forEach(u => {
+                if (u.active !== false) {
+                    const option = document.createElement('option');
+                    option.value = u.user_id;
+                    option.textContent = u.name;
+                    assigneeSelect.appendChild(option);
                 }
-                
-                // Clear and populate columns
-                ['Backlog', 'Todo', 'In-Progress', 'Review', 'Done'].forEach(status => {
-                    const col = document.getElementById(`col-${status}`);
-                    if(col) col.innerHTML = '';
-                });
-                
-                tasks.forEach(task => {
-                    const col = document.getElementById(`col-${task.status.replace(' ', '-')}`);
-                    if(col) col.innerHTML += renderTaskCard(task);
-                });
-                
-                // Initialize sortable
-                ['Backlog', 'Todo', 'In-Progress', 'Review', 'Done'].forEach(status => {
-                    new Sortable(document.getElementById(`col-${status}`), {
-                        group: 'tasks', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', delay: 100, delayOnTouchOnly: true,
-                        onEnd: async function(evt) {
-                            const taskId = evt.item.dataset.taskId;
-                            const newStatus = evt.to.dataset.status;
-                            const oldStatus = evt.from.dataset.status;
-                            if(newStatus !== oldStatus) {
-                                evt.item.style.opacity = '0.5';
-                                try {
-                                    await apiCall('tasks/move', {task_id: taskId, to_status: newStatus});
-                                    evt.item.style.opacity = '1';
-                                    clearCache(); // Clear cache on change
-                                    showToast(`Moved to ${newStatus}`);
-                                } catch(e) {
-                                    evt.from.appendChild(evt.item);
-                                    evt.item.style.opacity = '1';
-                                    showToast(e.message || 'Failed to move', 'error');
-                                }
+            });
+        } else {
+            // Hide assignee filter for non-managers
+            document.getElementById('task-assignee-filter').parentElement.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Failed to load filter options:', e);
+    }
+}
+
+async function applyTaskFilters() {
+    const projectId = document.getElementById('task-project-filter').value;
+    const assigneeId = document.getElementById('task-assignee-filter')?.value || '';
+    
+    try {
+        // Fetch all tasks or filtered by assignee
+        let params = {};
+        if (assigneeId) params.assignee = assigneeId;
+        
+        let tasks = getCached('tasks');
+        if (!tasks) {
+            const data = await apiCall('tasks', params);
+            tasks = data.tasks || [];
+            setCached('tasks', tasks);
+        }
+        
+        // Filter by project if selected
+        if (projectId) {
+            tasks = tasks.filter(t => t.project_id == projectId);
+        }
+        
+        // Clear and populate columns
+        ['Backlog', 'Todo', 'In-Progress', 'Review', 'Done'].forEach(status => {
+            const col = document.getElementById(`col-${status}`);
+            if(col) col.innerHTML = '';
+        });
+        
+        tasks.forEach(task => {
+            const col = document.getElementById(`col-${task.status.replace(' ', '-')}`);
+            if(col) col.innerHTML += renderTaskCard(task);
+        });
+        
+        // Initialize sortable
+        ['Backlog', 'Todo', 'In-Progress', 'Review', 'Done'].forEach(status => {
+            const columnEl = document.getElementById(`col-${status}`);
+            if (columnEl) {
+                new Sortable(columnEl, {
+                    group: 'tasks', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', delay: 100, delayOnTouchOnly: true,
+                    onEnd: async function(evt) {
+                        const taskId = evt.item.dataset.taskId;
+                        const newStatus = evt.to.dataset.status;
+                        const oldStatus = evt.from.dataset.status;
+                        if(newStatus !== oldStatus) {
+                            evt.item.style.opacity = '0.5';
+                            try {
+                                await apiCall('tasks/move', {task_id: taskId, to_status: newStatus});
+                                evt.item.style.opacity = '1';
+                                clearCache();
+                                showToast(`Moved to ${newStatus}`);
+                            } catch(e) {
+                                evt.from.appendChild(evt.item);
+                                evt.item.style.opacity = '1';
+                                showToast(e.message || 'Failed to move', 'error');
                             }
                         }
-                    });
+                    }
                 });
-            } catch(e) {
-                container.innerHTML += `<div class="text-red-500 mt-4">${e.message || 'Failed to load tasks'}</div>`;
             }
-        }
+        });
+        
+        // Update subtitle with count
+        const projectSelect = document.getElementById('task-project-filter');
+        const projectName = projectId ? projectSelect.options[projectSelect.selectedIndex].text : 'All Projects';
+        document.getElementById('tasks-subtitle').textContent = `${tasks.length} tasks • ${projectName}`;
+        
+    } catch(e) {
+        console.error('Failed to load tasks:', e);
+        document.getElementById('task-board').innerHTML += `<div class="text-red-500 mt-4">${e.message || 'Failed to load tasks'}</div>`;
+    }
+}
+
+function updateTasksSubtitle(projectId) {
+    const projectSelect = document.getElementById('task-project-filter');
+    const projectName = projectSelect.options[projectSelect.selectedIndex].text;
+    document.getElementById('tasks-subtitle').textContent = `Viewing tasks for: ${projectName}`;
+}
+
+function clearProjectFilter() {
+    document.getElementById('task-project-filter').value = '';
+    document.getElementById('clear-filter-btn').classList.add('hidden');
+    applyTaskFilters();
+}
 
         function renderKanbanColumn(status, colorClass) {
             const statusId = status.replace(' ', '-');
@@ -560,34 +688,47 @@
         }
 
         function renderTaskCard(task) {
-            const hoursDisplay = task.actual_hours > 0 ? 
-                `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">${task.actual_hours}h</span>` : '';
-            
-            const payDisplay = task.pay_per_task > 0 ? 
-                `<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">$${task.pay_per_task}</span>` : '';
-            
-            return `
-                <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-200 card-hover cursor-move mb-2" data-task-id="${task.task_id}">
-                    <div class="flex items-start justify-between mb-2">
-                        <span class="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">Task</span>
-                        <span class="text-xs ${task.priority === 'Urgent' ? 'text-red-600 font-bold' : 'text-slate-400'}">${task.priority}</span>
-                    </div>
-                    <h4 class="font-medium text-slate-900 mb-2 text-sm line-clamp-2">${task.title}</h4>
-                    <div class="flex items-center justify-between text-xs text-slate-500 mb-2">
-                        <span>${task.due_date || 'No date'}</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <div class="flex gap-1">
-                            ${hoursDisplay}
-                            ${payDisplay}
-                        </div>
-                        <button onclick="event.stopPropagation(); quickLogHours(${task.task_id})" class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded hover:bg-indigo-200 transition-colors">
-                            <i class="fas fa-clock mr-1"></i>Log
-                        </button>
-                    </div>
-                </div>
-            `;
+    const hoursDisplay = task.actual_hours > 0 ? 
+        `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">${task.actual_hours}h</span>` : '';
+    
+    const payDisplay = task.pay_per_task > 0 ? 
+        `<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">$${task.pay_per_task}</span>` : '';
+    
+    // Get project name if available
+    let projectBadge = '';
+    if (task.project_id) {
+        const projects = getCached('projects') || [];
+        const project = projects.find(p => p.project_id == task.project_id);
+        if (project) {
+            projectBadge = `<span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full mr-1">${project.name}</span>`;
         }
+    }
+    
+    return `
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-200 card-hover cursor-move mb-2" data-task-id="${task.task_id}">
+            <div class="flex items-start justify-between mb-2">
+                <div class="flex flex-wrap gap-1">
+                    ${projectBadge}
+                    <span class="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">Task</span>
+                </div>
+                <span class="text-xs ${task.priority === 'Urgent' ? 'text-red-600 font-bold' : 'text-slate-400'}">${task.priority}</span>
+            </div>
+            <h4 class="font-medium text-slate-900 mb-2 text-sm line-clamp-2">${task.title}</h4>
+            <div class="flex items-center justify-between text-xs text-slate-500 mb-2">
+                <span>${task.due_date || 'No date'}</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <div class="flex gap-1">
+                    ${hoursDisplay}
+                    ${payDisplay}
+                </div>
+                <button onclick="event.stopPropagation(); quickLogHours(${task.task_id})" class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded hover:bg-indigo-200 transition-colors">
+                    <i class="fas fa-clock mr-1"></i>Log
+                </button>
+            </div>
+        </div>
+    `;
+}
 
         async function quickLogHours(taskId) {
             try {
@@ -690,17 +831,28 @@
         }
 
         async function createTask() {
-            const title = prompt('Task title:');
-            if(!title) return;
-            try {
-                await apiCall('tasks', {method: 'POST', title: title, assigned_to: currentUser.user_id, status: 'Backlog'});
-                clearCache();
-                showToast('Task created');
-                loadTasks(document.getElementById('main-content'));
-            } catch(e) {
-                showToast(e.message || 'Failed to create task', 'error');
-            }
-        }
+    const title = prompt('Task title:');
+    if(!title) return;
+    
+    // Check if project filter is active
+    const projectFilter = document.getElementById('task-project-filter');
+    const projectId = projectFilter && projectFilter.value ? projectFilter.value : '';
+    
+    try {
+        await apiCall('tasks', {
+            method: 'POST', 
+            title: title, 
+            assigned_to: currentUser.user_id, 
+            status: 'Backlog',
+            project_id: projectId || ''  // Auto-assign to filtered project
+        });
+        clearCache();
+        showToast('Task created');
+        applyTaskFilters();  // Refresh current view instead of full reload
+    } catch(e) {
+        showToast(e.message || 'Failed to create task', 'error');
+    }
+}
 
         async function loadPipeline(container) {
             container.innerHTML = `
@@ -2465,10 +2617,18 @@ async function submitProject() {
 }
 
 function viewProjectTasks(projectId) {
-    // Filter tasks by project and show tasks module
+    // Get project name for display
+    const projects = getCached('projects') || [];
+    const project = projects.find(p => p.project_id == projectId);
+    const projectName = project ? project.name : 'Project #' + projectId;
+    
+    // Switch to tasks module with project preselected
     showModule('tasks');
-    // You can add project filtering logic here
-    showToast('Showing tasks for project #' + projectId);
+    
+    // Store the preselected project for when tasks module loads
+    sessionStorage.setItem('preselectedProjectId', projectId);
+    
+    showToast(`Showing tasks for: ${projectName}`);
 }
 
 function editProject(projectId) {
@@ -2502,6 +2662,7 @@ function editProject(projectId) {
     </script>
 </body>
 </html>
+
 
 
 
