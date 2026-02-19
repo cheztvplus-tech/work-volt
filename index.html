@@ -2854,21 +2854,34 @@ function editProject(projectId) {
         }
 
         async function loadNotifications() {
-            try {
-                const data = await apiCall('notifications', {limit: 10});
-                const notifications = data.notifications || [];
-                const unreadCount = data.unread_count || 0;
-                
-                updateNotificationBadge(unreadCount);
-                renderNotificationList(notifications);
-            } catch (e) {
-                document.getElementById('notification-list').innerHTML = `
-                    <div class="p-4 text-center text-red-500 text-sm">
-                        Failed to load notifications
-                    </div>
-                `;
-            }
+    const listContainer = document.getElementById('notification-list');
+    
+    try {
+        const data = await apiCall('notifications', {limit: 10});
+        const notifications = data.notifications || [];
+        const unreadCount = data.unread_count || 0;
+        
+        updateNotificationBadge(unreadCount);
+        renderNotificationList(notifications);
+    } catch (e) {
+        // Check if it's just empty vs actual error
+        if (e.message && e.message.includes('Failed to load')) {
+            listContainer.innerHTML = `
+                <div class="p-8 text-center text-slate-400">
+                    <i class="fas fa-bell-slash text-3xl mb-2 text-slate-300"></i>
+                    <p class="text-sm">No notifications yet</p>
+                </div>
+            `;
+        } else {
+            listContainer.innerHTML = `
+                <div class="p-8 text-center text-slate-400">
+                    <i class="fas fa-bell text-3xl mb-2 text-slate-300"></i>
+                    <p class="text-sm text-slate-500">No new notifications</p>
+                </div>
+            `;
         }
+    }
+}
 
         function updateNotificationBadge(count) {
             const badge = document.getElementById('notif-badge');
@@ -3039,6 +3052,7 @@ function editProject(projectId) {
     </script>
 </body>
 </html>
+
 
 
 
