@@ -170,7 +170,7 @@
             for(let i = 0; i <= retries; i++) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                    const timeoutId = setTimeout(() => controller.abort(), 10000);
                     
                     const response = await fetch(url.toString(), {
                         method: 'GET', 
@@ -225,13 +225,11 @@
             const btnSpinner = document.getElementById('login-btn-spinner');
             const errorDiv = document.getElementById('login-error');
             
-            // Reset state
             btn.disabled = true;
             btnText.classList.add('hidden');
             btnSpinner.classList.remove('hidden');
             errorDiv.classList.add('hidden');
             
-            // Set timeout to reset button if stuck
             const timeoutId = setTimeout(() => {
                 btn.disabled = false;
                 btnText.classList.remove('hidden');
@@ -249,7 +247,6 @@
                 localStorage.setItem('workvolt_token', currentToken);
                 localStorage.setItem('workvolt_user', JSON.stringify(currentUser));
                 
-                // Reset button
                 btn.disabled = false;
                 btnText.classList.remove('hidden');
                 btnSpinner.classList.add('hidden');
@@ -272,14 +269,13 @@
             document.getElementById('user-avatar').textContent = currentUser.name.split(' ').map(n => n[0]).join('').slice(0,2);
             renderNav();
             
-            // Restore last module or default to dashboard
             const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
             showModule(lastModule);
             startNotificationPolling();
         }
         
         function logout() {
-    stopNotificationPolling(); // Add this line
+    stopNotificationPolling();
     clearCache();
     localStorage.removeItem('workvolt_token');
     localStorage.removeItem('workvolt_user');
@@ -322,10 +318,8 @@
         }
 
         function showModule(moduleName) {
-            // Save current module for refresh recovery
             sessionStorage.setItem('lastModule', moduleName);
             
-            // Update nav highlighting
             document.querySelectorAll('.nav-item').forEach(n => {
                 n.classList.remove('bg-blue-50', 'text-blue-700');
                 n.classList.add('text-slate-600');
@@ -336,19 +330,15 @@
                 navItem.classList.remove('text-slate-600');
             }
             
-            // Show loading
             const main = document.getElementById('main-content');
             main.innerHTML = '<div class="flex items-center justify-center h-64"><i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i></div>';
             
-            // Small delay to allow UI to update
             setTimeout(() => {
                         switch(moduleName) {
                             case 'dashboard': loadDashboard(main); break;
                             case 'tasks': 
-    // Check if there's a preselected project from "View Tasks" button
     const preselectedProject = sessionStorage.getItem('preselectedProjectId');
     loadTasks(main, preselectedProject);
-    // Clear it after use so refresh doesn't keep filtering
     if (preselectedProject) {
         sessionStorage.removeItem('preselectedProjectId');
     }
@@ -388,7 +378,6 @@
                 animation: 150, handle: '.widget-handle', ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', disabled: true, onEnd: saveDashboardLayout
             });
             
-            // Load data in parallel
             await loadAllWidgetData();
         }
 
@@ -411,7 +400,6 @@
 
         async function loadAllWidgetData() {
             try {
-                // Use cached tasks if available
                 let tasks = getCached('tasks');
                 if (!tasks) {
                     const tasksData = await apiCall('tasks', {assignee: currentUser.user_id});
@@ -419,7 +407,6 @@
                     setCached('tasks', tasks);
                 }
                 
-                // My Tasks Widget
                 const myTasksHtml = tasks.filter(t => t.status !== 'Done').slice(0, 5).map(t => `
                     <div class="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border-l-4 ${getPriorityColor(t.priority)} mb-2 cursor-pointer hover:bg-slate-100" onclick="showModule('tasks')">
                         <div class="flex-1">
@@ -430,7 +417,6 @@
                 `).join('') || '<p class="text-sm text-slate-400">No pending tasks</p>';
                 document.getElementById('widget-my-tasks').innerHTML = myTasksHtml;
 
-                // Stats Widget
                 const todoCount = tasks.filter(t => t.status === 'Todo').length;
                 const inProgressCount = tasks.filter(t => t.status === 'In Progress').length;
                 const doneCount = tasks.filter(t => t.status === 'Done').length;
@@ -525,7 +511,7 @@
                     <button onclick="clearProjectFilter()" id="clear-filter-btn" class="hidden px-4 py-2 bg-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-300">
                         <i class="fas fa-times mr-2"></i>Clear Filter
                     </button>
-                    <button onclick="createTask()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                    <button onclick="openCreateTaskForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
                         <i class="fas fa-plus mr-2"></i>New Task
                     </button>
                 </div>
@@ -561,10 +547,8 @@
         </div>
     `;
     
-    // Load filter options
     await loadTaskFilterOptions();
     
-    // Apply preselected project if coming from Projects module
     if (preselectedProjectId) {
         document.getElementById('task-project-filter').value = preselectedProjectId;
         document.getElementById('clear-filter-btn').classList.remove('hidden');
@@ -574,11 +558,187 @@
     await applyTaskFilters();
 }
 
+// NEW: Proper Task Creation Form with Role-Based Assignment
+async function openCreateTaskForm() {
+    const isManagerOrAbove = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
+    
+    // Load users for assignee dropdown if manager+
+    let assigneeOptions = '';
+    if (isManagerOrAbove) {
+        try {
+            let users = getCached('users');
+            if (!users) {
+                const userData = await apiCall('users');
+                users = userData.users || [];
+                setCached('users', users);
+            }
+            // Filter active users only
+            assigneeOptions = users
+                .filter(u => u.active !== false)
+                .map(u => `<option value="${u.user_id}" ${u.user_id === currentUser.user_id ? 'selected' : ''}>${u.name} (${u.role})</option>`)
+                .join('');
+        } catch (e) {
+            console.error('Failed to load users:', e);
+        }
+    }
+    
+    // Load projects for dropdown
+    let projectOptions = '<option value="">No Project</option>';
+    try {
+        let projects = getCached('projects');
+        if (!projects) {
+            const projData = await apiCall('projects');
+            projects = projData.projects || [];
+            setCached('projects', projects);
+        }
+        projectOptions = projects.map(p => 
+            `<option value="${p.project_id}">${p.name}</option>`
+        ).join('') + '<option value="">No Project</option>';
+    } catch (e) {
+        console.error('Failed to load projects:', e);
+    }
+    
+    const modal = document.createElement('div');
+    modal.id = 'create-task-modal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <h3 class="text-xl font-bold text-slate-900 mb-4">Create New Task</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Task Title <span class="text-red-500">*</span></label>
+                        <input type="text" id="ct-title" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Enter task title..." autofocus>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                        <textarea id="ct-description" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Describe the task..."></textarea>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Project</label>
+                            <select id="ct-project" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                ${projectOptions}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Priority</label>
+                            <select id="ct-priority" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <option value="Low">Low</option>
+                                <option value="Medium" selected>Medium</option>
+                                <option value="High">High</option>
+                                <option value="Urgent">Urgent</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    ${isManagerOrAbove ? `
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Assigned To</label>
+                        <select id="ct-assignee" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            ${assigneeOptions}
+                        </select>
+                        <p class="text-xs text-slate-500 mt-1">As a manager, you can assign to any team member</p>
+                    </div>
+                    ` : `
+                    <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                        <p class="text-sm text-blue-800">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            This task will be assigned to <strong>you</strong> (${currentUser.name}). 
+                            Managers can assign tasks to others.
+                        </p>
+                        <input type="hidden" id="ct-assignee" value="${currentUser.user_id}">
+                    </div>
+                    `}
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+                            <input type="date" id="ct-due-date" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Est. Hours</label>
+                            <input type="number" id="ct-estimated" step="0.5" min="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="0.0">
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Pay Per Task ($)</label>
+                            <input type="number" id="ct-pay" step="0.01" min="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="0.00">
+                        </div>
+                        <div class="flex items-center pt-6">
+                            <input type="checkbox" id="ct-billable" class="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500">
+                            <label for="ct-billable" class="ml-2 text-sm text-slate-700">Billable to client</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-3 mt-6">
+                    <button onclick="submitCreateTask()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">
+                        <i class="fas fa-check mr-2"></i>Create Task
+                    </button>
+                    <button onclick="closeCreateTaskModal()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('ct-title').focus();
+}
+
+function closeCreateTaskModal() {
+    document.getElementById('create-task-modal')?.remove();
+}
+
+async function submitCreateTask() {
+    const title = document.getElementById('ct-title').value.trim();
+    const description = document.getElementById('ct-description').value.trim();
+    const projectId = document.getElementById('ct-project').value;
+    const priority = document.getElementById('ct-priority').value;
+    const assigneeId = document.getElementById('ct-assignee').value;
+    const dueDate = document.getElementById('ct-due-date').value;
+    const estimated = document.getElementById('ct-estimated').value;
+    const payPerTask = document.getElementById('ct-pay').value;
+    const billable = document.getElementById('ct-billable').checked;
+    
+    if (!title) {
+        showToast('Please enter a task title', 'error');
+        document.getElementById('ct-title').focus();
+        return;
+    }
+    
+    try {
+        await apiCall('tasks', {
+            method: 'POST',
+            title: title,
+            description: description,
+            project_id: projectId,
+            priority: priority,
+            assigned_to: assigneeId,
+            due_date: dueDate,
+            estimated_hours: estimated,
+            pay_per_task: payPerTask,
+            billable: billable,
+            status: 'Backlog'
+        });
+        
+        closeCreateTaskModal();
+        clearCache();
+        showToast('Task created successfully');
+        applyTaskFilters();
+    } catch (e) {
+        showToast(e.message || 'Failed to create task', 'error');
+    }
+}
+
 async function loadTaskFilterOptions() {
     const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
     
     try {
-        // Load projects for filter
         let projects = getCached('projects');
         if (!projects) {
             const projData = await apiCall('projects');
@@ -594,7 +754,6 @@ async function loadTaskFilterOptions() {
             projectSelect.appendChild(option);
         });
         
-        // Load users for assignee filter (managers only)
         if (isManager) {
             let users = getCached('users');
             if (!users) {
@@ -613,7 +772,6 @@ async function loadTaskFilterOptions() {
                 }
             });
         } else {
-            // Hide assignee filter for non-managers
             document.getElementById('task-assignee-filter').parentElement.style.display = 'none';
         }
     } catch (e) {
@@ -626,7 +784,6 @@ async function applyTaskFilters() {
     const assigneeId = document.getElementById('task-assignee-filter')?.value || '';
     
     try {
-        // Fetch projects first (needed for task cards)
         let projects = getCached('projects');
         if (!projects) {
             const projData = await apiCall('projects');
@@ -634,7 +791,6 @@ async function applyTaskFilters() {
             setCached('projects', projects);
         }
         
-        // Fetch all tasks or filtered by assignee
         let params = {};
         if (assigneeId) params.assignee = assigneeId;
         
@@ -645,12 +801,10 @@ async function applyTaskFilters() {
             setCached('tasks', tasks);
         }
         
-        // Filter by project if selected
         if (projectId) {
             tasks = tasks.filter(t => t.project_id == projectId);
         }
         
-        // Clear and populate columns
         ['Backlog', 'Todo', 'In-Progress', 'Review', 'Done'].forEach(status => {
             const col = document.getElementById(`col-${status}`);
             if(col) col.innerHTML = '';
@@ -658,10 +812,9 @@ async function applyTaskFilters() {
         
         tasks.forEach(task => {
             const col = document.getElementById(`col-${task.status.replace(' ', '-')}`);
-            if(col) col.innerHTML += renderTaskCard(task, projects);  // PASS PROJECTS HERE
+            if(col) col.innerHTML += renderTaskCard(task, projects);
         });
         
-        // Initialize sortable (keep existing code)
         ['Backlog', 'Todo', 'In-Progress', 'Review', 'Done'].forEach(status => {
             const columnEl = document.getElementById(`col-${status}`);
             if (columnEl && !columnEl.classList.contains('sortable-initialized')) {
@@ -690,7 +843,6 @@ async function applyTaskFilters() {
             }
         });
         
-        // Update subtitle with count
         const projectSelect = document.getElementById('task-project-filter');
         const projectName = projectId ? projectSelect.options[projectSelect.selectedIndex].text : 'All Projects';
         document.getElementById('tasks-subtitle').textContent = `${tasks.length} tasks • ${projectName}`;
@@ -734,7 +886,6 @@ function clearProjectFilter() {
     const payDisplay = task.pay_per_task > 0 ? 
         `<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">$${task.pay_per_task}</span>` : '';
     
-    // Get project name from passed list or cache
     let projectBadge = '';
     if (task.project_id) {
         const projects = projectsList || getCached('projects') || [];
@@ -774,7 +925,6 @@ function clearProjectFilter() {
 
         async function quickLogHours(taskId) {
             try {
-                // Get fresh task data or use cache
                 let tasks = getCached('tasks');
                 if (!tasks) {
                     const tasksData = await apiCall('tasks', {assignee: currentUser.user_id});
@@ -855,10 +1005,9 @@ function clearProjectFilter() {
                 }, 0);
                 
                 closeLogHoursModal();
-                clearCache(); // Clear cache to reflect new hours
+                clearCache();
                 showToast(`Logged ${hours} hours successfully`);
                 
-                // Refresh current view
                 const currentModule = sessionStorage.getItem('lastModule');
                 if (currentModule === 'tasks') {
                     loadTasks(document.getElementById('main-content'));
@@ -871,207 +1020,6 @@ function clearProjectFilter() {
                 showToast(e.message || 'Failed to log hours', 'error');
             }
         }
-
-        async function createTask() {
-    const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
-    
-    // Load users for manager assignment dropdown
-    let userOptions = '';
-    if (isManager) {
-        try {
-            let users = getCached('users');
-            if (!users) {
-                const userData = await apiCall('users');
-                users = userData.users || [];
-                setCached('users', users);
-            }
-            userOptions = users.map(u => 
-                `<option value="${u.user_id}" ${u.user_id === currentUser.user_id ? 'selected' : ''}>${u.name} (${u.role})</option>`
-            ).join('');
-        } catch (e) {
-            console.error('Failed to load users:', e);
-        }
-    }
-    
-    // Load projects for dropdown
-    let projectOptions = '<option value="">No Project</option>';
-    try {
-        let projects = getCached('projects');
-        if (!projects) {
-            const projData = await apiCall('projects');
-            projects = projData.projects || [];
-            setCached('projects', projects);
-        }
-        projectOptions += projects.map(p => 
-            `<option value="${p.project_id}">${p.name}</option>`
-        ).join('');
-    } catch (e) {
-        console.error('Failed to load projects:', e);
-    }
-    
-    const modal = document.createElement('div');
-    modal.id = 'create-task-modal';
-    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
-    modal.innerHTML = `
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
-            <div class="p-6">
-                <h3 class="text-xl font-bold text-slate-900 mb-1">Create New Task</h3>
-                <p class="text-sm text-slate-500 mb-4">${isManager ? 'Assign to team members' : 'Create a task for yourself'}</p>
-                
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Task Title <span class="text-red-500">*</span></label>
-                        <input type="text" id="ct-title" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., Fix login bug" autofocus>
-                    </div>
-                    
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                        <textarea id="ct-description" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="Detailed description of the task..."></textarea>
-                    </div>
-                    
-                    ${isManager ? `
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Assign To</label>
-                        <select id="ct-assignee" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                            ${userOptions}
-                        </select>
-                        <p class="text-xs text-slate-500 mt-1">Select team member to assign this task</p>
-                    </div>
-                    ` : `
-                    <input type="hidden" id="ct-assignee" value="${currentUser.user_id}">
-                    <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                        <p class="text-sm text-blue-800"><i class="fas fa-info-circle mr-1"></i> This task will be assigned to you (${currentUser.name})</p>
-                    </div>
-                    `}
-                    
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Project</label>
-                            <select id="ct-project" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                ${projectOptions}
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Priority</label>
-                            <select id="ct-priority" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                <option value="Low">Low</option>
-                                <option value="Medium" selected>Medium</option>
-                                <option value="High">High</option>
-                                <option value="Urgent">Urgent</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                            <select id="ct-status" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                <option value="Backlog">Backlog</option>
-                                <option value="Todo" selected>Todo</option>
-                                <option value="In Progress">In Progress</option>
-                                ${isManager ? '<option value="Review">Review</option><option value="Done">Done</option>' : ''}
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
-                            <input type="date" id="ct-due-date" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                        </div>
-                    </div>
-                    
-                    ${isManager ? `
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Est. Hours</label>
-                            <input type="number" id="ct-estimated" step="0.5" min="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="0.0">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Pay Per Task ($)</label>
-                            <input type="number" id="ct-pay" step="0.01" min="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="0.00">
-                        </div>
-                    </div>
-                    
-                    <div class="flex items-center gap-2">
-                        <input type="checkbox" id="ct-billable" class="rounded text-blue-600 w-4 h-4">
-                        <label for="ct-billable" class="text-sm text-slate-700">Billable to client</label>
-                    </div>
-                    ` : ''}
-                </div>
-                
-                <div class="flex gap-3 mt-6">
-                    <button onclick="submitCreateTask()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-                        <i class="fas fa-plus mr-1"></i>Create Task
-                    </button>
-                    <button onclick="closeCreateTaskModal()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300 transition-colors">
-                        Cancel
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(modal);
-    
-    // Focus title input
-    document.getElementById('ct-title').focus();
-    
-    // Set default due date to 1 week from now
-    const nextWeek = new Date();
-    nextWeek.setDate(nextWeek.getDate() + 7);
-    document.getElementById('ct-due-date').value = nextWeek.toISOString().split('T')[0];
-}
-
-function closeCreateTaskModal() {
-    document.getElementById('create-task-modal')?.remove();
-}
-
-async function submitCreateTask() {
-    const title = document.getElementById('ct-title').value.trim();
-    const description = document.getElementById('ct-description').value.trim();
-    const assignee = document.getElementById('ct-assignee').value;
-    const project = document.getElementById('ct-project').value;
-    const priority = document.getElementById('ct-priority').value;
-    const status = document.getElementById('ct-status').value;
-    const dueDate = document.getElementById('ct-due-date').value;
-    
-    if (!title) {
-        showToast('Please enter a task title', 'error');
-        document.getElementById('ct-title').focus();
-        return;
-    }
-    
-    const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
-    
-    const payload = {
-        method: 'POST',
-        title: title,
-        description: description,
-        assigned_to: assignee,
-        project_id: project,
-        priority: priority,
-        status: status,
-        due_date: dueDate
-    };
-    
-    // Add manager-only fields
-    if (isManager) {
-        const estimated = document.getElementById('ct-estimated')?.value;
-        const pay = document.getElementById('ct-pay')?.value;
-        const billable = document.getElementById('ct-billable')?.checked;
-        
-        if (estimated) payload.estimated_hours = estimated;
-        if (pay) payload.pay_per_task = pay;
-        payload.billable = billable || false;
-    }
-    
-    try {
-        await apiCall('tasks', payload);
-        closeCreateTaskModal();
-        clearCache();
-        showToast('Task created successfully');
-        applyTaskFilters(); // Refresh current view
-    } catch (e) {
-        showToast(e.message || 'Failed to create task', 'error');
-    }
-}
 
         async function loadPipeline(container) {
             container.innerHTML = `
@@ -1099,7 +1047,6 @@ async function submitCreateTask() {
                 const data = await apiCall('pipeline');
                 const candidates = data.candidates || [];
                 
-                // Clear columns
                 ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'].forEach(stage => {
                     const col = document.getElementById(`pipe-${stage}`);
                     if(col) col.innerHTML = '';
@@ -1252,7 +1199,6 @@ async function submitCreateTask() {
         </div>
     `;
     
-    // Load employee filter options
     if (isManager) {
         try {
             let users = getCached('users');
@@ -1297,7 +1243,6 @@ async function loadPayrollData() {
         const data = await apiCall('payroll', params);
         const payrolls = data.payroll || [];
         
-        // Get user names for display
         let users = getCached('users');
         if (!users) {
             const userData = await apiCall('users');
@@ -1486,13 +1431,11 @@ async function loadPayrollData() {
         </div>
     `;
     document.body.appendChild(modal);
-    // Default to task_based view
     updatePayrollFormFields();
 }
             
         function getTodayDate() {
     const d = new Date();
-    // Adjust for timezone to get correct local date
     const offset = d.getTimezoneOffset();
     const localDate = new Date(d.getTime() - (offset * 60 * 1000));
     return localDate.toISOString().split('T')[0];
@@ -1557,7 +1500,6 @@ function getDefaultPeriodEnd() {
                     return;
                 }
                 
-                // Get task names from cache or fetch
                 let tasks = getCached('tasks');
                 if (!tasks) {
                     const tasksData = await apiCall('tasks');
@@ -1717,7 +1659,7 @@ function getDefaultPeriodEnd() {
         async function submitPayrollForm() {
     const employeeId = document.getElementById('pp-employee').value || currentUser.user_id;
     const type = document.getElementById('pp-type').value;
-    const description = document.getElementById('pp-description').value || '';  // ADD THIS LINE
+    const description = document.getElementById('pp-description').value || '';
     let baseAmount = 0, hoursWorked = 0, tasksCompleted = 0, taskPayments = 0;
     
     if (type === 'salary') {
@@ -1750,8 +1692,8 @@ function getDefaultPeriodEnd() {
         deductions: deductions,
         bonus: bonus,
         total_pay: totalPay,
-        task_ids: selectedTaskIds,  // FIXED: added comma
-        description: description     // FIXED: now properly defined
+        task_ids: selectedTaskIds,
+        description: description
     };
     
     try {
@@ -1904,7 +1846,6 @@ function getDefaultPeriodEnd() {
                 const data = await apiCall('timesheets', params);
                 const entries = data.timesheets || [];
                 
-                // Get task names from cache
                 let tasks = getCached('tasks');
                 if (!tasks) {
                     const tasksData = await apiCall('tasks');
@@ -2007,7 +1948,6 @@ function getDefaultPeriodEnd() {
             toast.innerHTML = `<i class="fas ${type === 'error' ? 'fa-exclamation-circle' : 'fa-check-circle'} mr-2"></i>${message}`;
             document.body.appendChild(toast);
             
-            // Animate in
             requestAnimationFrame(() => {
                 toast.style.transform = 'translateY(0)';
                 toast.style.opacity = '1';
@@ -2097,7 +2037,6 @@ function getDefaultPeriodEnd() {
                 </div>
             `;
             
-            // Set default dates (current month)
             const today = new Date();
             const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
             document.getElementById('fin-date-from').value = firstDay.toISOString().split('T')[0];
@@ -2132,7 +2071,6 @@ function getDefaultPeriodEnd() {
 summary.net = summary.income - summary.expenses;
 summary.pending_net = summary.pending_income - summary.pending_expenses;
                 
-                // Update summary cards
                 document.getElementById('financials-summary').innerHTML = `
     <div class="bg-green-50 p-4 rounded-xl border border-green-200">
         <p class="text-sm text-green-700 font-medium">Total Income (Paid)</p>
@@ -2153,7 +2091,6 @@ summary.pending_net = summary.pending_income - summary.pending_expenses;
     </div>
 `;
                 
-                // Update table
                 if (transactions.length === 0) {
                     document.getElementById('financials-table-body').innerHTML = 
                         '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">No transactions found</td></tr>';
@@ -2657,10 +2594,8 @@ async function loadProjects(container) {
 }
 
 async function createTaskForProject(projectId, projectName) {
-    // Fetch full project details first
     let project = null;
     try {
-        // Try to get from cache first
         let projects = getCached('projects');
         if (!projects) {
             const projData = await apiCall('projects');
@@ -2672,11 +2607,30 @@ async function createTaskForProject(projectId, projectName) {
         console.error('Failed to fetch project details:', e);
     }
     
-    // Default values from project or empty
     const defaultTitle = project ? `${project.name} - ` : '';
     const defaultDescription = project ? project.description || '' : '';
-    const defaultHours = project && project.hourly_budget ? Math.round(project.hourly_budget / 40 * 10) / 10 : ''; // Roughly 1 week worth if budget is hours
+    const defaultHours = project && project.hourly_budget ? Math.round(project.hourly_budget / 40 * 10) / 10 : '';
     const defaultDueDate = project && project.end_date ? project.end_date : '';
+    
+    const isManagerOrAbove = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
+    
+    let assigneeOptions = '';
+    if (isManagerOrAbove) {
+        try {
+            let users = getCached('users');
+            if (!users) {
+                const userData = await apiCall('users');
+                users = userData.users || [];
+                setCached('users', users);
+            }
+            assigneeOptions = users
+                .filter(u => u.active !== false)
+                .map(u => `<option value="${u.user_id}" ${u.user_id === currentUser.user_id ? 'selected' : ''}>${u.name} (${u.role})</option>`)
+                .join('');
+        } catch (e) {
+            console.error('Failed to load users:', e);
+        }
+    }
     
     const modal = document.createElement('div');
     modal.id = 'project-task-modal';
@@ -2724,21 +2678,32 @@ async function createTaskForProject(projectId, projectName) {
                         </div>
                     </div>
                     
+                    ${isManagerOrAbove ? `
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Assigned To</label>
+                        <select id="pt-assignee" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            ${assigneeOptions}
+                        </select>
+                    </div>
+                    ` : `
+                    <input type="hidden" id="pt-assignee" value="${currentUser.user_id}">
+                    `}
+                    
                     <div class="grid grid-cols-2 gap-4">
-    <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">
-            Due Date <span class="text-slate-400 text-xs">(Project deadline)</span>
-        </label>
-        <input type="date" id="pt-due-date" value="${defaultDueDate}" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-    </div>
-    <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">
-            Est. Hours
-        </label>
-        <input type="number" id="pt-estimated" step="0.5" min="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="e.g., 8">
-        ${project && project.hourly_budget ? `<p class="text-xs text-slate-500 mt-1">Project budget: ${project.hourly_budget}h total</p>` : ''}
-    </div>
-</div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">
+                                Due Date <span class="text-slate-400 text-xs">(Project deadline)</span>
+                            </label>
+                            <input type="date" id="pt-due-date" value="${defaultDueDate}" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">
+                                Est. Hours
+                            </label>
+                            <input type="number" id="pt-estimated" step="0.5" min="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="e.g., 8">
+                            ${project && project.hourly_budget ? `<p class="text-xs text-slate-500 mt-1">Project budget: ${project.hourly_budget}h total</p>` : ''}
+                        </div>
+                    </div>
                     
                     <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
                         <p class="text-xs text-blue-700">
@@ -2765,7 +2730,6 @@ async function createTaskForProject(projectId, projectName) {
     `;
     document.body.appendChild(modal);
     
-    // Focus at end of pre-filled title so user can continue typing
     const titleInput = document.getElementById('pt-title');
     titleInput.focus();
     titleInput.setSelectionRange(titleInput.value.length, titleInput.value.length);
@@ -2780,6 +2744,7 @@ async function submitProjectTask() {
     const dueDate = document.getElementById('pt-due-date').value;
     const estimated = document.getElementById('pt-estimated').value;
     const billable = document.getElementById('pt-billable').checked;
+    const assigneeId = document.getElementById('pt-assignee').value;
     
     if (!title) {
         showToast('Please enter a task title', 'error');
@@ -2791,8 +2756,8 @@ async function submitProjectTask() {
             method: 'POST',
             title: title,
             description: description,
-            project_id: projectId,  // This links task to project
-            assigned_to: currentUser.user_id,
+            project_id: projectId,
+            assigned_to: assigneeId,
             status: status,
             priority: priority,
             due_date: dueDate,
@@ -2804,7 +2769,6 @@ async function submitProjectTask() {
         clearCache();
         showToast('Task created for project');
         
-        // Refresh projects to show updated task count
         loadProjectsData();
         
     } catch (e) {
@@ -2823,7 +2787,6 @@ async function loadProjectsData() {
             return;
         }
         
-        // Get tasks to calculate real progress
         let tasks = getCached('tasks');
         if (!tasks) {
             const tasksData = await apiCall('tasks');
@@ -2839,13 +2802,11 @@ async function loadProjectsData() {
         };
         
         const cards = projects.map(p => {
-            // Calculate real progress based on tasks
             const projectTasks = tasks.filter(t => t.project_id == p.project_id);
             const totalTasks = projectTasks.length;
             const completedTasks = projectTasks.filter(t => t.status === 'Done').length;
             const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
             
-            // Calculate hours used
             const hoursUsed = projectTasks.reduce((sum, t) => sum + (t.actual_hours || 0), 0);
             const hoursBudget = p.hourly_budget || 0;
             const hoursPercent = hoursBudget > 0 ? Math.round((hoursUsed / hoursBudget) * 100) : 0;
@@ -2995,15 +2956,12 @@ async function submitProject() {
 }
 
 function viewProjectTasks(projectId) {
-    // Get project name for display
     const projects = getCached('projects') || [];
     const project = projects.find(p => p.project_id == projectId);
     const projectName = project ? project.name : 'Project #' + projectId;
     
-    // Switch to tasks module with project preselected
     showModule('tasks');
     
-    // Store the preselected project for when tasks module loads
     sessionStorage.setItem('preselectedProjectId', projectId);
     
     showToast(`Showing tasks for: ${projectName}`);
@@ -3041,7 +2999,6 @@ function editProject(projectId) {
         updateNotificationBadge(unreadCount);
         renderNotificationList(notifications);
     } catch (e) {
-        // Check if it's just empty vs actual error
         if (e.message && e.message.includes('Failed to load')) {
             listContainer.innerHTML = `
                 <div class="p-8 text-center text-slate-400">
@@ -3209,11 +3166,9 @@ function editProject(projectId) {
                 if(savedUser) {
                     try {
                         currentUser = JSON.parse(savedUser);
-                        // Validate token silently
                         apiCall('users/me').then(() => {
                             showApp();
                         }).catch(err => {
-                            // Token invalid, clear and stay on login
                             localStorage.removeItem('workvolt_token');
                             localStorage.removeItem('workvolt_user');
                             currentToken = null;
