@@ -2045,110 +2045,118 @@ function getDefaultPeriodEnd() {
             await loadFinancialsData();
         }
 
-        async function loadFinancialsData() {
-            try {
-                const typeFilter = document.getElementById('fin-type-filter').value;
-                const dateFrom = document.getElementById('fin-date-from').value;
-                const dateTo = document.getElementById('fin-date-to').value;
-                
-                const params = {};
-                if (typeFilter) params.type = typeFilter;
-                if (dateFrom) params.date_from = dateFrom;
-                if (dateTo) params.date_to = dateTo;
-                
-                const [data, summaryData] = await Promise.all([
-                    apiCall('financials', params),
-                    apiCall('financials/summary', {date_from: dateFrom, date_to: dateTo})
-                ]);
-                
-                const transactions = data.transactions || [];
-                const summary = {
-    income: transactions.filter(t => t.type === 'income' && t.status === 'paid').reduce((sum, t) => sum + t.amount, 0),
-    expenses: transactions.filter(t => t.type === 'expense' && t.status === 'paid').reduce((sum, t) => sum + t.amount, 0),
-    pending_income: transactions.filter(t => t.type === 'income' && (t.status === 'pending' || t.status === 'sent')).reduce((sum, t) => sum + t.amount, 0),
-    pending_expenses: transactions.filter(t => t.type === 'expense' && t.status === 'pending').reduce((sum, t) => sum + t.amount, 0)
-};
-summary.net = summary.income - summary.expenses;
-summary.pending_net = summary.pending_income - summary.pending_expenses;
-                
-                document.getElementById('financials-summary').innerHTML = `
-    <div class="bg-green-50 p-4 rounded-xl border border-green-200">
-        <p class="text-sm text-green-700 font-medium">Total Income (Paid)</p>
-        <p class="text-2xl font-bold text-green-700">$${(summary.income || 0).toFixed(2)}</p>
-    </div>
-    <div class="bg-red-50 p-4 rounded-xl border border-red-200">
-        <p class="text-sm text-red-700 font-medium">Total Expenses (Paid)</p>
-        <p class="text-2xl font-bold text-red-700">$${(summary.expenses || 0).toFixed(2)}</p>
-    </div>
-    <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
-        <p class="text-sm text-blue-700 font-medium">Net Profit</p>
-        <p class="text-2xl font-bold text-blue-700">$${(summary.net || 0).toFixed(2)}</p>
-    </div>
-    <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
-        <p class="text-sm text-amber-700 font-medium">Pending</p>
-        <p class="text-lg font-bold text-amber-700">+$${(summary.pending_income || 0).toFixed(2)} receivable</p>
-        <p class="text-lg font-bold text-amber-700">-$${(summary.pending_expenses || 0).toFixed(2)} payable</p>
-    </div>
-`;
-                
-                if (transactions.length === 0) {
-                    document.getElementById('financials-table-body').innerHTML = 
-                        '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">No transactions found</td></tr>';
-                    return;
-                }
-                
-                const rows = transactions.map(t => {
-                    const typeColors = {
-                        'income': 'text-green-600 bg-green-50',
-                        'expense': 'text-red-600 bg-red-50',
-                        'transfer': 'text-blue-600 bg-blue-50'
-                    };
-                    const statusColors = {
-                        'paid': 'bg-green-100 text-green-700',
-                        'pending': 'bg-amber-100 text-amber-700',
-                        'sent': 'bg-blue-100 text-blue-700',
-                        'overdue': 'bg-red-100 text-red-700'
-                    };
-                    
-                    let actions = '';
-                    if (t.status === 'pending') {
-                        if (t.type === 'expense' && t.subtype === 'bill') {
-                            actions = `<button onclick="payBill(${t.transaction_id})" class="text-green-600 hover:text-green-800 font-medium">Pay</button>`;
-                        } else if (t.type === 'income' && t.subtype === 'invoice') {
-                            actions = `<button onclick="sendInvoice(${t.transaction_id})" class="text-blue-600 hover:text-blue-800 font-medium">Send</button>`;
-                        }
-                    }
-                    
-                    return `
-                        <tr class="hover:bg-slate-50">
-                            <td class="px-4 py-3 text-slate-900">${t.date}</td>
-                            <td class="px-4 py-3">
-                                <span class="px-2 py-1 rounded-full text-xs font-medium ${typeColors[t.type] || 'bg-slate-100 text-slate-600'}">
-                                    ${t.subtype || t.type}
-                                </span>
-                            </td>
-                            <td class="px-4 py-3 text-slate-600 capitalize">${t.category}</td>
-                            <td class="px-4 py-3 text-slate-900">${t.description}</td>
-                            <td class="px-4 py-3 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}">
-                                ${t.type === 'income' ? '+' : '-'}$${(t.amount || 0).toFixed(2)}
-                            </td>
-                            <td class="px-4 py-3">
-                                <span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[t.status] || 'bg-slate-100 text-slate-600'}">
-                                    ${t.status}
-                                </span>
-                            </td>
-                            <td class="px-4 py-3">${actions}</td>
-                        </tr>
-                    `;
-                }).join('');
-                
-                document.getElementById('financials-table-body').innerHTML = rows;
-                
-            } catch (e) {
-                document.getElementById('financials-table-body').innerHTML = 
-                    `<tr><td colspan="7" class="px-4 py-8 text-center text-red-500">${e.message || 'Failed to load financials'}</td></tr>`;
-            }
+            async function loadFinancialsData() {
+    try {
+        const typeFilter = document.getElementById('fin-type-filter').value;
+        const dateFrom = document.getElementById('fin-date-from').value;
+        const dateTo = document.getElementById('fin-date-to').value;
+        
+        const params = {};
+        if (typeFilter) params.type = typeFilter;
+        if (dateFrom) params.date_from = dateFrom;
+        if (dateTo) params.date_to = dateTo;
+        
+        const [data, summaryData] = await Promise.all([
+            apiCall('financials', params),
+            apiCall('financials/summary', {date_from: dateFrom, date_to: dateTo})
+        ]);
+        
+        const transactions = data.transactions || [];
+        const summary = summaryData.summary || {};
+        
+        document.getElementById('financials-summary').innerHTML = `
+            <div class="bg-green-50 p-4 rounded-xl border border-green-200">
+                <p class="text-sm text-green-700 font-medium">Total Income (Paid)</p>
+                <p class="text-2xl font-bold text-green-700">$${(summary.total_income || 0).toFixed(2)}</p>
+            </div>
+            <div class="bg-red-50 p-4 rounded-xl border border-red-200">
+                <p class="text-sm text-red-700 font-medium">Total Expenses (Paid)</p>
+                <p class="text-2xl font-bold text-red-700">$${(summary.total_expenses || 0).toFixed(2)}</p>
+            </div>
+            <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                <p class="text-sm text-blue-700 font-medium">Net Profit</p>
+                <p class="text-2xl font-bold text-blue-700">$${(summary.net_profit || 0).toFixed(2)}</p>
+            </div>
+            <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
+                <p class="text-sm text-amber-700 font-medium">Pending</p>
+                <p class="text-lg font-bold text-amber-700">+$${(summary.pending_receivables || 0).toFixed(2)} receivable</p>
+                <p class="text-lg font-bold text-amber-700">-$${(summary.pending_payables || 0).toFixed(2)} payable</p>
+            </div>
+        `;
+        
+        if (transactions.length === 0) {
+            document.getElementById('financials-table-body').innerHTML = 
+                '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">No transactions found</td></tr>';
+            return;
         }
+        
+        const rows = transactions.map(t => {
+            const typeColors = {
+                'income': 'text-green-600 bg-green-50',
+                'expense': 'text-red-600 bg-red-50',
+                'transfer': 'text-blue-600 bg-blue-50'
+            };
+            const statusColors = {
+                'paid': 'bg-green-100 text-green-700',
+                'pending': 'bg-amber-100 text-amber-700',
+                'sent': 'bg-blue-100 text-blue-700',
+                'overdue': 'bg-red-100 text-red-700'
+            };
+            
+            let actions = '';
+            if (t.status === 'pending') {
+                if (t.type === 'expense' && t.subtype === 'bill') {
+                    actions = `<button onclick="payBill(${t.transaction_id})" class="text-green-600 hover:text-green-800 font-medium">Pay</button>`;
+                } else if (t.type === 'income' && t.subtype === 'invoice') {
+                    actions = `<button onclick="sendInvoice(${t.transaction_id})" class="text-blue-600 hover:text-blue-800 font-medium">Send</button>`;
+                }
+            } else if (t.status === 'sent' && t.type === 'income' && t.subtype === 'invoice') {
+                // ADDED: Mark as Paid button for sent invoices
+                actions = `<button onclick="markInvoicePaid(${t.transaction_id})" class="text-green-600 hover:text-green-800 font-medium">Mark Paid</button>`;
+            } else {
+                actions = '-';
+            }
+            
+            return `
+                <tr class="hover:bg-slate-50">
+                    <td class="px-4 py-3 text-slate-900">${t.date}</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 rounded-full text-xs font-medium ${typeColors[t.type] || 'bg-slate-100 text-slate-600'}">
+                            ${t.subtype || t.type}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-slate-600 capitalize">${t.category}</td>
+                    <td class="px-4 py-3 text-slate-900">${t.description}</td>
+                    <td class="px-4 py-3 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}">
+                        ${t.type === 'income' ? '+' : '-'}$${(t.amount || 0).toFixed(2)}
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[t.status] || 'bg-slate-100 text-slate-600'}">
+                            ${t.status}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">${actions}</td>
+                </tr>
+            `;
+        }).join('');
+        
+        document.getElementById('financials-table-body').innerHTML = rows;
+        
+    } catch (e) {
+        document.getElementById('financials-table-body').innerHTML = 
+            `<tr><td colspan="7" class="px-4 py-8 text-center text-red-500">${e.message || 'Failed to load financials'}</td></tr>`;
+    }
+}
+            async function markInvoicePaid(invoiceId) {
+    try {
+        await apiCall('invoices/pay', {invoice_id: invoiceId});
+        clearCache();
+        showToast('Invoice marked as paid');
+        loadFinancialsData();
+    } catch (e) {
+        showToast(e.message || 'Failed to mark invoice as paid', 'error');
+    }
+}
 
         function createTransactionForm() {
             const modal = document.createElement('div');
@@ -3184,3 +3192,4 @@ function editProject(projectId) {
     </script>
 </body>
 </html>
+
