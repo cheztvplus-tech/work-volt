@@ -289,8 +289,8 @@
     }
 
         const modules = {
-            SuperAdmin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects'],
-            Admin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects'],
+            SuperAdmin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects', 'workflows'],
+            Admin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects', 'workflows'],
             Manager: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects'],
             Employee: ['dashboard', 'tasks', 'payroll', 'timesheets'],
             Contractor: ['dashboard', 'tasks', 'payroll', 'timesheets']
@@ -304,7 +304,8 @@
             timesheets: 'fa-clock',
             financials: 'fa-chart-line',
             crm: 'fa-address-book',
-            projects: 'fa-folder-open'
+            projects: 'fa-folder-open',
+            workflows: 'fa-robot'
         };
 
         function renderNav() {
@@ -3148,6 +3149,153 @@ function editProject(projectId) {
             }
         }
 
+            // Add loadWorkflows function
+            async function loadWorkflows(container) {
+              container.innerHTML = `
+                <div class="page-transition">
+                  <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-2xl font-bold text-slate-900">Workflow Automation</h2>
+          <p class="text-slate-500">Create automated rules and triggers</p>
+        </div>
+        <button onclick="createWorkflowForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+          <i class="fas fa-plus mr-2"></i>New Workflow
+        </button>
+      </div>
+      
+      <div id="workflows-list" class="space-y-4">
+        <div class="flex items-center justify-center h-64">
+          <i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  await loadWorkflowsData();
+}
+
+async function loadWorkflowsData() {
+  try {
+    const data = await apiCall('workflows');
+    const workflows = data.workflows || [];
+    
+    if (workflows.length === 0) {
+      document.getElementById('workflows-list').innerHTML = `
+        <div class="text-center py-12 bg-white rounded-xl border border-slate-200">
+          <i class="fas fa-robot text-4xl text-slate-300 mb-4"></i>
+          <p class="text-slate-500">No workflows configured yet</p>
+          <button onclick="createWorkflowForm()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Create your first workflow</button>
+        </div>
+      `;
+      return;
+    }
+    
+    const triggerLabels = {
+      'on_edit': 'When data changes',
+      'on_form_submit': 'On form submission',
+      'time_based': 'Scheduled',
+      'webhook': 'External webhook'
+    };
+    
+    const actionLabels = {
+      'email': 'Send Email',
+      'notification': 'In-app Notification',
+      'webhook': 'Call Webhook',
+      'update_sheet': 'Update Sheet',
+      'create_task': 'Create Task',
+      'slack': 'Slack Message'
+    };
+    
+    const html = workflows.map(wf => `
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 ${wf.active ? '' : 'opacity-60'}">
+        <div class="flex items-start justify-between mb-4">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <h3 class="font-bold text-slate-900">${wf.name}</h3>
+              ${wf.active ? 
+                '<span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">Active</span>' : 
+                '<span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full">Paused</span>'}
+            </div>
+            <p class="text-sm text-slate-500">${wf.description || 'No description'}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="toggleWorkflow('${wf.workflow_id}', ${!wf.active})" class="p-2 ${wf.active ? 'text-green-600 hover:bg-green-50' : 'text-slate-400 hover:bg-slate-100'} rounded-lg" title="${wf.active ? 'Pause' : 'Activate'}">
+              <i class="fas ${wf.active ? 'fa-pause' : 'fa-play'}"></i>
+            </button>
+            <button onclick="testWorkflow('${wf.workflow_id}')" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Test">
+              <i class="fas fa-vial"></i>
+            </button>
+            <button onclick="editWorkflow('${wf.workflow_id}')" class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg" title="Edit">
+              <i class="fas fa-pen"></i>
+            </button>
+            <button onclick="deleteWorkflow('${wf.workflow_id}')" class="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Delete">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-4 text-sm mb-3">
+          <div class="flex items-center gap-2 text-slate-600">
+            <i class="fas fa-bolt text-amber-500"></i>
+            <span>${triggerLabels[wf.trigger_type] || wf.trigger_type}</span>
+          </div>
+          <i class="fas fa-arrow-right text-slate-300"></i>
+          <div class="flex items-center gap-2 text-slate-600">
+            <i class="fas fa-cog text-blue-500"></i>
+            <span>${actionLabels[wf.action_type] || wf.action_type}</span>
+          </div>
+        </div>
+        
+        <div class="flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-100">
+          <span>Runs: ${wf.run_count || 0}</span>
+          <span>Last run: ${wf.last_run || 'Never'}</span>
+        </div>
+      </div>
+    `).join('');
+    
+    document.getElementById('workflows-list').innerHTML = html;
+  } catch (e) {
+    document.getElementById('workflows-list').innerHTML = 
+      `<div class="text-center py-12 text-red-500">${e.message || 'Failed to load workflows'}</div>`;
+  }
+}
+
+// Add form functions similar to your other modules...
+function createWorkflowForm() {
+  // Implementation for workflow creation form
+  showToast('Workflow creation form - implement based on your modal pattern');
+}
+
+async function toggleWorkflow(id, active) {
+  try {
+    await apiCall('workflows/toggle', {workflow_id: id, active: active});
+    showToast(active ? 'Workflow activated' : 'Workflow paused');
+    loadWorkflowsData();
+  } catch (e) {
+    showToast(e.message || 'Failed to toggle workflow', 'error');
+  }
+}
+
+async function testWorkflow(id) {
+  try {
+    await apiCall('workflows/test', {workflow_id: id});
+    showToast('Workflow test executed');
+  } catch (e) {
+    showToast(e.message || 'Test failed', 'error');
+  }
+}
+
+async function deleteWorkflow(id) {
+  if (!confirm('Delete this workflow?')) return;
+  try {
+    await apiCall('workflows', {method: 'DELETE', workflow_id: id});
+    showToast('Workflow deleted');
+    loadWorkflowsData();
+  } catch (e) {
+    showToast(e.message || 'Failed to delete', 'error');
+  }
+}
+        
         function stopNotificationPolling() {
             if (notificationPollingInterval) {
                 clearInterval(notificationPollingInterval);
@@ -3192,4 +3340,5 @@ function editProject(projectId) {
     </script>
 </body>
 </html>
+
 
