@@ -299,27 +299,15 @@ body.dropdown-open {
     border-radius: 3px;
 }
     /* Prevent table cell overlapping on mobile */
-#fin-recent-transactions td,
-#fin-recent-transactions th,
-#proj-details-table td,
-#proj-details-table th,
-#prod-employee-table td,
-#prod-employee-table th {
+#fin-recent-transactions,
+#proj-details-table,
+#prod-employee-table {
+    display: block;
+    overflow-x: auto;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* Allow horizontal scrolling on mobile for report tables */
-.report-content .overflow-x-auto {
     -webkit-overflow-scrolling: touch;
 }
-
-/* Ensure tables don't shrink below minimum content width on mobile */
-.report-content table {
-    min-width: 100%;
-}
-        
+  
     </style>
 </head>
     
@@ -3988,9 +3976,9 @@ let reportsCharts = {}; // Store chart instances
                     </div>
                     
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <h4 class="font-semibold text-slate-900 mb-4">Recent Transactions</h4>
-                        <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
-                            <table class="w-full text-left text-sm">
+    <h4 class="font-semibold text-slate-900 mb-4">Recent Transactions</h4>
+    <div style="overflow-x: auto;">
+        <table class="w-full text-left text-sm" style="min-width: 600px;">
                                 <thead class="bg-white border-b border-slate-200 sticky top-0">
                                     <tr>
                                         <th class="px-4 py-2 font-medium text-slate-700">Date</th>
@@ -4045,9 +4033,9 @@ let reportsCharts = {}; // Store chart instances
                     </div>
                     
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <h4 class="font-semibold text-slate-900 mb-4">Project Details</h4>
-                        <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
-                            <table class="w-full text-left text-sm">
+    <h4 class="font-semibold text-slate-900 mb-4">Project Details</h4>
+    <div style="overflow-x: auto;">
+        <table class="w-full text-left text-sm" style="min-width: 600px;">
                                 <thead class="bg-white border-b border-slate-200 sticky top-0">
                                     <tr>
                                         <th class="px-4 py-2 font-medium text-slate-700">Project</th>
@@ -4102,9 +4090,9 @@ let reportsCharts = {}; // Store chart instances
                     </div>
                     
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <h4 class="font-semibold text-slate-900 mb-4">Employee Productivity Details</h4>
-                        <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
-                            <table class="w-full text-left text-sm">
+    <h4 class="font-semibold text-slate-900 mb-4">Employee Productivity Details</h4>
+    <div style="overflow-x: auto;">
+        <table class="w-full text-left text-sm" style="min-width: 600px;">
                                 <thead class="bg-white border-b border-slate-200 sticky top-0">
                                     <tr>
                                         <th class="px-4 py-2 font-medium text-slate-700">Employee</th>
@@ -4946,4 +4934,5 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
     </script>
 </body>
 </html>
+
 
