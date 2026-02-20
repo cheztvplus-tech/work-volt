@@ -23,6 +23,34 @@
         @media (max-width: 768px) {
             .kanban-container { flex-direction: column; }
             .kanban-column { width: 100% !important; margin-bottom: 1rem; }
+            /* Reports Page Fixes */
+        .report-content {
+    min-height: 0; /* Prevent expansion */
+}
+
+        .chart-container {
+    position: relative;
+    height: 250px;
+    width: 100%;
+}
+
+/* Prevent canvas from expanding */
+canvas {
+    max-height: 250px !important;
+    width: 100% !important;
+}
+
+/* Ensure tables don't cause overflow */
+        .report-content table {
+    table-layout: fixed;
+}
+
+/* Hide overflow on report containers */
+#report-content-financial,
+#report-content-projects,
+#report-content-productivity {
+    overflow: hidden;
+}
         }
     </style>
 </head>
@@ -3557,7 +3585,7 @@ async function loadReports(container) {
     }
     
     container.innerHTML = `
-        <div class="page-transition">
+        <div class="page-transition h-full">
             <div class="flex items-center justify-between mb-6">
                 <div>
                     <h2 class="text-2xl font-bold text-slate-900">Reports & Analytics</h2>
@@ -3603,7 +3631,7 @@ async function loadReports(container) {
             </div>
             
             <!-- Report Tabs -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 mb-6">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 mb-6 overflow-hidden">
                 <div class="border-b border-slate-200">
                     <nav class="flex -mb-px">
                         <button onclick="switchReportTab('financial')" id="tab-financial" class="report-tab flex-1 py-4 px-6 text-center border-b-2 border-blue-600 text-blue-600 font-medium">
@@ -3619,7 +3647,7 @@ async function loadReports(container) {
                 </div>
                 
                 <!-- Financial Reports -->
-                <div id="report-content-financial" class="report-content p-6">
+                <div id="report-content-financial" class="report-content p-6" style="display: block;">
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                         <div class="bg-green-50 p-4 rounded-xl border border-green-200">
                             <p class="text-sm text-green-700 font-medium">Total Income</p>
@@ -3642,19 +3670,23 @@ async function loadReports(container) {
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                         <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <h4 class="font-semibold text-slate-900 mb-4">Income vs Expenses Trend</h4>
-                            <canvas id="chart-financial-trend" height="250"></canvas>
+                            <div class="chart-container" style="height: 250px; position: relative;">
+                                <canvas id="chart-financial-trend"></canvas>
+                            </div>
                         </div>
                         <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <h4 class="font-semibold text-slate-900 mb-4">Expense Breakdown</h4>
-                            <canvas id="chart-expense-breakdown" height="250"></canvas>
+                            <div class="chart-container" style="height: 250px; position: relative;">
+                                <canvas id="chart-expense-breakdown"></canvas>
+                            </div>
                         </div>
                     </div>
                     
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
                         <h4 class="font-semibold text-slate-900 mb-4">Recent Transactions</h4>
-                        <div class="overflow-x-auto">
+                        <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
                             <table class="w-full text-left text-sm">
-                                <thead class="bg-white border-b border-slate-200">
+                                <thead class="bg-white border-b border-slate-200 sticky top-0">
                                     <tr>
                                         <th class="px-4 py-2 font-medium text-slate-700">Date</th>
                                         <th class="px-4 py-2 font-medium text-slate-700">Type</th>
@@ -3672,7 +3704,7 @@ async function loadReports(container) {
                 </div>
                 
                 <!-- Projects Reports -->
-                <div id="report-content-projects" class="report-content p-6 hidden">
+                <div id="report-content-projects" class="report-content p-6" style="display: none;">
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                         <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
                             <p class="text-sm text-blue-700 font-medium">Active Projects</p>
@@ -3695,19 +3727,23 @@ async function loadReports(container) {
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                         <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <h4 class="font-semibold text-slate-900 mb-4">Project Status Distribution</h4>
-                            <canvas id="chart-project-status" height="250"></canvas>
+                            <div class="chart-container" style="height: 250px; position: relative;">
+                                <canvas id="chart-project-status"></canvas>
+                            </div>
                         </div>
                         <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <h4 class="font-semibold text-slate-900 mb-4">Budget vs Hours Utilization</h4>
-                            <canvas id="chart-project-utilization" height="250"></canvas>
+                            <div class="chart-container" style="height: 250px; position: relative;">
+                                <canvas id="chart-project-utilization"></canvas>
+                            </div>
                         </div>
                     </div>
                     
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
                         <h4 class="font-semibold text-slate-900 mb-4">Project Details</h4>
-                        <div class="overflow-x-auto">
+                        <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
                             <table class="w-full text-left text-sm">
-                                <thead class="bg-white border-b border-slate-200">
+                                <thead class="bg-white border-b border-slate-200 sticky top-0">
                                     <tr>
                                         <th class="px-4 py-2 font-medium text-slate-700">Project</th>
                                         <th class="px-4 py-2 font-medium text-slate-700">Status</th>
@@ -3725,7 +3761,7 @@ async function loadReports(container) {
                 </div>
                 
                 <!-- Productivity Reports -->
-                <div id="report-content-productivity" class="report-content p-6 hidden">
+                <div id="report-content-productivity" class="report-content p-6" style="display: none;">
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                         <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
                             <p class="text-sm text-blue-700 font-medium">Total Hours</p>
@@ -3748,19 +3784,23 @@ async function loadReports(container) {
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                         <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <h4 class="font-semibold text-slate-900 mb-4">Hours by Employee</h4>
-                            <canvas id="chart-hours-by-employee" height="250"></canvas>
+                            <div class="chart-container" style="height: 250px; position: relative;">
+                                <canvas id="chart-hours-by-employee"></canvas>
+                            </div>
                         </div>
                         <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <h4 class="font-semibold text-slate-900 mb-4">Task Completion Rate</h4>
-                            <canvas id="chart-task-completion" height="250"></canvas>
+                            <div class="chart-container" style="height: 250px; position: relative;">
+                                <canvas id="chart-task-completion"></canvas>
+                            </div>
                         </div>
                     </div>
                     
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
                         <h4 class="font-semibold text-slate-900 mb-4">Employee Productivity Details</h4>
-                        <div class="overflow-x-auto">
+                        <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
                             <table class="w-full text-left text-sm">
-                                <thead class="bg-white border-b border-slate-200">
+                                <thead class="bg-white border-b border-slate-200 sticky top-0">
                                     <tr>
                                         <th class="px-4 py-2 font-medium text-slate-700">Employee</th>
                                         <th class="px-4 py-2 font-medium text-slate-700">Role</th>
@@ -3786,6 +3826,9 @@ async function loadReports(container) {
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
     document.getElementById('report-date-from').value = firstDay.toISOString().split('T')[0];
     document.getElementById('report-date-to').value = today.toISOString().split('T')[0];
+    
+    // Initialize current tab
+    window.currentReportTab = 'financial';
     
     await loadAllReports();
 }
@@ -3832,12 +3875,21 @@ function switchReportTab(tab) {
     document.getElementById(`tab-${tab}`).classList.remove('border-transparent', 'text-slate-500');
     document.getElementById(`tab-${tab}`).classList.add('border-blue-600', 'text-blue-600');
     
-    // Show/hide content
-    document.querySelectorAll('.report-content').forEach(c => c.classList.add('hidden'));
-    document.getElementById(`report-content-${tab}`).classList.remove('hidden');
+    // Show/hide content using display none/block instead of hidden class
+    document.querySelectorAll('.report-content').forEach(c => {
+        c.style.display = 'none';
+    });
+    document.getElementById(`report-content-${tab}`).style.display = 'block';
     
     // Store current tab for export
     window.currentReportTab = tab;
+    
+    // Resize charts if they exist to prevent canvas expansion
+    Object.values(reportsCharts).forEach(chart => {
+        if (chart && typeof chart.resize === 'function') {
+            chart.resize();
+        }
+    });
 }
 
 async function loadAllReports() {
@@ -4212,6 +4264,7 @@ async function exportCurrentReport() {
     </script>
 </body>
 </html>
+
 
 
 
