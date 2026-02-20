@@ -3844,7 +3844,7 @@ async function deleteWorkflow(id) {
 
 let reportsCharts = {}; // Store chart instances
 
-                       async function loadReports(container) {
+               async function loadReports(container) {
     const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
     
     if (!isManager) {
@@ -3932,56 +3932,56 @@ let reportsCharts = {}; // Store chart instances
                 
                 <!-- Financial Reports -->
                 <div id="report-content-financial" class="report-content p-4 sm:p-6">
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                        <div class="bg-green-50 p-4 rounded-xl border border-green-200">
-                            <p class="text-sm text-green-700 font-medium">Total Income</p>
-                            <p id="fin-total-income" class="text-2xl font-bold text-green-700">$0.00</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                        <div class="bg-green-50 p-3 rounded-xl border border-green-200">
+                            <p class="text-xs text-green-700 font-medium">Total Income</p>
+                            <p id="fin-total-income" class="text-xl font-bold text-green-700">$0.00</p>
                         </div>
-                        <div class="bg-red-50 p-4 rounded-xl border border-red-200">
-                            <p class="text-sm text-red-700 font-medium">Total Expenses</p>
-                            <p id="fin-total-expense" class="text-2xl font-bold text-red-700">$0.00</p>
+                        <div class="bg-red-50 p-3 rounded-xl border border-red-200">
+                            <p class="text-xs text-red-700 font-medium">Total Expenses</p>
+                            <p id="fin-total-expense" class="text-xl font-bold text-red-700">$0.00</p>
                         </div>
-                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                            <p class="text-sm text-blue-700 font-medium">Net Profit</p>
-                            <p id="fin-net-profit" class="text-2xl font-bold text-blue-700">$0.00</p>
+                        <div class="bg-blue-50 p-3 rounded-xl border border-blue-200">
+                            <p class="text-xs text-blue-700 font-medium">Net Profit</p>
+                            <p id="fin-net-profit" class="text-xl font-bold text-blue-700">$0.00</p>
                         </div>
-                        <div class="bg-purple-50 p-4 rounded-xl border border-purple-200">
-                            <p class="text-sm text-purple-700 font-medium">Transactions</p>
-                            <p id="fin-trans-count" class="text-2xl font-bold text-purple-700">0</p>
+                        <div class="bg-purple-50 p-3 rounded-xl border border-purple-200">
+                            <p class="text-xs text-purple-700 font-medium">Transactions</p>
+                            <p id="fin-trans-count" class="text-xl font-bold text-purple-700">0</p>
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="font-semibold text-slate-900 mb-4">Income vs Expenses Trend</h4>
-                            <div class="chart-container" style="height: 250px; position: relative;">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Income vs Expenses Trend</h4>
+                            <div class="chart-container" style="height: 200px; position: relative;">
                                 <canvas id="chart-financial-trend"></canvas>
                             </div>
                         </div>
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="font-semibold text-slate-900 mb-4">Expense Breakdown</h4>
-                            <div class="chart-container" style="height: 250px; position: relative;">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Expense Breakdown</h4>
+                            <div class="chart-container" style="height: 200px; position: relative;">
                                 <canvas id="chart-expense-breakdown"></canvas>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <h4 class="font-semibold text-slate-900 mb-4">Recent Transactions</h4>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left text-sm">
-                                <thead class="bg-white border-b border-slate-200">
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <h4 class="font-semibold text-slate-900 mb-3 text-sm">Recent Transactions</h4>
+                        <div class="overflow-x-auto" style="max-height: 300px;">
+                            <table class="w-full text-left text-sm whitespace-nowrap">
+                                <thead class="bg-white border-b border-slate-200 sticky top-0">
                                     <tr>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Date</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Type</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Category</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Description</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700 text-right">Amount</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Status</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-20">Date</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-16">Type</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-24">Category</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs" style="min-width: 200px;">Description</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-20">Amount</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-16">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody id="fin-recent-transactions" class="divide-y divide-slate-200">
-                                    <tr><td colspan="6" class="px-4 py-4 text-center text-slate-400">Loading...</td></tr>
+                                    <tr><td colspan="6" class="px-3 py-4 text-center text-slate-400 text-sm">Loading...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -3990,55 +3990,55 @@ let reportsCharts = {}; // Store chart instances
                 
                 <!-- Projects Reports -->
                 <div id="report-content-projects" class="report-content p-4 sm:p-6 hidden">
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                            <p class="text-sm text-blue-700 font-medium">Active Projects</p>
-                            <p id="proj-active-count" class="text-2xl font-bold text-blue-700">0</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                        <div class="bg-blue-50 p-3 rounded-xl border border-blue-200">
+                            <p class="text-xs text-blue-700 font-medium">Active Projects</p>
+                            <p id="proj-active-count" class="text-xl font-bold text-blue-700">0</p>
                         </div>
-                        <div class="bg-green-50 p-4 rounded-xl border border-green-200">
-                            <p class="text-sm text-green-700 font-medium">Completed</p>
-                            <p id="proj-completed-count" class="text-2xl font-bold text-green-700">0</p>
+                        <div class="bg-green-50 p-3 rounded-xl border border-green-200">
+                            <p class="text-xs text-green-700 font-medium">Completed</p>
+                            <p id="proj-completed-count" class="text-xl font-bold text-green-700">0</p>
                         </div>
-                        <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
-                            <p class="text-sm text-amber-700 font-medium">Total Budget</p>
-                            <p id="proj-total-budget" class="text-2xl font-bold text-amber-700">$0.00</p>
+                        <div class="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                            <p class="text-xs text-amber-700 font-medium">Total Budget</p>
+                            <p id="proj-total-budget" class="text-xl font-bold text-amber-700">$0.00</p>
                         </div>
-                        <div class="bg-purple-50 p-4 rounded-xl border border-purple-200">
-                            <p class="text-sm text-purple-700 font-medium">Hours Used</p>
-                            <p id="proj-hours-used" class="text-2xl font-bold text-purple-700">0h</p>
+                        <div class="bg-purple-50 p-3 rounded-xl border border-purple-200">
+                            <p class="text-xs text-purple-700 font-medium">Hours Used</p>
+                            <p id="proj-hours-used" class="text-xl font-bold text-purple-700">0h</p>
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="font-semibold text-slate-900 mb-4">Project Status Distribution</h4>
-                            <div class="chart-container" style="height: 250px; position: relative;">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Project Status Distribution</h4>
+                            <div class="chart-container" style="height: 200px; position: relative;">
                                 <canvas id="chart-project-status"></canvas>
                             </div>
                         </div>
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="font-semibold text-slate-900 mb-4">Budget vs Hours Utilization</h4>
-                            <div class="chart-container" style="height: 250px; position: relative;">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Budget vs Hours Utilization</h4>
+                            <div class="chart-container" style="height: 200px; position: relative;">
                                 <canvas id="chart-project-utilization"></canvas>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <h4 class="font-semibold text-slate-900 mb-4">Project Details</h4>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left text-sm">
-                                <thead class="bg-white border-b border-slate-200">
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <h4 class="font-semibold text-slate-900 mb-3 text-sm">Project Details</h4>
+                        <div class="overflow-x-auto" style="max-height: 300px;">
+                            <table class="w-full text-left text-sm whitespace-nowrap">
+                                <thead class="bg-white border-b border-slate-200 sticky top-0">
                                     <tr>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Project</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Status</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Progress</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700 text-right">Budget</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Deadline</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs" style="min-width: 150px;">Project</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-20">Status</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-24">Progress</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-20">Budget</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-24">Deadline</th>
                                     </tr>
                                 </thead>
                                 <tbody id="proj-details-table" class="divide-y divide-slate-200">
-                                    <tr><td colspan="5" class="px-4 py-4 text-center text-slate-400">Loading...</td></tr>
+                                    <tr><td colspan="5" class="px-3 py-4 text-center text-slate-400 text-sm">Loading...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -4047,56 +4047,56 @@ let reportsCharts = {}; // Store chart instances
                 
                 <!-- Productivity Reports -->
                 <div id="report-content-productivity" class="report-content p-4 sm:p-6 hidden">
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                            <p class="text-sm text-blue-700 font-medium">Total Hours</p>
-                            <p id="prod-total-hours" class="text-2xl font-bold text-blue-700">0h</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                        <div class="bg-blue-50 p-3 rounded-xl border border-blue-200">
+                            <p class="text-xs text-blue-700 font-medium">Total Hours</p>
+                            <p id="prod-total-hours" class="text-xl font-bold text-blue-700">0h</p>
                         </div>
-                        <div class="bg-green-50 p-4 rounded-xl border border-green-200">
-                            <p class="text-sm text-green-700 font-medium">Tasks Completed</p>
-                            <p id="prod-tasks-completed" class="text-2xl font-bold text-green-700">0</p>
+                        <div class="bg-green-50 p-3 rounded-xl border border-green-200">
+                            <p class="text-xs text-green-700 font-medium">Tasks Completed</p>
+                            <p id="prod-tasks-completed" class="text-xl font-bold text-green-700">0</p>
                         </div>
-                        <div class="bg-purple-50 p-4 rounded-xl border border-purple-200">
-                            <p class="text-sm text-purple-700 font-medium">Avg Hours/Day</p>
-                            <p id="prod-avg-hours" class="text-2xl font-bold text-purple-700">0h</p>
+                        <div class="bg-purple-50 p-3 rounded-xl border border-purple-200">
+                            <p class="text-xs text-purple-700 font-medium">Avg Hours/Day</p>
+                            <p id="prod-avg-hours" class="text-xl font-bold text-purple-700">0h</p>
                         </div>
-                        <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
-                            <p class="text-sm text-amber-700 font-medium">Total Payroll</p>
-                            <p id="prod-total-payroll" class="text-2xl font-bold text-amber-700">$0.00</p>
+                        <div class="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                            <p class="text-xs text-amber-700 font-medium">Total Payroll</p>
+                            <p id="prod-total-payroll" class="text-xl font-bold text-amber-700">$0.00</p>
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="font-semibold text-slate-900 mb-4">Hours by Employee</h4>
-                            <div class="chart-container" style="height: 250px; position: relative;">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Hours by Employee</h4>
+                            <div class="chart-container" style="height: 200px; position: relative;">
                                 <canvas id="chart-hours-by-employee"></canvas>
                             </div>
                         </div>
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="font-semibold text-slate-900 mb-4">Task Completion Rate</h4>
-                            <div class="chart-container" style="height: 250px; position: relative;">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Task Completion Rate</h4>
+                            <div class="chart-container" style="height: 200px; position: relative;">
                                 <canvas id="chart-task-completion"></canvas>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <h4 class="font-semibold text-slate-900 mb-4">Employee Productivity Details</h4>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left text-sm">
-                                <thead class="bg-white border-b border-slate-200">
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <h4 class="font-semibold text-slate-900 mb-3 text-sm">Employee Productivity Details</h4>
+                        <div class="overflow-x-auto" style="max-height: 300px;">
+                            <table class="w-full text-left text-sm whitespace-nowrap">
+                                <thead class="bg-white border-b border-slate-200 sticky top-0">
                                     <tr>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Employee</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Role</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700 text-right">Hours</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700 text-right">Tasks</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700 text-right">Avg/Day</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700 text-right">Payroll</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs" style="min-width: 120px;">Employee</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-20">Role</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-16">Hours</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-16">Tasks</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-16">Avg/Day</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-20">Payroll</th>
                                     </tr>
                                 </thead>
                                 <tbody id="prod-employee-table" class="divide-y divide-slate-200">
-                                    <tr><td colspan="6" class="px-4 py-4 text-center text-slate-400">Loading...</td></tr>
+                                    <tr><td colspan="6" class="px-3 py-4 text-center text-slate-400 text-sm">Loading...</td></tr>
                                 </tbody>
                             </table>
                         </div>
