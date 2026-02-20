@@ -183,6 +183,51 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
+
+        /* ============================================
+           NOTIFICATION DROPDOWN MOBILE FIXES
+           ============================================ */
+#notification-dropdown {
+    /* Mobile-first: full width minus margins */
+    right: 0.5rem;
+    left: 0.5rem;
+    max-height: 80vh;
+    /* Prevent horizontal overflow */
+    max-width: calc(100vw - 1rem);
+}
+
+/* Small screens and up */
+@media (min-width: 640px) {
+    #notification-dropdown {
+        right: 0;
+        left: auto;
+        width: 20rem; /* w-80 */
+        max-width: none;
+    }
+}
+
+/* Medium screens and up */
+@media (min-width: 768px) {
+    #notification-dropdown {
+        width: 24rem; /* w-96 */
+    }
+}
+
+/* Ensure notification items don't overflow */
+#notification-list .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+}
+
+/* Prevent text overflow in notification items */
+#notification-list p {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    hyphens: auto;
+}
     </style>
 </head>
     
@@ -245,29 +290,29 @@
             <span id="notif-badge" class="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center hidden">0</span>
         </button>
         
-        <!-- Notification Dropdown -->
-        <div id="notification-dropdown" class="hidden absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
-            <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-                <h3 class="font-semibold text-slate-900">Notifications</h3>
-                <div class="flex gap-2">
-                    <button onclick="markAllNotificationsRead()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark all read</button>
-                    <button onclick="toggleNotificationDropdown()" class="text-slate-400 hover:text-slate-600">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            </div>
-            <div id="notification-list" class="max-h-96 overflow-y-auto">
-                <div class="p-8 text-center text-slate-400">
-                    <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-                    <p class="text-sm">Loading notifications...</p>
-                </div>
-            </div>
-            <div class="p-3 border-t border-slate-200 bg-slate-50 text-center">
-                <button onclick="showModule('notifications'); toggleNotificationDropdown();" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
-                    View All Notifications
-                </button>
-            </div>
+            <!-- Notification Dropdown -->
+<div id="notification-dropdown" class="hidden absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 md:w-96 max-w-sm bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden max-h-[80vh] flex flex-col">
+    <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 flex-shrink-0">
+        <h3 class="font-semibold text-slate-900">Notifications</h3>
+        <div class="flex gap-2">
+            <button onclick="markAllNotificationsRead()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark all read</button>
+            <button onclick="toggleNotificationDropdown()" class="text-slate-400 hover:text-slate-600">
+                <i class="fas fa-times"></i>
+            </button>
         </div>
+    </div>
+    <div id="notification-list" class="overflow-y-auto flex-1 p-0">
+        <div class="p-8 text-center text-slate-400">
+            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+            <p class="text-sm">Loading notifications...</p>
+        </div>
+    </div>
+    <div class="p-3 border-t border-slate-200 bg-slate-50 text-center flex-shrink-0">
+        <button onclick="showModule('notifications'); toggleNotificationDropdown();" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+            View All Notifications
+        </button>
+    </div>
+</div>
     </div>
     
     <div class="flex items-center gap-2 pl-3 border-l border-slate-200">
@@ -4785,6 +4830,7 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
     </script>
 </body>
 </html>
+
 
 
 
