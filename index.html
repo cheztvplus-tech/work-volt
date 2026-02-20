@@ -318,42 +318,48 @@
             `).join('');
         }
 
-        function showModule(moduleName) {
-            sessionStorage.setItem('lastModule', moduleName);
-            
-            document.querySelectorAll('.nav-item').forEach(n => {
-                n.classList.remove('bg-blue-50', 'text-blue-700');
-                n.classList.add('text-slate-600');
-            });
-            const navItem = document.querySelector(`[data-module="${moduleName}"]`);
-            if(navItem) {
-                navItem.classList.add('bg-blue-50', 'text-blue-700');
-                navItem.classList.remove('text-slate-600');
-            }
-            
-            const main = document.getElementById('main-content');
-            main.innerHTML = '<div class="flex items-center justify-center h-64"><i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i></div>';
-            
-            setTimeout(() => {
-                        switch(moduleName) {
-                            case 'dashboard': loadDashboard(main); break;
-                            case 'tasks': 
-    const preselectedProject = sessionStorage.getItem('preselectedProjectId');
-    loadTasks(main, preselectedProject);
-    if (preselectedProject) {
-        sessionStorage.removeItem('preselectedProjectId');
+            function showModule(moduleName) {
+    // Close sidebar on mobile when selecting a page
+    if (window.innerWidth < 1024) {
+        document.getElementById('sidebar').classList.add('hidden');
     }
-    break;
-                            case 'pipeline': loadPipeline(main); break;
-                            case 'payroll': loadPayroll(main); break;
-                            case 'timesheets': loadTimesheets(main); break;
-                            case 'financials': loadFinancials(main); break;
-                            case 'crm': loadCRM(main); break;
-                            case 'projects': loadProjects(main); break;
-                            default: main.innerHTML = '<div class="text-center py-20 text-slate-400">Module coming soon</div>';
+    
+    sessionStorage.setItem('lastModule', moduleName);
+    
+    document.querySelectorAll('.nav-item').forEach(n => {
+        n.classList.remove('bg-blue-50', 'text-blue-700');
+        n.classList.add('text-slate-600');
+    });
+    const navItem = document.querySelector(`[data-module="${moduleName}"]`);
+    if(navItem) {
+        navItem.classList.add('bg-blue-50', 'text-blue-700');
+        navItem.classList.remove('text-slate-600');
+    }
+    
+    const main = document.getElementById('main-content');
+    main.innerHTML = '<div class="flex items-center justify-center h-64"><i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i></div>';
+    
+    setTimeout(() => {
+        switch(moduleName) {
+            case 'dashboard': loadDashboard(main); break;
+            case 'tasks': 
+                const preselectedProject = sessionStorage.getItem('preselectedProjectId');
+                loadTasks(main, preselectedProject);
+                if (preselectedProject) {
+                    sessionStorage.removeItem('preselectedProjectId');
                 }
-            }, 50);
+                break;
+            case 'pipeline': loadPipeline(main); break;
+            case 'payroll': loadPayroll(main); break;
+            case 'timesheets': loadTimesheets(main); break;
+            case 'financials': loadFinancials(main); break;
+            case 'crm': loadCRM(main); break;
+            case 'projects': loadProjects(main); break;
+            case 'workflows': loadWorkflows(main); break; // Add this when ready
+            default: main.innerHTML = '<div class="text-center py-20 text-slate-400">Module coming soon</div>';
         }
+    }, 50);
+}
 
         async function loadDashboard(container) {
             container.innerHTML = `
@@ -1939,9 +1945,36 @@ function getDefaultPeriodEnd() {
             }
         }
 
-        function toggleSidebar() {
-            document.getElementById('sidebar').classList.toggle('hidden');
+            function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const isHidden = sidebar.classList.contains('hidden');
+    
+    if (isHidden) {
+        // Open sidebar
+        sidebar.classList.remove('hidden');
+        // Add click-outside listener for mobile
+        if (window.innerWidth < 1024) {
+            setTimeout(() => {
+                document.addEventListener('click', closeSidebarOnClickOutside);
+            }, 100);
         }
+    } else {
+        // Close sidebar
+        sidebar.classList.add('hidden');
+        document.removeEventListener('click', closeSidebarOnClickOutside);
+    }
+}
+
+function closeSidebarOnClickOutside(e) {
+    const sidebar = document.getElementById('sidebar');
+    const menuBtn = document.querySelector('button[onclick="toggleSidebar()"]');
+    
+    // If click is outside sidebar and not on menu button
+    if (!sidebar.contains(e.target) && !menuBtn.contains(e.target)) {
+        sidebar.classList.add('hidden');
+        document.removeEventListener('click', closeSidebarOnClickOutside);
+    }
+}
 
         function showToast(message, type = 'success') {
             const toast = document.createElement('div');
@@ -3340,5 +3373,6 @@ async function deleteWorkflow(id) {
     </script>
 </body>
 </html>
+
 
 
