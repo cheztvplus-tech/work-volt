@@ -3572,7 +3572,7 @@ async function deleteWorkflow(id) {
 
 let reportsCharts = {}; // Store chart instances
 
-async function loadReports(container) {
+        async function loadReports(container) {
     const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
     
     if (!isManager) {
@@ -3586,78 +3586,87 @@ async function loadReports(container) {
     }
     
     container.innerHTML = `
-        <div class="page-transition h-full">
-            <div class="flex items-center justify-between mb-6">
-                <div>
-                    <h2 class="text-2xl font-bold text-slate-900">Reports & Analytics</h2>
-                    <p class="text-slate-500">Comprehensive business insights and data visualization</p>
-                </div>
-                    <div class="flex gap-2">
-    <button onclick="refreshAllReports()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200">
-        <i class="fas fa-sync-alt mr-2"></i>Refresh
-    </button>
-    <div class="relative">
-        <button onclick="toggleExportDropdown()" id="export-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 flex items-center">
-            <i class="fas fa-download mr-2"></i>Export <i class="fas fa-chevron-down ml-2 text-xs"></i>
-        </button>
-        <div id="export-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 z-50 py-1">
-            <button onclick="exportCurrentReportCSV()" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
-                <i class="fas fa-file-csv text-green-600"></i> CSV Spreadsheet
-            </button>
-            <button onclick="exportCurrentReportPDF()" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
-                <i class="fas fa-file-pdf text-red-600"></i> PDF Report
-            </button>
-        </div>
-    </div>
-</div>
-            
-            <!-- Date Range Selector -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
-                <div class="flex flex-wrap gap-4 items-end">
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 mb-1">Report Period</label>
-                        <select id="report-period" onchange="updateDateRange()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
-                            <option value="this_month">This Month</option>
-                            <option value="last_month">Last Month</option>
-                            <option value="this_quarter">This Quarter</option>
-                            <option value="this_year">This Year</option>
-                            <option value="custom">Custom Range</option>
-                        </select>
-                    </div>
-                    <div id="custom-date-range" class="hidden flex gap-2">
+        <div class="page-transition">
+            <!-- Header Section -->
+            <div class="mb-6">
+                <div class="flex flex-col gap-4">
+                    <!-- Title Row -->
+                    <div class="flex items-start justify-between">
                         <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">From</label>
-                            <input type="date" id="report-date-from" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                            <h2 class="text-2xl font-bold text-slate-900">Reports & Analytics</h2>
+                            <p class="text-slate-500 mt-1">Comprehensive business insights and data visualization</p>
                         </div>
-                        <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">To</label>
-                            <input type="date" id="report-date-to" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                        <div class="flex gap-2">
+                            <button onclick="refreshAllReports()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 flex items-center gap-2">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <div class="relative">
+                                <button onclick="toggleExportDropdown()" id="export-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2">
+                                    <i class="fas fa-download"></i> Export <i class="fas fa-chevron-down text-xs ml-1"></i>
+                                </button>
+                                <div id="export-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 z-50 py-1">
+                                    <button onclick="exportCurrentReportCSV()" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                                        <i class="fas fa-file-csv text-green-600"></i> CSV Spreadsheet
+                                    </button>
+                                    <button onclick="exportCurrentReportPDF()" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                                        <i class="fas fa-file-pdf text-red-600"></i> PDF Report
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <button onclick="loadAllReports()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-                        <i class="fas fa-filter mr-1"></i>Apply
-                    </button>
+                    
+                    <!-- Date Filter Row -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                        <div class="flex flex-wrap items-end gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 mb-1">Report Period</label>
+                                <select id="report-period" onchange="updateDateRange()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[160px]">
+                                    <option value="this_month">This Month</option>
+                                    <option value="last_month">Last Month</option>
+                                    <option value="this_quarter">This Quarter</option>
+                                    <option value="this_year">This Year</option>
+                                    <option value="custom">Custom Range</option>
+                                </select>
+                            </div>
+                            <div id="custom-date-range" class="hidden flex gap-2">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">From</label>
+                                    <input type="date" id="report-date-from" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">To</label>
+                                    <input type="date" id="report-date-to" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                </div>
+                            </div>
+                            <button onclick="loadAllReports()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-2">
+                                <i class="fas fa-filter"></i> Apply Filter
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
             
             <!-- Report Tabs -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 mb-6 overflow-hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="border-b border-slate-200">
                     <nav class="flex -mb-px">
-                        <button onclick="switchReportTab('financial')" id="tab-financial" class="report-tab flex-1 py-4 px-6 text-center border-b-2 border-blue-600 text-blue-600 font-medium">
+                        <button onclick="switchReportTab('financial')" id="tab-financial" class="report-tab flex-1 py-4 px-4 text-center border-b-2 border-blue-600 text-blue-600 font-medium text-sm sm:text-base">
                             <i class="fas fa-chart-line mr-2"></i>Financial
                         </button>
-                        <button onclick="switchReportTab('projects')" id="tab-projects" class="report-tab flex-1 py-4 px-6 text-center border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium">
+                        <button onclick="switchReportTab('projects')" id="tab-projects" class="report-tab flex-1 py-4 px-4 text-center border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium text-sm sm:text-base">
                             <i class="fas fa-folder-open mr-2"></i>Projects
                         </button>
-                        <button onclick="switchReportTab('productivity')" id="tab-productivity" class="report-tab flex-1 py-4 px-6 text-center border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium">
+                        <button onclick="switchReportTab('productivity')" id="tab-productivity" class="report-tab flex-1 py-4 px-4 text-center border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium text-sm sm:text-base">
                             <i class="fas fa-users mr-2"></i>Productivity
                         </button>
                     </nav>
                 </div>
                 
+                <!-- [REST OF YOUR EXISTING TAB CONTENT REMAINS EXACTLY THE SAME] -->
                 <!-- Financial Reports -->
                 <div id="report-content-financial" class="report-content p-6" style="display: block;">
+                    <!-- ... keep all your existing financial report HTML ... -->
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                         <div class="bg-green-50 p-4 rounded-xl border border-green-200">
                             <p class="text-sm text-green-700 font-medium">Total Income</p>
@@ -3715,6 +3724,7 @@ async function loadReports(container) {
                 
                 <!-- Projects Reports -->
                 <div id="report-content-projects" class="report-content p-6" style="display: none;">
+                    <!-- ... keep all your existing projects report HTML ... -->
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                         <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
                             <p class="text-sm text-blue-700 font-medium">Active Projects</p>
@@ -3772,6 +3782,7 @@ async function loadReports(container) {
                 
                 <!-- Productivity Reports -->
                 <div id="report-content-productivity" class="report-content p-6" style="display: none;">
+                    <!-- ... keep all your existing productivity report HTML ... -->
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                         <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
                             <p class="text-sm text-blue-700 font-medium">Total Hours</p>
@@ -4275,6 +4286,9 @@ async function exportCurrentReportCSV() {
         productivity: 'Employee Productivity Report'
     };
     
+    // Close dropdown
+    document.getElementById('export-dropdown')?.classList.add('hidden');
+    
     // Show loading
     showToast('Generating PDF report...', 'info');
     
@@ -4289,162 +4303,157 @@ async function exportCurrentReportCSV() {
             data = await apiCall('reports/productivity', {date_from: dateFrom, date_to: dateTo});
         }
         
-        // Create print window
-        const printWindow = window.open('', '_blank');
+        // Generate content
+        const content = generatePDFContent(tab, data, dateFrom, dateTo);
+        const periodText = dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : 'All Time';
         
-        // Generate content based on report type
-        let content = generatePDFContent(tab, data, dateFrom, dateTo);
-        
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>${reportTitles[tab]} - Work Volt</title>
-                <style>
-                    @page { size: auto; margin: 15mm; }
-                    * { box-sizing: border-box; }
-                    body { 
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-                        margin: 0; 
-                        padding: 20px; 
-                        color: #1e293b; 
-                        line-height: 1.5;
-                    }
-                    .header { 
-                        border-bottom: 3px solid #2563eb; 
-                        padding-bottom: 15px; 
-                        margin-bottom: 25px;
-                    }
-                    .header h1 { 
-                        margin: 0 0 8px 0; 
-                        font-size: 28px; 
-                        color: #1e293b;
-                    }
-                    .meta { 
-                        color: #64748b; 
-                        font-size: 13px;
-                    }
-                    .summary-grid { 
-                        display: grid; 
-                        grid-template-columns: repeat(4, 1fr); 
-                        gap: 15px; 
-                        margin-bottom: 30px; 
-                    }
-                    .summary-card { 
-                        background: #f8fafc; 
-                        padding: 18px; 
-                        border-radius: 8px; 
-                        border-left: 4px solid #2563eb;
-                    }
-                    .summary-card.income { border-left-color: #16a34a; }
-                    .summary-card.expense { border-left-color: #dc2626; }
-                    .summary-card.warning { border-left-color: #f59e0b; }
-                    .summary-card h4 { 
-                        margin: 0 0 8px 0; 
-                        font-size: 11px; 
-                        color: #64748b; 
-                        text-transform: uppercase; 
-                        letter-spacing: 0.5px;
-                    }
-                    .summary-card .value { 
-                        font-size: 22px; 
-                        font-weight: 700; 
-                        color: #1e293b;
-                    }
-                    .section { margin-bottom: 30px; }
-                    .section h2 { 
-                        font-size: 18px; 
-                        color: #1e293b; 
-                        margin: 0 0 15px 0; 
-                        padding-bottom: 8px;
-                        border-bottom: 1px solid #e2e8f0;
-                    }
-                    table { 
-                        width: 100%; 
-                        border-collapse: collapse; 
-                        font-size: 12px;
-                    }
-                    th { 
-                        text-align: left; 
-                        padding: 10px; 
-                        background: #f1f5f9; 
-                        font-weight: 600; 
-                        color: #475569;
-                        border-bottom: 2px solid #e2e8f0;
-                    }
-                    td { 
-                        padding: 10px; 
-                        border-bottom: 1px solid #e2e8f0; 
-                        vertical-align: top;
-                    }
-                    tr:nth-child(even) { background: #fafafa; }
-                    .text-right { text-align: right; }
-                    .text-center { text-align: center; }
-                    .badge { 
-                        display: inline-block; 
-                        padding: 3px 8px; 
-                        border-radius: 12px; 
-                        font-size: 11px; 
-                        font-weight: 500;
-                    }
-                    .badge-green { background: #dcfce7; color: #166534; }
-                    .badge-red { background: #fee2e2; color: #991b1b; }
-                    .badge-blue { background: #dbeafe; color: #1e40af; }
-                    .badge-amber { background: #fef3c7; color: #92400e; }
-                    .text-green { color: #16a34a; }
-                    .text-red { color: #dc2626; }
-                    .text-blue { color: #2563eb; }
-                    .progress-bar { 
-                        width: 100%; 
-                        height: 8px; 
-                        background: #e2e8f0; 
-                        border-radius: 4px; 
-                        overflow: hidden;
-                        display: inline-block;
-                        vertical-align: middle;
-                    }
-                    .progress-fill { 
-                        height: 100%; 
-                        background: #2563eb; 
-                        border-radius: 4px;
-                    }
-                    .footer { 
-                        margin-top: 40px; 
-                        padding-top: 15px; 
-                        border-top: 1px solid #e2e8f0; 
-                        text-align: center; 
-                        color: #94a3b8; 
-                        font-size: 11px;
-                    }
-                    @media print {
-                        body { padding: 0; }
-                        .no-print { display: none !important; }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="no-print" style="position: fixed; top: 20px; right: 20px; z-index: 1000;">
-                    <button onclick="window.print()" style="padding: 12px 24px; background: #2563eb; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-                        <i class="fas fa-print" style="margin-right: 8px;"></i>Print / Save PDF
-                    </button>
+        // Create modal with print view
+        const modal = document.createElement('div');
+        modal.id = 'pdf-export-modal';
+        modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto';
+        modal.innerHTML = `
+            <div class="bg-white w-full max-w-5xl mx-4 my-8 rounded-xl shadow-2xl overflow-hidden" style="max-height: 90vh; display: flex; flex-direction: column;">
+                <!-- Modal Header -->
+                <div class="bg-slate-50 border-b border-slate-200 p-4 flex items-center justify-between flex-shrink-0">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900">${reportTitles[tab]}</h3>
+                        <p class="text-sm text-slate-500">${periodText}</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="printPDFModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2">
+                            <i class="fas fa-print"></i> Print / Save PDF
+                        </button>
+                        <button onclick="document.getElementById('pdf-export-modal').remove()" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-300">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
                 </div>
-                ${content}
-                <div class="footer">
-                    Generated by Work Volt on ${new Date().toLocaleString()} • ${currentUser.name} • ${currentUser.email}
+                
+                <!-- Print Content -->
+                <div id="pdf-print-area" class="p-8 overflow-y-auto bg-white" style="flex: 1;">
+                    <style>
+                        @media print {
+                            @page { size: auto; margin: 15mm; }
+                            body { margin: 0; padding: 0; }
+                            #pdf-print-area { overflow: visible; }
+                            .no-print { display: none !important; }
+                        }
+                        .pdf-content { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; line-height: 1.5; }
+                        .pdf-header { border-bottom: 3px solid #2563eb; padding-bottom: 15px; margin-bottom: 25px; }
+                        .pdf-header h1 { margin: 0 0 8px 0; font-size: 28px; color: #1e293b; }
+                        .pdf-meta { color: #64748b; font-size: 13px; }
+                        .pdf-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
+                        .pdf-card { background: #f8fafc; padding: 18px; border-radius: 8px; border-left: 4px solid #2563eb; }
+                        .pdf-card.income { border-left-color: #16a34a; }
+                        .pdf-card.expense { border-left-color: #dc2626; }
+                        .pdf-card.warning { border-left-color: #f59e0b; }
+                        .pdf-card h4 { margin: 0 0 8px 0; font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+                        .pdf-card .value { font-size: 22px; font-weight: 700; color: #1e293b; }
+                        .pdf-section { margin-bottom: 30px; }
+                        .pdf-section h2 { font-size: 18px; color: #1e293b; margin: 0 0 15px 0; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
+                        .pdf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                        .pdf-table th { text-align: left; padding: 10px; background: #f1f5f9; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; }
+                        .pdf-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+                        .pdf-table tr:nth-child(even) { background: #fafafa; }
+                        .text-right { text-align: right; }
+                        .text-center { text-align: center; }
+                        .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+                        .badge-green { background: #dcfce7; color: #166534; }
+                        .badge-red { background: #fee2e2; color: #991b1b; }
+                        .badge-blue { background: #dbeafe; color: #1e40af; }
+                        .badge-amber { background: #fef3c7; color: #92400e; }
+                        .text-green { color: #16a34a; }
+                        .text-red { color: #dc2626; }
+                        .text-blue { color: #2563eb; }
+                        .progress-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
+                        .progress-fill { height: 100%; background: #2563eb; border-radius: 4px; }
+                        .pdf-footer { margin-top: 40px; padding-top: 15px; border-top: 1px solid #e2e8f0; text-align: center; color: #94a3b8; font-size: 11px; }
+                    </style>
+                    <div class="pdf-content">
+                        ${content}
+                        <div class="pdf-footer">
+                            Generated by Work Volt on ${new Date().toLocaleString()} • ${currentUser.name} • ${currentUser.email}
+                        </div>
+                    </div>
                 </div>
-            </body>
-            </html>
-        `);
+            </div>
+        `;
         
-        printWindow.document.close();
-        showToast('PDF report ready - use browser print dialog to save', 'success');
+        document.body.appendChild(modal);
+        showToast('PDF ready - click Print to save', 'success');
         
     } catch (e) {
         showToast('Failed to generate PDF: ' + e.message, 'error');
+        console.error('PDF export error:', e);
     }
 }
 
-function generatePDFContent(tab, data, dateFrom, dateTo) {
+function printPDFModal() {
+    const printContent = document.getElementById('pdf-print-area').innerHTML;
+    const printWindow = window.open('', '_blank');
+    
+    if (!printWindow || printWindow.closed || typeof printWindow.closed === 'undefined') {
+        showToast('Popup blocked - please allow popups for this site', 'error');
+        return;
+    }
+    
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Work Volt Report</title>
+            <style>
+                @page { size: auto; margin: 15mm; }
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; color: #1e293b; line-height: 1.5; }
+                .pdf-header { border-bottom: 3px solid #2563eb; padding-bottom: 15px; margin-bottom: 25px; }
+                .pdf-header h1 { margin: 0 0 8px 0; font-size: 28px; color: #1e293b; }
+                .pdf-meta { color: #64748b; font-size: 13px; }
+                .pdf-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
+                .pdf-card { background: #f8fafc; padding: 18px; border-radius: 8px; border-left: 4px solid #2563eb; }
+                .pdf-card.income { border-left-color: #16a34a; }
+                .pdf-card.expense { border-left-color: #dc2626; }
+                .pdf-card.warning { border-left-color: #f59e0b; }
+                .pdf-card h4 { margin: 0 0 8px 0; font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+                .pdf-card .value { font-size: 22px; font-weight: 700; color: #1e293b; }
+                .pdf-section { margin-bottom: 30px; }
+                .pdf-section h2 { font-size: 18px; color: #1e293b; margin: 0 0 15px 0; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
+                .pdf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                .pdf-table th { text-align: left; padding: 10px; background: #f1f5f9; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; }
+                .pdf-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+                .pdf-table tr:nth-child(even) { background: #fafafa; }
+                .text-right { text-align: right; }
+                .text-center { text-align: center; }
+                .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+                .badge-green { background: #dcfce7; color: #166534; }
+                .badge-red { background: #fee2e2; color: #991b1b; }
+                .badge-blue { background: #dbeafe; color: #1e40af; }
+                .badge-amber { background: #fef3c7; color: #92400e; }
+                .text-green { color: #16a34a; }
+                .text-red { color: #dc2626; }
+                .text-blue { color: #2563eb; }
+                .progress-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
+                .progress-fill { height: 100%; background: #2563eb; border-radius: 4px; }
+                .pdf-footer { margin-top: 40px; padding-top: 15px; border-top: 1px solid #e2e8f0; text-align: center; color: #94a3b8; font-size: 11px; }
+            </style>
+        </head>
+        <body>
+            ${printContent}
+            <script>
+                window.onload = function() {
+                    setTimeout(function() {
+                        window.print();
+                        window.close();
+                    }, 500);
+                };
+            </script>
+        </body>
+        </html>
+    `);
+    
+    printWindow.document.close();
+}
+
+            function generatePDFContent(tab, data, dateFrom, dateTo) {
     const periodText = dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : 'All Time';
     
     if (tab === 'financial') {
@@ -4453,7 +4462,7 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
                 <td>${t.date}</td>
                 <td><span class="badge ${t.type === 'income' ? 'badge-green' : 'badge-red'}">${t.type}</span></td>
                 <td>${t.category}</td>
-                <td>${t.description.substring(0, 50)}${t.description.length > 50 ? '...' : ''}</td>
+                <td>${t.description ? (t.description.substring(0, 40) + (t.description.length > 40 ? '...' : '')) : '-'}</td>
                 <td class="text-right ${t.type === 'income' ? 'text-green' : 'text-red'} font-bold">
                     ${t.type === 'income' ? '+' : '-'}$${(t.amount || 0).toFixed(2)}
                 </td>
@@ -4462,33 +4471,33 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
         `).join('');
         
         return `
-            <div class="header">
-                <h1><i class="fas fa-chart-line" style="color: #2563eb; margin-right: 10px;"></i>Financial Report</h1>
-                <div class="meta">Period: ${periodText} • Generated: ${new Date().toLocaleDateString()}</div>
+            <div class="pdf-header">
+                <h1>Financial Report</h1>
+                <div class="pdf-meta">Period: ${periodText} • Generated: ${new Date().toLocaleDateString()}</div>
             </div>
-            <div class="summary-grid">
-                <div class="summary-card income">
+            <div class="pdf-summary">
+                <div class="pdf-card income">
                     <h4>Total Income</h4>
                     <div class="value text-green">$${(data.summary.total_income || 0).toFixed(2)}</div>
                 </div>
-                <div class="summary-card expense">
+                <div class="pdf-card expense">
                     <h4>Total Expenses</h4>
                     <div class="value text-red">$${(data.summary.total_expense || 0).toFixed(2)}</div>
                 </div>
-                <div class="summary-card">
+                <div class="pdf-card">
                     <h4>Net Profit</h4>
                     <div class="value ${data.summary.net_profit >= 0 ? 'text-green' : 'text-red'}">
                         $${(data.summary.net_profit || 0).toFixed(2)}
                     </div>
                 </div>
-                <div class="summary-card warning">
+                <div class="pdf-card warning">
                     <h4>Transactions</h4>
                     <div class="value">${data.summary.transaction_count || 0}</div>
                 </div>
             </div>
-            <div class="section">
+            <div class="pdf-section">
                 <h2>Recent Transactions</h2>
-                <table>
+                <table class="pdf-table">
                     <thead>
                         <tr>
                             <th>Date</th>
@@ -4510,45 +4519,45 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
                 <td><strong>${p.name}</strong></td>
                 <td><span class="badge ${p.status === 'active' ? 'badge-blue' : p.status === 'completed' ? 'badge-green' : 'badge-amber'}">${p.status}</span></td>
                 <td>
-                    <div class="progress-bar" style="width: 80px;">
+                    <div class="progress-bar" style="width: 80px; display: inline-block;">
                         <div class="progress-fill" style="width: ${p.progress}%; background: ${p.progress >= 80 ? '#16a34a' : p.progress >= 50 ? '#2563eb' : '#f59e0b'};"></div>
                     </div>
                     <span style="margin-left: 8px; font-size: 11px;">${p.progress}%</span>
                 </td>
                 <td class="text-right">$${(p.budget || 0).toFixed(2)}</td>
-                <td class="text-right">${p.hours_used.toFixed(1)}h / ${p.hourly_budget}h</td>
-                <td class="text-center ${p.is_overdue ? 'text-red' : p.days_remaining < 7 ? 'text-amber' : ''}">
+                <td class="text-right">${p.hours_used.toFixed(1)}h / ${p.hourly_budget || 0}h</td>
+                <td class="text-center ${p.is_overdue ? 'text-red' : p.days_remaining !== null && p.days_remaining < 7 ? 'text-amber' : ''}">
                     ${p.is_overdue ? 'Overdue' : p.days_remaining !== null ? p.days_remaining + ' days' : '-'}
                 </td>
             </tr>
         `).join('');
         
         return `
-            <div class="header">
-                <h1><i class="fas fa-folder-open" style="color: #2563eb; margin-right: 10px;"></i>Project Analytics Report</h1>
-                <div class="meta">Generated: ${new Date().toLocaleDateString()}</div>
+            <div class="pdf-header">
+                <h1>Project Analytics Report</h1>
+                <div class="pdf-meta">Generated: ${new Date().toLocaleDateString()}</div>
             </div>
-            <div class="summary-grid">
-                <div class="summary-card">
+            <div class="pdf-summary">
+                <div class="pdf-card">
                     <h4>Active Projects</h4>
                     <div class="value text-blue">${data.summary.status_breakdown.active || 0}</div>
                 </div>
-                <div class="summary-card income">
+                <div class="pdf-card income">
                     <h4>Completed</h4>
                     <div class="value text-green">${data.summary.status_breakdown.completed || 0}</div>
                 </div>
-                <div class="summary-card warning">
+                <div class="pdf-card warning">
                     <h4>Total Budget</h4>
                     <div class="value">$${(data.summary.total_budget || 0).toFixed(2)}</div>
                 </div>
-                <div class="summary-card">
+                <div class="pdf-card">
                     <h4>Hours Used</h4>
                     <div class="value">${(data.summary.total_hours_used || 0).toFixed(1)}h</div>
                 </div>
             </div>
-            <div class="section">
+            <div class="pdf-section">
                 <h2>Project Details</h2>
-                <table>
+                <table class="pdf-table">
                     <thead>
                         <tr>
                             <th>Project</th>
@@ -4580,31 +4589,31 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
         `).join('');
         
         return `
-            <div class="header">
-                <h1><i class="fas fa-users" style="color: #2563eb; margin-right: 10px;"></i>Employee Productivity Report</h1>
-                <div class="meta">Period: ${periodText} • Generated: ${new Date().toLocaleDateString()}</div>
+            <div class="pdf-header">
+                <h1>Employee Productivity Report</h1>
+                <div class="pdf-meta">Period: ${periodText} • Generated: ${new Date().toLocaleDateString()}</div>
             </div>
-            <div class="summary-grid">
-                <div class="summary-card">
+            <div class="pdf-summary">
+                <div class="pdf-card">
                     <h4>Total Hours</h4>
                     <div class="value text-blue">${(data.summary.total_hours || 0).toFixed(1)}h</div>
                 </div>
-                <div class="summary-card income">
+                <div class="pdf-card income">
                     <h4>Tasks Completed</h4>
                     <div class="value text-green">${data.summary.total_tasks_completed || 0}</div>
                 </div>
-                <div class="summary-card warning">
+                <div class="pdf-card warning">
                     <h4>Avg Hours/Day</h4>
                     <div class="value">${(data.summary.avg_productivity || 0).toFixed(1)}h</div>
                 </div>
-                <div class="summary-card expense">
+                <div class="pdf-card expense">
                     <h4>Total Payroll</h4>
                     <div class="value">$${(data.summary.total_payroll || 0).toFixed(2)}</div>
                 </div>
             </div>
-            <div class="section">
+            <div class="pdf-section">
                 <h2>Employee Performance</h2>
-                <table>
+                <table class="pdf-table">
                     <thead>
                         <tr>
                             <th>Employee</th>
@@ -4649,4 +4658,5 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
     </script>
 </body>
 </html>
+
 
