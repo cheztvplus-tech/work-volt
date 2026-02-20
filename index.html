@@ -387,8 +387,8 @@ canvas {
             case 'crm': loadCRM(main); break;
             case 'projects': loadProjects(main); break;
             case 'workflows': loadWorkflows(main); break; // Add this when ready
+            case 'reports': loadReports(main); break;
             case 'email-settings': loadEmailSettings(main); break;
-            case 'reports': loadReports(main); break;    
             default: main.innerHTML = '<div class="text-center py-20 text-slate-400">Module coming soon</div>';
         }
     }, 50);
@@ -4264,6 +4264,7 @@ async function exportCurrentReport() {
     </script>
 </body>
 </html>
+
 
 
 
