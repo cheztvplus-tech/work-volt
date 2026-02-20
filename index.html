@@ -6,6 +6,7 @@
     <title>Work Volt</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js "></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .kanban-scroll::-webkit-scrollbar { height: 8px; }
@@ -289,9 +290,9 @@
     }
 
         const modules = {
-            SuperAdmin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects', 'workflows', 'email-settings'],
-            Admin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects', 'workflows', 'email-settings'],
-            Manager: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects'],
+            SuperAdmin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects', 'workflows', 'email-settings', 'reports'],
+            Admin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects', 'workflows', 'email-settings', 'reports'],
+            Manager: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects', 'reports'],
             Employee: ['dashboard', 'tasks', 'payroll', 'timesheets'],
             Contractor: ['dashboard', 'tasks', 'payroll', 'timesheets']
         };
@@ -306,7 +307,8 @@
             crm: 'fa-address-book',
             projects: 'fa-folder-open',
             workflows: 'fa-robot',
-            'email-settings': 'fa-envelope-cog'
+            'email-settings': 'fa-envelope-cog',
+            reports: 'fa-chart-pie'
         };
 
         function renderNav() {
@@ -358,6 +360,7 @@
             case 'projects': loadProjects(main); break;
             case 'workflows': loadWorkflows(main); break; // Add this when ready
             case 'email-settings': loadEmailSettings(main); break;
+            case 'reports': loadReports(main); break;    
             default: main.innerHTML = '<div class="text-center py-20 text-slate-400">Module coming soon</div>';
         }
     }, 50);
@@ -3536,6 +3539,652 @@ async function deleteWorkflow(id) {
             }
         });
 
+        // ==================== REPORTS MODULE (PHASE 6) ====================
+
+let reportsCharts = {}; // Store chart instances
+
+async function loadReports(container) {
+    const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
+    
+    if (!isManager) {
+        container.innerHTML = `
+            <div class="text-center py-20">
+                <i class="fas fa-lock text-4xl text-slate-300 mb-4"></i>
+                <p class="text-slate-500">Reports are only available to managers and administrators</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="page-transition">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-900">Reports & Analytics</h2>
+                    <p class="text-slate-500">Comprehensive business insights and data visualization</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="refreshAllReports()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200">
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                    <button onclick="exportCurrentReport()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                        <i class="fas fa-download mr-2"></i>Export
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Date Range Selector -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                <div class="flex flex-wrap gap-4 items-end">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Report Period</label>
+                        <select id="report-period" onchange="updateDateRange()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                            <option value="this_month">This Month</option>
+                            <option value="last_month">Last Month</option>
+                            <option value="this_quarter">This Quarter</option>
+                            <option value="this_year">This Year</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                    </div>
+                    <div id="custom-date-range" class="hidden flex gap-2">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">From</label>
+                            <input type="date" id="report-date-from" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">To</label>
+                            <input type="date" id="report-date-to" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                        </div>
+                    </div>
+                    <button onclick="loadAllReports()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                        <i class="fas fa-filter mr-1"></i>Apply
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Report Tabs -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 mb-6">
+                <div class="border-b border-slate-200">
+                    <nav class="flex -mb-px">
+                        <button onclick="switchReportTab('financial')" id="tab-financial" class="report-tab flex-1 py-4 px-6 text-center border-b-2 border-blue-600 text-blue-600 font-medium">
+                            <i class="fas fa-chart-line mr-2"></i>Financial
+                        </button>
+                        <button onclick="switchReportTab('projects')" id="tab-projects" class="report-tab flex-1 py-4 px-6 text-center border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium">
+                            <i class="fas fa-folder-open mr-2"></i>Projects
+                        </button>
+                        <button onclick="switchReportTab('productivity')" id="tab-productivity" class="report-tab flex-1 py-4 px-6 text-center border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium">
+                            <i class="fas fa-users mr-2"></i>Productivity
+                        </button>
+                    </nav>
+                </div>
+                
+                <!-- Financial Reports -->
+                <div id="report-content-financial" class="report-content p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-green-50 p-4 rounded-xl border border-green-200">
+                            <p class="text-sm text-green-700 font-medium">Total Income</p>
+                            <p id="fin-total-income" class="text-2xl font-bold text-green-700">$0.00</p>
+                        </div>
+                        <div class="bg-red-50 p-4 rounded-xl border border-red-200">
+                            <p class="text-sm text-red-700 font-medium">Total Expenses</p>
+                            <p id="fin-total-expense" class="text-2xl font-bold text-red-700">$0.00</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                            <p class="text-sm text-blue-700 font-medium">Net Profit</p>
+                            <p id="fin-net-profit" class="text-2xl font-bold text-blue-700">$0.00</p>
+                        </div>
+                        <div class="bg-purple-50 p-4 rounded-xl border border-purple-200">
+                            <p class="text-sm text-purple-700 font-medium">Transactions</p>
+                            <p id="fin-trans-count" class="text-2xl font-bold text-purple-700">0</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-4">Income vs Expenses Trend</h4>
+                            <canvas id="chart-financial-trend" height="250"></canvas>
+                        </div>
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-4">Expense Breakdown</h4>
+                            <canvas id="chart-expense-breakdown" height="250"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <h4 class="font-semibold text-slate-900 mb-4">Recent Transactions</h4>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-white border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-4 py-2 font-medium text-slate-700">Date</th>
+                                        <th class="px-4 py-2 font-medium text-slate-700">Type</th>
+                                        <th class="px-4 py-2 font-medium text-slate-700">Category</th>
+                                        <th class="px-4 py-2 font-medium text-slate-700 text-right">Amount</th>
+                                        <th class="px-4 py-2 font-medium text-slate-700">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="fin-recent-transactions" class="divide-y divide-slate-200">
+                                    <tr><td colspan="5" class="px-4 py-4 text-center text-slate-400">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Projects Reports -->
+                <div id="report-content-projects" class="report-content p-6 hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                            <p class="text-sm text-blue-700 font-medium">Active Projects</p>
+                            <p id="proj-active-count" class="text-2xl font-bold text-blue-700">0</p>
+                        </div>
+                        <div class="bg-green-50 p-4 rounded-xl border border-green-200">
+                            <p class="text-sm text-green-700 font-medium">Completed</p>
+                            <p id="proj-completed-count" class="text-2xl font-bold text-green-700">0</p>
+                        </div>
+                        <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
+                            <p class="text-sm text-amber-700 font-medium">Total Budget</p>
+                            <p id="proj-total-budget" class="text-2xl font-bold text-amber-700">$0.00</p>
+                        </div>
+                        <div class="bg-purple-50 p-4 rounded-xl border border-purple-200">
+                            <p class="text-sm text-purple-700 font-medium">Hours Used</p>
+                            <p id="proj-hours-used" class="text-2xl font-bold text-purple-700">0h</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-4">Project Status Distribution</h4>
+                            <canvas id="chart-project-status" height="250"></canvas>
+                        </div>
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-4">Budget vs Hours Utilization</h4>
+                            <canvas id="chart-project-utilization" height="250"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <h4 class="font-semibold text-slate-900 mb-4">Project Details</h4>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-white border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-4 py-2 font-medium text-slate-700">Project</th>
+                                        <th class="px-4 py-2 font-medium text-slate-700">Status</th>
+                                        <th class="px-4 py-2 font-medium text-slate-700">Progress</th>
+                                        <th class="px-4 py-2 font-medium text-slate-700 text-right">Budget</th>
+                                        <th class="px-4 py-2 font-medium text-slate-700">Deadline</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="proj-details-table" class="divide-y divide-slate-200">
+                                    <tr><td colspan="5" class="px-4 py-4 text-center text-slate-400">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Productivity Reports -->
+                <div id="report-content-productivity" class="report-content p-6 hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                            <p class="text-sm text-blue-700 font-medium">Total Hours</p>
+                            <p id="prod-total-hours" class="text-2xl font-bold text-blue-700">0h</p>
+                        </div>
+                        <div class="bg-green-50 p-4 rounded-xl border border-green-200">
+                            <p class="text-sm text-green-700 font-medium">Tasks Completed</p>
+                            <p id="prod-tasks-completed" class="text-2xl font-bold text-green-700">0</p>
+                        </div>
+                        <div class="bg-purple-50 p-4 rounded-xl border border-purple-200">
+                            <p class="text-sm text-purple-700 font-medium">Avg Hours/Day</p>
+                            <p id="prod-avg-hours" class="text-2xl font-bold text-purple-700">0h</p>
+                        </div>
+                        <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
+                            <p class="text-sm text-amber-700 font-medium">Total Payroll</p>
+                            <p id="prod-total-payroll" class="text-2xl font-bold text-amber-700">$0.00</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-4">Hours by Employee</h4>
+                            <canvas id="chart-hours-by-employee" height="250"></canvas>
+                        </div>
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-4">Task Completion Rate</h4>
+                            <canvas id="chart-task-completion" height="250"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <h4 class="font-semibold text-slate-900 mb-4">Employee Productivity Details</h4>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-white border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-4 py-2 font-medium text-slate-700">Employee</th>
+                                        <th class="px-4 py-2 font-medium text-slate-700">Role</th>
+                                        <th class="text-right px-4 py-2 font-medium text-slate-700">Hours</th>
+                                        <th class="text-right px-4 py-2 font-medium text-slate-700">Tasks</th>
+                                        <th class="text-right px-4 py-2 font-medium text-slate-700">Avg/Day</th>
+                                        <th class="text-right px-4 py-2 font-medium text-slate-700">Payroll</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="prod-employee-table" class="divide-y divide-slate-200">
+                                    <tr><td colspan="6" class="px-4 py-4 text-center text-slate-400">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Set default dates
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    document.getElementById('report-date-from').value = firstDay.toISOString().split('T')[0];
+    document.getElementById('report-date-to').value = today.toISOString().split('T')[0];
+    
+    await loadAllReports();
+}
+
+function updateDateRange() {
+    const period = document.getElementById('report-period').value;
+    const customRange = document.getElementById('custom-date-range');
+    
+    if (period === 'custom') {
+        customRange.classList.remove('hidden');
+    } else {
+        customRange.classList.add('hidden');
+        const today = new Date();
+        let from = new Date();
+        
+        switch(period) {
+            case 'this_month':
+                from = new Date(today.getFullYear(), today.getMonth(), 1);
+                break;
+            case 'last_month':
+                from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                today.setDate(0);
+                break;
+            case 'this_quarter':
+                const quarter = Math.floor(today.getMonth() / 3);
+                from = new Date(today.getFullYear(), quarter * 3, 1);
+                break;
+            case 'this_year':
+                from = new Date(today.getFullYear(), 0, 1);
+                break;
+        }
+        
+        document.getElementById('report-date-from').value = from.toISOString().split('T')[0];
+        document.getElementById('report-date-to').value = today.toISOString().split('T')[0];
+    }
+}
+
+function switchReportTab(tab) {
+    // Update tab styles
+    document.querySelectorAll('.report-tab').forEach(t => {
+        t.classList.remove('border-blue-600', 'text-blue-600');
+        t.classList.add('border-transparent', 'text-slate-500');
+    });
+    document.getElementById(`tab-${tab}`).classList.remove('border-transparent', 'text-slate-500');
+    document.getElementById(`tab-${tab}`).classList.add('border-blue-600', 'text-blue-600');
+    
+    // Show/hide content
+    document.querySelectorAll('.report-content').forEach(c => c.classList.add('hidden'));
+    document.getElementById(`report-content-${tab}`).classList.remove('hidden');
+    
+    // Store current tab for export
+    window.currentReportTab = tab;
+}
+
+async function loadAllReports() {
+    const dateFrom = document.getElementById('report-date-from').value;
+    const dateTo = document.getElementById('report-date-to').value;
+    
+    await Promise.all([
+        loadFinancialReport(dateFrom, dateTo),
+        loadProjectsReport(),
+        loadProductivityReport(dateFrom, dateTo)
+    ]);
+}
+
+async function loadFinancialReport(dateFrom, dateTo) {
+    try {
+        const data = await apiCall('reports/financial', {date_from: dateFrom, date_to: dateTo});
+        
+        // Update summary cards
+        document.getElementById('fin-total-income').textContent = '$' + (data.summary.total_income || 0).toFixed(2);
+        document.getElementById('fin-total-expense').textContent = '$' + (data.summary.total_expense || 0).toFixed(2);
+        document.getElementById('fin-net-profit').textContent = '$' + (data.summary.net_profit || 0).toFixed(2);
+        document.getElementById('fin-trans-count').textContent = data.summary.transaction_count || 0;
+        
+        // Trend Chart
+        const trendCtx = document.getElementById('chart-financial-trend').getContext('2d');
+        if (reportsCharts.trend) reportsCharts.trend.destroy();
+        
+        const months = data.monthly_trend.map(m => {
+            const [year, month] = m.month.split('-');
+            return new Date(year, month - 1).toLocaleDateString('en-US', {month: 'short', year: '2-digit'});
+        });
+        
+        reportsCharts.trend = new Chart(trendCtx, {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: [{
+                    label: 'Income',
+                    data: data.monthly_trend.map(m => m.income),
+                    borderColor: '#16a34a',
+                    backgroundColor: 'rgba(22, 163, 74, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }, {
+                    label: 'Expenses',
+                    data: data.monthly_trend.map(m => m.expense),
+                    borderColor: '#dc2626',
+                    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {intersect: false, mode: 'index'},
+                plugins: {
+                    legend: {position: 'bottom'}
+                },
+                scales: {
+                    y: {beginAtZero: true, ticks: {callback: v => '$' + v}}
+                }
+            }
+        });
+        
+        // Expense Breakdown Pie Chart
+        const expenseCtx = document.getElementById('chart-expense-breakdown').getContext('2d');
+        if (reportsCharts.expensePie) reportsCharts.expensePie.destroy();
+        
+        reportsCharts.expensePie = new Chart(expenseCtx, {
+            type: 'doughnut',
+            data: {
+                labels: data.categories.expense.map(c => c.name),
+                datasets: [{
+                    data: data.categories.expense.map(c => c.value),
+                    backgroundColor: [
+                        '#3b82f6', '#ef4444', '#10b981', '#f59e0b', 
+                        '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {position: 'bottom', labels: {boxWidth: 12}}
+                }
+            }
+        });
+        
+        // Recent Transactions Table
+        const rows = data.transactions.slice(0, 10).map(t => `
+            <tr class="hover:bg-white">
+                <td class="px-4 py-2 text-slate-900">${t.date}</td>
+                <td class="px-4 py-2">
+                    <span class="px-2 py-1 rounded-full text-xs font-medium ${t.type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
+                        ${t.type}
+                    </span>
+                </td>
+                <td class="px-4 py-2 text-slate-600 capitalize">${t.category}</td>
+                <td class="px-4 py-2 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}">
+                    ${t.type === 'income' ? '+' : '-'}$${(t.amount || 0).toFixed(2)}
+                </td>
+                <td class="px-4 py-2">
+                    <span class="px-2 py-1 rounded-full text-xs font-medium ${t.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">
+                        ${t.status}
+                    </span>
+                </td>
+            </tr>
+        `).join('');
+        
+        document.getElementById('fin-recent-transactions').innerHTML = rows || 
+            '<tr><td colspan="5" class="px-4 py-4 text-center text-slate-400">No transactions found</td></tr>';
+            
+    } catch (e) {
+        showToast('Failed to load financial report: ' + e.message, 'error');
+    }
+}
+
+async function loadProjectsReport() {
+    try {
+        const data = await apiCall('reports/projects');
+        
+        // Update summary cards
+        document.getElementById('proj-active-count').textContent = data.summary.status_breakdown.active || 0;
+        document.getElementById('proj-completed-count').textContent = data.summary.status_breakdown.completed || 0;
+        document.getElementById('proj-total-budget').textContent = '$' + (data.summary.total_budget || 0).toFixed(2);
+        document.getElementById('proj-hours-used').textContent = (data.summary.total_hours_used || 0).toFixed(1) + 'h';
+        
+        // Status Distribution Chart
+        const statusCtx = document.getElementById('chart-project-status').getContext('2d');
+        if (reportsCharts.projectStatus) reportsCharts.projectStatus.destroy();
+        
+        reportsCharts.projectStatus = new Chart(statusCtx, {
+            type: 'pie',
+            data: {
+                labels: Object.keys(data.summary.status_breakdown).map(s => s.charAt(0).toUpperCase() + s.slice(1)),
+                datasets: [{
+                    data: Object.values(data.summary.status_breakdown),
+                    backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {position: 'bottom'}
+                }
+            }
+        });
+        
+        // Utilization Chart (Hours vs Budget)
+        const utilCtx = document.getElementById('chart-project-utilization').getContext('2d');
+        if (reportsCharts.utilization) reportsCharts.utilization.destroy();
+        
+        const activeProjects = data.projects.filter(p => p.status === 'active').slice(0, 6);
+        
+        reportsCharts.utilization = new Chart(utilCtx, {
+            type: 'bar',
+            data: {
+                labels: activeProjects.map(p => p.name.substring(0, 15) + (p.name.length > 15 ? '...' : '')),
+                datasets: [{
+                    label: 'Hours Used %',
+                    data: activeProjects.map(p => p.hours_progress),
+                    backgroundColor: '#3b82f6',
+                    borderRadius: 4
+                }, {
+                    label: 'Task Progress %',
+                    data: activeProjects.map(p => p.progress),
+                    backgroundColor: '#10b981',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {position: 'bottom'}
+                },
+                scales: {
+                    y: {beginAtZero: true, max: 100, ticks: {callback: v => v + '%'}}
+                }
+            }
+        });
+        
+        // Projects Table
+        const rows = data.projects.map(p => `
+            <tr class="hover:bg-white ${p.is_overdue ? 'bg-red-50' : ''}">
+                <td class="px-4 py-2 font-medium text-slate-900">${p.name}</td>
+                <td class="px-4 py-2">
+                    <span class="px-2 py-1 rounded-full text-xs font-medium ${
+                        p.status === 'active' ? 'bg-blue-100 text-blue-700' :
+                        p.status === 'completed' ? 'bg-green-100 text-green-700' :
+                        p.status === 'on-hold' ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                    }">${p.status}</span>
+                </td>
+                <td class="px-4 py-2">
+                    <div class="flex items-center gap-2">
+                        <div class="flex-1 bg-slate-200 rounded-full h-2 w-24">
+                            <div class="bg-blue-600 h-2 rounded-full" style="width: ${p.progress}%"></div>
+                        </div>
+                        <span class="text-xs text-slate-600">${p.progress}%</span>
+                    </div>
+                </td>
+                <td class="px-4 py-2 text-right text-slate-900">$${(p.budget || 0).toFixed(2)}</td>
+                <td class="px-4 py-2 text-slate-600">
+                    ${p.is_overdue ? 
+                        `<span class="text-red-600 font-medium">${p.days_remaining}d overdue</span>` :
+                        p.days_remaining !== null ? 
+                            (p.days_remaining < 7 ? 
+                                `<span class="text-amber-600">${p.days_remaining}d left</span>` :
+                                `${p.days_remaining}d left`) :
+                        '-'
+                    }
+                </td>
+            </tr>
+        `).join('');
+        
+        document.getElementById('proj-details-table').innerHTML = rows || 
+            '<tr><td colspan="5" class="px-4 py-4 text-center text-slate-400">No projects found</td></tr>';
+            
+    } catch (e) {
+        showToast('Failed to load projects report: ' + e.message, 'error');
+    }
+}
+
+async function loadProductivityReport(dateFrom, dateTo) {
+    try {
+        const data = await apiCall('reports/productivity', {date_from: dateFrom, date_to: dateTo});
+        
+        // Update summary cards
+        document.getElementById('prod-total-hours').textContent = (data.summary.total_hours || 0).toFixed(1) + 'h';
+        document.getElementById('prod-tasks-completed').textContent = data.summary.total_tasks_completed || 0;
+        document.getElementById('prod-avg-hours').textContent = (data.summary.avg_productivity || 0).toFixed(1) + 'h';
+        document.getElementById('prod-total-payroll').textContent = '$' + (data.summary.total_payroll || 0).toFixed(2);
+        
+        // Hours by Employee Chart
+        const hoursCtx = document.getElementById('chart-hours-by-employee').getContext('2d');
+        if (reportsCharts.hoursByEmployee) reportsCharts.hoursByEmployee.destroy();
+        
+        const topEmployees = data.employees.slice(0, 8);
+        
+        reportsCharts.hoursByEmployee = new Chart(hoursCtx, {
+            type: 'bar',
+            data: {
+                labels: topEmployees.map(e => e.name.split(' ')[0]),
+                datasets: [{
+                    label: 'Hours Logged',
+                    data: topEmployees.map(e => e.total_hours),
+                    backgroundColor: '#3b82f6',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {display: false}
+                },
+                scales: {
+                    y: {beginAtZero: true}
+                }
+            }
+        });
+        
+        // Task Completion Chart
+        const taskCtx = document.getElementById('chart-task-completion').getContext('2d');
+        if (reportsCharts.taskCompletion) reportsCharts.taskCompletion.destroy();
+        
+        reportsCharts.taskCompletion = new Chart(taskCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Completed', 'In Progress'],
+                datasets: [{
+                    data: [
+                        data.summary.total_tasks_completed,
+                        data.employees.reduce((sum, e) => sum + e.tasks_in_progress, 0)
+                    ],
+                    backgroundColor: ['#10b981', '#f59e0b']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {position: 'bottom'}
+                }
+            }
+        });
+        
+        // Employee Table
+        const rows = data.employees.map(e => `
+            <tr class="hover:bg-white">
+                <td class="px-4 py-2">
+                    <div class="font-medium text-slate-900">${e.name}</div>
+                    <div class="text-xs text-slate-500">${e.department || 'No department'}</div>
+                </td>
+                <td class="px-4 py-2">
+                    <span class="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                        ${e.role}
+                    </span>
+                </td>
+                <td class="px-4 py-2 text-right font-bold text-blue-600">${e.total_hours.toFixed(1)}h</td>
+                <td class="px-4 py-2 text-right text-slate-900">${e.tasks_completed}</td>
+                <td class="px-4 py-2 text-right text-slate-600">${e.avg_hours_per_day.toFixed(1)}h</td>
+                <td class="px-4 py-2 text-right font-medium text-slate-900">$${e.payroll_total.toFixed(2)}</td>
+            </tr>
+        `).join('');
+        
+        document.getElementById('prod-employee-table').innerHTML = rows || 
+            '<tr><td colspan="6" class="px-4 py-4 text-center text-slate-400">No data found</td></tr>';
+            
+    } catch (e) {
+        showToast('Failed to load productivity report: ' + e.message, 'error');
+    }
+}
+
+function refreshAllReports() {
+    loadAllReports();
+    showToast('Reports refreshed');
+}
+
+async function exportCurrentReport() {
+    const tab = window.currentReportTab || 'financial';
+    const dateFrom = document.getElementById('report-date-from').value;
+    const dateTo = document.getElementById('report-date-to').value;
+    
+    try {
+        showToast('Generating CSV export...', 'info');
+        
+        // Use the existing API with CSV format
+        const url = new URL(API_URL);
+        url.searchParams.append('path', 'reports/export');
+        url.searchParams.append('token', currentToken);
+        url.searchParams.append('report_type', tab === 'financial' ? 'financial' : tab === 'productivity' ? 'timesheets' : 'projects');
+        url.searchParams.append('format', 'csv');
+        url.searchParams.append('date_from', dateFrom);
+        url.searchParams.append('date_to', dateTo);
+        
+        window.open(url.toString(), '_blank');
+        
+    } catch (e) {
+        showToast('Export failed: ' + e.message, 'error');
+    }
+}
+        
         // ==================== END NOTIFICATION SYSTEM ====================
 
         // Initialize on load
@@ -3563,6 +4212,7 @@ async function deleteWorkflow(id) {
     </script>
 </body>
 </html>
+
 
 
 
