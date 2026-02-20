@@ -298,6 +298,27 @@ body.dropdown-open {
     background: #cbd5e1;
     border-radius: 3px;
 }
+    /* Prevent table cell overlapping on mobile */
+#fin-recent-transactions td,
+#fin-recent-transactions th,
+#proj-details-table td,
+#proj-details-table th,
+#prod-employee-table td,
+#prod-employee-table th {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Allow horizontal scrolling on mobile for report tables */
+.report-content .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Ensure tables don't shrink below minimum content width on mobile */
+.report-content table {
+    min-width: 100%;
+}
         
     </style>
 </head>
@@ -4925,3 +4946,4 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
     </script>
 </body>
 </html>
+
