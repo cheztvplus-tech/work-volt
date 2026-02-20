@@ -228,6 +228,77 @@
     word-wrap: break-word;
     hyphens: auto;
 }
+/* ============================================
+   NOTIFICATION DROPDOWN - MOBILE FIXES
+   ============================================ */
+
+/* Prevent body scroll when dropdown is open */
+body.dropdown-open {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+}
+
+/* Notification dropdown positioning */
+#notification-dropdown {
+    /* Mobile: Fixed positioning centered in viewport */
+    position: fixed;
+    right: 0.5rem;
+    left: 0.5rem;
+    top: 4rem; /* Below header */
+    width: auto;
+    max-width: calc(100vw - 1rem);
+    max-height: 80vh;
+    z-index: 60;
+}
+
+/* Small screens and up (640px+) - absolute positioning */
+@media (min-width: 640px) {
+    #notification-dropdown {
+        position: absolute;
+        right: 0;
+        left: auto;
+        top: auto;
+        margin-top: 0.5rem;
+        width: 20rem; /* w-80 */
+        max-width: none;
+    }
+}
+
+/* Medium screens (768px+) */
+@media (min-width: 768px) {
+    #notification-dropdown {
+        width: 24rem; /* w-96 */
+    }
+}
+
+/* Ensure notification content doesn't overflow */
+#notification-list {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+#notification-list .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+}
+
+/* Prevent any element from causing horizontal scroll */
+#notification-dropdown * {
+    max-width: 100%;
+}
+
+/* Hide scrollbar but allow scrolling */
+#notification-list::-webkit-scrollbar {
+    width: 6px;
+}
+#notification-list::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+        
     </style>
 </head>
     
@@ -290,8 +361,8 @@
             <span id="notif-badge" class="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center hidden">0</span>
         </button>
         
-            <!-- Notification Dropdown -->
-<div id="notification-dropdown" class="hidden absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 md:w-96 max-w-sm bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden max-h-[80vh] flex flex-col">
+                    <!-- Notification Dropdown -->
+<div id="notification-dropdown" class="hidden fixed sm:absolute right-2 sm:right-0 left-2 sm:left-auto top-16 sm:top-auto sm:mt-2 w-auto sm:w-80 md:w-96 max-w-[calc(100vw-1rem)] bg-white rounded-xl shadow-2xl border border-slate-200 z-[60] overflow-hidden max-h-[80vh] flex flex-col">
     <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 flex-shrink-0">
         <h3 class="font-semibold text-slate-900">Notifications</h3>
         <div class="flex gap-2">
@@ -310,9 +381,9 @@
     <div class="p-3 border-t border-slate-200 bg-slate-50 text-center flex-shrink-0">
         <button onclick="showModule('notifications'); toggleNotificationDropdown();" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
             View All Notifications
-        </button>
-    </div>
-</div>
+                </button>
+            </div>
+        </div>
     </div>
     
     <div class="flex items-center gap-2 pl-3 border-l border-slate-200">
@@ -3229,17 +3300,38 @@ function editProject(projectId) {
         let notificationPollingInterval = null;
         let lastNotificationCount = 0;
 
-        function toggleNotificationDropdown() {
-            const dropdown = document.getElementById('notification-dropdown');
-            const isHidden = dropdown.classList.contains('hidden');
-            
-            if (isHidden) {
-                dropdown.classList.remove('hidden');
-                loadNotifications();
-            } else {
-                dropdown.classList.add('hidden');
-            }
-        }
+            function toggleNotificationDropdown() {
+    const dropdown = document.getElementById('notification-dropdown');
+    const isHidden = dropdown.classList.contains('hidden');
+    
+    if (isHidden) {
+        // Open dropdown
+        dropdown.classList.remove('hidden');
+        document.body.classList.add('dropdown-open'); // Prevent body scroll
+        loadNotifications();
+        
+        // Close when clicking outside
+        setTimeout(() => {
+            document.addEventListener('click', closeDropdownOutside);
+        }, 100);
+    } else {
+        // Close dropdown
+        dropdown.classList.add('hidden');
+        document.body.classList.remove('dropdown-open');
+        document.removeEventListener('click', closeDropdownOutside);
+    }
+}
+
+function closeDropdownOutside(e) {
+    const dropdown = document.getElementById('notification-dropdown');
+    const bellBtn = document.querySelector('button[onclick="toggleNotificationDropdown()"]');
+    
+    if (!dropdown.contains(e.target) && !bellBtn.contains(e.target)) {
+        dropdown.classList.add('hidden');
+        document.body.classList.remove('dropdown-open');
+        document.removeEventListener('click', closeDropdownOutside);
+    }
+}
 
         async function loadNotifications() {
     const listContainer = document.getElementById('notification-list');
@@ -4830,6 +4922,7 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
     </script>
 </body>
 </html>
+
 
 
 
