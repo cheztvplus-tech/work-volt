@@ -4548,7 +4548,7 @@ async function exportCurrentReportCSV() {
     }
 }
 
-            async function exportCurrentReportPDF() {
+                async function exportCurrentReportPDF() {
     const tab = window.currentReportTab || 'financial';
     const dateFrom = document.getElementById('report-date-from').value;
     const dateTo = document.getElementById('report-date-to').value;
@@ -4559,7 +4559,6 @@ async function exportCurrentReportCSV() {
         productivity: 'Employee Productivity Report'
     };
     
-    // Show loading
     showToast('Generating PDF report...', 'info');
     
     try {
@@ -4573,155 +4572,187 @@ async function exportCurrentReportCSV() {
             data = await apiCall('reports/productivity', {date_from: dateFrom, date_to: dateTo});
         }
         
-        // Create print window
-        const printWindow = window.open('', '_blank');
+        // Generate content
+        const content = generatePDFContent(tab, data, dateFrom, dateTo);
+        const periodText = dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : 'All Time';
         
-        // Generate content based on report type
-        let content = generatePDFContent(tab, data, dateFrom, dateTo);
+        // Build complete HTML document
+        const html = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>${reportTitles[tab]} - Work Volt</title>
+    <meta charset="UTF-8">
+    <style>
+        @page { size: auto; margin: 15mm; }
+        * { box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            color: #1e293b; 
+            line-height: 1.5;
+        }
+        .header { 
+            border-bottom: 3px solid #2563eb; 
+            padding-bottom: 15px; 
+            margin-bottom: 25px;
+        }
+        .header h1 { 
+            margin: 0 0 8px 0; 
+            font-size: 28px; 
+            color: #1e293b;
+        }
+        .meta { 
+            color: #64748b; 
+            font-size: 13px;
+        }
+        .summary-grid { 
+            display: grid; 
+            grid-template-columns: repeat(4, 1fr); 
+            gap: 15px; 
+            margin-bottom: 30px; 
+        }
+        .summary-card { 
+            background: #f8fafc; 
+            padding: 18px; 
+            border-radius: 8px; 
+            border-left: 4px solid #2563eb;
+        }
+        .summary-card.income { border-left-color: #16a34a; }
+        .summary-card.expense { border-left-color: #dc2626; }
+        .summary-card.warning { border-left-color: #f59e0b; }
+        .summary-card h4 { 
+            margin: 0 0 8px 0; 
+            font-size: 11px; 
+            color: #64748b; 
+            text-transform: uppercase; 
+            letter-spacing: 0.5px;
+        }
+        .summary-card .value { 
+            font-size: 22px; 
+            font-weight: 700; 
+            color: #1e293b;
+        }
+        .section { margin-bottom: 30px; }
+        .section h2 { 
+            font-size: 18px; 
+            color: #1e293b; 
+            margin: 0 0 15px 0; 
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            font-size: 12px;
+        }
+        th { 
+            text-align: left; 
+            padding: 10px; 
+            background: #f1f5f9; 
+            font-weight: 600; 
+            color: #475569;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        td { 
+            padding: 10px; 
+            border-bottom: 1px solid #e2e8f0; 
+            vertical-align: top;
+        }
+        tr:nth-child(even) { background: #fafafa; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .badge { 
+            display: inline-block; 
+            padding: 3px 8px; 
+            border-radius: 12px; 
+            font-size: 11px; 
+            font-weight: 500;
+        }
+        .badge-green { background: #dcfce7; color: #166534; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+        .badge-blue { background: #dbeafe; color: #1e40af; }
+        .badge-amber { background: #fef3c7; color: #92400e; }
+        .text-green { color: #16a34a; }
+        .text-red { color: #dc2626; }
+        .text-blue { color: #2563eb; }
+        .progress-bar { 
+            width: 100%; 
+            height: 8px; 
+            background: #e2e8f0; 
+            border-radius: 4px; 
+            overflow: hidden;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .progress-fill { 
+            height: 100%; 
+            background: #2563eb; 
+            border-radius: 4px;
+        }
+        .footer { 
+            margin-top: 40px; 
+            padding-top: 15px; 
+            border-top: 1px solid #e2e8f0; 
+            text-align: center; 
+            color: #94a3b8; 
+            font-size: 11px;
+        }
+        .print-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            padding: 12px 24px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+        .print-btn:hover { background: #1d4ed8; }
+        @media print {
+            .print-btn { display: none !important; }
+            body { padding: 0; }
+        }
+    </style>
+</head>
+<body>
+    <button class="print-btn" onclick="window.print()">Print / Save PDF</button>
+    <div class="header">
+        <h1>${reportTitles[tab]}</h1>
+        <div class="meta">Period: ${periodText} • Generated: ${new Date().toLocaleDateString()} by ${currentUser.name}</div>
+    </div>
+    ${content}
+    <div class="footer">
+        Generated by Work Volt on ${new Date().toLocaleString()} • ${currentUser.email}
+    </div>
+</body>
+</html>`;
+
+        // Create Blob and open in new tab
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
         
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>${reportTitles[tab]} - Work Volt</title>
-                <style>
-                    @page { size: auto; margin: 15mm; }
-                    * { box-sizing: border-box; }
-                    body { 
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-                        margin: 0; 
-                        padding: 20px; 
-                        color: #1e293b; 
-                        line-height: 1.5;
-                    }
-                    .header { 
-                        border-bottom: 3px solid #2563eb; 
-                        padding-bottom: 15px; 
-                        margin-bottom: 25px;
-                    }
-                    .header h1 { 
-                        margin: 0 0 8px 0; 
-                        font-size: 28px; 
-                        color: #1e293b;
-                    }
-                    .meta { 
-                        color: #64748b; 
-                        font-size: 13px;
-                    }
-                    .summary-grid { 
-                        display: grid; 
-                        grid-template-columns: repeat(4, 1fr); 
-                        gap: 15px; 
-                        margin-bottom: 30px; 
-                    }
-                    .summary-card { 
-                        background: #f8fafc; 
-                        padding: 18px; 
-                        border-radius: 8px; 
-                        border-left: 4px solid #2563eb;
-                    }
-                    .summary-card.income { border-left-color: #16a34a; }
-                    .summary-card.expense { border-left-color: #dc2626; }
-                    .summary-card.warning { border-left-color: #f59e0b; }
-                    .summary-card h4 { 
-                        margin: 0 0 8px 0; 
-                        font-size: 11px; 
-                        color: #64748b; 
-                        text-transform: uppercase; 
-                        letter-spacing: 0.5px;
-                    }
-                    .summary-card .value { 
-                        font-size: 22px; 
-                        font-weight: 700; 
-                        color: #1e293b;
-                    }
-                    .section { margin-bottom: 30px; }
-                    .section h2 { 
-                        font-size: 18px; 
-                        color: #1e293b; 
-                        margin: 0 0 15px 0; 
-                        padding-bottom: 8px;
-                        border-bottom: 1px solid #e2e8f0;
-                    }
-                    table { 
-                        width: 100%; 
-                        border-collapse: collapse; 
-                        font-size: 12px;
-                    }
-                    th { 
-                        text-align: left; 
-                        padding: 10px; 
-                        background: #f1f5f9; 
-                        font-weight: 600; 
-                        color: #475569;
-                        border-bottom: 2px solid #e2e8f0;
-                    }
-                    td { 
-                        padding: 10px; 
-                        border-bottom: 1px solid #e2e8f0; 
-                        vertical-align: top;
-                    }
-                    tr:nth-child(even) { background: #fafafa; }
-                    .text-right { text-align: right; }
-                    .text-center { text-align: center; }
-                    .badge { 
-                        display: inline-block; 
-                        padding: 3px 8px; 
-                        border-radius: 12px; 
-                        font-size: 11px; 
-                        font-weight: 500;
-                    }
-                    .badge-green { background: #dcfce7; color: #166534; }
-                    .badge-red { background: #fee2e2; color: #991b1b; }
-                    .badge-blue { background: #dbeafe; color: #1e40af; }
-                    .badge-amber { background: #fef3c7; color: #92400e; }
-                    .text-green { color: #16a34a; }
-                    .text-red { color: #dc2626; }
-                    .text-blue { color: #2563eb; }
-                    .progress-bar { 
-                        width: 100%; 
-                        height: 8px; 
-                        background: #e2e8f0; 
-                        border-radius: 4px; 
-                        overflow: hidden;
-                        display: inline-block;
-                        vertical-align: middle;
-                    }
-                    .progress-fill { 
-                        height: 100%; 
-                        background: #2563eb; 
-                        border-radius: 4px;
-                    }
-                    .footer { 
-                        margin-top: 40px; 
-                        padding-top: 15px; 
-                        border-top: 1px solid #e2e8f0; 
-                        text-align: center; 
-                        color: #94a3b8; 
-                        font-size: 11px;
-                    }
-                    @media print {
-                        body { padding: 0; }
-                        .no-print { display: none !important; }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="no-print" style="position: fixed; top: 20px; right: 20px; z-index: 1000;">
-                    <button onclick="window.print()" style="padding: 12px 24px; background: #2563eb; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-                        <i class="fas fa-print" style="margin-right: 8px;"></i>Print / Save PDF
-                    </button>
-                </div>
-                ${content}
-                <div class="footer">
-                    Generated by Work Volt on ${new Date().toLocaleString()} • ${currentUser.name} • ${currentUser.email}
-                </div>
-            </body>
-            </html>
-        `);
+        // Open the Blob URL
+        const printWindow = window.open(url, '_blank');
         
-        printWindow.document.close();
-        showToast('PDF report ready - use browser print dialog to save', 'success');
+        if (!printWindow) {
+            showToast('Popup blocked! Please allow popups for this site.', 'error');
+            URL.revokeObjectURL(url);
+            return;
+        }
+        
+        // Clean up the object URL after a delay
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+        }, 60000);
+        
+        showToast('PDF report opened in new tab - use print dialog to save', 'success');
         
     } catch (e) {
         showToast('Failed to generate PDF: ' + e.message, 'error');
@@ -4933,6 +4964,7 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
     </script>
 </body>
 </html>
+
 
 
 
