@@ -298,14 +298,13 @@ body.dropdown-open {
     background: #cbd5e1;
     border-radius: 3px;
 }
-    /* Prevent table cell overlapping on mobile */
-#fin-recent-transactions,
-#proj-details-table,
-#prod-employee-table {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
-    -webkit-overflow-scrolling: touch;
+    @media (max-width: 768px) {
+    .report-content table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+    }
 }
   
     </style>
@@ -4934,5 +4933,6 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
     </script>
 </body>
 </html>
+
 
 
