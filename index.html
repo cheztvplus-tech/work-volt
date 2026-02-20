@@ -298,6 +298,27 @@ body.dropdown-open {
     background: #cbd5e1;
     border-radius: 3px;
 }
+/* Prevent table cell overlapping on mobile */
+#fin-recent-transactions td,
+#fin-recent-transactions th,
+#proj-details-table td,
+#proj-details-table th,
+#prod-employee-table td,
+#prod-employee-table th {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Allow horizontal scrolling on mobile for report tables */
+.report-content .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Ensure tables don't shrink below minimum content width on mobile */
+.report-content table {
+    min-width: 100%;
+}
         
     </style>
 </head>
@@ -4286,25 +4307,25 @@ async function loadFinancialReport(dateFrom, dateTo) {
         });
         
         // Recent Transactions Table
-        const rows = data.transactions.slice(0, 10).map(t => `
-            <tr class="hover:bg-white">
-                <td class="px-4 py-2 text-slate-900">${t.date}</td>
-                <td class="px-4 py-2">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium ${t.type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
-                        ${t.type}
-                    </span>
-                </td>
-                <td class="px-4 py-2 text-slate-600 capitalize">${t.category}</td>
-                <td class="px-4 py-2 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}">
-                    ${t.type === 'income' ? '+' : '-'}$${(t.amount || 0).toFixed(2)}
-                </td>
-                <td class="px-4 py-2">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium ${t.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">
-                        ${t.status}
-                    </span>
-                </td>
-            </tr>
-        `).join('');
+               const rows = transactions.slice(0, 10).map(t => `
+    <tr class="hover:bg-white">
+        <td class="px-4 py-2 text-slate-900">${t.date}</td>
+        <td class="px-4 py-2">
+            <span class="px-2 py-1 rounded-full text-xs font-medium ${t.type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
+                ${t.type}
+            </span>
+        </td>
+        <td class="px-4 py-2 text-slate-600 capitalize">${t.category}</td>
+        <td class="px-4 py-2 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}">
+            ${t.type === 'income' ? '+' : '-'}$${(t.amount || 0).toFixed(2)}
+        </td>
+        <td class="px-4 py-2">
+            <span class="px-2 py-1 rounded-full text-xs font-medium ${t.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">
+                ${t.status}
+            </span>
+        </td>
+    </tr>
+`).join('');
         
         document.getElementById('fin-recent-transactions').innerHTML = rows || 
             '<tr><td colspan="5" class="px-4 py-4 text-center text-slate-400">No transactions found</td></tr>';
@@ -4381,38 +4402,35 @@ async function loadProjectsReport() {
         });
         
         // Projects Table
-        const rows = data.projects.map(p => `
-            <tr class="hover:bg-white ${p.is_overdue ? 'bg-red-50' : ''}">
-                <td class="px-4 py-2 font-medium text-slate-900">${p.name}</td>
-                <td class="px-4 py-2">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium ${
-                        p.status === 'active' ? 'bg-blue-100 text-blue-700' :
-                        p.status === 'completed' ? 'bg-green-100 text-green-700' :
-                        p.status === 'on-hold' ? 'bg-amber-100 text-amber-700' :
-                        'bg-red-100 text-red-700'
-                    }">${p.status}</span>
-                </td>
-                <td class="px-4 py-2">
-                    <div class="flex items-center gap-2">
-                        <div class="flex-1 bg-slate-200 rounded-full h-2 w-24">
-                            <div class="bg-blue-600 h-2 rounded-full" style="width: ${p.progress}%"></div>
-                        </div>
-                        <span class="text-xs text-slate-600">${p.progress}%</span>
-                    </div>
-                </td>
-                <td class="px-4 py-2 text-right text-slate-900">$${(p.budget || 0).toFixed(2)}</td>
-                <td class="px-4 py-2 text-slate-600">
-                    ${p.is_overdue ? 
-                        `<span class="text-red-600 font-medium">${p.days_remaining}d overdue</span>` :
-                        p.days_remaining !== null ? 
-                            (p.days_remaining < 7 ? 
-                                `<span class="text-amber-600">${p.days_remaining}d left</span>` :
-                                `${p.days_remaining}d left`) :
-                        '-'
-                    }
-                </td>
-            </tr>
-        `).join('');
+                const rows = projects.map(p => `
+    <tr class="hover:bg-white ${p.is_overdue ? 'bg-red-50' : ''}">
+        <td class="px-4 py-2 font-medium text-slate-900">${p.name}</td>
+        <td class="px-4 py-2">
+            <span class="px-2 py-1 rounded-full text-xs font-medium ${p.status === 'active' ? 'bg-blue-100 text-blue-700' : p.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">
+                ${p.status}
+            </span>
+        </td>
+        <td class="px-4 py-2">
+            <div class="flex items-center gap-2">
+                <div class="flex-1 bg-slate-200 rounded-full h-2 w-24">
+                    <div class="bg-blue-600 h-2 rounded-full" style="width: ${p.progress}%"></div>
+                </div>
+                <span class="text-xs text-slate-600">${p.progress}%</span>
+            </div>
+        </td>
+        <td class="px-4 py-2 text-right text-slate-900">$${(p.budget || 0).toFixed(2)}</td>
+        <td class="px-4 py-2 text-slate-600">
+            ${p.is_overdue ? 
+                `<span class="text-red-600 font-medium">${p.days_remaining}d overdue</span>` :
+                p.days_remaining !== null ? 
+                    (p.days_remaining < 7 ? 
+                        `<span class="text-amber-600">${p.days_remaining}d left</span>` :
+                        `${p.days_remaining}d left`) :
+                '-'
+            }
+        </td>
+    </tr>
+`).join('');
         
         document.getElementById('proj-details-table').innerHTML = rows || 
             '<tr><td colspan="5" class="px-4 py-4 text-center text-slate-400">No projects found</td></tr>';
@@ -4487,23 +4505,23 @@ async function loadProductivityReport(dateFrom, dateTo) {
         });
         
         // Employee Table
-        const rows = data.employees.map(e => `
-            <tr class="hover:bg-white">
-                <td class="px-4 py-2">
-                    <div class="font-medium text-slate-900">${e.name}</div>
-                    <div class="text-xs text-slate-500">${e.department || 'No department'}</div>
-                </td>
-                <td class="px-4 py-2">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
-                        ${e.role}
-                    </span>
-                </td>
-                <td class="px-4 py-2 text-right font-bold text-blue-600">${e.total_hours.toFixed(1)}h</td>
-                <td class="px-4 py-2 text-right text-slate-900">${e.tasks_completed}</td>
-                <td class="px-4 py-2 text-right text-slate-600">${e.avg_hours_per_day.toFixed(1)}h</td>
-                <td class="px-4 py-2 text-right font-medium text-slate-900">$${e.payroll_total.toFixed(2)}</td>
-            </tr>
-        `).join('');
+                const rows = data.employees.map(e => `
+    <tr class="hover:bg-white">
+        <td class="px-4 py-2">
+            <div class="font-medium text-slate-900">${e.name}</div>
+            <div class="text-xs text-slate-500">${e.department || 'No department'}</div>
+        </td>
+        <td class="px-4 py-2">
+            <span class="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                ${e.role}
+            </span>
+        </td>
+        <td class="px-4 py-2 text-right font-bold text-blue-600">${e.total_hours.toFixed(1)}h</td>
+        <td class="px-4 py-2 text-right text-slate-900">${e.tasks_completed}</td>
+        <td class="px-4 py-2 text-right text-slate-600">${e.avg_hours_per_day.toFixed(1)}h</td>
+        <td class="px-4 py-2 text-right font-medium text-slate-900">$${e.payroll_total.toFixed(2)}</td>
+    </tr>
+`).join('');
         
         document.getElementById('prod-employee-table').innerHTML = rows || 
             '<tr><td colspan="6" class="px-4 py-4 text-center text-slate-400">No data found</td></tr>';
@@ -4927,6 +4945,7 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
     </script>
 </body>
 </html>
+
 
 
 
