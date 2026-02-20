@@ -3704,7 +3704,7 @@ async function deleteWorkflow(id) {
 
 let reportsCharts = {}; // Store chart instances
 
-async function loadReports(container) {
+           async function loadReports(container) {
     const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
     
     if (!isManager) {
@@ -3718,30 +3718,32 @@ async function loadReports(container) {
     }
     
     container.innerHTML = `
-        <div class="page-transition h-full">
-            <div class="flex items-center justify-between mb-6">
+        <div class="page-transition w-full">
+            <!-- Header Section -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
                 <div>
                     <h2 class="text-2xl font-bold text-slate-900">Reports & Analytics</h2>
                     <p class="text-slate-500">Comprehensive business insights and data visualization</p>
                 </div>
-                    <div class="flex gap-2">
-    <button onclick="refreshAllReports()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200">
-        <i class="fas fa-sync-alt mr-2"></i>Refresh
-    </button>
-    <div class="relative">
-        <button onclick="toggleExportDropdown()" id="export-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 flex items-center">
-            <i class="fas fa-download mr-2"></i>Export <i class="fas fa-chevron-down ml-2 text-xs"></i>
-        </button>
-        <div id="export-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 z-50 py-1">
-            <button onclick="exportCurrentReportCSV()" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
-                <i class="fas fa-file-csv text-green-600"></i> CSV Spreadsheet
-            </button>
-            <button onclick="exportCurrentReportPDF()" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
-                <i class="fas fa-file-pdf text-red-600"></i> PDF Report
-            </button>
-        </div>
-    </div>
-</div>
+                <div class="flex gap-2">
+                    <button onclick="refreshAllReports()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200">
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                    <div class="relative">
+                        <button onclick="toggleExportDropdown()" id="export-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 flex items-center">
+                            <i class="fas fa-download mr-2"></i>Export <i class="fas fa-chevron-down ml-2 text-xs"></i>
+                        </button>
+                        <div id="export-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 z-50 py-1">
+                            <button onclick="exportCurrentReportCSV()" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                                <i class="fas fa-file-csv text-green-600"></i> CSV Spreadsheet
+                            </button>
+                            <button onclick="exportCurrentReportPDF()" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                                <i class="fas fa-file-pdf text-red-600"></i> PDF Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
             
             <!-- Date Range Selector -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
@@ -3773,9 +3775,9 @@ async function loadReports(container) {
             </div>
             
             <!-- Report Tabs -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 mb-6 overflow-hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="border-b border-slate-200">
-                    <nav class="flex -mb-px">
+                    <nav class="flex flex-col sm:flex-row -mb-px">
                         <button onclick="switchReportTab('financial')" id="tab-financial" class="report-tab flex-1 py-4 px-6 text-center border-b-2 border-blue-600 text-blue-600 font-medium">
                             <i class="fas fa-chart-line mr-2"></i>Financial
                         </button>
@@ -3789,8 +3791,8 @@ async function loadReports(container) {
                 </div>
                 
                 <!-- Financial Reports -->
-                <div id="report-content-financial" class="report-content p-6" style="display: block;">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div id="report-content-financial" class="report-content p-4 sm:p-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                         <div class="bg-green-50 p-4 rounded-xl border border-green-200">
                             <p class="text-sm text-green-700 font-medium">Total Income</p>
                             <p id="fin-total-income" class="text-2xl font-bold text-green-700">$0.00</p>
@@ -3846,8 +3848,8 @@ async function loadReports(container) {
                 </div>
                 
                 <!-- Projects Reports -->
-                <div id="report-content-projects" class="report-content p-6" style="display: none;">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div id="report-content-projects" class="report-content p-4 sm:p-6 hidden">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                         <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
                             <p class="text-sm text-blue-700 font-medium">Active Projects</p>
                             <p id="proj-active-count" class="text-2xl font-bold text-blue-700">0</p>
@@ -3903,8 +3905,8 @@ async function loadReports(container) {
                 </div>
                 
                 <!-- Productivity Reports -->
-                <div id="report-content-productivity" class="report-content p-6" style="display: none;">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div id="report-content-productivity" class="report-content p-4 sm:p-6 hidden">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                         <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
                             <p class="text-sm text-blue-700 font-medium">Total Hours</p>
                             <p id="prod-total-hours" class="text-2xl font-bold text-blue-700">0h</p>
@@ -3973,7 +3975,7 @@ async function loadReports(container) {
     window.currentReportTab = 'financial';
     
     await loadAllReports();
-}
+} 
 
         function toggleExportDropdown() {
     const dropdown = document.getElementById('export-dropdown');
@@ -4781,4 +4783,5 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
     </script>
 </body>
 </html>
+
 
