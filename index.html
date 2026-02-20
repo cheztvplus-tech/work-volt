@@ -3592,15 +3592,24 @@ async function loadReports(container) {
                     <h2 class="text-2xl font-bold text-slate-900">Reports & Analytics</h2>
                     <p class="text-slate-500">Comprehensive business insights and data visualization</p>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="refreshAllReports()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200">
-                        <i class="fas fa-sync-alt mr-2"></i>Refresh
-                    </button>
-                    <button onclick="exportCurrentReport()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-                        <i class="fas fa-download mr-2"></i>Export
-                    </button>
-                </div>
-            </div>
+                    <div class="flex gap-2">
+    <button onclick="refreshAllReports()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200">
+        <i class="fas fa-sync-alt mr-2"></i>Refresh
+    </button>
+    <div class="relative">
+        <button onclick="toggleExportDropdown()" id="export-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 flex items-center">
+            <i class="fas fa-download mr-2"></i>Export <i class="fas fa-chevron-down ml-2 text-xs"></i>
+        </button>
+        <div id="export-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 z-50 py-1">
+            <button onclick="exportCurrentReportCSV()" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                <i class="fas fa-file-csv text-green-600"></i> CSV Spreadsheet
+            </button>
+            <button onclick="exportCurrentReportPDF()" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                <i class="fas fa-file-pdf text-red-600"></i> PDF Report
+            </button>
+        </div>
+    </div>
+</div>
             
             <!-- Date Range Selector -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
@@ -3832,6 +3841,23 @@ async function loadReports(container) {
     window.currentReportTab = 'financial';
     
     await loadAllReports();
+}
+
+        function toggleExportDropdown() {
+    const dropdown = document.getElementById('export-dropdown');
+    dropdown.classList.toggle('hidden');
+    
+    // Close when clicking outside
+    if (!dropdown.classList.contains('hidden')) {
+        setTimeout(() => {
+            document.addEventListener('click', function closeDropdown(e) {
+                if (!e.target.closest('#export-btn') && !e.target.closest('#export-dropdown')) {
+                    dropdown.classList.add('hidden');
+                    document.removeEventListener('click', closeDropdown);
+                }
+            });
+        }, 100);
+    }
 }
 
 function updateDateRange() {
@@ -4214,7 +4240,7 @@ function refreshAllReports() {
     showToast('Reports refreshed');
 }
 
-async function exportCurrentReport() {
+async function exportCurrentReportCSV() {
     const tab = window.currentReportTab || 'financial';
     const dateFrom = document.getElementById('report-date-from').value;
     const dateTo = document.getElementById('report-date-to').value;
@@ -4235,6 +4261,364 @@ async function exportCurrentReport() {
         
     } catch (e) {
         showToast('Export failed: ' + e.message, 'error');
+    }
+}
+
+            async function exportCurrentReportPDF() {
+    const tab = window.currentReportTab || 'financial';
+    const dateFrom = document.getElementById('report-date-from').value;
+    const dateTo = document.getElementById('report-date-to').value;
+    
+    const reportTitles = {
+        financial: 'Financial Report',
+        projects: 'Project Analytics Report',
+        productivity: 'Employee Productivity Report'
+    };
+    
+    // Show loading
+    showToast('Generating PDF report...', 'info');
+    
+    try {
+        // Fetch data based on current tab
+        let data;
+        if (tab === 'financial') {
+            data = await apiCall('reports/financial', {date_from: dateFrom, date_to: dateTo});
+        } else if (tab === 'projects') {
+            data = await apiCall('reports/projects');
+        } else {
+            data = await apiCall('reports/productivity', {date_from: dateFrom, date_to: dateTo});
+        }
+        
+        // Create print window
+        const printWindow = window.open('', '_blank');
+        
+        // Generate content based on report type
+        let content = generatePDFContent(tab, data, dateFrom, dateTo);
+        
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>${reportTitles[tab]} - Work Volt</title>
+                <style>
+                    @page { size: auto; margin: 15mm; }
+                    * { box-sizing: border-box; }
+                    body { 
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+                        margin: 0; 
+                        padding: 20px; 
+                        color: #1e293b; 
+                        line-height: 1.5;
+                    }
+                    .header { 
+                        border-bottom: 3px solid #2563eb; 
+                        padding-bottom: 15px; 
+                        margin-bottom: 25px;
+                    }
+                    .header h1 { 
+                        margin: 0 0 8px 0; 
+                        font-size: 28px; 
+                        color: #1e293b;
+                    }
+                    .meta { 
+                        color: #64748b; 
+                        font-size: 13px;
+                    }
+                    .summary-grid { 
+                        display: grid; 
+                        grid-template-columns: repeat(4, 1fr); 
+                        gap: 15px; 
+                        margin-bottom: 30px; 
+                    }
+                    .summary-card { 
+                        background: #f8fafc; 
+                        padding: 18px; 
+                        border-radius: 8px; 
+                        border-left: 4px solid #2563eb;
+                    }
+                    .summary-card.income { border-left-color: #16a34a; }
+                    .summary-card.expense { border-left-color: #dc2626; }
+                    .summary-card.warning { border-left-color: #f59e0b; }
+                    .summary-card h4 { 
+                        margin: 0 0 8px 0; 
+                        font-size: 11px; 
+                        color: #64748b; 
+                        text-transform: uppercase; 
+                        letter-spacing: 0.5px;
+                    }
+                    .summary-card .value { 
+                        font-size: 22px; 
+                        font-weight: 700; 
+                        color: #1e293b;
+                    }
+                    .section { margin-bottom: 30px; }
+                    .section h2 { 
+                        font-size: 18px; 
+                        color: #1e293b; 
+                        margin: 0 0 15px 0; 
+                        padding-bottom: 8px;
+                        border-bottom: 1px solid #e2e8f0;
+                    }
+                    table { 
+                        width: 100%; 
+                        border-collapse: collapse; 
+                        font-size: 12px;
+                    }
+                    th { 
+                        text-align: left; 
+                        padding: 10px; 
+                        background: #f1f5f9; 
+                        font-weight: 600; 
+                        color: #475569;
+                        border-bottom: 2px solid #e2e8f0;
+                    }
+                    td { 
+                        padding: 10px; 
+                        border-bottom: 1px solid #e2e8f0; 
+                        vertical-align: top;
+                    }
+                    tr:nth-child(even) { background: #fafafa; }
+                    .text-right { text-align: right; }
+                    .text-center { text-align: center; }
+                    .badge { 
+                        display: inline-block; 
+                        padding: 3px 8px; 
+                        border-radius: 12px; 
+                        font-size: 11px; 
+                        font-weight: 500;
+                    }
+                    .badge-green { background: #dcfce7; color: #166534; }
+                    .badge-red { background: #fee2e2; color: #991b1b; }
+                    .badge-blue { background: #dbeafe; color: #1e40af; }
+                    .badge-amber { background: #fef3c7; color: #92400e; }
+                    .text-green { color: #16a34a; }
+                    .text-red { color: #dc2626; }
+                    .text-blue { color: #2563eb; }
+                    .progress-bar { 
+                        width: 100%; 
+                        height: 8px; 
+                        background: #e2e8f0; 
+                        border-radius: 4px; 
+                        overflow: hidden;
+                        display: inline-block;
+                        vertical-align: middle;
+                    }
+                    .progress-fill { 
+                        height: 100%; 
+                        background: #2563eb; 
+                        border-radius: 4px;
+                    }
+                    .footer { 
+                        margin-top: 40px; 
+                        padding-top: 15px; 
+                        border-top: 1px solid #e2e8f0; 
+                        text-align: center; 
+                        color: #94a3b8; 
+                        font-size: 11px;
+                    }
+                    @media print {
+                        body { padding: 0; }
+                        .no-print { display: none !important; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="no-print" style="position: fixed; top: 20px; right: 20px; z-index: 1000;">
+                    <button onclick="window.print()" style="padding: 12px 24px; background: #2563eb; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                        <i class="fas fa-print" style="margin-right: 8px;"></i>Print / Save PDF
+                    </button>
+                </div>
+                ${content}
+                <div class="footer">
+                    Generated by Work Volt on ${new Date().toLocaleString()} • ${currentUser.name} • ${currentUser.email}
+                </div>
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+        showToast('PDF report ready - use browser print dialog to save', 'success');
+        
+    } catch (e) {
+        showToast('Failed to generate PDF: ' + e.message, 'error');
+    }
+}
+
+function generatePDFContent(tab, data, dateFrom, dateTo) {
+    const periodText = dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : 'All Time';
+    
+    if (tab === 'financial') {
+        const recentTrans = data.transactions.slice(0, 15).map(t => `
+            <tr>
+                <td>${t.date}</td>
+                <td><span class="badge ${t.type === 'income' ? 'badge-green' : 'badge-red'}">${t.type}</span></td>
+                <td>${t.category}</td>
+                <td>${t.description.substring(0, 50)}${t.description.length > 50 ? '...' : ''}</td>
+                <td class="text-right ${t.type === 'income' ? 'text-green' : 'text-red'} font-bold">
+                    ${t.type === 'income' ? '+' : '-'}$${(t.amount || 0).toFixed(2)}
+                </td>
+                <td class="text-center"><span class="badge ${t.status === 'paid' ? 'badge-green' : 'badge-amber'}">${t.status}</span></td>
+            </tr>
+        `).join('');
+        
+        return `
+            <div class="header">
+                <h1><i class="fas fa-chart-line" style="color: #2563eb; margin-right: 10px;"></i>Financial Report</h1>
+                <div class="meta">Period: ${periodText} • Generated: ${new Date().toLocaleDateString()}</div>
+            </div>
+            <div class="summary-grid">
+                <div class="summary-card income">
+                    <h4>Total Income</h4>
+                    <div class="value text-green">$${(data.summary.total_income || 0).toFixed(2)}</div>
+                </div>
+                <div class="summary-card expense">
+                    <h4>Total Expenses</h4>
+                    <div class="value text-red">$${(data.summary.total_expense || 0).toFixed(2)}</div>
+                </div>
+                <div class="summary-card">
+                    <h4>Net Profit</h4>
+                    <div class="value ${data.summary.net_profit >= 0 ? 'text-green' : 'text-red'}">
+                        $${(data.summary.net_profit || 0).toFixed(2)}
+                    </div>
+                </div>
+                <div class="summary-card warning">
+                    <h4>Transactions</h4>
+                    <div class="value">${data.summary.transaction_count || 0}</div>
+                </div>
+            </div>
+            <div class="section">
+                <h2>Recent Transactions</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th>Description</th>
+                            <th class="text-right">Amount</th>
+                            <th class="text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>${recentTrans || '<tr><td colspan="6" class="text-center">No transactions found</td></tr>'}</tbody>
+                </table>
+            </div>
+        `;
+        
+    } else if (tab === 'projects') {
+        const projectRows = data.projects.map(p => `
+            <tr>
+                <td><strong>${p.name}</strong></td>
+                <td><span class="badge ${p.status === 'active' ? 'badge-blue' : p.status === 'completed' ? 'badge-green' : 'badge-amber'}">${p.status}</span></td>
+                <td>
+                    <div class="progress-bar" style="width: 80px;">
+                        <div class="progress-fill" style="width: ${p.progress}%; background: ${p.progress >= 80 ? '#16a34a' : p.progress >= 50 ? '#2563eb' : '#f59e0b'};"></div>
+                    </div>
+                    <span style="margin-left: 8px; font-size: 11px;">${p.progress}%</span>
+                </td>
+                <td class="text-right">$${(p.budget || 0).toFixed(2)}</td>
+                <td class="text-right">${p.hours_used.toFixed(1)}h / ${p.hourly_budget}h</td>
+                <td class="text-center ${p.is_overdue ? 'text-red' : p.days_remaining < 7 ? 'text-amber' : ''}">
+                    ${p.is_overdue ? 'Overdue' : p.days_remaining !== null ? p.days_remaining + ' days' : '-'}
+                </td>
+            </tr>
+        `).join('');
+        
+        return `
+            <div class="header">
+                <h1><i class="fas fa-folder-open" style="color: #2563eb; margin-right: 10px;"></i>Project Analytics Report</h1>
+                <div class="meta">Generated: ${new Date().toLocaleDateString()}</div>
+            </div>
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <h4>Active Projects</h4>
+                    <div class="value text-blue">${data.summary.status_breakdown.active || 0}</div>
+                </div>
+                <div class="summary-card income">
+                    <h4>Completed</h4>
+                    <div class="value text-green">${data.summary.status_breakdown.completed || 0}</div>
+                </div>
+                <div class="summary-card warning">
+                    <h4>Total Budget</h4>
+                    <div class="value">$${(data.summary.total_budget || 0).toFixed(2)}</div>
+                </div>
+                <div class="summary-card">
+                    <h4>Hours Used</h4>
+                    <div class="value">${(data.summary.total_hours_used || 0).toFixed(1)}h</div>
+                </div>
+            </div>
+            <div class="section">
+                <h2>Project Details</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Project</th>
+                            <th>Status</th>
+                            <th>Progress</th>
+                            <th class="text-right">Budget</th>
+                            <th class="text-right">Hours</th>
+                            <th class="text-center">Deadline</th>
+                        </tr>
+                    </thead>
+                    <tbody>${projectRows || '<tr><td colspan="6" class="text-center">No projects found</td></tr>'}</tbody>
+                </table>
+            </div>
+        `;
+        
+    } else { // productivity
+        const empRows = data.employees.map(e => `
+            <tr>
+                <td>
+                    <strong>${e.name}</strong>
+                    <div style="font-size: 11px; color: #64748b;">${e.department || 'No department'}</div>
+                </td>
+                <td><span class="badge badge-blue">${e.role}</span></td>
+                <td class="text-right font-bold text-blue">${e.total_hours.toFixed(1)}h</td>
+                <td class="text-center">${e.tasks_completed}</td>
+                <td class="text-center">${e.avg_hours_per_day.toFixed(1)}h</td>
+                <td class="text-right font-bold">$${e.payroll_total.toFixed(2)}</td>
+            </tr>
+        `).join('');
+        
+        return `
+            <div class="header">
+                <h1><i class="fas fa-users" style="color: #2563eb; margin-right: 10px;"></i>Employee Productivity Report</h1>
+                <div class="meta">Period: ${periodText} • Generated: ${new Date().toLocaleDateString()}</div>
+            </div>
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <h4>Total Hours</h4>
+                    <div class="value text-blue">${(data.summary.total_hours || 0).toFixed(1)}h</div>
+                </div>
+                <div class="summary-card income">
+                    <h4>Tasks Completed</h4>
+                    <div class="value text-green">${data.summary.total_tasks_completed || 0}</div>
+                </div>
+                <div class="summary-card warning">
+                    <h4>Avg Hours/Day</h4>
+                    <div class="value">${(data.summary.avg_productivity || 0).toFixed(1)}h</div>
+                </div>
+                <div class="summary-card expense">
+                    <h4>Total Payroll</h4>
+                    <div class="value">$${(data.summary.total_payroll || 0).toFixed(2)}</div>
+                </div>
+            </div>
+            <div class="section">
+                <h2>Employee Performance</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Employee</th>
+                            <th>Role</th>
+                            <th class="text-right">Hours</th>
+                            <th class="text-center">Tasks</th>
+                            <th class="text-center">Avg/Day</th>
+                            <th class="text-right">Payroll</th>
+                        </tr>
+                    </thead>
+                    <tbody>${empRows || '<tr><td colspan="6" class="text-center">No data found</td></tr>'}</tbody>
+                </table>
+            </div>
+        `;
     }
 }
         
@@ -4265,3 +4649,4 @@ async function exportCurrentReport() {
     </script>
 </body>
 </html>
+
