@@ -5176,24 +5176,34 @@ async function loadAssetsSummary() {
     const data = await apiCall('assets/summary');
     const s = data.summary;
     
-    document.getElementById('assets-summary').innerHTML = `
-      <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
-        <p class="text-sm text-blue-700 font-medium">Total Assets</p>
-        <p class="text-2xl font-bold text-blue-700">${s.total_assets || 0}</p>
-      </div>
-      <div class="bg-green-50 p-4 rounded-xl border border-green-200">
-        <p class="text-sm text-green-700 font-medium">Current Value</p>
-        <p class="text-2xl font-bold text-green-700">$${(s.total_current_value || 0).toFixed(2)}</p>
-      </div>
-      <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
-        <p class="text-sm text-amber-700 font-medium">Maintenance Costs</p>
-        <p class="text-2xl font-bold text-amber-700">$${(s.total_maintenance_costs || 0).toFixed(2)}</p>
-      </div>
-      <div class="bg-purple-50 p-4 rounded-xl border border-purple-200">
-        <p class="text-sm text-purple-700 font-medium">Expiring Soon</p>
-        <p class="text-2xl font-bold text-purple-700">${(s.expiring_warranty_30d || 0) + (s.expiring_insurance_30d || 0)}</p>
-      </div>
-    `;
+            document.getElementById('assets-summary').innerHTML = `
+  <!-- Total Assets Count -->
+  <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
+    <p class="text-sm text-blue-700 font-medium">Total Assets</p>
+    <p class="text-2xl font-bold text-blue-700">${s.total_assets || 0}</p>
+  </div>
+  
+  <!-- Current Market Value -->
+  <div class="bg-green-50 p-4 rounded-xl border border-green-200">
+    <p class="text-sm text-green-700 font-medium">Current Value</p>
+    <p class="text-2xl font-bold text-green-700">$${(s.total_current_value || 0).toFixed(2)}</p>
+    <p class="text-xs text-green-600 mt-1">What assets are worth now</p>
+  </div>
+  
+  <!-- Original Investment -->
+  <div class="bg-purple-50 p-4 rounded-xl border border-purple-200">
+    <p class="text-sm text-purple-700 font-medium">Total Invested</p>
+    <p class="text-2xl font-bold text-purple-700">$${(s.total_purchase_cost || 0).toFixed(2)}</p>
+    <p class="text-xs text-purple-600 mt-1">Original purchase costs</p>
+  </div>
+  
+  <!-- Maintenance/Repairs Only -->
+  <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
+    <p class="text-sm text-amber-700 font-medium">Maintenance & Repairs</p>
+    <p class="text-2xl font-bold text-amber-700">$${(s.total_maintenance_costs || 0).toFixed(2)}</p>
+    <p class="text-xs text-amber-600 mt-1">Upkeep costs only</p>
+  </div>
+`;
   } catch (e) {
     console.error('Failed to load summary:', e);
   }
@@ -5891,6 +5901,7 @@ function editAsset(assetId) {
     </script>
 </body>
 </html>
+
 
 
 
