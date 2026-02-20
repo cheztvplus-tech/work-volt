@@ -4027,7 +4027,7 @@ function updateDateRange() {
     }
 }
 
-function switchReportTab(tab) {
+            function switchReportTab(tab) {
     // Update tab styles
     document.querySelectorAll('.report-tab').forEach(t => {
         t.classList.remove('border-blue-600', 'text-blue-600');
@@ -4036,21 +4036,23 @@ function switchReportTab(tab) {
     document.getElementById(`tab-${tab}`).classList.remove('border-transparent', 'text-slate-500');
     document.getElementById(`tab-${tab}`).classList.add('border-blue-600', 'text-blue-600');
     
-    // Show/hide content using display none/block instead of hidden class
+    // Show/hide content using Tailwind's hidden class
     document.querySelectorAll('.report-content').forEach(c => {
-        c.style.display = 'none';
+        c.classList.add('hidden');
     });
-    document.getElementById(`report-content-${tab}`).style.display = 'block';
+    document.getElementById(`report-content-${tab}`).classList.remove('hidden');
     
     // Store current tab for export
     window.currentReportTab = tab;
     
-    // Resize charts if they exist to prevent canvas expansion
-    Object.values(reportsCharts).forEach(chart => {
-        if (chart && typeof chart.resize === 'function') {
-            chart.resize();
-        }
-    });
+    // Resize charts if they exist
+    setTimeout(() => {
+        Object.values(reportsCharts).forEach(chart => {
+            if (chart && typeof chart.resize === 'function') {
+                chart.resize();
+            }
+        });
+    }, 100);
 }
 
 async function loadAllReports() {
@@ -4783,5 +4785,6 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
     </script>
 </body>
 </html>
+
 
 
