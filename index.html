@@ -374,7 +374,7 @@ canvas {
     setTimeout(() => {
         switch(moduleName) {
             case 'dashboard': loadDashboard(main); break;
-            case 'tasks': 
+            case 'tasks': {
                 const preselectedProject = sessionStorage.getItem('preselectedProjectId');
                 loadTasks(main, preselectedProject);
                 if (preselectedProject) {
@@ -4660,6 +4660,7 @@ function printPDFModal() {
     </script>
 </body>
 </html>
+
 
 
 
