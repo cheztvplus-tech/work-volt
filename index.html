@@ -2338,13 +2338,13 @@ function closeSidebarOnClickOutside(e) {
                     <table class="w-full text-left text-sm">
                         <thead class="bg-slate-50 border-b border-slate-200">
                             <tr>
-                                <th class="px-3 py-2 font-medium text-slate-700 text-xs">Date</th>
-                                <th class="px-3 py-2 font-medium text-slate-700 text-xs">Type</th>
-                                <th class="px-3 py-2 font-medium text-slate-700 text-xs">Category</th>
-                                <th class="px-3 py-2 font-medium text-slate-700 text-xs">Description</th>
-                                <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right">Amount</th>
-                                <th class="px-3 py-2 font-medium text-slate-700 text-xs">Status</th>
-                                <th class="px-3 py-2 font-medium text-slate-700 text-xs">Actions</th>
+        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-20">Date</th>
+        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-16">Type</th>
+        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-24">Category</th>
+        <th class="px-3 py-2 font-medium text-slate-700 text-xs" style="min-width: 250px; width: 40%;">Description</th>
+        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-20">Amount</th>
+        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-16">Status</th>
+        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-16">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="financials-table-body" class="divide-y divide-slate-100">
@@ -2445,7 +2445,7 @@ function closeSidebarOnClickOutside(e) {
                         </span>
                     </td>
                     <td class="px-4 py-3 text-slate-600 capitalize">${t.category}</td>
-                    <td class="px-4 py-3 text-slate-900">${t.description}</td>
+                    <td class="px-3 py-3 text-slate-900 text-sm" style="min-width: 250px; max-width: 400px; word-break: break-word;">${t.description}</td>
                     <td class="px-4 py-3 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}">
                         ${t.type === 'income' ? '+' : '-'}$${(t.amount || 0).toFixed(2)}
                     </td>
@@ -4925,3 +4925,4 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
     </script>
 </body>
 </html>
+
