@@ -3844,7 +3844,7 @@ async function deleteWorkflow(id) {
 
 let reportsCharts = {}; // Store chart instances
 
-           async function loadReports(container) {
+               async function loadReports(container) {
     const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
     
     if (!isManager) {
@@ -3932,55 +3932,56 @@ let reportsCharts = {}; // Store chart instances
                 
                 <!-- Financial Reports -->
                 <div id="report-content-financial" class="report-content p-4 sm:p-6">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                        <div class="bg-green-50 p-4 rounded-xl border border-green-200">
-                            <p class="text-sm text-green-700 font-medium">Total Income</p>
-                            <p id="fin-total-income" class="text-2xl font-bold text-green-700">$0.00</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                        <div class="bg-green-50 p-3 rounded-xl border border-green-200">
+                            <p class="text-xs text-green-700 font-medium">Total Income</p>
+                            <p id="fin-total-income" class="text-xl font-bold text-green-700">$0.00</p>
                         </div>
-                        <div class="bg-red-50 p-4 rounded-xl border border-red-200">
-                            <p class="text-sm text-red-700 font-medium">Total Expenses</p>
-                            <p id="fin-total-expense" class="text-2xl font-bold text-red-700">$0.00</p>
+                        <div class="bg-red-50 p-3 rounded-xl border border-red-200">
+                            <p class="text-xs text-red-700 font-medium">Total Expenses</p>
+                            <p id="fin-total-expense" class="text-xl font-bold text-red-700">$0.00</p>
                         </div>
-                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                            <p class="text-sm text-blue-700 font-medium">Net Profit</p>
-                            <p id="fin-net-profit" class="text-2xl font-bold text-blue-700">$0.00</p>
+                        <div class="bg-blue-50 p-3 rounded-xl border border-blue-200">
+                            <p class="text-xs text-blue-700 font-medium">Net Profit</p>
+                            <p id="fin-net-profit" class="text-xl font-bold text-blue-700">$0.00</p>
                         </div>
-                        <div class="bg-purple-50 p-4 rounded-xl border border-purple-200">
-                            <p class="text-sm text-purple-700 font-medium">Transactions</p>
-                            <p id="fin-trans-count" class="text-2xl font-bold text-purple-700">0</p>
+                        <div class="bg-purple-50 p-3 rounded-xl border border-purple-200">
+                            <p class="text-xs text-purple-700 font-medium">Transactions</p>
+                            <p id="fin-trans-count" class="text-xl font-bold text-purple-700">0</p>
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="font-semibold text-slate-900 mb-4">Income vs Expenses Trend</h4>
-                            <div class="chart-container" style="height: 250px; position: relative;">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Income vs Expenses Trend</h4>
+                            <div class="chart-container" style="height: 200px; position: relative;">
                                 <canvas id="chart-financial-trend"></canvas>
                             </div>
                         </div>
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="font-semibold text-slate-900 mb-4">Expense Breakdown</h4>
-                            <div class="chart-container" style="height: 250px; position: relative;">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Expense Breakdown</h4>
+                            <div class="chart-container" style="height: 200px; position: relative;">
                                 <canvas id="chart-expense-breakdown"></canvas>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <h4 class="font-semibold text-slate-900 mb-4">Recent Transactions</h4>
-                        <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
-                            <table class="w-full text-left text-sm">
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <h4 class="font-semibold text-slate-900 mb-3 text-sm">Recent Transactions</h4>
+                        <div class="overflow-x-auto" style="max-height: 300px;">
+                            <table class="w-full text-left text-sm whitespace-nowrap">
                                 <thead class="bg-white border-b border-slate-200 sticky top-0">
                                     <tr>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Date</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Type</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Category</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700 text-right">Amount</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Status</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-20">Date</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-16">Type</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-24">Category</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs" style="min-width: 200px;">Description</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-20">Amount</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-16">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody id="fin-recent-transactions" class="divide-y divide-slate-200">
-                                    <tr><td colspan="5" class="px-4 py-4 text-center text-slate-400">Loading...</td></tr>
+                                    <tr><td colspan="6" class="px-3 py-4 text-center text-slate-400 text-sm">Loading...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -3989,55 +3990,55 @@ let reportsCharts = {}; // Store chart instances
                 
                 <!-- Projects Reports -->
                 <div id="report-content-projects" class="report-content p-4 sm:p-6 hidden">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                            <p class="text-sm text-blue-700 font-medium">Active Projects</p>
-                            <p id="proj-active-count" class="text-2xl font-bold text-blue-700">0</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                        <div class="bg-blue-50 p-3 rounded-xl border border-blue-200">
+                            <p class="text-xs text-blue-700 font-medium">Active Projects</p>
+                            <p id="proj-active-count" class="text-xl font-bold text-blue-700">0</p>
                         </div>
-                        <div class="bg-green-50 p-4 rounded-xl border border-green-200">
-                            <p class="text-sm text-green-700 font-medium">Completed</p>
-                            <p id="proj-completed-count" class="text-2xl font-bold text-green-700">0</p>
+                        <div class="bg-green-50 p-3 rounded-xl border border-green-200">
+                            <p class="text-xs text-green-700 font-medium">Completed</p>
+                            <p id="proj-completed-count" class="text-xl font-bold text-green-700">0</p>
                         </div>
-                        <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
-                            <p class="text-sm text-amber-700 font-medium">Total Budget</p>
-                            <p id="proj-total-budget" class="text-2xl font-bold text-amber-700">$0.00</p>
+                        <div class="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                            <p class="text-xs text-amber-700 font-medium">Total Budget</p>
+                            <p id="proj-total-budget" class="text-xl font-bold text-amber-700">$0.00</p>
                         </div>
-                        <div class="bg-purple-50 p-4 rounded-xl border border-purple-200">
-                            <p class="text-sm text-purple-700 font-medium">Hours Used</p>
-                            <p id="proj-hours-used" class="text-2xl font-bold text-purple-700">0h</p>
+                        <div class="bg-purple-50 p-3 rounded-xl border border-purple-200">
+                            <p class="text-xs text-purple-700 font-medium">Hours Used</p>
+                            <p id="proj-hours-used" class="text-xl font-bold text-purple-700">0h</p>
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="font-semibold text-slate-900 mb-4">Project Status Distribution</h4>
-                            <div class="chart-container" style="height: 250px; position: relative;">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Project Status Distribution</h4>
+                            <div class="chart-container" style="height: 200px; position: relative;">
                                 <canvas id="chart-project-status"></canvas>
                             </div>
                         </div>
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="font-semibold text-slate-900 mb-4">Budget vs Hours Utilization</h4>
-                            <div class="chart-container" style="height: 250px; position: relative;">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Budget vs Hours Utilization</h4>
+                            <div class="chart-container" style="height: 200px; position: relative;">
                                 <canvas id="chart-project-utilization"></canvas>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <h4 class="font-semibold text-slate-900 mb-4">Project Details</h4>
-                        <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
-                            <table class="w-full text-left text-sm">
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <h4 class="font-semibold text-slate-900 mb-3 text-sm">Project Details</h4>
+                        <div class="overflow-x-auto" style="max-height: 300px;">
+                            <table class="w-full text-left text-sm whitespace-nowrap">
                                 <thead class="bg-white border-b border-slate-200 sticky top-0">
                                     <tr>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Project</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Status</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Progress</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700 text-right">Budget</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Deadline</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs" style="min-width: 150px;">Project</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-20">Status</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-24">Progress</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-20">Budget</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-24">Deadline</th>
                                     </tr>
                                 </thead>
                                 <tbody id="proj-details-table" class="divide-y divide-slate-200">
-                                    <tr><td colspan="5" class="px-4 py-4 text-center text-slate-400">Loading...</td></tr>
+                                    <tr><td colspan="5" class="px-3 py-4 text-center text-slate-400 text-sm">Loading...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -4046,56 +4047,56 @@ let reportsCharts = {}; // Store chart instances
                 
                 <!-- Productivity Reports -->
                 <div id="report-content-productivity" class="report-content p-4 sm:p-6 hidden">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                            <p class="text-sm text-blue-700 font-medium">Total Hours</p>
-                            <p id="prod-total-hours" class="text-2xl font-bold text-blue-700">0h</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                        <div class="bg-blue-50 p-3 rounded-xl border border-blue-200">
+                            <p class="text-xs text-blue-700 font-medium">Total Hours</p>
+                            <p id="prod-total-hours" class="text-xl font-bold text-blue-700">0h</p>
                         </div>
-                        <div class="bg-green-50 p-4 rounded-xl border border-green-200">
-                            <p class="text-sm text-green-700 font-medium">Tasks Completed</p>
-                            <p id="prod-tasks-completed" class="text-2xl font-bold text-green-700">0</p>
+                        <div class="bg-green-50 p-3 rounded-xl border border-green-200">
+                            <p class="text-xs text-green-700 font-medium">Tasks Completed</p>
+                            <p id="prod-tasks-completed" class="text-xl font-bold text-green-700">0</p>
                         </div>
-                        <div class="bg-purple-50 p-4 rounded-xl border border-purple-200">
-                            <p class="text-sm text-purple-700 font-medium">Avg Hours/Day</p>
-                            <p id="prod-avg-hours" class="text-2xl font-bold text-purple-700">0h</p>
+                        <div class="bg-purple-50 p-3 rounded-xl border border-purple-200">
+                            <p class="text-xs text-purple-700 font-medium">Avg Hours/Day</p>
+                            <p id="prod-avg-hours" class="text-xl font-bold text-purple-700">0h</p>
                         </div>
-                        <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
-                            <p class="text-sm text-amber-700 font-medium">Total Payroll</p>
-                            <p id="prod-total-payroll" class="text-2xl font-bold text-amber-700">$0.00</p>
+                        <div class="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                            <p class="text-xs text-amber-700 font-medium">Total Payroll</p>
+                            <p id="prod-total-payroll" class="text-xl font-bold text-amber-700">$0.00</p>
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="font-semibold text-slate-900 mb-4">Hours by Employee</h4>
-                            <div class="chart-container" style="height: 250px; position: relative;">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Hours by Employee</h4>
+                            <div class="chart-container" style="height: 200px; position: relative;">
                                 <canvas id="chart-hours-by-employee"></canvas>
                             </div>
                         </div>
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="font-semibold text-slate-900 mb-4">Task Completion Rate</h4>
-                            <div class="chart-container" style="height: 250px; position: relative;">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Task Completion Rate</h4>
+                            <div class="chart-container" style="height: 200px; position: relative;">
                                 <canvas id="chart-task-completion"></canvas>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <h4 class="font-semibold text-slate-900 mb-4">Employee Productivity Details</h4>
-                        <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
-                            <table class="w-full text-left text-sm">
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <h4 class="font-semibold text-slate-900 mb-3 text-sm">Employee Productivity Details</h4>
+                        <div class="overflow-x-auto" style="max-height: 300px;">
+                            <table class="w-full text-left text-sm whitespace-nowrap">
                                 <thead class="bg-white border-b border-slate-200 sticky top-0">
                                     <tr>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Employee</th>
-                                        <th class="px-4 py-2 font-medium text-slate-700">Role</th>
-                                        <th class="text-right px-4 py-2 font-medium text-slate-700">Hours</th>
-                                        <th class="text-right px-4 py-2 font-medium text-slate-700">Tasks</th>
-                                        <th class="text-right px-4 py-2 font-medium text-slate-700">Avg/Day</th>
-                                        <th class="text-right px-4 py-2 font-medium text-slate-700">Payroll</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs" style="min-width: 120px;">Employee</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs w-20">Role</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-16">Hours</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-16">Tasks</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-16">Avg/Day</th>
+                                        <th class="px-3 py-2 font-medium text-slate-700 text-xs text-right w-20">Payroll</th>
                                     </tr>
                                 </thead>
                                 <tbody id="prod-employee-table" class="divide-y divide-slate-200">
-                                    <tr><td colspan="6" class="px-4 py-4 text-center text-slate-400">Loading...</td></tr>
+                                    <tr><td colspan="6" class="px-3 py-4 text-center text-slate-400 text-sm">Loading...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -4115,7 +4116,7 @@ let reportsCharts = {}; // Store chart instances
     window.currentReportTab = 'financial';
     
     await loadAllReports();
-} 
+}
 
         function toggleExportDropdown() {
     const dropdown = document.getElementById('export-dropdown');
@@ -4284,25 +4285,26 @@ async function loadFinancialReport(dateFrom, dateTo) {
         });
         
         // Recent Transactions Table
-        const rows = data.transactions.slice(0, 10).map(t => `
-            <tr class="hover:bg-white">
-                <td class="px-4 py-2 text-slate-900">${t.date}</td>
-                <td class="px-4 py-2">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium ${t.type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
-                        ${t.type}
-                    </span>
-                </td>
-                <td class="px-4 py-2 text-slate-600 capitalize">${t.category}</td>
-                <td class="px-4 py-2 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}">
-                    ${t.type === 'income' ? '+' : '-'}$${(t.amount || 0).toFixed(2)}
-                </td>
-                <td class="px-4 py-2">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium ${t.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">
-                        ${t.status}
-                    </span>
-                </td>
-            </tr>
-        `).join('');
+            const rows = transactions.map(t => `
+    <tr class="hover:bg-white">
+        <td class="px-3 py-2 text-slate-900 whitespace-nowrap">${t.date}</td>
+        <td class="px-3 py-2 whitespace-nowrap">
+            <span class="px-2 py-1 rounded-full text-xs font-medium ${t.type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
+                ${t.type}
+            </span>
+        </td>
+        <td class="px-3 py-2 text-slate-600 capitalize whitespace-nowrap">${t.category}</td>
+        <td class="px-3 py-2 text-slate-900" style="min-width: 200px; white-space: normal;">${t.description}</td>
+        <td class="px-3 py-2 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'} whitespace-nowrap">
+            ${t.type === 'income' ? '+' : '-'}$${(t.amount || 0).toFixed(2)}
+        </td>
+        <td class="px-3 py-2 whitespace-nowrap">
+            <span class="px-2 py-1 rounded-full text-xs font-medium ${t.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">
+                ${t.status}
+            </span>
+        </td>
+    </tr>
+`).join('');
         
         document.getElementById('fin-recent-transactions').innerHTML = rows || 
             '<tr><td colspan="5" class="px-4 py-4 text-center text-slate-400">No transactions found</td></tr>';
@@ -4379,38 +4381,38 @@ async function loadProjectsReport() {
         });
         
         // Projects Table
-        const rows = data.projects.map(p => `
-            <tr class="hover:bg-white ${p.is_overdue ? 'bg-red-50' : ''}">
-                <td class="px-4 py-2 font-medium text-slate-900">${p.name}</td>
-                <td class="px-4 py-2">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium ${
-                        p.status === 'active' ? 'bg-blue-100 text-blue-700' :
-                        p.status === 'completed' ? 'bg-green-100 text-green-700' :
-                        p.status === 'on-hold' ? 'bg-amber-100 text-amber-700' :
-                        'bg-red-100 text-red-700'
-                    }">${p.status}</span>
-                </td>
-                <td class="px-4 py-2">
-                    <div class="flex items-center gap-2">
-                        <div class="flex-1 bg-slate-200 rounded-full h-2 w-24">
-                            <div class="bg-blue-600 h-2 rounded-full" style="width: ${p.progress}%"></div>
-                        </div>
-                        <span class="text-xs text-slate-600">${p.progress}%</span>
-                    </div>
-                </td>
-                <td class="px-4 py-2 text-right text-slate-900">$${(p.budget || 0).toFixed(2)}</td>
-                <td class="px-4 py-2 text-slate-600">
-                    ${p.is_overdue ? 
-                        `<span class="text-red-600 font-medium">${p.days_remaining}d overdue</span>` :
-                        p.days_remaining !== null ? 
-                            (p.days_remaining < 7 ? 
-                                `<span class="text-amber-600">${p.days_remaining}d left</span>` :
-                                `${p.days_remaining}d left`) :
-                        '-'
-                    }
-                </td>
-            </tr>
-        `).join('');
+                const rows = projects.map(p => `
+    <tr class="hover:bg-white ${p.is_overdue ? 'bg-red-50' : ''}">
+        <td class="px-3 py-2 font-medium text-slate-900" style="min-width: 150px; white-space: normal;">${p.name}</td>
+        <td class="px-3 py-2 whitespace-nowrap">
+            <span class="px-2 py-1 rounded-full text-xs font-medium ${
+                p.status === 'active' ? 'bg-blue-100 text-blue-700' :
+                p.status === 'completed' ? 'bg-green-100 text-green-700' :
+                p.status === 'on-hold' ? 'bg-amber-100 text-amber-700' :
+                'bg-red-100 text-red-700'
+            }">${p.status}</span>
+        </td>
+        <td class="px-3 py-2 whitespace-nowrap">
+            <div class="flex items-center gap-2">
+                <div class="flex-1 bg-slate-200 rounded-full h-2 w-20">
+                    <div class="bg-blue-600 h-2 rounded-full" style="width: ${p.progress}%"></div>
+                </div>
+                <span class="text-xs text-slate-600">${p.progress}%</span>
+            </div>
+        </td>
+        <td class="px-3 py-2 text-right text-slate-900 whitespace-nowrap">$${(p.budget || 0).toFixed(2)}</td>
+        <td class="px-3 py-2 text-slate-600 whitespace-nowrap">
+            ${p.is_overdue ? 
+                `<span class="text-red-600 font-medium text-xs">${p.days_remaining}d overdue</span>` :
+                p.days_remaining !== null ? 
+                    (p.days_remaining < 7 ? 
+                        `<span class="text-amber-600 text-xs">${p.days_remaining}d left</span>` :
+                        `<span class="text-xs">${p.days_remaining}d left</span>`) :
+                '-'
+            }
+        </td>
+    </tr>
+`).join('');
         
         document.getElementById('proj-details-table').innerHTML = rows || 
             '<tr><td colspan="5" class="px-4 py-4 text-center text-slate-400">No projects found</td></tr>';
@@ -4485,23 +4487,23 @@ async function loadProductivityReport(dateFrom, dateTo) {
         });
         
         // Employee Table
-        const rows = data.employees.map(e => `
-            <tr class="hover:bg-white">
-                <td class="px-4 py-2">
-                    <div class="font-medium text-slate-900">${e.name}</div>
-                    <div class="text-xs text-slate-500">${e.department || 'No department'}</div>
-                </td>
-                <td class="px-4 py-2">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
-                        ${e.role}
-                    </span>
-                </td>
-                <td class="px-4 py-2 text-right font-bold text-blue-600">${e.total_hours.toFixed(1)}h</td>
-                <td class="px-4 py-2 text-right text-slate-900">${e.tasks_completed}</td>
-                <td class="px-4 py-2 text-right text-slate-600">${e.avg_hours_per_day.toFixed(1)}h</td>
-                <td class="px-4 py-2 text-right font-medium text-slate-900">$${e.payroll_total.toFixed(2)}</td>
-            </tr>
-        `).join('');
+                const rows = data.employees.map(e => `
+    <tr class="hover:bg-white">
+        <td class="px-3 py-2" style="min-width: 120px;">
+            <div class="font-medium text-slate-900 text-sm">${e.name}</div>
+            <div class="text-xs text-slate-500">${e.department || 'No dept'}</div>
+        </td>
+        <td class="px-3 py-2 whitespace-nowrap">
+            <span class="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                ${e.role}
+            </span>
+        </td>
+        <td class="px-3 py-2 text-right font-bold text-blue-600 whitespace-nowrap">${e.total_hours.toFixed(1)}h</td>
+        <td class="px-3 py-2 text-right text-slate-900 whitespace-nowrap">${e.tasks_completed}</td>
+        <td class="px-3 py-2 text-right text-slate-600 whitespace-nowrap">${e.avg_hours_per_day.toFixed(1)}h</td>
+        <td class="px-3 py-2 text-right font-medium text-slate-900 whitespace-nowrap">$${e.payroll_total.toFixed(2)}</td>
+    </tr>
+`).join('');
         
         document.getElementById('prod-employee-table').innerHTML = rows || 
             '<tr><td colspan="6" class="px-4 py-4 text-center text-slate-400">No data found</td></tr>';
@@ -4925,4 +4927,5 @@ function generatePDFContent(tab, data, dateFrom, dateTo) {
     </script>
 </body>
 </html>
+
 
