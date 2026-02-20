@@ -4275,7 +4275,6 @@ async function exportCurrentReportCSV() {
         showToast('Export failed: ' + e.message, 'error');
     }
 }
-
             async function exportCurrentReportPDF() {
     const tab = window.currentReportTab || 'financial';
     const dateFrom = document.getElementById('report-date-from').value;
@@ -4387,6 +4386,7 @@ async function exportCurrentReportCSV() {
         showToast('Failed to generate PDF: ' + e.message, 'error');
         console.error('PDF export error:', e);
     }
+}
 
 function printPDFModal() {
     const printContent = document.getElementById('pdf-print-area').innerHTML;
@@ -4453,7 +4453,7 @@ function printPDFModal() {
     printWindow.document.close();
 }
 
-            function generatePDFContent(tab, data, dateFrom, dateTo) {
+function generatePDFContent(tab, data, dateFrom, dateTo) {
     const periodText = dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : 'All Time';
     
     if (tab === 'financial') {
@@ -4629,7 +4629,7 @@ function printPDFModal() {
             </div>
         `;
     }
-}  // <-- ONLY ONE closing brace here!
+}
         
         // ==================== END NOTIFICATION SYSTEM ====================
 
@@ -4658,6 +4658,7 @@ function printPDFModal() {
     </script>
 </body>
 </html>
+
 
 
 
