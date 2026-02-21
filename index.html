@@ -5561,7 +5561,7 @@ async function submitAssetForm() {
   }
 }
 
-async function viewAssetDetails(assetId) {
+    async function viewAssetDetails(assetId) {
   try {
     const [assetData, logsData] = await Promise.all([
       apiCall('assets', {search: '', force_refresh: true}),
@@ -5580,6 +5580,11 @@ async function viewAssetDetails(assetId) {
     const userMap = {};
     if (users) users.forEach(u => userMap[u.user_id] = u.name);
     
+    // Calculate total maintenance costs (excluding purchase)
+    const totalMaintenanceCosts = logs
+      .filter(l => l.maintenance_type !== 'purchase')
+      .reduce((sum, l) => sum + (l.cost || 0), 0);
+    
     const modal = document.createElement('div');
     modal.id = 'asset-detail-modal';
     modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto';
@@ -5589,13 +5594,14 @@ async function viewAssetDetails(assetId) {
           <div class="flex items-start justify-between mb-4">
             <div>
               <h3 class="text-xl font-bold text-slate-900">${asset.name}</h3>
-              <p class="text-slate-500 capitalize">${(a.asset_type === 'computer' && a.imei) ? 'computer (Connected)' : a.asset_type} • ${a.manufacturer || ''} ${a.model || ''}</p>
+              <p class="text-slate-500 capitalize">${asset.asset_type}${asset.imei ? ' (Connected)' : ''} • ${asset.manufacturer || ''} ${asset.model || ''}</p>
             </div>
             <button onclick="document.getElementById('asset-detail-modal').remove()" class="text-slate-400 hover:text-slate-600">
               <i class="fas fa-times text-xl"></i>
             </button>
           </div>
           
+          <!-- Summary Cards -->
           <div class="grid grid-cols-2 gap-4 mb-6">
             <div class="bg-slate-50 p-3 rounded-lg">
               <p class="text-xs text-slate-500">Purchase Cost</p>
@@ -5605,9 +5611,9 @@ async function viewAssetDetails(assetId) {
               <p class="text-xs text-slate-500">Current Value</p>
               <p class="font-bold text-slate-900">$${(asset.current_value || 0).toFixed(2)}</p>
             </div>
-            <div class="bg-slate-50 p-3 rounded-lg">
-              <p class="text-xs text-slate-500">Total Maintenance</p>
-              <p class="font-bold text-amber-600">$${logs.filter(l => l.maintenance_type !== 'purchase').reduce((sum, l) => sum + (l.cost || 0), 0).toFixed(2)}</p>
+            <div class="bg-amber-50 p-3 rounded-lg">
+              <p class="text-xs text-amber-600">Total Maintenance</p>
+              <p class="font-bold text-amber-600">$${totalMaintenanceCosts.toFixed(2)}</p>
             </div>
             <div class="bg-slate-50 p-3 rounded-lg">
               <p class="text-xs text-slate-500">Status</p>
@@ -5615,10 +5621,11 @@ async function viewAssetDetails(assetId) {
             </div>
           </div>
           
+          <!-- Identification -->
           <div class="mb-6">
             <h4 class="font-medium text-slate-900 mb-2">Identification</h4>
             <div class="flex flex-wrap gap-2">
-              ${asset.id_number ? `<span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">Asset Tag: ${asset.id_number}</span>` : ''}
+              ${asset.id_number ? `<span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">Tag: ${asset.id_number}</span>` : ''}
               ${asset.serial_number ? `<span class="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm">S/N: ${asset.serial_number}</span>` : ''}
               ${asset.vin_license_plate ? `<span class="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm">${asset.asset_type === 'vehicle' ? 'VIN/LP' : 'ID'}: ${asset.vin_license_plate}</span>` : ''}
               ${asset.mac_ip_address ? `<span class="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm">IP/MAC: ${asset.mac_ip_address}</span>` : ''}
@@ -5627,6 +5634,7 @@ async function viewAssetDetails(assetId) {
             </div>
           </div>
           
+          <!-- Assignment -->
           <div class="mb-6">
             <h4 class="font-medium text-slate-900 mb-2">Assignment</h4>
             <p class="text-sm text-slate-600">Assigned to: <strong>${userMap[asset.assigned_to] || 'Unassigned'}</strong></p>
@@ -5634,33 +5642,54 @@ async function viewAssetDetails(assetId) {
             <p class="text-sm text-slate-600">Department: ${asset.department || '-'}</p>
           </div>
           
+          <!-- MAINTENANCE HISTORY SECTION - THIS IS THE IMPORTANT PART -->
           <div class="mb-6">
             <div class="flex items-center justify-between mb-2">
               <h4 class="font-medium text-slate-900">Maintenance History</h4>
-              <button onclick="addMaintenanceLog(${assetId})" class="text-sm text-blue-600 hover:text-blue-800">
-                <i class="fas fa-plus mr-1"></i>Add Log
+              <!-- THIS BUTTON OPENS THE MAINTENANCE LOG FORM -->
+              <button onclick="addMaintenanceLog(${assetId})" class="px-3 py-1 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                <i class="fas fa-plus mr-1"></i>Add Maintenance
               </button>
             </div>
+            
+            <!-- Maintenance List -->
             <div class="bg-slate-50 rounded-lg border border-slate-200 max-h-48 overflow-y-auto">
               ${logs.length === 0 ? 
-                '<p class="p-4 text-center text-slate-400 text-sm">No maintenance records</p>' :
-                logs.map(l => `
+                '<p class="p-4 text-center text-slate-400 text-sm">No maintenance records yet. Click "Add Maintenance" to log repairs, upgrades, or routine maintenance.</p>' :
+                logs.map(l => {
+                  const typeColors = {
+                    'repair': 'text-red-600 bg-red-50',
+                    'maintenance': 'text-blue-600 bg-blue-50',
+                    'upgrade': 'text-green-600 bg-green-50',
+                    'inspection': 'text-purple-600 bg-purple-50',
+                    'calibration': 'text-amber-600 bg-amber-50',
+                    'purchase': 'text-slate-600 bg-slate-100'
+                  };
+                  const colorClass = typeColors[l.maintenance_type] || 'text-slate-600 bg-slate-100';
+                  
+                  return `
                   <div class="p-3 border-b border-slate-200 last:border-0">
-                    <div class="flex items-center justify-between">
-                      <span class="font-medium text-slate-900 capitalize">${l.maintenance_type}</span>
-                      <span class="text-sm text-slate-500">${l.date}</span>
+                    <div class="flex items-center justify-between mb-1">
+                      <div class="flex items-center gap-2">
+                        <span class="px-2 py-1 rounded text-xs font-medium capitalize ${colorClass}">
+                          ${l.maintenance_type}
+                        </span>
+                        <span class="text-sm font-medium text-slate-900">${formatDate(l.date)}</span>
+                      </div>
+                      ${l.cost > 0 ? `<span class="font-bold text-slate-900">$${l.cost.toFixed(2)}</span>` : ''}
                     </div>
-                    <p class="text-sm text-slate-600">${l.description || '-'}</p>
-                    <div class="flex items-center justify-between mt-1">
-                      <span class="text-xs text-slate-500">By: ${userMap[l.performed_by] || 'Unknown'}</span>
-                      ${l.cost > 0 ? `<span class="font-bold text-amber-600">$${l.cost.toFixed(2)}</span>` : ''}
+                    <p class="text-sm text-slate-600 mb-1">${l.description || '-'}</p>
+                    <div class="flex items-center justify-between text-xs text-slate-500">
+                      <span>By: ${userMap[l.performed_by] || 'Unknown'}${l.vendor ? ` • Vendor: ${l.vendor}` : ''}</span>
+                      ${l.next_due_date ? `<span class="text-amber-600">Next due: ${formatDate(l.next_due_date)}</span>` : ''}
                     </div>
                   </div>
-                `).join('')
+                `}).join('')
               }
             </div>
           </div>
           
+          <!-- Action Buttons -->
           <div class="flex gap-3">
             <button onclick="editAsset(${assetId})" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">
               <i class="fas fa-pen mr-2"></i>Edit Asset
@@ -5679,6 +5708,12 @@ async function viewAssetDetails(assetId) {
   }
 }
 
+        function formatDate(dateString) {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', {year: 'numeric', month: 'short', day: 'numeric'});
+}
+        
         function addMaintenanceLog(assetId) {
   const modal = document.createElement('div');
   modal.id = 'maintenance-modal';
@@ -6135,6 +6170,7 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
 
