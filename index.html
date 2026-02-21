@@ -3676,7 +3676,7 @@ function closeDropdownOutside(e) {
   // Load existing config
   try {
     const config = await apiCall('email/config');
-    if (config && !config.error) {
+    if (config && (config.error === false || !config.error)) {
       document.getElementById('email-provider').value = config.provider_type || 'gmail';
       document.getElementById('from-name').value = config.from_name || 'Work Volt';
       document.getElementById('from-email').value = config.from_email || '';
@@ -6198,5 +6198,6 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
