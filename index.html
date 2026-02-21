@@ -307,7 +307,7 @@ body.dropdown-open {
     }
 }
 
-        /* ============================================
+/* ============================================
    ASSET FORM RESPONSIVE FIXES
    ============================================ */
 #asset-modal .bg-white {
@@ -390,6 +390,55 @@ body.dropdown-open {
     #asset-modal h4 {
         font-size: 0.8125rem;
         padding-top: 0.5rem;
+    }
+}
+/* ============================================
+   EDIT ASSET MODAL STYLES
+   ============================================ */
+#edit-asset-modal .bg-white {
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+#edit-asset-modal h3 {
+    font-size: 1.125rem;
+    line-height: 1.4;
+    margin-bottom: 0.75rem;
+}
+
+#edit-asset-modal input,
+#edit-asset-modal select {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+}
+
+#edit-asset-modal label {
+    font-size: 0.75rem;
+    margin-bottom: 0.25rem;
+}
+
+@media (max-width: 640px) {
+    #edit-asset-modal .bg-white {
+        max-height: 90vh;
+        margin: 0.5rem;
+    }
+    
+    #edit-asset-modal h3 {
+        font-size: 1rem;
+        position: sticky;
+        top: 0;
+        background: white;
+        z-index: 10;
+        padding: 0.5rem 0;
+    }
+    
+    #edit-asset-modal .grid-cols-2 {
+        grid-template-columns: 1fr;
+    }
+    
+    #edit-asset-modal input,
+    #edit-asset-modal select {
+        font-size: 16px;
     }
 }
   
@@ -5324,15 +5373,14 @@ async function loadAssetsData() {
               <p class="font-medium text-slate-900">${userMap[a.assigned_to] || 'Unassigned'}</p>
             </div>
           </div>
-          
-          <div class="flex gap-2 pt-3 border-t border-slate-100">
-            <button onclick="viewAssetDetails(${a.asset_id})" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
-              <i class="fas fa-eye mr-1"></i>Details
-            </button>
-            <button onclick="addMaintenanceLog(${a.asset_id})" class="flex-1 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200">
-              <i class="fas fa-wrench mr-1"></i>Maintenance
-            </button>
-          </div>
+                  <div class="flex gap-2 pt-3 border-t border-slate-100">
+  <button onclick="viewAssetDetails(${a.asset_id})" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
+    <i class="fas fa-eye mr-1"></i>Details
+  </button>
+  <button onclick="event.stopPropagation(); editAsset(${a.asset_id})" class="flex-1 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200">
+    <i class="fas fa-pen mr-1"></i>Edit
+  </button>
+</div>
         </div>
       `;
     }).join('');
@@ -5870,9 +5918,229 @@ async function viewExpiringAssets() {
   }
 }
 
-function editAsset(assetId) {
-  showToast('Edit asset ' + assetId + ' - implement edit form similar to create');
-  // Reuse createAssetForm with pre-filled values
+                async function editAsset(assetId) {
+  try {
+    // Fetch asset details
+    const data = await apiCall('assets', {search: '', force_refresh: true});
+    const asset = data.assets.find(a => a.asset_id == assetId);
+    
+    if (!asset) {
+      showToast('Asset not found', 'error');
+      return;
+    }
+    
+    // Close detail modal if open
+    document.getElementById('asset-detail-modal')?.remove();
+    
+    const modal = document.createElement('div');
+    modal.id = 'edit-asset-modal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto p-2 sm:p-4';
+    modal.innerHTML = `
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-auto my-auto relative">
+        <div class="p-4 sm:p-5">
+          <div class="sticky top-0 bg-white z-10 pb-2 border-b border-slate-200 mb-3">
+            <h3 class="text-lg sm:text-xl font-bold text-slate-900">Edit Asset</h3>
+            <p class="text-xs text-slate-500 mt-0.5">${asset.name} (ID: ${asset.asset_id})</p>
+          </div>
+          
+          <div class="space-y-3 overflow-y-auto max-h-[60vh] sm:max-h-[65vh] pr-1">
+            <!-- Quick Value Update Section -->
+            <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <h4 class="text-sm font-bold text-blue-900 mb-2">💰 Value Update</h4>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-blue-700 mb-1">Current Value ($)</label>
+                  <input type="number" id="edit-current-value" step="0.01" min="0" 
+                    value="${asset.current_value || 0}" 
+                    class="w-full px-3 py-2 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-blue-900">
+                  <p class="text-xs text-blue-600 mt-1">Update as value changes</p>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-700 mb-1">Purchase Cost ($)</label>
+                  <input type="number" id="edit-purchase-cost" step="0.01" min="0" 
+                    value="${asset.purchase_cost || 0}" 
+                    class="w-full px-3 py-2 text-sm bg-slate-100 border border-slate-300 rounded-lg text-slate-600" readonly>
+                  <p class="text-xs text-slate-500 mt-1">Original price (locked)</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Basic Info -->
+            <div class="border-t border-slate-200 pt-3">
+              <h4 class="text-sm font-medium text-slate-900 mb-2">Basic Information</h4>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="sm:col-span-2">
+                  <label class="block text-xs font-medium text-slate-700 mb-1">Asset Name</label>
+                  <input type="text" id="edit-name" value="${asset.name || ''}" 
+                    class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg">
+                </div>
+                
+                <div>
+                  <label class="block text-xs font-medium text-slate-700 mb-1">Status</label>
+                  <select id="edit-status" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg">
+                    <option value="active" ${asset.status === 'active' ? 'selected' : ''}>Active</option>
+                    <option value="maintenance" ${asset.status === 'maintenance' ? 'selected' : ''}>In Maintenance</option>
+                    <option value="retired" ${asset.status === 'retired' ? 'selected' : ''}>Retired</option>
+                    <option value="disposed" ${asset.status === 'disposed' ? 'selected' : ''}>Disposed</option>
+                    <option value="lost" ${asset.status === 'lost' ? 'selected' : ''}>Lost/Stolen</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label class="block text-xs font-medium text-slate-700 mb-1">Asset Type</label>
+                  <select id="edit-type" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-50" disabled>
+                    <option value="${asset.asset_type}">${asset.asset_type}</option>
+                  </select>
+                  <p class="text-xs text-slate-500 mt-0.5">Type cannot be changed</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Assignment -->
+            <div class="border-t border-slate-200 pt-3">
+              <h4 class="text-sm font-medium text-slate-900 mb-2">Assignment & Location</h4>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-700 mb-1">Assigned To</label>
+                  <select id="edit-assigned" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg">
+                    <option value="">Unassigned</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-700 mb-1">Location</label>
+                  <input type="text" id="edit-location" value="${asset.location || ''}" 
+                    class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg">
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="block text-xs font-medium text-slate-700 mb-1">Department</label>
+                  <input type="text" id="edit-department" value="${asset.department || ''}" 
+                    class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg">
+                </div>
+              </div>
+            </div>
+            
+            <!-- Identification (Read Only) -->
+            <div class="border-t border-slate-200 pt-3 bg-slate-50 p-3 rounded-lg">
+              <h4 class="text-sm font-medium text-slate-900 mb-2">Identification (Read Only)</h4>
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                ${asset.id_number ? `<div class="text-slate-600">Tag: <span class="font-mono">${asset.id_number}</span></div>` : ''}
+                ${asset.serial_number ? `<div class="text-slate-600">S/N: <span class="font-mono">${asset.serial_number}</span></div>` : ''}
+                ${asset.vin_license_plate ? `<div class="text-slate-600">VIN/LP: <span class="font-mono">${asset.vin_license_plate}</span></div>` : ''}
+                ${asset.mac_ip_address ? `<div class="text-slate-600">IP/MAC: <span class="font-mono">${asset.mac_ip_address}</span></div>` : ''}
+              </div>
+            </div>
+            
+            <!-- Expiration Dates -->
+            <div class="border-t border-slate-200 pt-3">
+              <h4 class="text-sm font-medium text-slate-900 mb-2">Expiration Dates</h4>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-700 mb-1">Warranty Expiry</label>
+                  <input type="date" id="edit-warranty" value="${asset.warranty_expiry || ''}" 
+                    class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-700 mb-1">Insurance Expiry</label>
+                  <input type="date" id="edit-insurance" value="${asset.insurance_expiry || ''}" 
+                    class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg">
+                </div>
+              </div>
+            </div>
+            
+            <!-- Notes -->
+            <div class="border-t border-slate-200 pt-3">
+              <label class="block text-xs font-medium text-slate-700 mb-1">Notes</label>
+              <textarea id="edit-notes" rows="2" 
+                class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg">${asset.notes || ''}</textarea>
+            </div>
+          </div>
+          
+          <!-- Buttons -->
+          <div class="sticky bottom-0 bg-white pt-3 mt-3 border-t border-slate-200 flex gap-2">
+            <button onclick="submitEditAsset(${assetId})" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+              <i class="fas fa-save mr-1"></i>Save Changes
+            </button>
+            <button onclick="document.getElementById('edit-asset-modal').remove()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg text-sm font-medium hover:bg-slate-300">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Populate users dropdown
+    let users = getCached('users');
+    if (!users) {
+      const userData = await apiCall('users');
+      users = userData.users || [];
+      setCached('users', users);
+    }
+    
+    const assignSelect = document.getElementById('edit-assigned');
+    users.forEach(u => {
+      if (u.active !== false) {
+        const option = document.createElement('option');
+        option.value = u.user_id;
+        option.textContent = u.name;
+        if (u.user_id.toString() === (asset.assigned_to || '').toString()) {
+          option.selected = true;
+        }
+        assignSelect.appendChild(option);
+      }
+    });
+    
+    // Focus on current value field for quick editing
+    setTimeout(() => {
+      document.getElementById('edit-current-value')?.focus();
+    }, 100);
+    
+  } catch (e) {
+    showToast('Failed to load asset: ' + e.message, 'error');
+  }
+}
+                async function submitEditAsset(assetId) {
+  const currentValue = parseFloat(document.getElementById('edit-current-value').value) || 0;
+  const name = document.getElementById('edit-name').value.trim();
+  
+  if (!name) {
+    showToast('Asset name is required', 'error');
+    return;
+  }
+  
+  const payload = {
+    method: 'PUT',
+    asset_id: assetId,
+    name: name,
+    current_value: currentValue,
+    status: document.getElementById('edit-status').value,
+    assigned_to: document.getElementById('edit-assigned').value,
+    location: document.getElementById('edit-location').value,
+    department: document.getElementById('edit-department').value,
+    warranty_expiry: document.getElementById('edit-warranty').value,
+    insurance_expiry: document.getElementById('edit-insurance').value,
+    notes: document.getElementById('edit-notes').value
+  };
+  
+  // If status changed to disposed, you might want to capture disposal value
+  if (payload.status === 'disposed') {
+    payload.disposal_value = currentValue; // Current value becomes disposal value
+  }
+  
+  try {
+    await apiCall('assets', payload);
+    document.getElementById('edit-asset-modal').remove();
+    clearCache();
+    showToast('Asset updated successfully');
+    
+    // Refresh the view
+    loadAssetsData();
+    loadAssetsSummary();
+    
+  } catch (e) {
+    showToast(e.message || 'Failed to update asset', 'error');
+  }
 }
         // ==================== END NOTIFICATION SYSTEM ====================
 
@@ -5901,6 +6169,7 @@ function editAsset(assetId) {
     </script>
 </body>
 </html>
+
 
 
 
