@@ -3867,6 +3867,10 @@ async function saveEmailSimple(form) {
   };
   
   console.log('SENDING:', params);
+  console.log('PARAMS OBJECT:', params);
+  console.log('from_email value:', params.from_email);
+  console.log('form.from_email element:', form.from_email);
+  console.log('form.from_email.value:', form.from_email?.value);
   
   try {
     const response = await apiCall('email/config', params);
@@ -6091,6 +6095,7 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
 
