@@ -441,28 +441,6 @@ body.dropdown-open {
         font-size: 16px;
     }
 }
-/* ============================================
-   USER DROPDOWN MENU STYLES
-   ============================================ */
-#user-dropdown {
-    animation: fadeIn 0.15s ease-out;
-}
-
-#user-dropdown button {
-    transition: all 0.15s;
-}
-
-#user-dropdown button:hover {
-    padding-left: 1.25rem;
-}
-
-#user-menu-container button[onclick="toggleUserMenu()"] i.fa-chevron-down {
-    transition: transform 0.2s;
-}
-
-#user-menu-container.active button[onclick="toggleUserMenu()"] i.fa-chevron-down {
-    transform: rotate(180deg);
-}
   
     </style>
 </head>
@@ -550,35 +528,7 @@ body.dropdown-open {
             </div>
         </div>
     </div>
-
-                          <!-- USER MENU DROPDOWN -->
-                    <div class="relative" id="user-menu-container">
-    <button onclick="toggleUserMenu()" class="flex items-center gap-2 pl-3 border-l border-slate-200 hover:bg-slate-100 rounded-lg p-2 transition-colors">
-        <div id="user-avatar" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-medium text-sm">JD</div>
-        <span id="user-name" class="hidden md:block text-sm font-medium text-slate-700">John Doe</span>
-        <i class="fas fa-chevron-down text-xs text-slate-400"></i>
-    </button>
-                          <!-- User Dropdown Menu -->
-                <div class="py-1">
-                        <button onclick="showModule('email-settings'); toggleUserMenu();" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3">
-                            <i class="fas fa-envelope text-slate-400 w-4"></i>
-                            Email Settings
-                        </button>
-                        <button onclick="showModule('profile'); toggleUserMenu();" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3">
-                            <i class="fas fa-user text-slate-400 w-4"></i>
-                            My Profile
-                        </button>
-                        <div class="border-t border-slate-200 my-1"></div>
-                        <button onclick="logout()" class="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3">
-                            <i class="fas fa-sign-out-alt text-red-400 w-4"></i>
-                            Logout
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-            
+    
     <div class="flex items-center gap-2 pl-3 border-l border-slate-200">
         <div id="user-avatar" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-medium text-sm">JD</div>
         <span id="user-name" class="hidden md:block text-sm font-medium text-slate-700">John Doe</span>
@@ -3520,45 +3470,6 @@ function editProject(projectId) {
     }
 }
 
-                function toggleUserMenu() {
-    const dropdown = document.getElementById('user-dropdown');
-    const container = document.getElementById('user-menu-container');
-    const isHidden = dropdown.classList.contains('hidden');
-    
-    // Close notification dropdown if open
-    document.getElementById('notification-dropdown')?.classList.add('hidden');
-    
-    if (isHidden) {
-        dropdown.classList.remove('hidden');
-        container.classList.add('active');
-        
-        // Update user info in dropdown
-        document.getElementById('user-dropdown-name').textContent = currentUser.name;
-        document.getElementById('user-dropdown-email').textContent = currentUser.email;
-        document.getElementById('user-dropdown-role').textContent = currentUser.role;
-        
-        // Close when clicking outside
-        setTimeout(() => {
-            document.addEventListener('click', closeUserMenuOutside);
-        }, 100);
-    } else {
-        dropdown.classList.add('hidden');
-        container.classList.remove('active');
-        document.removeEventListener('click', closeUserMenuOutside);
-    }
-}
-
-function closeUserMenuOutside(e) {
-    const container = document.getElementById('user-menu-container');
-    const dropdown = document.getElementById('user-dropdown');
-    
-    if (!container.contains(e.target)) {
-        dropdown.classList.add('hidden');
-        container.classList.remove('active');
-        document.removeEventListener('click', closeUserMenuOutside);
-    }
-}
-
 function closeDropdownOutside(e) {
     const dropdown = document.getElementById('notification-dropdown');
     const bellBtn = document.querySelector('button[onclick="toggleNotificationDropdown()"]');
@@ -6258,17 +6169,3 @@ async function viewExpiringAssets() {
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
