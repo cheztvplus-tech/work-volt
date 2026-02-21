@@ -6153,6 +6153,24 @@ async function viewExpiringAssets() {
     showToast(e.message || 'Failed to update asset', 'error');
   }
 }
+
+                    function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown.classList.contains('hidden')) {
+        dropdown.classList.remove('hidden');
+        setTimeout(() => document.addEventListener('click', closeUserMenu), 100);
+    } else {
+        dropdown.classList.add('hidden');
+        document.removeEventListener('click', closeUserMenu);
+    }
+}
+
+function closeUserMenu(e) {
+    if (!e.target.closest('#user-menu-container')) {
+        document.getElementById('user-dropdown').classList.add('hidden');
+        document.removeEventListener('click', closeUserMenu);
+    }
+}
         // ==================== END NOTIFICATION SYSTEM ====================
 
         // Initialize on load
@@ -6180,4 +6198,5 @@ async function viewExpiringAssets() {
     </script>
 </body>
 </html>
+
 
