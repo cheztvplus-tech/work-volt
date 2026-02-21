@@ -3578,21 +3578,19 @@ function closeDropdownOutside(e) {
     listContainer.innerHTML = html;
 }
 
-         async function loadEmailSettings(container) {
+             function loadEmailSettings(container) {
   const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
   
   if (!isAdmin) {
-    container.innerHTML = `
-      <div class="text-center py-20">
-        <i class="fas fa-lock text-4xl text-slate-300 mb-4"></i>
-        <p class="text-slate-500">Only administrators can configure email settings</p>
-      </div>
-    `;
+    container.innerHTML = '<div class="text-center py-20"><i class="fas fa-lock text-4xl text-slate-300 mb-4"></i><p class="text-slate-500">Only administrators can configure email settings</p></div>';
     return;
   }
   
+  // Create a unique ID for this instance
+  const instanceId = 'email-settings-' + Date.now();
+  
   container.innerHTML = `
-    <div class="page-transition max-w-2xl mx-auto">
+    <div class="page-transition max-w-2xl mx-auto" id="${instanceId}">
       <div class="flex items-center justify-between mb-6">
         <div>
           <h2 class="text-2xl font-bold text-slate-900">Email Configuration</h2>
@@ -3601,93 +3599,128 @@ function closeDropdownOutside(e) {
       </div>
       
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-        <form id="email-config-form" class="space-y-6">
+        <div class="space-y-6">
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-2">Email Provider</label>
-            <select id="email-provider" onchange="updateEmailForm()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+            <select id="${instanceId}-provider" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
               <option value="gmail">Gmail (Default - No setup required)</option>
               <option value="sendgrid">SendGrid</option>
               <option value="mailgun">Mailgun</option>
               <option value="smtp">Other SMTP (Limited support)</option>
             </select>
-            <p class="text-xs text-slate-500 mt-1">Choose your email service provider</p>
           </div>
           
-          <div id="smtp-fields" class="hidden space-y-4">
+          <div id="${instanceId}-smtp-fields" class="hidden space-y-4">
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">SMTP Host</label>
-                <input type="text" id="smtp-host" placeholder="smtp.example.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                <input type="text" id="${instanceId}-host" placeholder="smtp.example.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Port</label>
-                <input type="number" id="smtp-port" value="587" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                <input type="number" id="${instanceId}-port" value="587" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
               </div>
             </div>
             
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">Username / API Key</label>
-              <input type="text" id="smtp-username" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+              <input type="text" id="${instanceId}-username" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
             </div>
             
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">Password / API Secret</label>
-              <input type="password" id="smtp-password" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-              <p class="text-xs text-slate-500 mt-1">Stored encrypted in your Google Sheet</p>
+              <input type="password" id="${instanceId}-password" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
             </div>
           </div>
           
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">From Name</label>
-              <input type="text" id="from-name" value="Work Volt" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+              <input type="text" id="${instanceId}-fromname" value="Work Volt" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
             </div>
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">From Email</label>
-              <input type="email" id="from_email" name="from_email" placeholder="noreply@workvolt.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+              <input type="email" id="${instanceId}-fromemail" placeholder="noreply@workvolt.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
             </div>
           </div>
           
           <div class="flex items-center gap-2">
-            <input type="checkbox" id="use-tls" checked class="w-4 h-4 text-blue-600 rounded">
-            <label for="use-tls" class="text-sm text-slate-700">Use TLS/SSL encryption</label>
+            <input type="checkbox" id="${instanceId}-tls" checked class="w-4 h-4 text-blue-600 rounded">
+            <label for="${instanceId}-tls" class="text-sm text-slate-700">Use TLS/SSL encryption</label>
           </div>
           
           <div class="flex gap-3 pt-4">
-            <button type="button" onclick="testEmailSettings()" class="flex-1 bg-amber-100 text-amber-700 py-2 rounded-lg font-medium hover:bg-amber-200">
-              <i class="fas fa-vial mr-2"></i>Test Configuration
-            </button>
-            <button type="button" onclick="saveEmailSettings()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">
-              <i class="fas fa-save mr-2"></i>Save Settings
+            <button onclick="testAndSaveEmailSettings('${instanceId}')" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">
+              Save Settings
             </button>
           </div>
-        </form>
-      </div>
-      
-      <div class="bg-blue-50 rounded-xl border border-blue-200 p-4">
-        <h4 class="font-medium text-blue-900 mb-2"><i class="fas fa-info-circle mr-2"></i>Provider Setup Guides</h4>
-        <div id="provider-help" class="text-sm text-blue-800 space-y-2">
-          <p><strong>Gmail:</strong> Uses your Google account automatically. No configuration needed.</p>
         </div>
       </div>
     </div>
   `;
   
   // Load existing config
+  loadExistingEmailConfig(instanceId);
+}
+
+async function loadExistingEmailConfig(instanceId) {
   try {
     const config = await apiCall('email/config');
-    if (config && (config.error === false || !config.error)) {
-      document.getElementById('email-provider').value = config.provider_type || 'gmail';
-      document.getElementById('from-name').value = config.from_name || 'Work Volt';
-      document.getElementById('from-email').value = config.from_email || '';
-      if (config.smtp_host) document.getElementById('smtp-host').value = config.smtp_host;
-      if (config.smtp_port) document.getElementById('smtp-port').value = config.smtp_port;
-      if (config.smtp_username) document.getElementById('smtp-username').value = config.smtp_username;
-      document.getElementById('use-tls').checked = config.use_tls !== false;
-      updateEmailForm();
+    if (config && !config.error) {
+      document.getElementById(instanceId + '-provider').value = config.provider_type || 'gmail';
+      document.getElementById(instanceId + '-fromname').value = config.from_name || 'Work Volt';
+      document.getElementById(instanceId + '-fromemail').value = config.from_email || '';
+      
+      if (config.smtp_host) document.getElementById(instanceId + '-host').value = config.smtp_host;
+      if (config.smtp_port) document.getElementById(instanceId + '-port').value = config.smtp_port;
+      if (config.smtp_username) document.getElementById(instanceId + '-username').value = config.smtp_username;
+      
+      updateSmtpFieldsVisibility(instanceId);
     }
   } catch (e) {
-    console.log('No existing email config');
+    console.log('No existing config');
+  }
+  
+  // Add change listener
+  document.getElementById(instanceId + '-provider').addEventListener('change', () => updateSmtpFieldsVisibility(instanceId));
+}
+
+function updateSmtpFieldsVisibility(instanceId) {
+  const provider = document.getElementById(instanceId + '-provider').value;
+  const smtpFields = document.getElementById(instanceId + '-smtp-fields');
+  if (provider === 'gmail') {
+    smtpFields.classList.add('hidden');
+  } else {
+    smtpFields.classList.remove('hidden');
+  }
+}
+
+async function testAndSaveEmailSettings(instanceId) {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  
+  const params = {
+    provider_type: document.getElementById(instanceId + '-provider').value,
+    smtp_host: document.getElementById(instanceId + '-host')?.value || '',
+    smtp_port: parseInt(document.getElementById(instanceId + '-port')?.value) || 587,
+    smtp_username: document.getElementById(instanceId + '-username')?.value || '',
+    smtp_password: document.getElementById(instanceId + '-password')?.value || '',
+    from_name: document.getElementById(instanceId + '-fromname').value,
+    from_email: document.getElementById(instanceId + '-fromemail').value,
+    use_tls: document.getElementById(instanceId + '-tls').checked
+  };
+  
+  console.log('Saving email config:', params);
+  
+  try {
+    await apiCall('email/config', params);
+    showToast('Settings saved successfully');
+  } catch (e) {
+    showToast(e.message || 'Failed to save', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Settings';
   }
 }
 
@@ -6221,6 +6254,7 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
 
