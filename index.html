@@ -5186,8 +5186,9 @@ async function loadAssetsData() {
     const typeIcons = {
       equipment: 'fa-tools',
       vehicle: 'fa-car',
-      computer: 'fa-laptop',
-      device: 'fa-mobile-alt',
+      computer: 'fa-laptop',           // Desktop/laptop without IMEI
+      computer_connected: 'fa-laptop-code',  // Laptop with IMEI (cellular connected)
+      device: 'fa-mobile-alt',         // Phone/tablet with IMEI
       network: 'fa-wifi',
       furniture: 'fa-couch',
       book: 'fa-book',
@@ -5211,8 +5212,18 @@ async function loadAssetsData() {
     
     const cards = assets.map(a => {
       
-      const displayType = (a.asset_type === 'computer' && a.imei) ? 'device' : a.asset_type;
-      const displayTypeLabel = (a.asset_type === 'computer' && a.imei) ? 'Device' : a.asset_type;
+          // Determine icon based on type and IMEI
+      let iconType = a.asset_type;
+      let displayLabel = a.asset_type;
+      
+      if (a.asset_type === 'computer' && a.imei) {
+        // Computer with IMEI = connected laptop
+        iconType = 'computer_connected';
+        displayLabel = 'computer (Connected)';
+      } else if (a.asset_type === 'device') {
+        // Device (phone/tablet)
+        displayLabel = 'device';
+      }
       // Build identification display
       let idInfo = [];
       if (a.id_number) idInfo.push(`<span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">Tag: ${a.id_number}</span>`);
@@ -5242,7 +5253,7 @@ async function loadAssetsData() {
           <div class="flex items-start justify-between mb-3">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <i class="fas ${typeIcons[displayType] || 'fa-box'} text-blue-600"></i>
+                <i class="fas ${typeIcons[iconType] || 'fa-box'} text-blue-600"></i>
               </div>
               <div>
                 <h3 class="font-bold text-slate-900">${a.name}</h3>
@@ -5322,7 +5333,7 @@ async function loadAssetsData() {
               <select id="asset-type" onchange="updateAssetIdFields()" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg">
                 <option value="equipment">Equipment</option>
                 <option value="vehicle">Vehicle</option>
-                <option value="computer">Computer/Device</option>
+                <option value="computer">Computer</option>
                 <option value="device">Device (Phone/Tablet)</option>
                 <option value="network">Network Hardware</option>
                 <option value="furniture">Furniture</option>
@@ -5578,7 +5589,7 @@ async function viewAssetDetails(assetId) {
           <div class="flex items-start justify-between mb-4">
             <div>
               <h3 class="text-xl font-bold text-slate-900">${asset.name}</h3>
-              <p class="text-slate-500 capitalize">${(a.asset_type === 'computer' && a.imei) ? 'Device' : a.asset_type} • ${a.manufacturer || ''} ${a.model || ''}</p>
+              <p class="text-slate-500 capitalize">${(a.asset_type === 'computer' && a.imei) ? 'computer (Connected)' : a.asset_type} • ${a.manufacturer || ''} ${a.model || ''}</p>
             </div>
             <button onclick="document.getElementById('asset-detail-modal').remove()" class="text-slate-400 hover:text-slate-600">
               <i class="fas fa-times text-xl"></i>
@@ -6094,4 +6105,5 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
