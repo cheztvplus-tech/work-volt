@@ -552,6 +552,12 @@ body.dropdown-open {
     </div>
 
                           <!-- USER MENU DROPDOWN -->
+                    <div class="relative" id="user-menu-container">
+    <button onclick="toggleUserMenu()" class="flex items-center gap-2 pl-3 border-l border-slate-200 hover:bg-slate-100 rounded-lg p-2 transition-colors">
+        <div id="user-avatar" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-medium text-sm">JD</div>
+        <span id="user-name" class="hidden md:block text-sm font-medium text-slate-700">John Doe</span>
+        <i class="fas fa-chevron-down text-xs text-slate-400"></i>
+    </button>
                           <!-- User Dropdown Menu -->
                 <div class="py-1">
                         <button onclick="showModule('email-settings'); toggleUserMenu();" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3">
@@ -6252,6 +6258,7 @@ async function viewExpiringAssets() {
     </script>
 </body>
 </html>
+
 
 
 
