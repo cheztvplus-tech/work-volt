@@ -4329,8 +4329,12 @@ async function loadFinancialReport(dateFrom, dateTo) {
             }
         });
         
-        // Recent Transactions Table
-        const rows = data.transactions.slice(0, 10).map(t => `
+        // Recent Transactions Table - SORTED NEWEST TO OLDEST
+        const sortedTransactions = [...data.transactions].sort((a, b) => {
+            return new Date(b.date) - new Date(a.date);
+        });
+        
+        const rows = sortedTransactions.slice(0, 10).map(t => `
             <tr class="hover:bg-white">
                 <td class="px-4 py-2 text-slate-900">${t.date}</td>
                 <td class="px-4 py-2">
@@ -6170,6 +6174,7 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
 
