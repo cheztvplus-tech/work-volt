@@ -596,7 +596,7 @@ body.dropdown-open {
             for(let key in params) {
                 if(params[key] !== undefined && params[key] !== null) url.searchParams.append(key, params[key]);
             }
-            
+            console.log('API URL:', url.toString());
             let lastError;
             for(let i = 0; i <= retries; i++) {
                 try {
@@ -3577,250 +3577,6 @@ function closeDropdownOutside(e) {
     
     listContainer.innerHTML = html;
 }
-
-             function loadEmailSettings(container) {
-  const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
-  
-  if (!isAdmin) {
-    container.innerHTML = '<div class="text-center py-20"><i class="fas fa-lock text-4xl text-slate-300 mb-4"></i><p class="text-slate-500">Only administrators can configure email settings</p></div>';
-    return;
-  }
-  
-  // Create a unique ID for this instance
-  const instanceId = 'email-settings-' + Date.now();
-  
-  container.innerHTML = `
-    <div class="page-transition max-w-2xl mx-auto" id="${instanceId}">
-      <div class="flex items-center justify-between mb-6">
-        <div>
-          <h2 class="text-2xl font-bold text-slate-900">Email Configuration</h2>
-          <p class="text-slate-500">Configure how Work Volt sends emails</p>
-        </div>
-      </div>
-      
-      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-        <div class="space-y-6">
-          <div>
-            <label class="block text-sm font-medium text-slate-700 mb-2">Email Provider</label>
-            <select id="${instanceId}-provider" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-              <option value="gmail">Gmail (Default - No setup required)</option>
-              <option value="sendgrid">SendGrid</option>
-              <option value="mailgun">Mailgun</option>
-              <option value="smtp">Other SMTP (Limited support)</option>
-            </select>
-          </div>
-          
-          <div id="${instanceId}-smtp-fields" class="hidden space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">SMTP Host</label>
-                <input type="text" id="${instanceId}-host" placeholder="smtp.example.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Port</label>
-                <input type="number" id="${instanceId}-port" value="587" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-              </div>
-            </div>
-            
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Username / API Key</label>
-              <input type="text" id="${instanceId}-username" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-            </div>
-            
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Password / API Secret</label>
-              <input type="password" id="${instanceId}-password" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-            </div>
-          </div>
-          
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">From Name</label>
-              <input type="text" id="${instanceId}-fromname" value="Work Volt" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">From Email</label>
-              <input type="email" id="${instanceId}-fromemail" placeholder="noreply@workvolt.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-            </div>
-          </div>
-          
-          <div class="flex items-center gap-2">
-            <input type="checkbox" id="${instanceId}-tls" checked class="w-4 h-4 text-blue-600 rounded">
-            <label for="${instanceId}-tls" class="text-sm text-slate-700">Use TLS/SSL encryption</label>
-          </div>
-          
-          <div class="flex gap-3 pt-4">
-            <button onclick="testAndSaveEmailSettings('${instanceId}')" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">
-              Save Settings
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-  
-  // Load existing config
-  loadExistingEmailConfig(instanceId);
-}
-
-async function loadExistingEmailConfig(instanceId) {
-  try {
-    const config = await apiCall('email/config');
-    if (config && !config.error) {
-      document.getElementById(instanceId + '-provider').value = config.provider_type || 'gmail';
-      document.getElementById(instanceId + '-fromname').value = config.from_name || 'Work Volt';
-      document.getElementById(instanceId + '-fromemail').value = config.from_email || '';
-      
-      if (config.smtp_host) document.getElementById(instanceId + '-host').value = config.smtp_host;
-      if (config.smtp_port) document.getElementById(instanceId + '-port').value = config.smtp_port;
-      if (config.smtp_username) document.getElementById(instanceId + '-username').value = config.smtp_username;
-      
-      updateSmtpFieldsVisibility(instanceId);
-    }
-  } catch (e) {
-    console.log('No existing config');
-  }
-  
-  // Add change listener
-  document.getElementById(instanceId + '-provider').addEventListener('change', () => updateSmtpFieldsVisibility(instanceId));
-}
-
-function updateSmtpFieldsVisibility(instanceId) {
-  const provider = document.getElementById(instanceId + '-provider').value;
-  const smtpFields = document.getElementById(instanceId + '-smtp-fields');
-  if (provider === 'gmail') {
-    smtpFields.classList.add('hidden');
-  } else {
-    smtpFields.classList.remove('hidden');
-  }
-}
-
-async function testAndSaveEmailSettings(instanceId) {
-  const btn = event.target;
-  btn.disabled = true;
-  btn.textContent = 'Saving...';
-  
-  const params = {
-    provider_type: document.getElementById(instanceId + '-provider').value,
-    smtp_host: document.getElementById(instanceId + '-host')?.value || '',
-    smtp_port: parseInt(document.getElementById(instanceId + '-port')?.value) || 587,
-    smtp_username: document.getElementById(instanceId + '-username')?.value || '',
-    smtp_password: document.getElementById(instanceId + '-password')?.value || '',
-    from_name: document.getElementById(instanceId + '-fromname').value,
-    from_email: document.getElementById(instanceId + '-fromemail').value,
-    use_tls: document.getElementById(instanceId + '-tls').checked
-  };
-  
-  console.log('Saving email config:', params);
-  
-  try {
-    await apiCall('email/config', params);
-    showToast('Settings saved successfully');
-  } catch (e) {
-    showToast(e.message || 'Failed to save', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Save Settings';
-  }
-}
-
-function updateEmailForm() {
-  const provider = document.getElementById('email-provider').value;
-  const smtpFields = document.getElementById('smtp-fields');
-  const helpDiv = document.getElementById('provider-help');
-  
-  const guides = {
-    gmail: '<p><strong>Gmail:</strong> Uses your Google account automatically. No configuration needed. Note: Gmail has sending limits (100/day for free accounts, 1500/day for Workspace).</p>',
-    sendgrid: '<p><strong>SendGrid:</strong> Enter your API Key in the Password field. Get your API key from <a href="https://app.sendgrid.com/settings/api_keys" target="_blank" class="underline">SendGrid Dashboard</a>. Leave Host/Port empty.</p>',
-    mailgun: '<p><strong>Mailgun:</strong> Enter your API Key in Password field and domain (e.g., mg.yourdomain.com) in Host field. Get credentials from <a href="https://app.mailgun.com/app/account/security/api_keys" target="_blank" class="underline">Mailgun Control Panel</a>.</p>',
-    smtp: '<p><strong>Custom SMTP:</strong> Limited support in Google Apps Script. Recommended providers: SendGrid, Mailgun, Amazon SES (all have HTTP APIs). For corporate SMTP, consider Google Workspace SMTP relay.</p>'
-  };
-  
-  helpDiv.innerHTML = guides[provider] || guides.smtp;
-  
-  if (provider === 'gmail') {
-    smtpFields.classList.add('hidden');
-  } else {
-    smtpFields.classList.remove('hidden');
-  }
-}
-
-async function testEmailSettings() {
-  const btn = event.target;
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
-  
-  try {
-    const params = {
-      provider_type: document.getElementById('email-provider').value,
-      smtp_host: document.getElementById('smtp-host').value,
-      smtp_port: document.getElementById('smtp-port').value,
-      smtp_username: document.getElementById('smtp-username').value,
-      smtp_password: document.getElementById('smtp-password').value,
-      from_name: document.getElementById('from-name').value,
-      from_email: document.getElementById('from-email').value,
-      use_tls: document.getElementById('use-tls').checked
-    };
-    
-    const result = await apiCall('email/test', params);
-    showToast(result.message || 'Test email sent! Check your inbox.', 'success');
-  } catch (e) {
-    showToast(e.message || 'Test failed. Check your settings.', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-vial mr-2"></i>Test Configuration';
-  }
-}
-
-async function saveEmailSettings() {
-    if (!document.getElementById('from-email')) {
-    showToast('Error: Email settings form not loaded. Please refresh the page.', 'error');
-    return;
-  }
-  const btn = event.target;
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
-  
-  // Debug: check if elements exist
-  const elements = {
-    provider: document.getElementById('email-provider'),
-    host: document.getElementById('smtp-host'),
-    port: document.getElementById('smtp-port'),
-    username: document.getElementById('smtp-username'),
-    password: document.getElementById('smtp-password'),
-    fromName: document.getElementById('from-name'),
-    fromEmail: document.getElementById('from-email'),
-    useTls: document.getElementById('use-tls')
-  };
-  
-  // Check which one is null
-  for (const [name, el] of Object.entries(elements)) {
-    if (!el) console.error(`Missing element: ${name}`);
-  }
-  
-  const params = {
-    provider_type: elements.provider?.value || 'gmail',
-    smtp_host: elements.host?.value || '',
-    smtp_port: elements.port?.value || 587,
-    smtp_username: elements.username?.value || '',
-    smtp_password: elements.password?.value || '',
-    from_name: elements.fromName?.value || 'Work Volt',
-    from_email: elements.fromEmail?.value || '',
-    use_tls: elements.useTls?.checked !== false
-  };
-  
-  console.log('Saving with params:', params);
-  
-  try {
-    await apiCall('email/config', params);
-    showToast('Email settings saved successfully');
-  } catch (e) {
-    showToast(e.message || 'Failed to save settings', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-save mr-2"></i>Save Settings';
-  }
-}
         
         function formatRelativeTime(dateString) {
             const date = new Date(dateString);
@@ -4051,6 +3807,87 @@ async function deleteWorkflow(id) {
                 dropdown.classList.add('hidden');
             }
         });
+
+        // ==================== EMAIL NOTIFICATION ====================
+function loadEmailSettings(container) {
+  container.innerHTML = `
+    <div style="max-width:500px;margin:50px auto;padding:20px;background:white;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)">
+      <h2 style="margin-bottom:20px">Email Settings</h2>
+      
+      <form onsubmit="event.preventDefault(); saveEmailSimple(this);">
+        <div style="margin-bottom:15px">
+          <label style="display:block;margin-bottom:5px;font-weight:bold">From Email *</label>
+          <input type="email" name="from_email" required style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px" placeholder="your@email.com">
+        </div>
+        
+        <div style="margin-bottom:15px">
+          <label style="display:block;margin-bottom:5px;font-weight:bold">From Name</label>
+          <input type="text" name="from_name" value="Work Volt" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px">
+        </div>
+        
+        <div style="margin-bottom:15px">
+          <label style="display:block;margin-bottom:5px;font-weight:bold">Provider</label>
+          <select name="provider" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px">
+            <option value="gmail">Gmail (Default)</option>
+            <option value="sendgrid">SendGrid</option>
+          </select>
+        </div>
+        
+        <div style="margin-bottom:15px">
+          <label style="display:block;margin-bottom:5px;font-weight:bold">API Key / Password (if not Gmail)</label>
+          <input type="password" name="password" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px">
+        </div>
+        
+        <button type="submit" style="width:100%;padding:12px;background:#2563eb;color:white;border:none;border-radius:4px;font-weight:bold;cursor:pointer">
+          Save Email Settings
+        </button>
+      </form>
+      
+      <div id="save-result" style="margin-top:15px;padding:10px;display:none"></div>
+    </div>
+  `;
+}
+
+async function saveEmailSimple(form) {
+  const resultDiv = document.getElementById('save-result');
+  const btn = form.querySelector('button');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  
+  // Get values directly from form
+  const params = {
+    from_email: form.from_email.value,
+    from_name: form.from_name.value,
+    provider_type: form.provider.value,
+    smtp_password: form.password.value,
+    smtp_host: '',
+    smtp_port: 587,
+    smtp_username: form.from_email.value,
+    use_tls: true
+  };
+  
+  console.log('SENDING:', params);
+  
+  try {
+    const response = await apiCall('email/config', params);
+    console.log('RESPONSE:', response);
+    
+    resultDiv.style.display = 'block';
+    resultDiv.style.background = '#dcfce7';
+    resultDiv.style.color = '#166534';
+    resultDiv.textContent = '✓ Saved successfully! Check your Google Sheet EMAIL_SETTINGS tab.';
+    
+    showToast('Settings saved');
+  } catch (e) {
+    resultDiv.style.display = 'block';
+    resultDiv.style.background = '#fee2e2';
+    resultDiv.style.color = '#991b1b';
+    resultDiv.textContent = '✗ Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Email Settings';
+  }
+}
 
         // ==================== REPORTS MODULE (PHASE 6) ====================
 
@@ -6254,6 +6091,7 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
 
