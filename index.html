@@ -586,62 +586,88 @@ body.dropdown-open {
             cache = { tasks: null, users: null, payroll: null, timesheets: null, lastFetch: {} };
         }
 
-        async function apiCall(path, params = {}, retries = 2) {
-            const url = new URL(API_URL);
-            url.searchParams.append('path', path);
-            if(currentToken) url.searchParams.append('token', currentToken);
-            for(let key in params) {
-                if(params[key] !== undefined && params[key] !== null) url.searchParams.append(key, params[key]);
+            async function apiCall(path, params = {}, retries = 2) {
+    const url = new URL(API_URL);
+    url.searchParams.append('path', path);
+    if(currentToken) url.searchParams.append('token', currentToken);
+    for(let key in params) {
+        if(params[key] !== undefined && params[key] !== null) url.searchParams.append(key, params[key]);
+    }
+    console.log('API URL:', url.toString());
+    let lastError;
+    for(let i = 0; i <= retries; i++) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // Increased to 15s
+            
+            const response = await fetch(url.toString(), {
+                method: 'GET', 
+                mode: 'cors', 
+                cache: 'no-cache',
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            // Handle HTTP 401/403 specifically as auth errors
+            if(response.status === 401 || response.status === 403) {
+                throw new Error('TOKEN_INVALID');
             }
-            console.log('API URL:', url.toString());
-            let lastError;
-            for(let i = 0; i <= retries; i++) {
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 10000);
-                    
-                    const response = await fetch(url.toString(), {
-                        method: 'GET', 
-                        mode: 'cors', 
-                        cache: 'no-cache',
-                        signal: controller.signal
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    
-                    if(!response.ok) throw new Error('HTTP ' + response.status);
-                    const text = await response.text();
-                    if(!text || text.trim() === '') throw new Error('Empty response');
-                    
-                    let data;
-                    try {
-                        data = JSON.parse(text);
-                    } catch(e) {
-                        throw new Error('Invalid JSON: ' + text.substring(0, 100));
-                    }
-                    
-                    if(data.error) throw new Error(data.error);
-                    return data;
-                } catch(err) {
-                    lastError = err;
-                    if(err.name === 'AbortError') {
-                        lastError = new Error('Request timeout - please try again');
-                    }
-                    if(err.message === 'Unauthorized' || err.message === 'TOKEN_INVALID') {
-                        localStorage.removeItem('workvolt_token');
-                        localStorage.removeItem('workvolt_user');
-                        currentToken = null;
-                        currentUser = null;
-                        document.getElementById('app-screen').classList.add('hidden');
-                        document.getElementById('login-screen').classList.remove('hidden');
-                        showToast('Session expired. Please log in again.', 'error');
-                        throw new Error('Session expired');
-                    }
-                    if(i < retries) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+            
+            if(!response.ok) {
+                // Don't logout for server errors (500, 502, etc), just retry
+                if(response.status >= 500) {
+                    throw new Error('Server error: ' + response.status);
+                }
+                throw new Error('HTTP ' + response.status);
+            }
+            
+            const text = await response.text();
+            if(!text || text.trim() === '') throw new Error('Empty response');
+            
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch(e) {
+                throw new Error('Invalid JSON: ' + text.substring(0, 100));
+            }
+            
+            // Only logout for specific auth error codes from GAS
+            if(data.error && (data.code === 'TOKEN_INVALID' || data.error === 'Unauthorized' || data.error === 'TOKEN_INVALID')) {
+                throw new Error('TOKEN_INVALID');
+            }
+            
+            if(data.error) throw new Error(data.error);
+            return data;
+        } catch(err) {
+            lastError = err;
+            
+            // Handle abort/timeout - don't logout, just retry
+            if(err.name === 'AbortError') {
+                lastError = new Error('Request timeout - please try again');
+                // Don't logout on timeout, just retry
+            }
+            // Only logout for explicit auth errors, not network errors or server errors
+            else if(err.message === 'TOKEN_INVALID' || err.message === 'Unauthorized') {
+                // Only logout if we're not in the middle of a login attempt
+                if(path !== 'auth/login') {
+                    localStorage.removeItem('workvolt_token');
+                    localStorage.removeItem('workvolt_user');
+                    sessionStorage.removeItem('lastModule');
+                    currentToken = null;
+                    currentUser = null;
+                    document.getElementById('app-screen').classList.add('hidden');
+                    document.getElementById('login-screen').classList.remove('hidden');
+                    showToast('Session expired. Please log in again.', 'error');
+                    throw new Error('Session expired');
                 }
             }
-            throw lastError || new Error('Network error - please refresh');
+            
+            if(i < retries) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
         }
+    }
+    throw lastError || new Error('Network error - please refresh');
+}
 
         // Login with timeout protection
         document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -6184,6 +6210,7 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
 
