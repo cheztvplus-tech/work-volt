@@ -441,6 +441,28 @@ body.dropdown-open {
         font-size: 16px;
     }
 }
+/* ============================================
+   USER DROPDOWN MENU STYLES
+   ============================================ */
+#user-dropdown {
+    animation: fadeIn 0.15s ease-out;
+}
+
+#user-dropdown button {
+    transition: all 0.15s;
+}
+
+#user-dropdown button:hover {
+    padding-left: 1.25rem;
+}
+
+#user-menu-container button[onclick="toggleUserMenu()"] i.fa-chevron-down {
+    transition: transform 0.2s;
+}
+
+#user-menu-container.active button[onclick="toggleUserMenu()"] i.fa-chevron-down {
+    transform: rotate(180deg);
+}
   
     </style>
 </head>
@@ -3505,6 +3527,45 @@ function editProject(projectId) {
     }
 }
 
+                function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    const container = document.getElementById('user-menu-container');
+    const isHidden = dropdown.classList.contains('hidden');
+    
+    // Close notification dropdown if open
+    document.getElementById('notification-dropdown')?.classList.add('hidden');
+    
+    if (isHidden) {
+        dropdown.classList.remove('hidden');
+        container.classList.add('active');
+        
+        // Update user info in dropdown
+        document.getElementById('user-dropdown-name').textContent = currentUser.name;
+        document.getElementById('user-dropdown-email').textContent = currentUser.email;
+        document.getElementById('user-dropdown-role').textContent = currentUser.role;
+        
+        // Close when clicking outside
+        setTimeout(() => {
+            document.addEventListener('click', closeUserMenuOutside);
+        }, 100);
+    } else {
+        dropdown.classList.add('hidden');
+        container.classList.remove('active');
+        document.removeEventListener('click', closeUserMenuOutside);
+    }
+}
+
+function closeUserMenuOutside(e) {
+    const container = document.getElementById('user-menu-container');
+    const dropdown = document.getElementById('user-dropdown');
+    
+    if (!container.contains(e.target)) {
+        dropdown.classList.add('hidden');
+        container.classList.remove('active');
+        document.removeEventListener('click', closeUserMenuOutside);
+    }
+}
+
 function closeDropdownOutside(e) {
     const dropdown = document.getElementById('notification-dropdown');
     const bellBtn = document.querySelector('button[onclick="toggleNotificationDropdown()"]');
@@ -6204,6 +6265,7 @@ async function viewExpiringAssets() {
     </script>
 </body>
 </html>
+
 
 
 
