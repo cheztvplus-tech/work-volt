@@ -5749,25 +5749,45 @@ async function viewAssetDetails(assetId) {
   }, 100);
 }
 
-async function submitMaintenanceLog() {
+        async function submitMaintenanceLog() {
   const assetId = document.getElementById('maint-asset-id').value;
   const cost = parseFloat(document.getElementById('maint-cost').value) || 0;
+  const description = document.getElementById('maint-description').value.trim();
+  const maintenanceType = document.getElementById('maint-type').value;
+  
+  // Validation
+  if (cost <= 0) {
+    showToast('Please enter a valid cost greater than 0', 'error');
+    document.getElementById('maint-cost').focus();
+    return;
+  }
+  
+  if (!description) {
+    showToast('Please enter a description of the work performed', 'error');
+    document.getElementById('maint-description').focus();
+    return;
+  }
   
   const payload = {
     asset_id: assetId,
-    maintenance_type: document.getElementById('maint-type').value,
+    maintenance_type: maintenanceType,
     date: document.getElementById('maint-date').value,
     cost: cost,
-    description: document.getElementById('maint-description').value,
+    description: description,
     vendor: document.getElementById('maint-vendor').value,
     next_due_date: document.getElementById('maint-next-due').value
   };
   
   try {
-    await apiCall('assets/maintenance', {method: 'POST', ...payload});
+    const result = await apiCall('assets/maintenance', {method: 'POST', ...payload});
     document.getElementById('maintenance-modal').remove();
     clearCache();
-    showToast('Maintenance log added');
+    
+    if (result.financial_entry_created) {
+      showToast(`Maintenance log added and $${cost.toFixed(2)} expense recorded in Financials`);
+    } else {
+      showToast('Maintenance log added');
+    }
     
     // Refresh asset details if open
     const detailModal = document.getElementById('asset-detail-modal');
@@ -5777,6 +5797,11 @@ async function submitMaintenanceLog() {
     }
     
     loadAssetsSummary();
+    // Also refresh financials if user is viewing that module
+    const currentModule = sessionStorage.getItem('lastModule');
+    if (currentModule === 'financials') {
+      loadFinancials(document.getElementById('main-content'));
+    }
   } catch (e) {
     showToast(e.message || 'Failed to add maintenance log', 'error');
   }
@@ -6110,6 +6135,7 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
 
