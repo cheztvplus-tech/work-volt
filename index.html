@@ -537,9 +537,6 @@ body.dropdown-open {
     </button>
     
     <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 z-50">
-        <button onclick="showModule('email-settings'); toggleUserMenu();" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
-            <i class="fas fa-envelope text-slate-400 mr-2"></i>Email Settings
-        </button>
         <button onclick="logout(); toggleUserMenu();" class="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50">
             <i class="fas fa-sign-out-alt text-red-400 mr-2"></i>Logout
         </button>
@@ -720,8 +717,8 @@ body.dropdown-open {
     }
 
         const modules = {
-            SuperAdmin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects', 'workflows', 'reports', 'assets', 'email-settings'],
-            Admin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects', 'workflows', 'reports', 'assets', 'email-settings'],
+            SuperAdmin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects', 'workflows', 'reports', 'assets'],
+            Admin: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects', 'workflows', 'reports', 'assets'],
             Manager: ['dashboard', 'tasks', 'pipeline', 'payroll', 'timesheets', 'financials', 'crm', 'projects', 'assets', 'reports'],
             Employee: ['dashboard', 'tasks', 'payroll', 'assets', 'timesheets'],
             Contractor: ['dashboard', 'tasks', 'payroll', 'timesheets']
@@ -738,9 +735,7 @@ body.dropdown-open {
             projects: 'fa-folder-open',
             workflows: 'fa-robot',
             reports: 'fa-chart-pie',
-            assets: 'fa-box-open',
-            'email-settings': 'fa-envelope-cog'
-            
+            assets: 'fa-box-open'
         };
 
         function renderNav() {
@@ -793,7 +788,6 @@ body.dropdown-open {
             case 'workflows': loadWorkflows(main); break; // Add this when ready
             case 'reports': loadReports(main); break;
             case 'assets': loadAssets(main); break;
-            case 'email-settings': loadEmailSettings(main); break;
             default: main.innerHTML = '<div class="text-center py-20 text-slate-400">Module coming soon</div>';
         }
     }, 50);
@@ -3693,7 +3687,6 @@ async function loadWorkflowsData() {
     };
     
     const actionLabels = {
-      'email': 'Send Email',
       'notification': 'In-app Notification',
       'webhook': 'Call Webhook',
       'update_sheet': 'Update Sheet',
@@ -6095,6 +6088,7 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
 
