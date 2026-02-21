@@ -3740,6 +3740,10 @@ async function testEmailSettings() {
 }
 
 async function saveEmailSettings() {
+    if (!document.getElementById('from-email')) {
+    showToast('Error: Email settings form not loaded. Please refresh the page.', 'error');
+    return;
+  }
   const btn = event.target;
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
@@ -6217,6 +6221,7 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
 
