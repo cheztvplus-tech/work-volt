@@ -839,11 +839,14 @@ body.dropdown-open {
 
         async function loadAllWidgetData() {
             try {
-                let tasks = getCached('tasks');
+                // Try cache first - use same key as loadTasks function
+                let tasks = getCached('tasks_all');
                 if (!tasks) {
+                    // Fetch fresh data if no cache
                     const tasksData = await apiCall('tasks', {assignee: currentUser.user_id});
                     tasks = tasksData.tasks || [];
-                    setCached('tasks', tasks);
+                    // Cache it properly
+                    setCached('tasks_all', tasks);
                 }
                 
                 const myTasksHtml = tasks.filter(t => t.status !== 'Done').slice(0, 5).map(t => `
@@ -994,7 +997,8 @@ body.dropdown-open {
         updateTasksSubtitle(preselectedProjectId);
     }
     
-    await applyTaskFilters();
+    // Force fresh load on initial page load, use cache for subsequent
+    await applyTaskFilters(true); // true = force refresh
 }
 
 // NEW: Proper Task Creation Form with Role-Based Assignment
@@ -1218,9 +1222,15 @@ async function loadTaskFilterOptions() {
     }
 }
 
-async function applyTaskFilters() {
+    async function applyTaskFilters(forceRefresh = false) {
     const projectId = document.getElementById('task-project-filter').value;
     const assigneeId = document.getElementById('task-assignee-filter')?.value || '';
+    
+    // Clear cache if forcing refresh
+    if (forceRefresh) {
+        cache.tasks = null;
+        cache.lastFetch.tasks = null;
+    }
     
     try {
         let projects = getCached('projects');
@@ -1233,11 +1243,11 @@ async function applyTaskFilters() {
         let params = {};
         if (assigneeId) params.assignee = assigneeId;
         
-        let tasks = getCached('tasks');
-        if (!tasks) {
+        let tasks = getCached('tasks_all');
+        if (!tasks || forceRefresh) {
             const data = await apiCall('tasks', params);
             tasks = data.tasks || [];
-            setCached('tasks', tasks);
+            setCached('tasks_all', tasks);
         }
         
         if (projectId) {
@@ -6174,6 +6184,7 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
 
