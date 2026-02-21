@@ -782,7 +782,8 @@ body.dropdown-open {
             case 'pipeline': loadPipeline(main); break;
             case 'payroll': loadPayroll(main); break;
             case 'timesheets': loadTimesheets(main); break;
-            case 'financials': loadFinancials(main); break;
+            case 'financials': if (method === 'POST' || params.method === 'POST') return createTransaction(params, user);
+                  return getFinancials(params, user);
             case 'crm': loadCRM(main); break;
             case 'projects': loadProjects(main); break;
             case 'workflows': loadWorkflows(main); break; // Add this when ready
@@ -1663,6 +1664,40 @@ function clearProjectFilter() {
     await loadPayrollData();
 }
 
+            function markPayrollPaid(params, user) {
+  const payrollId = params.payroll_id;
+  if (user.role !== 'Admin' && user.role !== 'SuperAdmin') return jsonResponse({error: 'Only admins can mark paid'}, 403);
+  
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('PAYROLL');
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0].toString() === payrollId) {
+      if (data[i][11] !== 'Approved') return jsonResponse({error: 'Must be approved before paying'}, 400);
+      
+      const employeeId = data[i][1];
+      const periodEnd = data[i][3];
+      const totalPay = parseFloat(data[i][10]) || 0;
+      
+      sheet.getRange(i + 1, 12).setValue('Paid');
+      sheet.getRange(i + 1, 13).setValue(new Date());
+      logActivity(user.user_id, 'PAY', 'PAYROLL', payrollId);
+      
+      // Payroll always creates financial transaction (admin chooses source when creating)
+      // No auto-creation here - admin must create expense manually if they want to track it
+      
+      clearCacheKey('payroll_all_all');
+      
+      createNotification(employeeId, 'payroll', 'Payment Processed', 
+        `Your payment of $${totalPay.toFixed(2)} for period ending ${periodEnd} has been processed`, 
+        JSON.stringify({action: 'view_payroll', entity_id: payrollId, entity_type: 'PAYROLL'}));
+      
+      return jsonResponse({success: true, status: 'Paid', paid_date: new Date()});
+    }
+  }
+  return jsonResponse({error: 'Payroll not found'}, 404);
+}
+        
 async function loadPayrollData() {
     const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
     const isManager = currentUser.role === 'Manager' || isAdmin;
@@ -2514,6 +2549,161 @@ function closeSidebarOnClickOutside(e) {
     await loadFinancialsData();
 }
 
+            function getFinancials(params, user) {
+  try {
+    const canViewAll = (user.role === 'Admin' || user.role === 'SuperAdmin' || user.role === 'Manager');
+    if (!canViewAll) return jsonResponse({error: 'Unauthorized'}, 403);
+    
+    const cacheKey = 'financials_' + (params.type || 'all') + '_' + (params.expense_source || 'all');
+    
+    if (!params.type && !params.status && !params.date_from && !params.date_to && !params.expense_source) {
+      const cached = getCached('financials_all');
+      if (cached && !params.force_refresh) {
+        return jsonResponse({transactions: cached.transactions, summary: cached.summary});
+      }
+    }
+    
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('FINANCIALS');
+    if (!sheet) return jsonResponse({transactions: [], summary: {}});
+    
+    const data = sheet.getDataRange().getValues();
+    const transactions = [];
+    
+    const typeFilter = params.type || '';
+    const statusFilter = params.status || '';
+    const dateFrom = params.date_from || '';
+    const dateTo = params.date_to || '';
+    const expenseSourceFilter = params.expense_source || ''; // 'pocket' or 'profit'
+    
+    for (let i = 1; i < data.length; i++) {
+      if (!data[i][0]) continue;
+      
+      if (typeFilter && data[i][2] !== typeFilter) continue;
+      if (statusFilter && data[i][12] !== statusFilter) continue;
+      if (expenseSourceFilter && data[i][14] !== expenseSourceFilter) continue;
+      
+      if (dateFrom || dateTo) {
+        const transDate = parseDate(data[i][1]);
+        if (!transDate) continue;
+        
+        if (dateFrom) {
+          const fromDate = parseDateString(dateFrom);
+          if (transDate < fromDate) continue;
+        }
+        if (dateTo) {
+          const toDate = parseDateString(dateTo);
+          if (transDate > toDate) continue;
+        }
+      }
+      
+      transactions.push({
+        transaction_id: data[i][0],
+        date: formatDate(data[i][1]),
+        type: data[i][2],
+        subtype: data[i][3],
+        category: data[i][4],
+        amount: parseFloat(data[i][5]) || 0,
+        description: data[i][6] || '',
+        related_id: data[i][7] || '',
+        related_type: data[i][8] || '',
+        client_id: data[i][9] || '',
+        vendor_id: data[i][10] || '',
+        due_date: data[i][11] ? formatDate(data[i][11]) : '',
+        status: data[i][12] || 'pending',
+        created_by: data[i][13] || '',
+        expense_source: data[i][14] || 'profit' // Default to profit for backward compatibility
+      });
+    }
+    
+    // Updated summary to split by expense source
+    const summary = {
+      income: transactions.filter(t => t.type === 'income' && t.status === 'paid').reduce((sum, t) => sum + t.amount, 0),
+      expenses: transactions.filter(t => t.type === 'expense' && t.status === 'paid').reduce((sum, t) => sum + t.amount, 0),
+      expenses_from_pocket: transactions.filter(t => t.type === 'expense' && t.status === 'paid' && t.expense_source === 'pocket').reduce((sum, t) => sum + t.amount, 0),
+      expenses_from_profit: transactions.filter(t => t.type === 'expense' && t.status === 'paid' && t.expense_source === 'profit').reduce((sum, t) => sum + t.amount, 0),
+      pending_income: transactions.filter(t => t.type === 'income' && (t.status === 'pending' || t.status === 'sent')).reduce((sum, t) => sum + t.amount, 0),
+      pending_expenses: transactions.filter(t => t.type === 'expense' && t.status === 'pending').reduce((sum, t) => sum + t.amount, 0)
+    };
+    summary.net_profit = summary.income - summary.expenses_from_profit; // Pocket expenses don't reduce net profit
+    summary.pending_net = summary.pending_income - summary.pending_expenses;
+    
+    if (!params.type && !params.status && !params.date_from && !params.date_to && !params.expense_source) {
+      setCached('financials_all', {transactions: transactions, summary: summary});
+    }
+    
+    return jsonResponse({transactions: transactions, summary: summary});
+  } catch (e) {
+    return jsonResponse({error: 'Failed to load financials: ' + e.message}, 500);
+  }
+}
+
+            function getFinancialsSummary(params, user) {
+  try {
+    const canViewAll = (user.role === 'Admin' || user.role === 'SuperAdmin' || user.role === 'Manager');
+    if (!canViewAll) return jsonResponse({error: 'Unauthorized'}, 403);
+    
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('FINANCIALS');
+    if (!sheet) {
+      return jsonResponse({
+        summary: {
+          total_income: 0,
+          total_expenses: 0,
+          expenses_from_pocket: 0,
+          expenses_from_profit: 0,
+          net_profit: 0,
+          pending_receivables: 0,
+          pending_payables: 0
+        }
+      });
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    let totalIncome = 0, totalExpenses = 0;
+    let expensesFromPocket = 0, expensesFromProfit = 0;
+    let pendingReceivables = 0, pendingPayables = 0;
+    
+    for (let i = 1; i < data.length; i++) {
+      if (!data[i][0]) continue;
+      
+      const type = data[i][2];
+      const status = data[i][12];
+      const amount = parseFloat(data[i][5]) || 0;
+      const expenseSource = data[i][14] || 'profit';
+      
+      if (type === 'income') {
+        if (status === 'paid') totalIncome += amount;
+        else if (status === 'pending' || status === 'sent') pendingReceivables += amount;
+      } else if (type === 'expense') {
+        if (status === 'paid') {
+          totalExpenses += amount;
+          if (expenseSource === 'pocket') {
+            expensesFromPocket += amount;
+          } else {
+            expensesFromProfit += amount;
+          }
+        }
+        else if (status === 'pending') pendingPayables += amount;
+      }
+    }
+    
+    return jsonResponse({
+      summary: {
+        total_income: totalIncome,
+        total_expenses: totalExpenses,
+        expenses_from_pocket: expensesFromPocket,
+        expenses_from_profit: expensesFromProfit,
+        net_profit: totalIncome - expensesFromProfit, // Pocket expenses don't reduce profit
+        pending_receivables: pendingReceivables,
+        pending_payables: pendingPayables,
+        cash_flow: totalIncome - totalExpenses,
+        available_profit: totalIncome - expensesFromProfit - pendingPayables
+      }
+    });
+  } catch (e) {
+    return jsonResponse({error: 'Failed to get summary: ' + e.message}, 500);
+  }
+}
+
             async function loadFinancialsData() {
     try {
         const typeFilter = document.getElementById('fin-type-filter').value;
@@ -2533,44 +2723,50 @@ function closeSidebarOnClickOutside(e) {
         const transactions = data.transactions || [];
         const summary = summaryData.summary || {};
         
-        document.getElementById('financials-summary').innerHTML = `
-            <div class="bg-green-50 p-4 rounded-xl border border-green-200">
-                <p class="text-sm text-green-700 font-medium">Total Income (Paid)</p>
-                <p class="text-2xl font-bold text-green-700">$${(summary.total_income || 0).toFixed(2)}</p>
-            </div>
-            <div class="bg-red-50 p-4 rounded-xl border border-red-200">
-                <p class="text-sm text-red-700 font-medium">Total Expenses (Paid)</p>
-                <p class="text-2xl font-bold text-red-700">$${(summary.total_expenses || 0).toFixed(2)}</p>
-            </div>
-            <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                <p class="text-sm text-blue-700 font-medium">Net Profit</p>
-                <p class="text-2xl font-bold text-blue-700">$${(summary.net_profit || 0).toFixed(2)}</p>
-            </div>
-            <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
-                <p class="text-sm text-amber-700 font-medium">Pending</p>
-                <p class="text-lg font-bold text-amber-700">+$${(summary.pending_receivables || 0).toFixed(2)} receivable</p>
-                <p class="text-lg font-bold text-amber-700">-$${(summary.pending_payables || 0).toFixed(2)} payable</p>
-            </div>
-        `;
-        
-        if (transactions.length === 0) {
-            document.getElementById('financials-table-body').innerHTML = 
-                '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">No transactions found</td></tr>';
-            return;
-        }
-        
-        const rows = transactions.map(t => {
-            const typeColors = {
-                'income': 'text-green-600 bg-green-50',
-                'expense': 'text-red-600 bg-red-50',
-                'transfer': 'text-blue-600 bg-blue-50'
-            };
-            const statusColors = {
-                'paid': 'bg-green-100 text-green-700',
-                'pending': 'bg-amber-100 text-amber-700',
-                'sent': 'bg-blue-100 text-blue-700',
-                'overdue': 'bg-red-100 text-red-700'
-            };
+        // In the summary section of loadFinancialsData:
+document.getElementById('financials-summary').innerHTML = `
+  <div class="bg-green-50 p-4 rounded-xl border border-green-200">
+    <p class="text-sm text-green-700 font-medium">Total Income (Paid)</p>
+    <p class="text-2xl font-bold text-green-700">$${(summary.total_income || 0).toFixed(2)}</p>
+  </div>
+  <div class="bg-red-50 p-4 rounded-xl border border-red-200">
+    <p class="text-sm text-red-700 font-medium">From Net Profit</p>
+    <p class="text-2xl font-bold text-red-700">$${(summary.expenses_from_profit || 0).toFixed(2)}</p>
+    <p class="text-xs text-red-600 mt-1">Reduces profit</p>
+  </div>
+  <div class="bg-amber-50 p-4 rounded-xl border border-amber-200">
+    <p class="text-sm text-amber-700 font-medium">Out of Pocket</p>
+    <p class="text-2xl font-bold text-amber-700">$${(summary.expenses_from_pocket || 0).toFixed(2)}</p>
+    <p class="text-xs text-amber-600 mt-1">External funds</p>
+  </div>
+  <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
+    <p class="text-sm text-blue-700 font-medium">Net Profit</p>
+    <p class="text-2xl font-bold text-blue-700">$${(summary.net_profit || 0).toFixed(2)}</p>
+    <p class="text-xs text-blue-600 mt-1">Income - Profit Expenses</p>
+  </div>
+`;
+
+// In the table rows, add expense_source badge:
+const rows = transactions.map(t => {
+  const typeColors = {
+    'income': 'text-green-600 bg-green-50',
+    'expense': 'text-red-600 bg-red-50',
+    'transfer': 'text-blue-600 bg-blue-50'
+  };
+  const statusColors = {
+    'paid': 'bg-green-100 text-green-700',
+    'pending': 'bg-amber-100 text-amber-700',
+    'sent': 'bg-blue-100 text-blue-700',
+    'overdue': 'bg-red-100 text-red-700'
+  };
+  
+  // Expense source badge
+  let sourceBadge = '';
+  if (t.type === 'expense') {
+    const sourceColor = t.expense_source === 'pocket' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700';
+    const sourceText = t.expense_source === 'pocket' ? 'Pocket' : 'Profit';
+    sourceBadge = `<span class="px-2 py-1 rounded-full text-xs font-medium ${sourceColor} ml-2">${sourceText}</span>`;
+  }
             
             let actions = '';
             if (t.status === 'pending') {
@@ -2627,86 +2823,169 @@ function closeSidebarOnClickOutside(e) {
     }
 }
 
+        function createTransaction(params, user) {
+  const canCreate = (user.role === 'Admin' || user.role === 'SuperAdmin' || user.role === 'Manager');
+  if (!canCreate) return jsonResponse({error: 'Unauthorized'}, 403);
+  
+  const type = params.type || 'expense';
+  const amount = parseFloat(params.amount) || 0;
+  if (amount <= 0) return jsonResponse({error: 'Amount must be greater than 0'}, 400);
+  
+  // Validate expense_source for expenses
+  let expenseSource = '';
+  if (type === 'expense') {
+    expenseSource = params.expense_source || 'profit'; // Default to profit
+    if (expenseSource !== 'pocket' && expenseSource !== 'profit') {
+      return jsonResponse({error: 'expense_source must be "pocket" or "profit"'}, 400);
+    }
+  }
+  
+  try {
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('FINANCIALS');
+    
+    // Check if we need to add expense_source column (migration)
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    if (headers.length < 15 || headers[14] !== 'expense_source') {
+      sheet.getRange(1, 15).setValue('expense_source');
+    }
+    
+    const newRow = [
+      sheet.getLastRow(),
+      params.date || formatDate(new Date()),
+      type,
+      params.subtype || 'manual',
+      params.category || 'general',
+      amount,
+      params.description || '',
+      params.related_id || '',
+      params.related_type || '',
+      params.client_id || '',
+      params.vendor_id || '',
+      params.due_date || '',
+      params.status || 'pending',
+      user.user_id,
+      expenseSource // expense_source column
+    ];
+    
+    sheet.appendRow(newRow);
+    const transId = sheet.getLastRow() - 1;
+    
+    clearCacheKey('financials_all');
+    
+    logActivity(user.user_id, 'CREATE', 'TRANSACTION', transId);
+    return jsonResponse({
+      transaction_id: transId, 
+      success: true,
+      expense_source: expenseSource
+    });
+  } catch (e) {
+    return jsonResponse({error: 'Failed to create transaction: ' + e.message}, 500);
+  }
+}
+        
         function createTransactionForm() {
-            const modal = document.createElement('div');
-            modal.id = 'transaction-modal';
-            modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
-            modal.innerHTML = `
-                <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
-                    <div class="p-6">
-                        <h3 class="text-xl font-bold text-slate-900 mb-4">New Transaction</h3>
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Type</label>
-                                <select id="trans-type" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                                    <option value="expense">Expense</option>
-                                    <option value="income">Income</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Category</label>
-                                <input type="text" id="trans-category" placeholder="e.g., supplies, services" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                            </div>
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-slate-700 mb-1">Amount ($)</label>
-                                    <input type="number" id="trans-amount" step="0.01" min="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-slate-700 mb-1">Date</label>
-                                    <input type="date" id="trans-date" value="${getTodayDate()}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                                </div>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                                <textarea id="trans-description" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg"></textarea>
-                            </div>
-                        </div>
-                        <div class="flex gap-3 mt-6">
-                            <button onclick="submitTransaction()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Save</button>
-                            <button onclick="closeTransactionModal()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
+  const modal = document.createElement('div');
+  modal.id = 'transaction-modal';
+  modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+  modal.innerHTML = `
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+      <div class="p-6">
+        <h3 class="text-xl font-bold text-slate-900 mb-4">New Transaction</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Type</label>
+            <select id="trans-type" onchange="toggleExpenseSource()" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </select>
+          </div>
+          
+          <!-- Expense Source Selector (only for expenses) -->
+          <div id="expense-source-container">
+            <label class="block text-sm font-medium text-slate-700 mb-1">Pay From</label>
+            <select id="trans-expense-source" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+              <option value="profit">Net Profit (Business Funds)</option>
+              <option value="pocket">Out of Pocket (Personal/External)</option>
+            </select>
+            <p class="text-xs text-slate-500 mt-1">
+              <span class="text-blue-600 font-medium">Net Profit:</span> Deducts from business profit<br>
+              <span class="text-amber-600 font-medium">Out of Pocket:</span> External funding, doesn't reduce profit
+            </p>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Category</label>
+            <input type="text" id="trans-category" placeholder="e.g., supplies, services" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Amount ($)</label>
+              <input type="number" id="trans-amount" step="0.01" min="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Date</label>
+              <input type="date" id="trans-date" value="${getTodayDate()}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+            <textarea id="trans-description" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg"></textarea>
+          </div>
+        </div>
+        <div class="flex gap-3 mt-6">
+          <button onclick="submitTransaction()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Save</button>
+          <button onclick="closeTransactionModal()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
 
-        function closeTransactionModal() {
-            document.getElementById('transaction-modal')?.remove();
-        }
+function toggleExpenseSource() {
+  const type = document.getElementById('trans-type').value;
+  const container = document.getElementById('expense-source-container');
+  if (container) {
+    container.style.display = type === 'expense' ? 'block' : 'none';
+  }
+}
 
-        async function submitTransaction() {
-            const type = document.getElementById('trans-type').value;
-            const category = document.getElementById('trans-category').value;
-            const amount = parseFloat(document.getElementById('trans-amount').value);
-            const date = document.getElementById('trans-date').value;
-            const description = document.getElementById('trans-description').value;
-            
-            if (!amount || amount <= 0) {
-                showToast('Please enter a valid amount', 'error');
-                return;
-            }
-            
-            try {
-                await apiCall('financials', {
-                    method: 'POST',
-                    type: type,
-                    category: category,
-                    amount: amount,
-                    date: date,
-                    description: description,
-                    status: 'paid'
-                });
-                
-                closeTransactionModal();
-                clearCache();
-                showToast('Transaction saved');
-                loadFinancialsData();
-            } catch (e) {
-                showToast(e.message || 'Failed to save transaction', 'error');
-            }
-        }
+function submitTransaction() {
+  const type = document.getElementById('trans-type').value;
+  const category = document.getElementById('trans-category').value;
+  const amount = parseFloat(document.getElementById('trans-amount').value);
+  const date = document.getElementById('trans-date').value;
+  const description = document.getElementById('trans-description').value;
+  
+  if (!amount || amount <= 0) {
+    showToast('Please enter a valid amount', 'error');
+    return;
+  }
+  
+  const payload = {
+    method: 'POST',
+    type: type,
+    category: category,
+    amount: amount,
+    date: date,
+    description: description,
+    status: 'paid'
+  };
+  
+  // Add expense_source only for expenses
+  if (type === 'expense') {
+    payload.expense_source = document.getElementById('trans-expense-source').value;
+  }
+  
+  apiCall('financials', payload).then(() => {
+    closeTransactionModal();
+    clearCache();
+    showToast('Transaction saved');
+    loadFinancialsData();
+  }).catch(e => {
+    showToast(e.message || 'Failed to save transaction', 'error');
+  });
+}
 
         function createInvoiceForm() {
             const modal = document.createElement('div');
@@ -2775,72 +3054,174 @@ function closeSidebarOnClickOutside(e) {
             }
         }
 
-        function createBillForm() {
-            const modal = document.createElement('div');
-            modal.id = 'bill-modal';
-            modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
-            modal.innerHTML = `
-                <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
-                    <div class="p-6">
-                        <h3 class="text-xl font-bold text-slate-900 mb-4">New Bill</h3>
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Vendor</label>
-                                <input type="text" id="bill-vendor" placeholder="Vendor name" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                            </div>
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-slate-700 mb-1">Amount ($)</label>
-                                    <input type="number" id="bill-amount" step="0.01" min="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
-                                    <input type="date" id="bill-due" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                                </div>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                                <textarea id="bill-description" rows="2" placeholder="Bill for..." class="w-full px-3 py-2 border border-slate-300 rounded-lg"></textarea>
-                            </div>
-                        </div>
-                        <div class="flex gap-3 mt-6">
-                            <button onclick="submitBill()" class="flex-1 bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700">Create Bill</button>
-                            <button onclick="document.getElementById('bill-modal').remove()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
+            function createBill(params, user) {
+  const canCreate = (user.role === 'Admin' || user.role === 'SuperAdmin' || user.role === 'Manager');
+  if (!canCreate) return jsonResponse({error: 'Unauthorized'}, 403);
+  
+  // Validate expense_source
+  const expenseSource = params.expense_source || 'profit';
+  if (expenseSource !== 'pocket' && expenseSource !== 'profit') {
+    return jsonResponse({error: 'expense_source must be "pocket" or "profit"'}, 400);
+  }
+  
+  try {
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('FINANCIALS');
+    
+    // Ensure column exists
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    if (headers.length < 15 || headers[14] !== 'expense_source') {
+      sheet.getRange(1, 15).setValue('expense_source');
+    }
+    
+    const newRow = [
+      sheet.getLastRow(),
+      params.date || formatDate(new Date()),
+      'expense',
+      'bill',
+      params.category || 'expense',
+      parseFloat(params.amount) || 0,
+      params.description || 'Bill #' + sheet.getLastRow(),
+      '',
+      '',
+      '',
+      params.vendor_id || '',
+      params.due_date || '',
+      'pending',
+      user.user_id,
+      expenseSource
+    ];
+    
+    sheet.appendRow(newRow);
+    const billId = sheet.getLastRow() - 1;
+    
+    clearCacheKey('financials_all');
+    
+    logActivity(user.user_id, 'CREATE', 'BILL', billId);
+    return jsonResponse({
+      bill_id: billId, 
+      success: true,
+      expense_source: expenseSource
+    });
+  } catch (e) {
+    return jsonResponse({error: 'Failed to create bill: ' + e.message}, 500);
+  }
+}
+        
+            function createBillForm() {
+  const modal = document.createElement('div');
+  modal.id = 'bill-modal';
+  modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+  modal.innerHTML = `
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+      <div class="p-6">
+        <h3 class="text-xl font-bold text-slate-900 mb-4">New Bill</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Vendor</label>
+            <input type="text" id="bill-vendor" placeholder="Vendor name" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+          </div>
+          
+          <!-- Expense Source -->
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Pay From</label>
+            <select id="bill-expense-source" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+              <option value="profit">Net Profit (Business Funds)</option>
+              <option value="pocket">Out of Pocket (Personal/External)</option>
+            </select>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Amount ($)</label>
+              <input type="number" id="bill-amount" step="0.01" min="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+              <input type="date" id="bill-due" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+            <textarea id="bill-description" rows="2" placeholder="Bill for..." class="w-full px-3 py-2 border border-slate-300 rounded-lg"></textarea>
+          </div>
+        </div>
+        <div class="flex gap-3 mt-6">
+          <button onclick="submitBill()" class="flex-1 bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700">Create Bill</button>
+          <button onclick="document.getElementById('bill-modal').remove()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
 
-        async function submitBill() {
-            const vendorId = document.getElementById('bill-vendor').value;
-            const amount = parseFloat(document.getElementById('bill-amount').value);
-            const dueDate = document.getElementById('bill-due').value;
-            const description = document.getElementById('bill-description').value;
-            
-            if (!amount || amount <= 0) {
-                showToast('Please enter a valid amount', 'error');
-                return;
-            }
-            
-            try {
-                await apiCall('bills', {
-                    method: 'POST',
-                    vendor_id: vendorId,
-                    amount: amount,
-                    due_date: dueDate,
-                    description: description
-                });
-                
-                document.getElementById('bill-modal').remove();
-                clearCache();
-                showToast('Bill created');
-                loadFinancialsData();
-            } catch (e) {
-                showToast(e.message || 'Failed to create bill', 'error');
-            }
+async function submitBill() {
+  const vendorId = document.getElementById('bill-vendor').value;
+  const amount = parseFloat(document.getElementById('bill-amount').value);
+  const dueDate = document.getElementById('bill-due').value;
+  const description = document.getElementById('bill-description').value;
+  const expenseSource = document.getElementById('bill-expense-source').value;
+  
+  if (!amount || amount <= 0) {
+    showToast('Please enter a valid amount', 'error');
+    return;
+  }
+  
+  try {
+    await apiCall('bills', {
+      method: 'POST',
+      vendor_id: vendorId,
+      amount: amount,
+      due_date: dueDate,
+      description: description,
+      expense_source: expenseSource
+    });
+    
+    document.getElementById('bill-modal').remove();
+    clearCache();
+    showToast('Bill created');
+    loadFinancialsData();
+  } catch (e) {
+    showToast(e.message || 'Failed to create bill', 'error');
+  }
+}
+
+            function payBill(params, user) {
+  const billId = params.bill_id;
+  if (!billId) return jsonResponse({error: 'Bill ID required'}, 400);
+  
+  const canPay = (user.role === 'Admin' || user.role === 'SuperAdmin' || user.role === 'Manager');
+  if (!canPay) return jsonResponse({error: 'Only managers can pay bills'}, 403);
+
+  try {
+    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('FINANCIALS');
+    const data = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0].toString() === billId && data[i][3] === 'bill') {
+        if (data[i][12] !== 'paid') {
+          const expenseSource = data[i][14] || 'profit';
+          sheet.getRange(i + 1, 13).setValue('paid');
+          logActivity(user.user_id, 'PAY', 'BILL', billId, '', 'source:' + expenseSource);
+          
+          clearCacheKey('financials_all');
+          
+          return jsonResponse({
+            success: true, 
+            status: 'paid',
+            expense_source: expenseSource,
+            amount: parseFloat(data[i][5]) || 0
+          });
         }
+        return jsonResponse({error: 'Bill already paid'}, 400);
+      }
+    }
+    
+    return jsonResponse({error: 'Bill not found'}, 404);
+  } catch (e) {
+    return jsonResponse({error: 'Failed to pay bill: ' + e.message}, 500);
+  }
+}
 
         async function payBill(billId) {
             try {
@@ -6088,3 +6469,4 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
