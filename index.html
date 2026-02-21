@@ -3744,18 +3744,37 @@ async function saveEmailSettings() {
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
   
+  // Debug: check if elements exist
+  const elements = {
+    provider: document.getElementById('email-provider'),
+    host: document.getElementById('smtp-host'),
+    port: document.getElementById('smtp-port'),
+    username: document.getElementById('smtp-username'),
+    password: document.getElementById('smtp-password'),
+    fromName: document.getElementById('from-name'),
+    fromEmail: document.getElementById('from-email'),
+    useTls: document.getElementById('use-tls')
+  };
+  
+  // Check which one is null
+  for (const [name, el] of Object.entries(elements)) {
+    if (!el) console.error(`Missing element: ${name}`);
+  }
+  
+  const params = {
+    provider_type: elements.provider?.value || 'gmail',
+    smtp_host: elements.host?.value || '',
+    smtp_port: elements.port?.value || 587,
+    smtp_username: elements.username?.value || '',
+    smtp_password: elements.password?.value || '',
+    from_name: elements.fromName?.value || 'Work Volt',
+    from_email: elements.fromEmail?.value || '',
+    use_tls: elements.useTls?.checked !== false
+  };
+  
+  console.log('Saving with params:', params);
+  
   try {
-    const params = {
-      provider_type: document.getElementById('email-provider').value,
-      smtp_host: document.getElementById('smtp-host').value,
-      smtp_port: document.getElementById('smtp-port').value,
-      smtp_username: document.getElementById('smtp-username').value,
-      smtp_password: document.getElementById('smtp-password').value,
-      from_name: document.getElementById('from-name').value,
-      from_email: document.getElementById('from-email').value,
-      use_tls: document.getElementById('use-tls').checked
-    };
-    
     await apiCall('email/config', params);
     showToast('Email settings saved successfully');
   } catch (e) {
@@ -3764,7 +3783,7 @@ async function saveEmailSettings() {
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-save mr-2"></i>Save Settings';
   }
-}   
+}
         
         function formatRelativeTime(dateString) {
             const date = new Date(dateString);
@@ -6198,6 +6217,7 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
 
