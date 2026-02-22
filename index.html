@@ -912,8 +912,12 @@ body.dropdown-open {
 
         // Show security questions setup (call this after first login if needed)
         async function showSecurityQuestionsSetup() {
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('app-screen').classList.add('hidden');
+            // Don't hide login screen - the setup form is inside it
+            // Just hide the login form and show setup form
+            document.getElementById('login-form').classList.add('hidden');
+            document.getElementById('forgot-password-form').classList.add('hidden');
+            document.getElementById('security-questions-form').classList.add('hidden');
+            document.getElementById('reset-password-form').classList.add('hidden');
             document.getElementById('setup-security-form').classList.remove('hidden');
             
             // Load available questions
@@ -966,19 +970,19 @@ body.dropdown-open {
 
                 // Check if user needs to setup security questions (call after login)
                 async function checkSecurityQuestionsSetup() {
-                    try {
-                        const data = await apiCall('auth/check-security-setup', {user_id: currentUser.user_id}, 1);
-                        if (!data.has_security_questions) {
-                            // User needs to setup security questions - show setup form
-                            showSecurityQuestionsSetup();
-                            return false; // Don't proceed to app yet
-                        }
-                        return true; // Proceed to app
-                    } catch (e) {
-                        console.log('Security questions check failed:', e);
-                        return true; // Continue to app if check fails (fail open)
+                try {
+                    // Use correct endpoint name from GAS
+                    const data = await apiCall('auth/get-security-questions', {user_id: currentUser.user_id}, 1);
+                    if (!data.has_security_questions) {
+                        showSecurityQuestionsSetup();
+                        return false;
                     }
+                    return true;
+                } catch (e) {
+                    console.log('Security questions check failed:', e);
+                    return true;
                 }
+            }
 
         // Show reset password form (called from URL parameter)
         function showResetPasswordForm(token) {
@@ -6773,3 +6777,4 @@ async function viewExpiringAssets() {
     </script>
 </body>
 </html>
+
