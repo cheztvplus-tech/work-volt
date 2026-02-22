@@ -994,59 +994,77 @@ body.dropdown-open {
         }
 
                     // Handle forgot password submission - Step 1: Get security questions
-        document.getElementById('forgot-password-form')?.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('forgot-email').value;
-            const btn = document.getElementById('forgot-btn');
-            const btnText = document.getElementById('forgot-btn-text');
-            const spinner = document.getElementById('forgot-btn-spinner');
-            const errorDiv = document.getElementById('forgot-error');
-            const successDiv = document.getElementById('forgot-success');
+document.getElementById('forgot-password-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('forgot-email').value;
+    const btn = document.getElementById('forgot-btn');
+    const btnText = document.getElementById('forgot-btn-text');
+    const spinner = document.getElementById('forgot-btn-spinner');
+    const errorDiv = document.getElementById('forgot-error');
+    const successDiv = document.getElementById('forgot-success');
 
-            btn.disabled = true;
-            btnText.classList.add('hidden');
-            spinner.classList.remove('hidden');
-            errorDiv.classList.add('hidden');
-            successDiv.classList.add('hidden');
+    btn.disabled = true;
+    btnText.classList.add('hidden');
+    spinner.classList.remove('hidden');
+    errorDiv.classList.add('hidden');
+    successDiv.classList.add('hidden');
 
-            try {
-                const data = await apiCall('auth/forgot-password', {email: email}, 1);
-                
-                if (data.success && data.questions) {
-                    // Show security questions form
-                    document.getElementById('forgot-password-form').classList.add('hidden');
-                    document.getElementById('security-questions-form').classList.remove('hidden');
-                    document.getElementById('sq-user-id').value = data.user_id;
-                    
-                    // Render questions
-                    const container = document.getElementById('sq-questions-container');
-                    container.innerHTML = data.questions.map((q, idx) => `
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Question ${idx + 1}</label>
-                            <p class="text-sm text-slate-600 mb-2 bg-slate-50 p-2 rounded">${q}</p>
-                            <input type="text" id="sq-answer-${idx}" placeholder="Your answer" 
-                                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                autocomplete="off">
-                        </div>
-                    `).join('');
-                } else if (data.error === 'NO_SECURITY_QUESTIONS') {
-                    errorDiv.textContent = 'Security questions not set up. Please contact your administrator.';
-                    errorDiv.classList.remove('hidden');
-                } else {
-                    // Generic success message for security
-                    successDiv.textContent = 'If an account exists with this email, instructions will be provided.';
-                    successDiv.classList.remove('hidden');
-                }
-            } catch (err) {
-                // Generic message for security
-                successDiv.textContent = 'If an account exists with this email, instructions will be provided.';
-                successDiv.classList.remove('hidden');
-            } finally {
-                btn.disabled = false;
-                btnText.classList.remove('hidden');
-                spinner.classList.add('hidden');
-            }
-        });
+    try {
+        const data = await apiCall('auth/forgot-password', {email: email}, 1);
+        
+        // Check if we got questions back (security questions flow)
+        if (data.success && data.questions && data.questions.length > 0) {
+            // Show security questions form
+            document.getElementById('forgot-password-form').classList.add('hidden');
+            document.getElementById('security-questions-form').classList.remove('hidden');
+            document.getElementById('sq-user-id').value = data.user_id;
+            
+            // Render questions
+            const container = document.getElementById('sq-questions-container');
+            container.innerHTML = data.questions.map((q, idx) => `
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Question ${idx + 1}</label>
+                    <p class="text-sm text-slate-600 mb-2 bg-slate-50 p-2 rounded">${q}</p>
+                    <input type="text" id="sq-answer-${idx}" placeholder="Your answer" 
+                        class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        autocomplete="off">
+                </div>
+            `).join('');
+        } 
+        // Check if user has no security questions set up
+        else if (data.error === 'NO_SECURITY_QUESTIONS') {
+            errorDiv.textContent = 'Security questions not set up. Please contact your administrator.';
+            errorDiv.classList.remove('hidden');
+        }
+        // Email-based reset (if you had that enabled)
+        else if (data.success && data.message) {
+            successDiv.textContent = data.message;
+            successDiv.classList.remove('hidden');
+        }
+        // Unknown response
+        else {
+            // Only show generic message for actual success-with-no-questions cases
+            // not for errors
+            successDiv.textContent = 'If an account exists with this email, instructions will be provided.';
+            successDiv.classList.remove('hidden');
+        }
+    } catch (err) {
+        // For actual errors (network, server errors), show them
+        // Don't hide security flow errors with generic message
+        if (err.message && err.message.includes('NO_SECURITY_QUESTIONS')) {
+            errorDiv.textContent = 'Security questions not set up. Please contact your administrator.';
+            errorDiv.classList.remove('hidden');
+        } else {
+            // Network/server errors - show generic for security
+            successDiv.textContent = 'If an account exists with this email, instructions will be provided.';
+            successDiv.classList.remove('hidden');
+        }
+    } finally {
+        btn.disabled = false;
+        btnText.classList.remove('hidden');
+        spinner.classList.add('hidden');
+    }
+});
 
         // Handle security questions verification - Step 2
         document.getElementById('security-questions-form')?.addEventListener('submit', async (e) => {
@@ -6777,4 +6795,5 @@ async function viewExpiringAssets() {
     </script>
 </body>
 </html>
+
 
