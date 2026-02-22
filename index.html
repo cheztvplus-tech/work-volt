@@ -3427,9 +3427,7 @@ function closeSidebarOnClickOutside(e) {
             }
         }
 
-// ==================== CRM MODULE ====================
-
-        // ==================== ENHANCED CRM MODULE ====================
+  // ==================== ENHANCED CRM MODULE ====================
 // Replace all existing CRM functions with these
 
 async function loadCRM(container) {
@@ -3443,7 +3441,7 @@ async function loadCRM(container) {
                     <h2 class="text-2xl font-bold text-slate-900">CRM</h2>
                     <p class="text-slate-500">Manage clients, deals, and relationships</p>
                 </div>
-                <div class="flex gap-2">
+                <div class="flex flex-wrap gap-2">
                     <button onclick="showCRMView('pipeline')" id="crm-view-pipeline"
                         class="crm-view-btn px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
                         <i class="fas fa-columns mr-1"></i>Pipeline
@@ -3451,6 +3449,21 @@ async function loadCRM(container) {
                     <button onclick="showCRMView('list')" id="crm-view-list"
                         class="crm-view-btn px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
                         <i class="fas fa-list mr-1"></i>Clients
+                    </button>
+                    <button onclick="openImportModal()" class="px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
+                        <i class="fas fa-file-import mr-1"></i>Import
+                    </button>
+                    <button onclick="openDuplicatesModal()" class="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600">
+                        <i class="fas fa-copy mr-1"></i>Duplicates
+                    </button>
+                    <button onclick="openScoreConfigModal()" class="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700">
+                        <i class="fas fa-star mr-1"></i>Score Config
+                    </button>
+                    <button onclick="runScoreAll()" class="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-200">
+                        <i class="fas fa-sync-alt mr-1"></i>Re-score
+                    </button>
+                    <button onclick="openLeadCaptureModal()" class="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200">
+                        <i class="fas fa-share-alt mr-1"></i>Capture Form
                     </button>
                     <button onclick="createClientForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
                         <i class="fas fa-plus mr-2"></i>Add Client
@@ -3692,6 +3705,8 @@ function renderCRMList(clients) {
         const tags = c.tags ? c.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
         const isOverdue = c.next_followup && new Date(c.next_followup) <= new Date();
         const initials = ((c.contact_name || c.company_name || '?').split(' ').map(n => n[0]).join('').slice(0, 2)).toUpperCase();
+        const score = c.lead_score != null && c.lead_score !== '' ? parseInt(c.lead_score) : null;
+        const scoreColor = score >= 70 ? 'bg-green-500' : score >= 40 ? 'bg-amber-500' : 'bg-red-400';
 
         return `
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 border-l-4 ${statusBorderLeft[c.status] || 'border-l-slate-300'} hover:shadow-md transition-shadow cursor-pointer"
@@ -3700,8 +3715,11 @@ function renderCRMList(clients) {
                     <!-- Header -->
                     <div class="flex items-start justify-between mb-3">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                                ${initials}
+                            <div class="relative">
+                                <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                                    ${initials}
+                                </div>
+                                ${score != null ? `<span class="absolute -bottom-1 -right-1 w-5 h-5 ${scoreColor} rounded-full text-white text-[9px] font-bold flex items-center justify-center border border-white">${score}</span>` : ''}
                             </div>
                             <div>
                                 <h3 class="font-bold text-slate-900 leading-tight">${c.company_name || c.contact_name || 'Unnamed'}</h3>
@@ -4367,6 +4385,550 @@ async function submitEditClient(clientId) {
 
 async function loadCRMData_old() {
     // This is replaced by the new loadCRMData above
+}
+
+// ==================== CRM: EXCEL IMPORT UI ====================
+
+function openImportModal() {
+    const modal = document.createElement('div');
+    modal.id = 'crm-import-modal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+    modal.innerHTML = `
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-bold text-slate-900"><i class="fas fa-file-import text-green-600 mr-2"></i>Import Clients</h3>
+                    <button onclick="document.getElementById('crm-import-modal').remove()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+                </div>
+
+                <!-- Format Guide -->
+                <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-sm text-blue-800">
+                    <p class="font-semibold mb-1">📋 Accepted columns (Excel or CSV):</p>
+                    <p class="font-mono text-xs">company_name, contact_name, email, phone, address, status, value, source, notes, tags, website, next_followup</p>
+                    <p class="text-xs mt-1 text-blue-600">Column names are flexible — "Company", "Company Name", "Email" all work.</p>
+                </div>
+
+                <!-- File Drop Zone -->
+                <div id="import-dropzone"
+                    class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors mb-4"
+                    onclick="document.getElementById('import-file-input').click()"
+                    ondragover="event.preventDefault(); this.classList.add('border-blue-400','bg-blue-50')"
+                    ondragleave="this.classList.remove('border-blue-400','bg-blue-50')"
+                    ondrop="handleImportDrop(event)">
+                    <i class="fas fa-cloud-upload-alt text-4xl text-slate-300 mb-3 block"></i>
+                    <p class="font-semibold text-slate-700">Drop your Excel or CSV file here</p>
+                    <p class="text-sm text-slate-400 mt-1">or click to browse</p>
+                    <input type="file" id="import-file-input" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleImportFile(this.files[0])">
+                </div>
+
+                <!-- Preview Table -->
+                <div id="import-preview" class="hidden mb-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-sm font-semibold text-slate-700" id="import-preview-label">Preview</p>
+                        <span id="import-row-count" class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full"></span>
+                    </div>
+                    <div class="overflow-x-auto rounded-lg border border-slate-200 max-h-48">
+                        <table class="text-xs w-full" id="import-preview-table">
+                            <thead class="bg-slate-50 sticky top-0"><tr id="import-preview-head"></tr></thead>
+                            <tbody id="import-preview-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Warnings -->
+                <div id="import-warnings" class="hidden mb-4"></div>
+
+                <div class="flex gap-3">
+                    <button id="import-submit-btn" onclick="submitImport()" class="hidden flex-1 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700">
+                        <i class="fas fa-upload mr-2"></i>Import All Rows
+                    </button>
+                    <button onclick="document.getElementById('crm-import-modal').remove()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+function handleImportDrop(event) {
+    event.preventDefault();
+    document.getElementById('import-dropzone')?.classList.remove('border-blue-400', 'bg-blue-50');
+    const file = event.dataTransfer.files[0];
+    if (file) handleImportFile(file);
+}
+
+window._importRows = [];
+
+async function handleImportFile(file) {
+    if (!file) return;
+    const dropzone = document.getElementById('import-dropzone');
+    if (dropzone) dropzone.innerHTML = `<i class="fas fa-circle-notch fa-spin text-2xl text-blue-500 mb-2 block"></i><p class="text-sm text-slate-500">Parsing ${file.name}...</p>`;
+
+    try {
+        let rows = [];
+
+        if (file.name.endsWith('.csv')) {
+            const text = await file.text();
+            rows = parseCSV(text);
+        } else {
+            // Use SheetJS for xlsx/xls
+            const buffer = await file.arrayBuffer();
+            const XLSX = window.XLSX;
+            if (!XLSX) {
+                // Dynamically load SheetJS
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+            }
+            const wb = window.XLSX.read(buffer, { type: 'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const raw = window.XLSX.utils.sheet_to_json(ws, { defval: '' });
+            rows = raw;
+        }
+
+        window._importRows = rows;
+
+        // Show preview
+        if (!rows.length) { showToast('No data rows found in file', 'error'); return; }
+
+        const previewDiv = document.getElementById('import-preview');
+        const headRow = document.getElementById('import-preview-head');
+        const body = document.getElementById('import-preview-body');
+        const countEl = document.getElementById('import-row-count');
+
+        const cols = Object.keys(rows[0]).slice(0, 8);
+        headRow.innerHTML = cols.map(c => `<th class="px-2 py-1 text-left text-slate-600 font-semibold border-b border-slate-200">${c}</th>`).join('');
+        body.innerHTML = rows.slice(0, 5).map(r =>
+            `<tr class="border-b border-slate-100">${cols.map(c => `<td class="px-2 py-1 text-slate-700 truncate max-w-[120px]">${r[c] || ''}</td>`).join('')}</tr>`
+        ).join('');
+        countEl.textContent = `${rows.length} row${rows.length !== 1 ? 's' : ''} ready`;
+        previewDiv.classList.remove('hidden');
+
+        const submitBtn = document.getElementById('import-submit-btn');
+        if (submitBtn) submitBtn.classList.remove('hidden');
+
+        if (dropzone) dropzone.innerHTML = `<i class="fas fa-check-circle text-3xl text-green-500 mb-2 block"></i><p class="font-semibold text-green-700">${file.name}</p><p class="text-xs text-slate-400">${rows.length} rows loaded</p>`;
+
+    } catch (e) {
+        showToast('Failed to parse file: ' + e.message, 'error');
+        if (dropzone) dropzone.innerHTML = `<i class="fas fa-exclamation-circle text-3xl text-red-400 mb-2 block"></i><p class="text-red-600">${e.message}</p>`;
+    }
+}
+
+function parseCSV(text) {
+    const lines = text.trim().split('\n');
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    return lines.slice(1).map(line => {
+        const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+        const obj = {};
+        headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+        return obj;
+    });
+}
+
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+
+async function submitImport() {
+    const rows = window._importRows || [];
+    if (!rows.length) { showToast('No rows to import', 'error'); return; }
+
+    const btn = document.getElementById('import-submit-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i>Importing...'; }
+
+    try {
+        const result = await apiCall('crm/import', {
+            method: 'POST',
+            rows: JSON.stringify(rows)
+        });
+
+        document.getElementById('crm-import-modal')?.remove();
+        clearCache();
+
+        const msg = `✅ Imported ${result.imported} clients${result.skipped > 0 ? `, skipped ${result.skipped} duplicates` : ''}`;
+        showToast(msg, 'success');
+
+        if (result.skipped_rows?.length > 0) {
+            const warn = document.getElementById('import-warnings');
+            if (warn) {
+                warn.classList.remove('hidden');
+                warn.innerHTML = `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+                    <p class="font-semibold mb-1">⚠️ Skipped (duplicates):</p>
+                    ${result.skipped_rows.map(r => `<p>• ${r.name}: ${r.reason}</p>`).join('')}
+                </div>`;
+            }
+        }
+
+        loadCRMData();
+    } catch (e) {
+        showToast(e.message || 'Import failed', 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload mr-2"></i>Import All Rows'; }
+    }
+}
+
+// ==================== CRM: DUPLICATE DETECTION UI ====================
+
+async function openDuplicatesModal() {
+    const modal = document.createElement('div');
+    modal.id = 'crm-duplicates-modal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-start justify-center z-50 overflow-y-auto p-4';
+    modal.innerHTML = `
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl my-8">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-bold text-slate-900"><i class="fas fa-copy text-amber-500 mr-2"></i>Duplicate Contacts</h3>
+                    <button onclick="document.getElementById('crm-duplicates-modal').remove()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+                </div>
+                <div id="duplicates-content" class="text-center py-10">
+                    <i class="fas fa-circle-notch fa-spin text-3xl text-amber-500"></i>
+                    <p class="text-slate-500 mt-2">Scanning for duplicates...</p>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+    try {
+        const data = await apiCall('crm/duplicates');
+        const groups = data.duplicates || [];
+        const content = document.getElementById('duplicates-content');
+
+        if (!groups.length) {
+            content.innerHTML = `
+                <div class="text-center py-8">
+                    <i class="fas fa-check-circle text-4xl text-green-500 mb-3 block"></i>
+                    <p class="font-semibold text-slate-700">No duplicates found!</p>
+                    <p class="text-sm text-slate-400">Your CRM contacts are all unique.</p>
+                </div>`;
+            return;
+        }
+
+        content.innerHTML = `
+            <p class="text-sm text-slate-500 mb-4">Found <span class="font-bold text-amber-600">${groups.length}</span> group${groups.length !== 1 ? 's' : ''} of potential duplicates. Select which record to keep as primary.</p>
+            <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+                ${groups.map((g, gi) => `
+                    <div class="border border-amber-200 rounded-xl p-4 bg-amber-50">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs px-2 py-1 bg-amber-200 text-amber-800 rounded-full font-medium">
+                                <i class="fas fa-exclamation-triangle mr-1"></i>${g.match_reason}
+                            </span>
+                            <button onclick="mergeGroup('${g.group_id}', ${gi})" class="px-3 py-1 bg-amber-500 text-white rounded-lg text-xs font-medium hover:bg-amber-600">
+                                Merge Selected
+                            </button>
+                        </div>
+                        <div class="space-y-2">
+                            ${g.clients.map((c, ci) => `
+                                <label class="flex items-start gap-3 p-3 bg-white rounded-lg border border-slate-200 cursor-pointer hover:border-amber-400 transition-colors">
+                                    <input type="radio" name="primary-${gi}" value="${c.client_id}" ${ci === 0 ? 'checked' : ''} class="mt-1 accent-amber-500">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <p class="font-semibold text-slate-900">${c.company_display || c.contact_display || 'Unnamed'}</p>
+                                            ${c.contact_display && c.company_display ? `<span class="text-xs text-slate-400">${c.contact_display}</span>` : ''}
+                                            <span class="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">${c.status}</span>
+                                            ${ci === 0 ? '<span class="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">Primary</span>' : ''}
+                                        </div>
+                                        <div class="flex flex-wrap gap-3 mt-1 text-xs text-slate-500">
+                                            ${c.email_display ? `<span><i class="fas fa-envelope mr-1"></i>${c.email_display}</span>` : ''}
+                                            ${c.value > 0 ? `<span><i class="fas fa-dollar-sign mr-1"></i>${c.value}</span>` : ''}
+                                            ${c.created_at ? `<span><i class="fas fa-calendar mr-1"></i>Added ${c.created_at}</span>` : ''}
+                                        </div>
+                                    </div>
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="mt-4 flex gap-3">
+                <button onclick="mergeAllGroups()" class="flex-1 bg-amber-500 text-white py-2 rounded-lg font-medium hover:bg-amber-600">
+                    <i class="fas fa-compress-alt mr-2"></i>Merge All Groups (Keep First)
+                </button>
+                <button onclick="document.getElementById('crm-duplicates-modal').remove()" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-300">
+                    Close
+                </button>
+            </div>
+        `;
+        window._duplicateGroups = groups;
+
+    } catch (e) {
+        document.getElementById('duplicates-content').innerHTML = `<p class="text-red-500">${e.message}</p>`;
+    }
+}
+
+async function mergeGroup(groupId, groupIndex) {
+    const groups = window._duplicateGroups || [];
+    const group = groups[groupIndex];
+    if (!group) return;
+
+    const primaryInput = document.querySelector(`input[name="primary-${groupIndex}"]:checked`);
+    const primaryId = primaryInput ? primaryInput.value : group.clients[0].client_id;
+    const mergeIds = group.clients.filter(c => c.client_id.toString() !== primaryId.toString()).map(c => c.client_id);
+
+    if (!mergeIds.length) { showToast('Select a primary record', 'error'); return; }
+
+    try {
+        await apiCall('crm/merge', {
+            method: 'POST',
+            primary_id: primaryId,
+            merge_ids: JSON.stringify(mergeIds)
+        });
+        clearCache();
+        showToast(`Merged ${mergeIds.length + 1} contacts into one`);
+        document.getElementById('crm-duplicates-modal')?.remove();
+        loadCRMData();
+    } catch(e) {
+        showToast(e.message || 'Merge failed', 'error');
+    }
+}
+
+async function mergeAllGroups() {
+    const groups = window._duplicateGroups || [];
+    if (!groups.length) return;
+
+    if (!confirm(`Merge all ${groups.length} duplicate groups? Each group's first record will be kept as primary.`)) return;
+
+    let merged = 0;
+    for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        const primaryId = g.clients[0].client_id;
+        const mergeIds = g.clients.slice(1).map(c => c.client_id);
+        if (!mergeIds.length) continue;
+        try {
+            await apiCall('crm/merge', { method: 'POST', primary_id: primaryId, merge_ids: JSON.stringify(mergeIds) });
+            merged++;
+        } catch(e) { /* continue */ }
+    }
+
+    clearCache();
+    showToast(`Merged ${merged} duplicate groups`);
+    document.getElementById('crm-duplicates-modal')?.remove();
+    loadCRMData();
+}
+
+// ==================== CRM: LEAD SCORING UI ====================
+
+async function runScoreAll() {
+    showToast('Scoring all leads...', 'info');
+    try {
+        const result = await apiCall('crm/score', { method: 'POST' });
+        clearCache();
+        showToast(`Scored ${result.scored} contacts`);
+        loadCRMData();
+    } catch(e) {
+        showToast(e.message || 'Scoring failed', 'error');
+    }
+}
+
+async function openScoreConfigModal() {
+    const modal = document.createElement('div');
+    modal.id = 'crm-score-modal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+    modal.innerHTML = `
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-bold text-slate-900"><i class="fas fa-star text-purple-600 mr-2"></i>Lead Scoring Config</h3>
+                    <button onclick="document.getElementById('crm-score-modal').remove()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+                </div>
+                <p class="text-sm text-slate-500 mb-4">Set how many points each criterion adds to a lead's score (max 100). Scores appear as badges on client cards.</p>
+                <div id="score-config-content" class="text-center py-8">
+                    <i class="fas fa-circle-notch fa-spin text-purple-500 text-2xl"></i>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+    try {
+        const data = await apiCall('crm/score-config');
+        const config = data.config || {};
+
+        const criteria = [
+            { key: 'has_email', label: 'Has Email Address', icon: 'fa-envelope' },
+            { key: 'has_phone', label: 'Has Phone Number', icon: 'fa-phone' },
+            { key: 'has_company', label: 'Has Company Name', icon: 'fa-building' },
+            { key: 'has_website', label: 'Has Website', icon: 'fa-globe' },
+            { key: 'high_value', label: 'Deal Value > $10,000', icon: 'fa-dollar-sign' },
+            { key: 'medium_value', label: 'Deal Value $1,000–$10,000', icon: 'fa-dollar-sign' },
+            { key: 'low_value', label: 'Deal Value > $0', icon: 'fa-dollar-sign' },
+            { key: 'quality_source', label: 'High-quality source (referral/inbound/demo)', icon: 'fa-bullseye' },
+            { key: 'priority_tag', label: 'Tagged as "priority"', icon: 'fa-tag' },
+        ];
+
+        document.getElementById('score-config-content').innerHTML = `
+            <div class="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+                ${criteria.map(c => `
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <label class="flex items-center gap-3 text-sm text-slate-700 flex-1">
+                            <i class="fas ${c.icon} text-purple-400 w-4"></i>
+                            ${c.label}
+                        </label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="score-${c.key}" value="${config[c.key] != null ? config[c.key] : 10}" min="0" max="100"
+                                class="w-16 px-2 py-1 border border-slate-300 rounded text-sm text-center focus:ring-2 focus:ring-purple-400 outline-none">
+                            <span class="text-xs text-slate-400">pts</span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="flex gap-3 mt-4">
+                <button onclick="saveScoreConfig()" class="flex-1 bg-purple-600 text-white py-2 rounded-lg font-medium hover:bg-purple-700">
+                    <i class="fas fa-save mr-2"></i>Save & Re-score All
+                </button>
+                <button onclick="document.getElementById('crm-score-modal').remove()" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-300">
+                    Cancel
+                </button>
+            </div>
+        `;
+        window._scoreCriteria = criteria;
+    } catch(e) {
+        document.getElementById('score-config-content').innerHTML = `<p class="text-red-500">${e.message}</p>`;
+    }
+}
+
+async function saveScoreConfig() {
+    const criteria = window._scoreCriteria || [];
+    const config = {};
+    criteria.forEach(c => {
+        const val = parseInt(document.getElementById(`score-${c.key}`)?.value) || 0;
+        config[c.key] = val;
+    });
+
+    try {
+        await apiCall('crm/score-config', { method: 'POST', config: JSON.stringify(config) });
+        showToast('Score config saved. Re-scoring all leads...');
+        document.getElementById('crm-score-modal')?.remove();
+        const result = await apiCall('crm/score', { method: 'POST' });
+        clearCache();
+        showToast(`Done — scored ${result.scored} contacts`);
+        loadCRMData();
+    } catch(e) {
+        showToast(e.message || 'Failed to save config', 'error');
+    }
+}
+
+// ==================== CRM: LEAD CAPTURE FORM GENERATOR ====================
+
+function openLeadCaptureModal() {
+    const apiUrl = window.API_URL || 'YOUR_GAS_ENDPOINT_URL';
+    const embedCode = `<!-- Work Volt Lead Capture Form -->
+<form id="wv-lead-form" style="font-family:sans-serif;max-width:480px">
+  <input name="contact_name" placeholder="Your Name *" required style="width:100%;padding:10px;margin:6px 0;border:1px solid #ddd;border-radius:8px">
+  <input name="email" type="email" placeholder="Email Address *" required style="width:100%;padding:10px;margin:6px 0;border:1px solid #ddd;border-radius:8px">
+  <input name="phone" placeholder="Phone Number" style="width:100%;padding:10px;margin:6px 0;border:1px solid #ddd;border-radius:8px">
+  <input name="company_name" placeholder="Company Name" style="width:100%;padding:10px;margin:6px 0;border:1px solid #ddd;border-radius:8px">
+  <textarea name="message" placeholder="How can we help?" style="width:100%;padding:10px;margin:6px 0;border:1px solid #ddd;border-radius:8px;height:90px"></textarea>
+  <input type="hidden" name="source" value="web_form">
+  <button type="submit" style="width:100%;padding:12px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:15px;cursor:pointer">Submit</button>
+  <p id="wv-form-msg" style="text-align:center;margin-top:10px;color:green;display:none"></p>
+</form>
+<script>
+document.getElementById('wv-lead-form').onsubmit = async function(e) {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target));
+  const res = await fetch('${apiUrl}?endpoint=crm/capture&' + new URLSearchParams(data));
+  const json = await res.json();
+  const msg = document.getElementById('wv-form-msg');
+  msg.textContent = json.message || 'Thank you!';
+  msg.style.display = 'block';
+  e.target.reset();
+};
+<\/script>`;
+
+    const modal = document.createElement('div');
+    modal.id = 'crm-capture-modal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-start justify-center z-50 overflow-y-auto p-4';
+    modal.innerHTML = `
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl my-8">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-bold text-slate-900"><i class="fas fa-share-alt text-blue-600 mr-2"></i>Lead Capture Form</h3>
+                    <button onclick="document.getElementById('crm-capture-modal').remove()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                    <!-- Live Preview -->
+                    <div>
+                        <p class="text-sm font-semibold text-slate-700 mb-2">Live Preview</p>
+                        <div class="border border-slate-200 rounded-xl p-4 bg-slate-50">
+                            <div style="font-family:sans-serif">
+                                <input disabled placeholder="Your Name *" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;font-size:13px">
+                                <input disabled placeholder="Email Address *" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;font-size:13px">
+                                <input disabled placeholder="Phone Number" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;font-size:13px">
+                                <input disabled placeholder="Company Name" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;font-size:13px">
+                                <textarea disabled placeholder="How can we help?" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;height:70px;box-sizing:border-box;font-size:13px;resize:none"></textarea>
+                                <button disabled style="width:100%;padding:10px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:14px;cursor:default">Submit</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Instructions -->
+                    <div>
+                        <p class="text-sm font-semibold text-slate-700 mb-2">How it works</p>
+                        <div class="space-y-3">
+                            <div class="flex gap-3 text-sm">
+                                <span class="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs">1</span>
+                                <p class="text-slate-600">Copy the embed code below and paste it into any website, landing page, or email.</p>
+                            </div>
+                            <div class="flex gap-3 text-sm">
+                                <span class="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs">2</span>
+                                <p class="text-slate-600">When someone submits the form, they're automatically added to your CRM as a lead with a score.</p>
+                            </div>
+                            <div class="flex gap-3 text-sm">
+                                <span class="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs">3</span>
+                                <p class="text-slate-600">Duplicate submissions (same email) are detected and rejected automatically.</p>
+                            </div>
+                        </div>
+                        <div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                            <p class="font-semibold mb-1">⚠️ Before using:</p>
+                            <p>Replace <code class="bg-amber-100 px-1 rounded">YOUR_GAS_ENDPOINT_URL</code> in the embed code with your actual Google Apps Script deployment URL.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Embed Code -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-sm font-semibold text-slate-700">Embed Code</p>
+                        <button onclick="copyEmbedCode()" class="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200">
+                            <i class="fas fa-copy mr-1"></i>Copy Code
+                        </button>
+                    </div>
+                    <textarea id="embed-code-textarea" readonly class="w-full h-40 p-3 font-mono text-xs bg-slate-900 text-green-300 rounded-xl border-0 resize-none outline-none">${embedCode.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                </div>
+
+                <button onclick="document.getElementById('crm-capture-modal').remove()" class="mt-4 w-full bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">
+                    Close
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+function copyEmbedCode() {
+    const ta = document.getElementById('embed-code-textarea');
+    if (!ta) return;
+    const text = ta.value;
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => showToast('Embed code copied!'));
+    } else {
+        ta.select();
+        document.execCommand('copy');
+        showToast('Embed code copied!');
+    }
 }
 
 // ==================== PROJECTS MODULE ====================
@@ -7571,6 +8133,7 @@ async function viewExpiringAssets() {
     </script>
 </body>
 </html>
+
 
 
 
