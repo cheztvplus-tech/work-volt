@@ -1986,6 +1986,8 @@ function clearProjectFilter() {
             const taskId = document.getElementById('lh-task').value;
             const date = document.getElementById('lh-date').value;
             const hours = parseFloat(document.getElementById('lh-hours').value);
+            const breakMinutes = parseInt(document.getElementById('lh-break').value) || 0;
+            const billable = document.getElementById('lh-billable').checked;
             const notes = document.getElementById('lh-notes').value;
             
             if (!taskId) {
@@ -2003,7 +2005,10 @@ function clearProjectFilter() {
                     task_id: taskId,
                     date: date,
                     hours: hours,
-                    notes: notes
+                    break_minutes: breakMinutes,
+                    billable: billable,
+                    notes: notes,
+                    entry_method: 'manual'
                 }, 0);
                 
                 closeLogHoursModal();
@@ -2736,6 +2741,27 @@ function getDefaultPeriodEnd() {
             
             container.innerHTML = `
                 <div class="page-transition">
+                    <!-- Timer Widget -->
+                    <div id="timer-widget" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-4 flex flex-wrap items-center gap-4">
+                        <div class="flex items-center gap-3">
+                            <div id="timer-dot" class="w-3 h-3 rounded-full bg-slate-300"></div>
+                            <span id="timer-display" class="text-2xl font-mono font-bold text-slate-800">00:00:00</span>
+                        </div>
+                        <div class="flex-1 min-w-48">
+                            <select id="timer-task-select" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                <option value="">Select a task to clock in...</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="timer-start-btn" onclick="startTimer()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
+                                <i class="fas fa-play mr-1"></i>Clock In
+                            </button>
+                            <button id="timer-stop-btn" onclick="stopTimer()" class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 hidden">
+                                <i class="fas fa-stop mr-1"></i>Clock Out
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="flex items-center justify-between mb-4">
                         <div>
                             <h2 class="text-2xl font-bold text-slate-900">Timesheets</h2>
@@ -2765,6 +2791,25 @@ function getDefaultPeriodEnd() {
                                     <label class="block text-xs font-medium text-slate-600 mb-1">To</label>
                                     <input type="date" id="ts-filter-to" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
                                 </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Billable</label>
+                                    <select id="ts-filter-billable" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                        <option value="">All</option>
+                                        <option value="true">Billable</option>
+                                        <option value="false">Non-billable</option>
+                                    </select>
+                                </div>
+                                ${isManager ? `
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Status</label>
+                                    <select id="ts-filter-status" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                        <option value="">All</option>
+                                        <option value="submitted">Pending Approval</option>
+                                        <option value="approved">Approved</option>
+                                        <option value="rejected">Rejected</option>
+                                    </select>
+                                </div>
+                                ` : ''}
                                 <button onclick="loadTimesheetData()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
                                     <i class="fas fa-filter mr-1"></i>Filter
                                 </button>
@@ -2778,12 +2823,15 @@ function getDefaultPeriodEnd() {
                                         ${isManager ? '<th class="px-4 py-3 font-medium text-slate-700">Employee</th>' : ''}
                                         <th class="px-4 py-3 font-medium text-slate-700">Task</th>
                                         <th class="px-4 py-3 font-medium text-slate-700 text-right">Hours</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Billable</th>
+                                        <th class="px-4 py-3 font-medium text-slate-700">Status</th>
                                         <th class="px-4 py-3 font-medium text-slate-700">Notes</th>
+                                        ${isManager ? '<th class="px-4 py-3 font-medium text-slate-700">Actions</th>' : ''}
                                     </tr>
                                 </thead>
                                 <tbody id="timesheet-table-body" class="divide-y divide-slate-100">
                                     <tr>
-                                        <td colspan="${isManager ? 5 : 4}" class="px-4 py-8 text-center">
+                                        <td colspan="${isManager ? 8 : 6}" class="px-4 py-8 text-center">
                                             <i class="fas fa-circle-notch fa-spin text-blue-600 mr-2"></i>Loading...
                                         </td>
                                     </tr>
@@ -2791,9 +2839,10 @@ function getDefaultPeriodEnd() {
                             </table>
                         </div>
                         <div id="timesheet-summary" class="p-4 bg-slate-50 border-t border-slate-200">
-                            <div class="flex justify-between items-center">
+                            <div class="flex flex-wrap justify-between items-center gap-4">
                                 <span class="text-sm font-medium text-slate-700">Total Hours:</span>
                                 <span id="ts-total-hours" class="text-xl font-bold text-blue-600">0</span>
+                                <span class="text-sm text-slate-500" id="ts-billable-summary"></span>
                             </div>
                         </div>
                     </div>
@@ -2829,14 +2878,37 @@ function getDefaultPeriodEnd() {
                 }
             }
             
+            // Populate timer task dropdown
+            try {
+                let tasks = getCached('tasks');
+                if (!tasks) {
+                    const tasksData = await apiCall('tasks');
+                    tasks = tasksData.tasks || [];
+                    setCached('tasks', tasks);
+                }
+                const myTasks = tasks.filter(t => t.assigned_to == currentUser.user_id && t.status !== 'Done');
+                const timerSelect = document.getElementById('timer-task-select');
+                myTasks.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.task_id;
+                    opt.textContent = t.title;
+                    timerSelect.appendChild(opt);
+                });
+            } catch (e) { console.error('Timer task load failed:', e); }
+            
+            // Restore active timer state from localStorage
+            restoreTimerState();
+            
             await loadTimesheetData();
         }
 
         async function loadTimesheetData() {
             const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
-            const userId = isManager ? document.getElementById('ts-filter-user').value : currentUser.user_id;
+            const userId = isManager ? document.getElementById('ts-filter-user')?.value : currentUser.user_id;
             const dateFrom = document.getElementById('ts-filter-from').value;
             const dateTo = document.getElementById('ts-filter-to').value;
+            const billableFilter = document.getElementById('ts-filter-billable')?.value || '';
+            const statusFilter = isManager ? (document.getElementById('ts-filter-status')?.value || '') : '';
             
             try {
                 const params = {
@@ -2844,6 +2916,8 @@ function getDefaultPeriodEnd() {
                     date_to: dateTo
                 };
                 if (userId) params.user_id = userId;
+                if (billableFilter) params.billable = billableFilter;
+                if (statusFilter) params.status = statusFilter;
                 
                 const data = await apiCall('timesheets', params);
                 const entries = data.timesheets || [];
@@ -2859,31 +2933,190 @@ function getDefaultPeriodEnd() {
                 
                 if (entries.length === 0) {
                     document.getElementById('timesheet-table-body').innerHTML = 
-                        `<tr><td colspan="${isManager ? 5 : 4}" class="px-4 py-8 text-center text-slate-400">No timesheet entries found</td></tr>`;
+                        `<tr><td colspan="${isManager ? 8 : 6}" class="px-4 py-8 text-center text-slate-400">No timesheet entries found</td></tr>`;
                     document.getElementById('ts-total-hours').textContent = '0';
                     return;
                 }
                 
                 let totalHours = 0;
+                let billableHours = 0;
                 const rows = entries.map(e => {
                     totalHours += e.hours;
+                    if (e.billable) billableHours += e.hours;
+                    
+                    const statusBadge = {
+                        submitted: '<span class="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-700">Pending</span>',
+                        approved:  '<span class="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Approved</span>',
+                        rejected:  '<span class="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">Rejected</span>',
+                        draft:     '<span class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600">Draft</span>'
+                    }[e.status] || '<span class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600">' + (e.status || 'submitted') + '</span>';
+                    
+                    const billableBadge = e.billable
+                        ? '<span class="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">Billable</span>'
+                        : '<span class="text-xs text-slate-400">—</span>';
+                    
+                    const approvalBtns = isManager && (e.status === 'submitted') ? `
+                        <div class="flex gap-1">
+                            <button onclick="approveTimesheetEntry(${e.log_id})" title="Approve" class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200">✓</button>
+                            <button onclick="rejectTimesheetEntry(${e.log_id})" title="Reject" class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200">✗</button>
+                        </div>` : '<span class="text-slate-300 text-xs">—</span>';
+                    
                     return `
                         <tr class="hover:bg-slate-50">
                             <td class="px-4 py-3 text-slate-900">${e.date}</td>
                             ${isManager ? `<td class="px-4 py-3 text-slate-600">User #${e.user_id}</td>` : ''}
                             <td class="px-4 py-3 text-slate-900 font-medium">${tasksMap[e.task_id] || 'Task #' + e.task_id}</td>
                             <td class="px-4 py-3 text-right font-bold text-blue-600">${e.hours.toFixed(2)}</td>
+                            <td class="px-4 py-3">${billableBadge}</td>
+                            <td class="px-4 py-3">${statusBadge}</td>
                             <td class="px-4 py-3 text-slate-600 text-sm">${e.notes || '-'}</td>
+                            ${isManager ? `<td class="px-4 py-3">${approvalBtns}</td>` : ''}
                         </tr>
                     `;
                 }).join('');
                 
                 document.getElementById('timesheet-table-body').innerHTML = rows;
                 document.getElementById('ts-total-hours').textContent = totalHours.toFixed(2);
+                document.getElementById('ts-billable-summary').textContent = 
+                    `${billableHours.toFixed(2)}h billable · ${(totalHours - billableHours).toFixed(2)}h non-billable`;
             } catch (e) {
                 document.getElementById('timesheet-table-body').innerHTML = 
-                    `<tr><td colspan="${isManager ? 5 : 4}" class="px-4 py-8 text-center text-red-500">${e.message || 'Failed to load timesheets'}</td></tr>`;
+                    `<tr><td colspan="${isManager ? 8 : 6}" class="px-4 py-8 text-center text-red-500">${e.message || 'Failed to load timesheets'}</td></tr>`;
             }
+        }
+
+        // ==================== TIMESHEET APPROVAL FUNCTIONS ====================
+
+        async function approveTimesheetEntry(logId) {
+            try {
+                await apiCall('timesheets/approve', { method: 'POST', log_id: logId }, 0);
+                showToast('Timesheet entry approved');
+                clearCache();
+                loadTimesheetData();
+            } catch (e) {
+                showToast(e.message || 'Failed to approve', 'error');
+            }
+        }
+
+        async function rejectTimesheetEntry(logId) {
+            const reason = prompt('Reason for rejection (optional):') || '';
+            try {
+                await apiCall('timesheets/reject', { method: 'POST', log_id: logId, rejection_note: reason }, 0);
+                showToast('Timesheet entry returned to employee');
+                clearCache();
+                loadTimesheetData();
+            } catch (e) {
+                showToast(e.message || 'Failed to reject', 'error');
+            }
+        }
+
+        // ==================== LIVE TIMER FUNCTIONS ====================
+
+        let timerInterval = null;
+
+        function startTimer() {
+            const taskId = document.getElementById('timer-task-select')?.value;
+            if (!taskId) {
+                showToast('Please select a task before clocking in', 'error');
+                return;
+            }
+            const state = {
+                active: true,
+                start_ts: Date.now(),
+                task_id: taskId,
+                user_id: currentUser.user_id
+            };
+            localStorage.setItem('workvolt_timer', JSON.stringify(state));
+            updateTimerUI(state);
+        }
+
+        async function stopTimer() {
+            const stateRaw = localStorage.getItem('workvolt_timer');
+            if (!stateRaw) return;
+            const state = JSON.parse(stateRaw);
+            if (!state.active) return;
+
+            const elapsedMs = Date.now() - state.start_ts;
+            const elapsedHours = parseFloat((elapsedMs / 3600000).toFixed(2));
+
+            if (elapsedHours < 0.01) {
+                showToast('Timer ran for less than a minute — entry not saved', 'error');
+                localStorage.removeItem('workvolt_timer');
+                resetTimerUI();
+                return;
+            }
+
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                await apiCall('timesheets', {
+                    method: 'POST',
+                    task_id: state.task_id,
+                    date: today,
+                    hours: elapsedHours,
+                    notes: 'Logged via timer',
+                    entry_method: 'timer',
+                    billable: 'false'
+                }, 0);
+                localStorage.removeItem('workvolt_timer');
+                resetTimerUI();
+                clearCache();
+                showToast(`Clocked out — ${elapsedHours}h logged`);
+                loadTimesheetData();
+            } catch (e) {
+                showToast(e.message || 'Failed to save timer entry', 'error');
+            }
+        }
+
+        function restoreTimerState() {
+            const stateRaw = localStorage.getItem('workvolt_timer');
+            if (!stateRaw) return;
+            try {
+                const state = JSON.parse(stateRaw);
+                if (state.active && state.user_id == currentUser.user_id) {
+                    updateTimerUI(state);
+                } else {
+                    localStorage.removeItem('workvolt_timer');
+                }
+            } catch (e) {
+                localStorage.removeItem('workvolt_timer');
+            }
+        }
+
+        function updateTimerUI(state) {
+            const startBtn = document.getElementById('timer-start-btn');
+            const stopBtn = document.getElementById('timer-stop-btn');
+            const dot = document.getElementById('timer-dot');
+            const taskSelect = document.getElementById('timer-task-select');
+            
+            if (startBtn) startBtn.classList.add('hidden');
+            if (stopBtn) stopBtn.classList.remove('hidden');
+            if (dot) dot.classList.replace('bg-slate-300', 'bg-red-500');
+            if (taskSelect) { taskSelect.value = state.task_id; taskSelect.disabled = true; }
+
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - state.start_ts) / 1000);
+                const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+                const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+                const s = String(elapsed % 60).padStart(2, '0');
+                const display = document.getElementById('timer-display');
+                if (display) display.textContent = `${h}:${m}:${s}`;
+            }, 1000);
+        }
+
+        function resetTimerUI() {
+            if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+            const startBtn = document.getElementById('timer-start-btn');
+            const stopBtn = document.getElementById('timer-stop-btn');
+            const dot = document.getElementById('timer-dot');
+            const display = document.getElementById('timer-display');
+            const taskSelect = document.getElementById('timer-task-select');
+            
+            if (startBtn) startBtn.classList.remove('hidden');
+            if (stopBtn) stopBtn.classList.add('hidden');
+            if (dot) { dot.classList.remove('bg-red-500'); dot.classList.add('bg-slate-300'); }
+            if (display) display.textContent = '00:00:00';
+            if (taskSelect) taskSelect.disabled = false;
         }
 
         async function openLogHoursModal() {
@@ -2920,6 +3153,14 @@ function getDefaultPeriodEnd() {
                                         <label class="block text-sm font-medium text-slate-700 mb-1">Hours</label>
                                         <input type="number" id="lh-hours" step="0.25" min="0.25" max="24" placeholder="0.00" class="w-full px-3 py-2 border border-slate-300 rounded-lg" autofocus>
                                     </div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Break (minutes)</label>
+                                    <input type="number" id="lh-break" step="5" min="0" max="480" value="0" placeholder="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <input type="checkbox" id="lh-billable" class="w-4 h-4 rounded border-slate-300 text-blue-600">
+                                    <label for="lh-billable" class="text-sm font-medium text-slate-700 cursor-pointer">Billable hours (charged to client)</label>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-slate-700 mb-1">Notes (Optional)</label>
@@ -8133,9 +8374,3 @@ async function viewExpiringAssets() {
     </script>
 </body>
 </html>
-
-
-
-
-
-
