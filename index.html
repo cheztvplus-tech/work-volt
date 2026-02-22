@@ -606,14 +606,14 @@ body.dropdown-open {
     </div>
     
     <div class="relative" id="user-menu-container">
-    <button onclick="toggleUserMenu()" class="flex items-center gap-2 pl-3 border-l border-slate-200 hover:bg-slate-100 rounded-lg p-2 transition-colors">
+    <button onclick="toggleUserMenu(event)" class="flex items-center gap-2 pl-3 border-l border-slate-200 hover:bg-slate-100 rounded-lg p-2 transition-colors">
         <div id="user-avatar" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-medium text-sm">JD</div>
         <span id="user-name" class="hidden md:block text-sm font-medium text-slate-700">John Doe</span>
         <i class="fas fa-chevron-down text-xs text-slate-400"></i>
     </button>
     
     <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 z-50">
-        <button onclick="logout(); toggleUserMenu();" class="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50">
+        <button onclick="handleLogout(event)" class="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50">
             <i class="fas fa-sign-out-alt text-red-400 mr-2"></i>Logout
         </button>
     </div>
@@ -6359,23 +6359,92 @@ async function viewExpiringAssets() {
   }
 }
 
-                    function toggleUserMenu() {
-    const dropdown = document.getElementById('user-dropdown');
-    if (dropdown.classList.contains('hidden')) {
-        dropdown.classList.remove('hidden');
-        setTimeout(() => document.addEventListener('click', closeUserMenu), 100);
-    } else {
-        dropdown.classList.add('hidden');
-        document.removeEventListener('click', closeUserMenu);
-    }
-}
+            function handleLogout(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Close the dropdown first
+            const dropdown = document.getElementById('user-dropdown');
+            if (dropdown) {
+                dropdown.classList.add('hidden');
+            }
+            
+            // Small delay to let UI update, then logout
+            setTimeout(() => {
+                performLogout();
+            }, 50);
+        }
 
-function closeUserMenu(e) {
-    if (!e.target.closest('#user-menu-container')) {
-        document.getElementById('user-dropdown').classList.add('hidden');
-        document.removeEventListener('click', closeUserMenu);
-    }
-}
+        function performLogout() {
+            console.log('Logging out...');
+            
+            // Stop all polling and clear data
+            stopNotificationPolling();
+            clearCache();
+            
+            // Clear storage
+            localStorage.removeItem('workvolt_token');
+            localStorage.removeItem('workvolt_user');
+            sessionStorage.removeItem('lastModule');
+            
+            // Clear variables
+            currentToken = null;
+            currentUser = null;
+            
+            // Reset UI
+            const appScreen = document.getElementById('app-screen');
+            const loginScreen = document.getElementById('login-screen');
+            
+            if (appScreen) appScreen.classList.add('hidden');
+            if (loginScreen) loginScreen.classList.remove('hidden');
+            
+            // Reset login form
+            const loginEmail = document.getElementById('login-email');
+            const loginPassword = document.getElementById('login-password');
+            if (loginEmail) loginEmail.value = '';
+            if (loginPassword) loginPassword.value = '';
+            
+            // Show login form (in case it was showing forgot/reset)
+            showLoginForm();
+            
+            console.log('Logout complete');
+        }
+
+        // Keep old function name for compatibility
+        function logout() {
+            performLogout();
+        }
+
+                    function toggleUserMenu(e) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            const dropdown = document.getElementById('user-dropdown');
+            if (!dropdown) return;
+            
+            if (dropdown.classList.contains('hidden')) {
+                dropdown.classList.remove('hidden');
+                // Close when clicking outside
+                setTimeout(() => {
+                    document.addEventListener('click', closeUserMenu);
+                }, 10);
+            } else {
+                dropdown.classList.add('hidden');
+                document.removeEventListener('click', closeUserMenu);
+            }
+        }
+
+        function closeUserMenu(e) {
+            const dropdown = document.getElementById('user-dropdown');
+            const menuContainer = document.getElementById('user-menu-container');
+            
+            if (dropdown && !dropdown.contains(e.target) && !menuContainer.contains(e.target)) {
+                dropdown.classList.add('hidden');
+                document.removeEventListener('click', closeUserMenu);
+            }
+        }
         // ==================== END NOTIFICATION SYSTEM ====================
 
          // Initialize on load
@@ -6406,6 +6475,7 @@ function closeUserMenu(e) {
     </script>
 </body>
 </html>
+
 
 
 
