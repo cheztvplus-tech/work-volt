@@ -849,24 +849,26 @@ body.dropdown-open {
         });
 
                 async function showApp() {
-            // Check if user needs to setup security questions first
-            const securityCheck = await checkSecurityQuestionsSetup();
-            
-            // If security questions need to be set up, don't show app yet
-            if (securityCheck === false) {
-                return; // Security questions setup form will be shown instead
+                // Check if user needs to setup security questions first
+                const hasSecurityQuestions = await checkSecurityQuestionsSetup();
+                
+                // If security questions need to be set up, DON'T show app yet
+                // The setup form will be shown instead
+                if (!hasSecurityQuestions) {
+                    return; // Stop here - security questions setup form is showing
+                }
+                
+                // Only show app if security questions are set up
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-screen').classList.remove('hidden');
+                document.getElementById('user-name').textContent = currentUser.name;
+                document.getElementById('user-avatar').textContent = currentUser.name.split(' ').map(n => n[0]).join('').slice(0,2);
+                renderNav();
+                
+                const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
+                showModule(lastModule);
+                startNotificationPolling();
             }
-            
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('app-screen').classList.remove('hidden');
-            document.getElementById('user-name').textContent = currentUser.name;
-            document.getElementById('user-avatar').textContent = currentUser.name.split(' ').map(n => n[0]).join('').slice(0,2);
-            renderNav();
-            
-            const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
-            showModule(lastModule);
-            startNotificationPolling();
-        }
         
                 // Password visibility toggle
         function togglePasswordVisibility(inputId, btn) {
@@ -911,78 +913,89 @@ body.dropdown-open {
         }
 
         // Show security questions setup (call this after first login if needed)
-        async function showSecurityQuestionsSetup() {
-            // Don't hide login screen - the setup form is inside it
-            // Just hide the login form and show setup form
-            document.getElementById('login-form').classList.add('hidden');
-            document.getElementById('forgot-password-form').classList.add('hidden');
-            document.getElementById('security-questions-form').classList.add('hidden');
-            document.getElementById('reset-password-form').classList.add('hidden');
-            document.getElementById('setup-security-form').classList.remove('hidden');
-            
-            // Load available questions
-            try {
-                const data = await apiCall('auth/get-security-questions', {setup: 'true'}, 1);
-                const questions = data.available_questions || [];
-                
-                const container = document.getElementById('setup-sq-container');
-                container.innerHTML = `
-                    <div class="bg-blue-50 p-3 rounded-lg mb-4">
-                        <p class="text-sm text-blue-700"><i class="fas fa-info-circle mr-1"></i> Select 3 different questions and provide memorable answers. These will be used to recover your password if you forget it.</p>
-                    </div>
+                function showSecurityQuestionsSetup() {
+                    // Hide ALL forms first
+                    document.getElementById('login-form').classList.add('hidden');
+                    document.getElementById('forgot-password-form').classList.add('hidden');
+                    document.getElementById('security-questions-form').classList.add('hidden');
+                    document.getElementById('reset-password-form').classList.add('hidden');
+                    document.getElementById('setup-security-form').classList.remove('hidden');
                     
-                    <div class="space-y-4">
-                        <div class="border border-slate-200 rounded-lg p-3">
-                            <label class="block text-sm font-medium text-slate-700 mb-2">Question 1</label>
-                            <select id="setup-q0-select" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 text-sm">
-                                ${questions.map((q, idx) => `<option value="${idx}">${q}</option>`).join('')}
-                            </select>
-                            <input type="text" id="setup-a0" placeholder="Your answer" 
-                                class="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                                autocomplete="off">
-                        </div>
+                    // Load available questions
+                    loadSecurityQuestionsForSetup();
+                }
+                
+                // NEW separate function to load questions:
+                async function loadSecurityQuestionsForSetup() {
+                    try {
+                        const data = await apiCall('auth/security-questions', {setup: 'true'}, 1);
+                        const questions = data.available_questions || [];
                         
-                        <div class="border border-slate-200 rounded-lg p-3">
-                            <label class="block text-sm font-medium text-slate-700 mb-2">Question 2</label>
-                            <select id="setup-q1-select" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 text-sm">
-                                ${questions.map((q, idx) => `<option value="${idx}">${q}</option>`).join('')}
-                            </select>
-                            <input type="text" id="setup-a1" placeholder="Your answer" 
-                                class="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                                autocomplete="off">
-                        </div>
-                        
-                        <div class="border border-slate-200 rounded-lg p-3">
-                            <label class="block text-sm font-medium text-slate-700 mb-2">Question 3</label>
-                            <select id="setup-q2-select" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 text-sm">
-                                ${questions.map((q, idx) => `<option value="${idx}">${q}</option>`).join('')}
-                            </select>
-                            <input type="text" id="setup-a2" placeholder="Your answer" 
-                                class="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                                autocomplete="off">
-                        </div>
-                    </div>
-                `;
-            } catch (e) {
-                console.error('Failed to load security questions:', e);
-            }
-        }
+                        const container = document.getElementById('setup-sq-container');
+                        container.innerHTML = `
+                            <div class="bg-blue-50 p-3 rounded-lg mb-4">
+                                <p class="text-sm text-blue-700"><i class="fas fa-info-circle mr-1"></i> Select 3 different questions and provide memorable answers. These will be used to recover your password if you forget it.</p>
+                            </div>
+                            
+                            <div class="space-y-4">
+                                <div class="border border-slate-200 rounded-lg p-3">
+                                    <label class="block text-sm font-medium text-slate-700 mb-2">Question 1</label>
+                                    <select id="setup-q0-select" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 text-sm">
+                                        ${questions.map((q, idx) => `<option value="${idx}">${q}</option>`).join('')}
+                                    </select>
+                                    <input type="text" id="setup-a0" placeholder="Your answer" 
+                                        class="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                                        autocomplete="off">
+                                </div>
+                                
+                                <div class="border border-slate-200 rounded-lg p-3">
+                                    <label class="block text-sm font-medium text-slate-700 mb-2">Question 2</label>
+                                    <select id="setup-q1-select" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 text-sm">
+                                        ${questions.map((q, idx) => `<option value="${idx}">${q}</option>`).join('')}
+                                    </select>
+                                    <input type="text" id="setup-a1" placeholder="Your answer" 
+                                        class="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                                        autocomplete="off">
+                                </div>
+                                
+                                <div class="border border-slate-200 rounded-lg p-3">
+                                    <label class="block text-sm font-medium text-slate-700 mb-2">Question 3</label>
+                                    <select id="setup-q2-select" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 text-sm">
+                                        ${questions.map((q, idx) => `<option value="${idx}">${q}</option>`).join('')}
+                                    </select>
+                                    <input type="text" id="setup-a2" placeholder="Your answer" 
+                                        class="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                                        autocomplete="off">
+                                </div>
+                            </div>
+                        `;
+                    } catch (e) {
+                        console.error('Failed to load security questions:', e);
+                        document.getElementById('setup-sq-container').innerHTML = 
+                            '<div class="text-red-600 p-4">Failed to load security questions. Please refresh and try again.</div>';
+                    }
+                }
 
                 // Check if user needs to setup security questions (call after login)
                 async function checkSecurityQuestionsSetup() {
-                try {
-                    // Use correct endpoint name from GAS
-                    const data = await apiCall('auth/get-security-questions', {user_id: currentUser.user_id}, 1);
-                    if (!data.has_security_questions) {
+                    try {
+                        // Use correct endpoint name from GAS - matches the case in handleRequest
+                        const data = await apiCall('auth/security-questions', {user_id: currentUser.user_id}, 1);
+                        
+                        // If user has no security questions, show setup form
+                        if (!data.has_security_questions) {
+                            showSecurityQuestionsSetup();
+                            return false; // Indicate setup needed
+                        }
+                        
+                        return true; // Already has security questions
+                    } catch (e) {
+                        console.log('Security questions check failed:', e);
+                        // If check fails, assume they need setup for safety
                         showSecurityQuestionsSetup();
                         return false;
                     }
-                    return true;
-                } catch (e) {
-                    console.log('Security questions check failed:', e);
-                    return true;
                 }
-            }
 
         // Show reset password form (called from URL parameter)
         function showResetPasswordForm(token) {
@@ -6795,5 +6808,6 @@ async function viewExpiringAssets() {
     </script>
 </body>
 </html>
+
 
 
