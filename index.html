@@ -849,26 +849,27 @@ body.dropdown-open {
         });
 
                 async function showApp() {
-                // Check if user needs to setup security questions first
-                const hasSecurityQuestions = await checkSecurityQuestionsSetup();
-                
-                // If security questions need to be set up, DON'T show app yet
-                // The setup form will be shown instead
-                if (!hasSecurityQuestions) {
-                    return; // Stop here - security questions setup form is showing
+                    // Check if user needs to setup security questions first
+                    const hasSecurityQuestions = await checkSecurityQuestionsSetup();
+                    
+                    // If security questions need to be set up, DON'T show app yet
+                    // The setup form will be shown instead
+                    if (!hasSecurityQuestions) {
+                        console.log('Security questions setup required, showing setup form');
+                        return; // Stop here - security questions setup form is showing
+                    }
+                    
+                    // Only show app if security questions are set up
+                    document.getElementById('login-screen').classList.add('hidden');
+                    document.getElementById('app-screen').classList.remove('hidden');
+                    document.getElementById('user-name').textContent = currentUser.name;
+                    document.getElementById('user-avatar').textContent = currentUser.name.split(' ').map(n => n[0]).join('').slice(0,2);
+                    renderNav();
+                    
+                    const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
+                    showModule(lastModule);
+                    startNotificationPolling();
                 }
-                
-                // Only show app if security questions are set up
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('app-screen').classList.remove('hidden');
-                document.getElementById('user-name').textContent = currentUser.name;
-                document.getElementById('user-avatar').textContent = currentUser.name.split(' ').map(n => n[0]).join('').slice(0,2);
-                renderNav();
-                
-                const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
-                showModule(lastModule);
-                startNotificationPolling();
-            }
         
                 // Password visibility toggle
         function togglePasswordVisibility(inputId, btn) {
@@ -979,7 +980,7 @@ body.dropdown-open {
                 // Check if user needs to setup security questions (call after login)
                 async function checkSecurityQuestionsSetup() {
                     try {
-                        // Use correct endpoint name from GAS - matches the case in handleRequest
+                        // Use correct endpoint name from GAS - must match exactly
                         const data = await apiCall('auth/security-questions', {user_id: currentUser.user_id}, 1);
                         
                         // If user has no security questions, show setup form
@@ -6808,6 +6809,7 @@ async function viewExpiringAssets() {
     </script>
 </body>
 </html>
+
 
 
 
