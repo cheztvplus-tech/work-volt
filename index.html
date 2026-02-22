@@ -494,14 +494,14 @@ body.dropdown-open {
                 </button>
             </form>
 
-            <!-- Forgot Password Form -->
+                <!-- Forgot Password Form - Step 1: Enter Email -->
             <form id="forgot-password-form" class="hidden space-y-4">
                 <div class="text-center mb-6">
                     <div class="inline-flex items-center justify-center w-12 h-12 bg-blue-100 rounded-full mb-3">
-                        <i class="fas fa-envelope text-xl text-blue-600"></i>
+                        <i class="fas fa-shield-alt text-xl text-blue-600"></i>
                     </div>
                     <h2 class="text-xl font-bold text-slate-900">Reset Password</h2>
-                    <p class="text-sm text-slate-500 mt-1">Enter your email and we'll send you a reset link</p>
+                    <p class="text-sm text-slate-500 mt-1">Enter your email to verify your identity</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
@@ -510,7 +510,7 @@ body.dropdown-open {
                 <div id="forgot-error" class="hidden text-red-600 text-sm bg-red-50 p-2 rounded"></div>
                 <div id="forgot-success" class="hidden text-green-600 text-sm bg-green-50 p-2 rounded"></div>
                 <button type="submit" id="forgot-btn" class="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-                    <span id="forgot-btn-text">Send Reset Link</span>
+                    <span id="forgot-btn-text">Continue</span>
                     <i id="forgot-btn-spinner" class="fas fa-spinner fa-spin hidden"></i>
                 </button>
                 <button type="button" onclick="showLoginForm()" class="w-full bg-slate-100 text-slate-700 py-2.5 rounded-lg font-medium hover:bg-slate-200 transition-colors">
@@ -518,16 +518,68 @@ body.dropdown-open {
                 </button>
             </form>
 
-            <!-- Reset Password Form -->
+            <!-- Security Questions Form - Step 2: Answer Questions -->
+            <form id="security-questions-form" class="hidden space-y-4">
+                <div class="text-center mb-6">
+                    <div class="inline-flex items-center justify-center w-12 h-12 bg-amber-100 rounded-full mb-3">
+                        <i class="fas fa-question-circle text-xl text-amber-600"></i>
+                    </div>
+                    <h2 class="text-xl font-bold text-slate-900">Verify Identity</h2>
+                    <p class="text-sm text-slate-500 mt-1">Answer your security questions</p>
+                </div>
+                
+                <input type="hidden" id="sq-user-id" value="">
+                <input type="hidden" id="sq-reset-token" value="">
+                
+                <div id="sq-questions-container" class="space-y-4">
+                    <!-- Questions will be inserted here dynamically -->
+                </div>
+                
+                <div id="sq-error" class="hidden text-red-600 text-sm bg-red-50 p-2 rounded"></div>
+                <div id="sq-success" class="hidden text-green-600 text-sm bg-green-50 p-2 rounded"></div>
+                
+                <button type="submit" id="sq-btn" class="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                    <span id="sq-btn-text">Verify Answers</span>
+                    <i id="sq-btn-spinner" class="fas fa-spinner fa-spin hidden"></i>
+                </button>
+                <button type="button" onclick="showForgotPassword()" class="w-full bg-slate-100 text-slate-700 py-2.5 rounded-lg font-medium hover:bg-slate-200 transition-colors">
+                    Back
+                </button>
+            </form>
+
+            <!-- Setup Security Questions Form (shown on first login or when admin requires it) -->
+            <form id="setup-security-form" class="hidden space-y-4">
+                <div class="text-center mb-6">
+                    <div class="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-full mb-3">
+                        <i class="fas fa-user-shield text-xl text-green-600"></i>
+                    </div>
+                    <h2 class="text-xl font-bold text-slate-900">Setup Security Questions</h2>
+                    <p class="text-sm text-slate-500 mt-1">Choose 3 questions and provide answers for account recovery</p>
+                </div>
+                
+                <div id="setup-sq-container" class="space-y-4 max-h-96 overflow-y-auto pr-2">
+                    <!-- Question selectors will be inserted here -->
+                </div>
+                
+                <div id="setup-sq-error" class="hidden text-red-600 text-sm bg-red-50 p-2 rounded"></div>
+                <div id="setup-sq-success" class="hidden text-green-600 text-sm bg-green-50 p-2 rounded"></div>
+                
+                <button type="submit" id="setup-sq-btn" class="w-full bg-green-600 text-white py-2.5 rounded-lg font-medium hover:bg-green-700 transition-colors">
+                    <span id="setup-sq-btn-text">Save Security Questions</span>
+                    <i id="setup-sq-btn-spinner" class="fas fa-spinner fa-spin hidden"></i>
+                </button>
+            </form>
+                     <!-- Reset Password Form (shown after security questions verified) -->
             <form id="reset-password-form" class="hidden space-y-4">
                 <div class="text-center mb-6">
                     <div class="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-full mb-3">
                         <i class="fas fa-lock text-xl text-green-600"></i>
                     </div>
                     <h2 class="text-xl font-bold text-slate-900">Create New Password</h2>
-                    <p class="text-sm text-slate-500 mt-1">Enter your new password below</p>
+                    <p class="text-sm text-slate-500 mt-1">Your identity is verified. Enter your new password below</p>
                 </div>
                 <input type="hidden" id="reset-token" value="">
+                <input type="hidden" id="reset-user-id" value="">
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">New Password</label>
                     <div class="relative">
@@ -553,7 +605,11 @@ body.dropdown-open {
                     <span id="reset-btn-text">Reset Password</span>
                     <i id="reset-btn-spinner" class="fas fa-spinner fa-spin hidden"></i>
                 </button>
+                <button type="button" onclick="showLoginForm()" class="w-full bg-slate-100 text-slate-700 py-2.5 rounded-lg font-medium hover:bg-slate-200 transition-colors">
+                    Cancel
+                </button>
             </form>
+            
         </div>
     </div>
 
@@ -792,7 +848,15 @@ body.dropdown-open {
             }
         });
 
-        function showApp() {
+                async function showApp() {
+            // Check if user needs to setup security questions first
+            const securityCheck = await checkSecurityQuestionsSetup();
+            
+            // If security questions need to be set up, don't show app yet
+            if (securityCheck === false) {
+                return; // Security questions setup form will be shown instead
+            }
+            
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('app-screen').classList.remove('hidden');
             document.getElementById('user-name').textContent = currentUser.name;
@@ -827,13 +891,94 @@ body.dropdown-open {
             document.getElementById('forgot-email').focus();
         }
 
-        // Show login form
+            // Show login form
         function showLoginForm() {
             document.getElementById('forgot-password-form').classList.add('hidden');
+            document.getElementById('security-questions-form').classList.add('hidden');
             document.getElementById('reset-password-form').classList.add('hidden');
+            document.getElementById('setup-security-form').classList.add('hidden');
             document.getElementById('login-form').classList.remove('hidden');
             document.getElementById('login-email').focus();
         }
+
+        // Show forgot password form
+        function showForgotPassword() {
+            document.getElementById('login-form').classList.add('hidden');
+            document.getElementById('security-questions-form').classList.add('hidden');
+            document.getElementById('reset-password-form').classList.add('hidden');
+            document.getElementById('forgot-password-form').classList.remove('hidden');
+            document.getElementById('forgot-email').focus();
+        }
+
+        // Show security questions setup (call this after first login if needed)
+        async function showSecurityQuestionsSetup() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('app-screen').classList.add('hidden');
+            document.getElementById('setup-security-form').classList.remove('hidden');
+            
+            // Load available questions
+            try {
+                const data = await apiCall('auth/get-security-questions', {setup: 'true'}, 1);
+                const questions = data.available_questions || [];
+                
+                const container = document.getElementById('setup-sq-container');
+                container.innerHTML = `
+                    <div class="bg-blue-50 p-3 rounded-lg mb-4">
+                        <p class="text-sm text-blue-700"><i class="fas fa-info-circle mr-1"></i> Select 3 different questions and provide memorable answers. These will be used to recover your password if you forget it.</p>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div class="border border-slate-200 rounded-lg p-3">
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Question 1</label>
+                            <select id="setup-q0-select" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 text-sm">
+                                ${questions.map((q, idx) => `<option value="${idx}">${q}</option>`).join('')}
+                            </select>
+                            <input type="text" id="setup-a0" placeholder="Your answer" 
+                                class="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                                autocomplete="off">
+                        </div>
+                        
+                        <div class="border border-slate-200 rounded-lg p-3">
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Question 2</label>
+                            <select id="setup-q1-select" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 text-sm">
+                                ${questions.map((q, idx) => `<option value="${idx}">${q}</option>`).join('')}
+                            </select>
+                            <input type="text" id="setup-a1" placeholder="Your answer" 
+                                class="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                                autocomplete="off">
+                        </div>
+                        
+                        <div class="border border-slate-200 rounded-lg p-3">
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Question 3</label>
+                            <select id="setup-q2-select" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2 text-sm">
+                                ${questions.map((q, idx) => `<option value="${idx}">${q}</option>`).join('')}
+                            </select>
+                            <input type="text" id="setup-a2" placeholder="Your answer" 
+                                class="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                                autocomplete="off">
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error('Failed to load security questions:', e);
+            }
+        }
+
+                // Check if user needs to setup security questions (call after login)
+                async function checkSecurityQuestionsSetup() {
+                    try {
+                        const data = await apiCall('auth/check-security-setup', {user_id: currentUser.user_id}, 1);
+                        if (!data.has_security_questions) {
+                            // User needs to setup security questions - show setup form
+                            showSecurityQuestionsSetup();
+                            return false; // Don't proceed to app yet
+                        }
+                        return true; // Proceed to app
+                    } catch (e) {
+                        console.log('Security questions check failed:', e);
+                        return true; // Continue to app if check fails (fail open)
+                    }
+                }
 
         // Show reset password form (called from URL parameter)
         function showResetPasswordForm(token) {
@@ -844,7 +989,7 @@ body.dropdown-open {
             document.getElementById('reset-password').focus();
         }
 
-        // Handle forgot password submission
+                    // Handle forgot password submission - Step 1: Get security questions
         document.getElementById('forgot-password-form')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('forgot-email').value;
@@ -861,13 +1006,36 @@ body.dropdown-open {
             successDiv.classList.add('hidden');
 
             try {
-                await apiCall('auth/forgot-password', {email: email}, 1);
-                successDiv.textContent = 'Password reset link sent! Check your email.';
-                successDiv.classList.remove('hidden');
-                document.getElementById('forgot-email').value = '';
+                const data = await apiCall('auth/forgot-password', {email: email}, 1);
+                
+                if (data.success && data.questions) {
+                    // Show security questions form
+                    document.getElementById('forgot-password-form').classList.add('hidden');
+                    document.getElementById('security-questions-form').classList.remove('hidden');
+                    document.getElementById('sq-user-id').value = data.user_id;
+                    
+                    // Render questions
+                    const container = document.getElementById('sq-questions-container');
+                    container.innerHTML = data.questions.map((q, idx) => `
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Question ${idx + 1}</label>
+                            <p class="text-sm text-slate-600 mb-2 bg-slate-50 p-2 rounded">${q}</p>
+                            <input type="text" id="sq-answer-${idx}" placeholder="Your answer" 
+                                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                autocomplete="off">
+                        </div>
+                    `).join('');
+                } else if (data.error === 'NO_SECURITY_QUESTIONS') {
+                    errorDiv.textContent = 'Security questions not set up. Please contact your administrator.';
+                    errorDiv.classList.remove('hidden');
+                } else {
+                    // Generic success message for security
+                    successDiv.textContent = 'If an account exists with this email, instructions will be provided.';
+                    successDiv.classList.remove('hidden');
+                }
             } catch (err) {
-                // Don't reveal if email exists for security
-                successDiv.textContent = 'If an account exists with this email, you will receive a reset link shortly.';
+                // Generic message for security
+                successDiv.textContent = 'If an account exists with this email, instructions will be provided.';
                 successDiv.classList.remove('hidden');
             } finally {
                 btn.disabled = false;
@@ -876,10 +1044,66 @@ body.dropdown-open {
             }
         });
 
-        // Handle reset password submission
+        // Handle security questions verification - Step 2
+        document.getElementById('security-questions-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userId = document.getElementById('sq-user-id').value;
+            const answers = [
+                document.getElementById('sq-answer-0').value,
+                document.getElementById('sq-answer-1').value,
+                document.getElementById('sq-answer-2').value
+            ];
+            
+            const btn = document.getElementById('sq-btn');
+            const btnText = document.getElementById('sq-btn-text');
+            const spinner = document.getElementById('sq-btn-spinner');
+            const errorDiv = document.getElementById('sq-error');
+            const successDiv = document.getElementById('sq-success');
+
+            // Validate all answers provided
+            if (answers.some(a => !a.trim())) {
+                errorDiv.textContent = 'Please answer all 3 questions';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            btn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            errorDiv.classList.add('hidden');
+            successDiv.classList.add('hidden');
+
+            try {
+                const data = await apiCall('auth/verify-security-answers', {
+                    user_id: userId,
+                    answers: answers
+                }, 1);
+                
+                if (data.verified) {
+                    // Show password reset form
+                    document.getElementById('security-questions-form').classList.add('hidden');
+                    document.getElementById('reset-password-form').classList.remove('hidden');
+                    document.getElementById('reset-token').value = data.reset_token;
+                    document.getElementById('reset-user-id').value = userId;
+                } else {
+                    errorDiv.textContent = data.error || 'Incorrect answers. Please try again.';
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (err) {
+                errorDiv.textContent = err.message || 'Verification failed. Please try again.';
+                errorDiv.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+
+        // Handle reset password submission - Step 3
         document.getElementById('reset-password-form')?.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const token = document.getElementById('reset-token').value;
+            const resetToken = document.getElementById('reset-token').value;
+            const userId = document.getElementById('reset-user-id').value;
             const password = document.getElementById('reset-password').value;
             const confirm = document.getElementById('reset-password-confirm').value;
             const btn = document.getElementById('reset-btn');
@@ -907,16 +1131,90 @@ body.dropdown-open {
             successDiv.classList.add('hidden');
 
             try {
-                await apiCall('auth/reset-password', {token: token, password: password}, 1);
+                await apiCall('auth/reset-password-secure', {
+                    reset_token: resetToken,
+                    user_id: userId,
+                    password: password
+                }, 1);
+                
                 successDiv.textContent = 'Password reset successfully! Redirecting to login...';
                 successDiv.classList.remove('hidden');
+                
                 setTimeout(() => {
                     showLoginForm();
-                    document.getElementById('login-success')?.classList.remove('hidden');
-                    document.getElementById('login-success').textContent = 'Password reset successfully. Please log in with your new password.';
+                    const loginError = document.getElementById('login-error');
+                    if (loginError) {
+                        loginError.classList.remove('hidden');
+                        loginError.classList.remove('text-red-600', 'bg-red-50');
+                        loginError.classList.add('text-green-600', 'bg-green-50');
+                        loginError.textContent = 'Password reset successfully. Please log in with your new password.';
+                    }
                 }, 2000);
             } catch (err) {
-                errorDiv.textContent = err.message || 'Failed to reset password. The link may have expired.';
+                errorDiv.textContent = err.message || 'Failed to reset password. Please try again.';
+                errorDiv.classList.remove('hidden');
+                btn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+
+        // Handle security questions setup
+        document.getElementById('setup-security-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const questionIndices = [
+                parseInt(document.getElementById('setup-q0-select').value),
+                parseInt(document.getElementById('setup-q1-select').value),
+                parseInt(document.getElementById('setup-q2-select').value)
+            ];
+            
+            const answers = [
+                document.getElementById('setup-a0').value,
+                document.getElementById('setup-a1').value,
+                document.getElementById('setup-a2').value
+            ];
+            
+            const btn = document.getElementById('setup-sq-btn');
+            const btnText = document.getElementById('setup-sq-btn-text');
+            const spinner = document.getElementById('setup-sq-btn-spinner');
+            const errorDiv = document.getElementById('setup-sq-error');
+            const successDiv = document.getElementById('setup-sq-success');
+
+            // Validate
+            if (questionIndices.some((val, idx, arr) => arr.indexOf(val) !== idx)) {
+                errorDiv.textContent = 'Please select 3 different questions';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            if (answers.some(a => !a.trim() || a.trim().length < 2)) {
+                errorDiv.textContent = 'Please provide answers (at least 2 characters each)';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            btn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            errorDiv.classList.add('hidden');
+            successDiv.classList.add('hidden');
+
+            try {
+                await apiCall('auth/setup-security-questions', {
+                    question_indices: questionIndices,
+                    answers: answers
+                }, 1);
+                
+                successDiv.textContent = 'Security questions saved successfully!';
+                successDiv.classList.remove('hidden');
+                
+                setTimeout(() => {
+                    document.getElementById('setup-security-form').classList.add('hidden');
+                    showApp(); // Continue to app
+                }, 1500);
+            } catch (err) {
+                errorDiv.textContent = err.message || 'Failed to save security questions';
                 errorDiv.classList.remove('hidden');
                 btn.disabled = false;
                 btnText.classList.remove('hidden');
@@ -6475,13 +6773,3 @@ async function viewExpiringAssets() {
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
