@@ -3427,28 +3427,59 @@ function closeSidebarOnClickOutside(e) {
             }
         }
 
-        // ==================== CRM MODULE ====================
+// ==================== CRM MODULE ====================
+
+        // ==================== ENHANCED CRM MODULE ====================
+// Replace all existing CRM functions with these
 
 async function loadCRM(container) {
     const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
-    
+
     container.innerHTML = `
         <div class="page-transition">
-            <div class="flex items-center justify-between mb-6">
+            <!-- Header -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
                 <div>
                     <h2 class="text-2xl font-bold text-slate-900">CRM</h2>
-                    <p class="text-slate-500">Manage clients and leads</p>
+                    <p class="text-slate-500">Manage clients, deals, and relationships</p>
                 </div>
-                <button onclick="createClientForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-                    <i class="fas fa-plus mr-2"></i>Add Client
-                </button>
+                <div class="flex gap-2">
+                    <button onclick="showCRMView('pipeline')" id="crm-view-pipeline"
+                        class="crm-view-btn px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
+                        <i class="fas fa-columns mr-1"></i>Pipeline
+                    </button>
+                    <button onclick="showCRMView('list')" id="crm-view-list"
+                        class="crm-view-btn px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                        <i class="fas fa-list mr-1"></i>Clients
+                    </button>
+                    <button onclick="createClientForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                        <i class="fas fa-plus mr-2"></i>Add Client
+                    </button>
+                </div>
             </div>
-            
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="p-4 border-b border-slate-200 flex flex-wrap gap-4 items-center">
-                    <h3 class="font-semibold text-slate-900">Clients & Leads</h3>
-                    <div class="flex gap-2 ml-auto">
-                        <select id="crm-status-filter" onchange="loadCRMData()" class="px-3 py-1 border border-slate-300 rounded-lg text-sm">
+
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="crm-summary">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 animate-pulse"><div class="h-12 bg-slate-200 rounded"></div></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 animate-pulse"><div class="h-12 bg-slate-200 rounded"></div></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 animate-pulse"><div class="h-12 bg-slate-200 rounded"></div></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 animate-pulse"><div class="h-12 bg-slate-200 rounded"></div></div>
+            </div>
+
+            <!-- Search & Filter Bar -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-4">
+                <div class="flex flex-wrap gap-3 items-end">
+                    <div class="flex-1 min-w-[200px]">
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Search</label>
+                        <div class="relative">
+                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="text" id="crm-search" placeholder="Name, company, email, tag..."
+                                oninput="debounceCRMLoad()" class="pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm w-full focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Status</label>
+                        <select id="crm-status-filter" onchange="loadCRMData()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
                             <option value="">All Status</option>
                             <option value="lead">Lead</option>
                             <option value="prospect">Prospect</option>
@@ -3456,115 +3487,714 @@ async function loadCRM(container) {
                             <option value="inactive">Inactive</option>
                         </select>
                     </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Tag</label>
+                        <select id="crm-tag-filter" onchange="loadCRMData()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                            <option value="">All Tags</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Sort By</label>
+                        <select id="crm-sort" onchange="loadCRMData()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                            <option value="name">Name</option>
+                            <option value="value">Value</option>
+                            <option value="last_contact">Last Contact</option>
+                            <option value="created">Date Added</option>
+                        </select>
+                    </div>
+                    <button onclick="loadCRMData()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
+                        <i class="fas fa-sync-alt mr-1"></i>Refresh
+                    </button>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-sm">
-                        <thead class="bg-slate-50 border-b border-slate-200">
-                            <tr>
-                                <th class="px-4 py-3 font-medium text-slate-700">Company</th>
-                                <th class="px-4 py-3 font-medium text-slate-700">Contact</th>
-                                <th class="px-4 py-3 font-medium text-slate-700">Email</th>
-                                <th class="px-4 py-3 font-medium text-slate-700">Status</th>
-                                <th class="px-4 py-3 font-medium text-slate-700 text-right">Value</th>
-                                <th class="px-4 py-3 font-medium text-slate-700">Last Contact</th>
-                            </tr>
-                        </thead>
-                        <tbody id="crm-table-body" class="divide-y divide-slate-100">
-                            <tr><td colspan="6" class="px-4 py-8 text-center text-slate-400">Loading...</td></tr>
-                        </tbody>
-                    </table>
+            </div>
+
+            <!-- Pipeline View (hidden by default) -->
+            <div id="crm-pipeline-view" class="hidden">
+                <div class="flex gap-4 overflow-x-auto kanban-scroll pb-4" id="crm-pipeline-board">
+                    ${renderCRMPipelineColumn('lead', 'Leads', 'bg-purple-400')}
+                    ${renderCRMPipelineColumn('prospect', 'Prospects', 'bg-blue-400')}
+                    ${renderCRMPipelineColumn('negotiation', 'Negotiation', 'bg-amber-400')}
+                    ${renderCRMPipelineColumn('customer', 'Customers', 'bg-green-400')}
+                </div>
+            </div>
+
+            <!-- List View -->
+            <div id="crm-list-view">
+                <div id="crm-clients-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <div class="col-span-full text-center py-12">
+                        <i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i>
+                    </div>
                 </div>
             </div>
         </div>
     `;
-    
+
+    window.crmDebounceTimer = null;
     await loadCRMData();
+}
+
+function debounceCRMLoad() {
+    clearTimeout(window.crmDebounceTimer);
+    window.crmDebounceTimer = setTimeout(loadCRMData, 300);
+}
+
+function renderCRMPipelineColumn(stage, label, colorClass) {
+    return `
+        <div class="flex-shrink-0 w-72">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="w-2 h-2 ${colorClass} rounded-full"></span>
+                <h3 class="font-semibold text-slate-700">${label}</h3>
+                <span class="ml-auto text-xs text-slate-400" id="crm-pipe-count-${stage}">0</span>
+            </div>
+            <div class="space-y-3 min-h-[200px] bg-slate-100/50 rounded-xl p-2" id="crm-pipe-${stage}" data-stage="${stage}"></div>
+        </div>
+    `;
+}
+
+function showCRMView(view) {
+    document.getElementById('crm-pipeline-view').classList.toggle('hidden', view !== 'pipeline');
+    document.getElementById('crm-list-view').classList.toggle('hidden', view !== 'list');
+
+    document.querySelectorAll('.crm-view-btn').forEach(btn => {
+        btn.className = 'crm-view-btn px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200';
+    });
+    const activeBtn = document.getElementById(`crm-view-${view}`);
+    if (activeBtn) activeBtn.className = 'crm-view-btn px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700';
+
+    window.crmCurrentView = view;
+    loadCRMData();
 }
 
 async function loadCRMData() {
     try {
-        const statusFilter = document.getElementById('crm-status-filter').value;
-        const params = statusFilter ? {status: statusFilter} : {};
-        
+        const search = document.getElementById('crm-search')?.value || '';
+        const status = document.getElementById('crm-status-filter')?.value || '';
+        const tag = document.getElementById('crm-tag-filter')?.value || '';
+        const sort = document.getElementById('crm-sort')?.value || 'name';
+
+        const params = {};
+        if (status) params.status = status;
+        if (search) params.search = search;
+        if (tag) params.tag = tag;
+        if (sort) params.sort = sort;
+
         const data = await apiCall('crm', params);
-        const clients = data.clients || [];
-        
-        if (clients.length === 0) {
-            document.getElementById('crm-table-body').innerHTML = 
-                '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400">No clients found</td></tr>';
+        let clients = data.clients || [];
+
+        // Client-side search fallback
+        if (search) {
+            const q = search.toLowerCase();
+            clients = clients.filter(c =>
+                (c.company_name || '').toLowerCase().includes(q) ||
+                (c.contact_name || '').toLowerCase().includes(q) ||
+                (c.email || '').toLowerCase().includes(q) ||
+                (c.tags || '').toLowerCase().includes(q)
+            );
+        }
+
+        // Populate tag filter
+        const allTags = new Set();
+        clients.forEach(c => {
+            if (c.tags) c.tags.split(',').forEach(t => allTags.add(t.trim()));
+        });
+        const tagSelect = document.getElementById('crm-tag-filter');
+        if (tagSelect && tagSelect.options.length <= 1) {
+            allTags.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t;
+                tagSelect.appendChild(opt);
+            });
+        }
+
+        // Client-side tag filter fallback
+        if (tag) {
+            clients = clients.filter(c => (c.tags || '').toLowerCase().includes(tag.toLowerCase()));
+        }
+
+        // Update summary
+        renderCRMSummary(clients);
+
+        const view = window.crmCurrentView || 'list';
+        if (view === 'pipeline') {
+            renderCRMPipeline(clients);
+        } else {
+            renderCRMList(clients);
+        }
+
+    } catch (e) {
+        const grid = document.getElementById('crm-clients-grid');
+        if (grid) grid.innerHTML = `<div class="col-span-full text-center py-12 text-red-500">${e.message || 'Failed to load CRM'}</div>`;
+    }
+}
+
+function renderCRMSummary(clients) {
+    const total = clients.length;
+    const customers = clients.filter(c => c.status === 'customer').length;
+    const leads = clients.filter(c => c.status === 'lead' || c.status === 'prospect').length;
+    const totalValue = clients.reduce((sum, c) => sum + (parseFloat(c.value) || 0), 0);
+
+    const needsFollowup = clients.filter(c => {
+        if (!c.next_followup) return false;
+        return new Date(c.next_followup) <= new Date();
+    }).length;
+
+    const summaryEl = document.getElementById('crm-summary');
+    if (!summaryEl) return;
+
+    summaryEl.innerHTML = `
+        <div class="bg-blue-50 p-4 rounded-xl border border-blue-200 cursor-pointer hover:bg-blue-100" onclick="document.getElementById('crm-status-filter').value=''; loadCRMData()">
+            <p class="text-sm text-blue-700 font-medium">Total Clients</p>
+            <p class="text-2xl font-bold text-blue-700">${total}</p>
+        </div>
+        <div class="bg-green-50 p-4 rounded-xl border border-green-200 cursor-pointer hover:bg-green-100" onclick="document.getElementById('crm-status-filter').value='customer'; loadCRMData()">
+            <p class="text-sm text-green-700 font-medium">Customers</p>
+            <p class="text-2xl font-bold text-green-700">${customers}</p>
+        </div>
+        <div class="bg-purple-50 p-4 rounded-xl border border-purple-200 cursor-pointer hover:bg-purple-100" onclick="document.getElementById('crm-status-filter').value='lead'; loadCRMData()">
+            <p class="text-sm text-purple-700 font-medium">Leads & Prospects</p>
+            <p class="text-2xl font-bold text-purple-700">${leads}</p>
+        </div>
+        <div class="bg-amber-50 p-4 rounded-xl border border-amber-200 ${needsFollowup > 0 ? 'ring-2 ring-amber-400' : ''}">
+            <p class="text-sm text-amber-700 font-medium">Pipeline Value</p>
+            <p class="text-2xl font-bold text-amber-700">$${totalValue.toFixed(0)}</p>
+            ${needsFollowup > 0 ? `<p class="text-xs text-red-600 mt-1 font-medium"><i class="fas fa-bell mr-1"></i>${needsFollowup} follow-up${needsFollowup > 1 ? 's' : ''} due</p>` : ''}
+        </div>
+    `;
+}
+
+function renderCRMList(clients) {
+    const grid = document.getElementById('crm-clients-grid');
+    if (!grid) return;
+
+    if (clients.length === 0) {
+        grid.innerHTML = '<div class="col-span-full text-center py-12 text-slate-400"><i class="fas fa-address-book text-4xl mb-3 block text-slate-300"></i>No clients found</div>';
+        return;
+    }
+
+    const statusColors = {
+        lead: 'bg-purple-100 text-purple-700 border-purple-200',
+        prospect: 'bg-blue-100 text-blue-700 border-blue-200',
+        negotiation: 'bg-amber-100 text-amber-700 border-amber-200',
+        customer: 'bg-green-100 text-green-700 border-green-200',
+        inactive: 'bg-slate-100 text-slate-600 border-slate-200'
+    };
+
+    const statusBorderLeft = {
+        lead: 'border-l-purple-400',
+        prospect: 'border-l-blue-400',
+        negotiation: 'border-l-amber-400',
+        customer: 'border-l-green-400',
+        inactive: 'border-l-slate-300'
+    };
+
+    grid.innerHTML = clients.map(c => {
+        const tags = c.tags ? c.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+        const isOverdue = c.next_followup && new Date(c.next_followup) <= new Date();
+        const initials = ((c.contact_name || c.company_name || '?').split(' ').map(n => n[0]).join('').slice(0, 2)).toUpperCase();
+
+        return `
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 border-l-4 ${statusBorderLeft[c.status] || 'border-l-slate-300'} hover:shadow-md transition-shadow cursor-pointer"
+                onclick="openClientDetail(${c.client_id})">
+                <div class="p-4">
+                    <!-- Header -->
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                                ${initials}
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-slate-900 leading-tight">${c.company_name || c.contact_name || 'Unnamed'}</h3>
+                                ${c.company_name && c.contact_name ? `<p class="text-xs text-slate-500">${c.contact_name}</p>` : ''}
+                            </div>
+                        </div>
+                        <span class="px-2 py-1 rounded-full text-xs font-medium border ${statusColors[c.status] || 'bg-slate-100 text-slate-600'} flex-shrink-0">
+                            ${c.status}
+                        </span>
+                    </div>
+
+                    <!-- Contact Info -->
+                    <div class="space-y-1 mb-3">
+                        ${c.email ? `
+                            <div class="flex items-center gap-2 text-sm text-slate-600" onclick="event.stopPropagation()">
+                                <i class="fas fa-envelope text-slate-400 w-4"></i>
+                                <a href="mailto:${c.email}" class="hover:text-blue-600 truncate">${c.email}</a>
+                            </div>` : ''}
+                        ${c.phone ? `
+                            <div class="flex items-center gap-2 text-sm text-slate-600" onclick="event.stopPropagation()">
+                                <i class="fas fa-phone text-slate-400 w-4"></i>
+                                <a href="tel:${c.phone}" class="hover:text-blue-600">${c.phone}</a>
+                            </div>` : ''}
+                    </div>
+
+                    <!-- Tags -->
+                    ${tags.length > 0 ? `
+                        <div class="flex flex-wrap gap-1 mb-3">
+                            ${tags.map(t => `<span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">#${t}</span>`).join('')}
+                        </div>` : ''}
+
+                    <!-- Footer -->
+                    <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+                        <div>
+                            ${c.value > 0 ? `<p class="text-sm font-bold text-slate-900">$${parseFloat(c.value).toFixed(0)}</p>` : ''}
+                            ${c.last_contact ? `<p class="text-xs text-slate-400">Last: ${c.last_contact}</p>` : ''}
+                        </div>
+                        <div class="flex items-center gap-2">
+                            ${isOverdue ? `
+                                <span class="px-2 py-1 bg-red-100 text-red-600 rounded text-xs font-medium animate-pulse">
+                                    <i class="fas fa-bell mr-1"></i>Follow-up due
+                                </span>` : 
+                                c.next_followup ? `<span class="px-2 py-1 bg-amber-50 text-amber-600 rounded text-xs">Follow-up: ${c.next_followup}</span>` : ''}
+                            <button onclick="event.stopPropagation(); openClientDetail(${c.client_id})"
+                                class="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100">
+                                View
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderCRMPipeline(clients) {
+    const stages = ['lead', 'prospect', 'negotiation', 'customer'];
+
+    stages.forEach(stage => {
+        const col = document.getElementById(`crm-pipe-${stage}`);
+        const countEl = document.getElementById(`crm-pipe-count-${stage}`);
+        if (!col) return;
+
+        const stageClients = clients.filter(c => c.status === stage);
+        if (countEl) countEl.textContent = stageClients.length;
+
+        if (stageClients.length === 0) {
+            col.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">No clients</p>';
             return;
         }
-        
+
+        col.innerHTML = stageClients.map(c => {
+            const initials = ((c.contact_name || c.company_name || '?').split(' ').map(n => n[0]).join('').slice(0, 2)).toUpperCase();
+            return `
+                <div class="bg-white p-3 rounded-lg shadow-sm border border-slate-200 cursor-pointer hover:shadow-md transition-shadow"
+                    onclick="openClientDetail(${c.client_id})">
+                    <div class="flex items-center gap-2 mb-2">
+                        <div class="w-7 h-7 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                            ${initials}
+                        </div>
+                        <div class="min-w-0">
+                            <p class="font-medium text-slate-900 text-sm truncate">${c.company_name || c.contact_name || 'Unnamed'}</p>
+                            ${c.contact_name && c.company_name ? `<p class="text-xs text-slate-500 truncate">${c.contact_name}</p>` : ''}
+                        </div>
+                    </div>
+                    ${c.value > 0 ? `<p class="text-sm font-bold text-green-600">$${parseFloat(c.value).toFixed(0)}</p>` : ''}
+                    ${c.next_followup ? `<p class="text-xs text-amber-600 mt-1"><i class="fas fa-clock mr-1"></i>${c.next_followup}</p>` : ''}
+                </div>
+            `;
+        }).join('');
+    });
+}
+
+async function openClientDetail(clientId) {
+    try {
+        const data = await apiCall('crm', { client_id: clientId });
+        const clients = data.clients || [];
+        const c = clients.find(cl => cl.client_id == clientId) || clients[0];
+
+        if (!c) { showToast('Client not found', 'error'); return; }
+
+        // Load linked projects and activities
+        let projects = [];
+        let activities = [];
+
+        try {
+            const projData = await apiCall('projects');
+            const allProjects = projData.projects || [];
+            // Link by client name match or project client_id field
+            projects = allProjects.filter(p =>
+                p.client_id == clientId ||
+                (c.company_name && (p.name || '').toLowerCase().includes(c.company_name.toLowerCase())) ||
+                (p.description || '').toLowerCase().includes((c.company_name || '').toLowerCase())
+            );
+        } catch (e) { /* ignore */ }
+
+        try {
+            const actData = await apiCall('crm/activities', { client_id: clientId });
+            activities = actData.activities || [];
+        } catch (e) { /* ignore */ }
+
+        const tags = c.tags ? c.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+        const initials = ((c.contact_name || c.company_name || '?').split(' ').map(n => n[0]).join('').slice(0, 2)).toUpperCase();
+
         const statusColors = {
-            'lead': 'bg-purple-100 text-purple-700',
-            'prospect': 'bg-blue-100 text-blue-700',
-            'customer': 'bg-green-100 text-green-700',
-            'inactive': 'bg-slate-100 text-slate-600'
+            lead: 'bg-purple-100 text-purple-700',
+            prospect: 'bg-blue-100 text-blue-700',
+            negotiation: 'bg-amber-100 text-amber-700',
+            customer: 'bg-green-100 text-green-700',
+            inactive: 'bg-slate-100 text-slate-600'
         };
-        
-        const rows = clients.map(c => `
-            <tr class="hover:bg-slate-50">
-                <td class="px-4 py-3 font-medium text-slate-900">${c.company_name || '-'}</td>
-                <td class="px-4 py-3 text-slate-900">${c.contact_name || '-'}</td>
-                <td class="px-4 py-3 text-slate-600">${c.email || '-'}</td>
-                <td class="px-4 py-3">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[c.status] || 'bg-slate-100 text-slate-600'}">
-                        ${c.status}
-                    </span>
-                </td>
-                <td class="px-4 py-3 text-right font-bold text-slate-900">
-                    ${c.value > 0 ? '$' + c.value.toFixed(2) : '-'}
-                </td>
-                <td class="px-4 py-3 text-slate-600">${c.last_contact || 'Never'}</td>
-            </tr>
-        `).join('');
-        
-        document.getElementById('crm-table-body').innerHTML = rows;
+
+        const activityIcons = {
+            call: 'fa-phone text-blue-500',
+            email: 'fa-envelope text-green-500',
+            meeting: 'fa-calendar text-purple-500',
+            note: 'fa-sticky-note text-amber-500',
+            demo: 'fa-desktop text-indigo-500',
+            proposal: 'fa-file-alt text-slate-500'
+        };
+
+        const modal = document.createElement('div');
+        modal.id = 'client-detail-modal';
+        modal.className = 'fixed inset-0 bg-black/50 flex items-start justify-center z-50 overflow-y-auto p-4';
+        modal.innerHTML = `
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl my-8">
+                <!-- Modal Header -->
+                <div class="flex items-center gap-4 p-6 border-b border-slate-200">
+                    <div class="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-lg">
+                        ${initials}
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-xl font-bold text-slate-900">${c.company_name || c.contact_name || 'Unnamed'}</h2>
+                        ${c.company_name && c.contact_name ? `<p class="text-slate-500">${c.contact_name}</p>` : ''}
+                        <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[c.status] || 'bg-slate-100 text-slate-600'}">${c.status}</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="editClientForm(${c.client_id})" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                            <i class="fas fa-pen mr-1"></i>Edit
+                        </button>
+                        <button onclick="document.getElementById('client-detail-modal').remove()" class="p-2 text-slate-400 hover:text-slate-600">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Left Column: Info -->
+                    <div class="md:col-span-1 space-y-4">
+                        <!-- Contact Info -->
+                        <div class="bg-slate-50 rounded-xl p-4">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Contact Info</h4>
+                            <div class="space-y-2">
+                                ${c.email ? `<div class="flex items-center gap-2 text-sm"><i class="fas fa-envelope text-slate-400 w-4"></i><a href="mailto:${c.email}" class="text-blue-600 hover:underline truncate">${c.email}</a></div>` : ''}
+                                ${c.phone ? `<div class="flex items-center gap-2 text-sm"><i class="fas fa-phone text-slate-400 w-4"></i><a href="tel:${c.phone}" class="text-blue-600 hover:underline">${c.phone}</a></div>` : ''}
+                                ${c.website ? `<div class="flex items-center gap-2 text-sm"><i class="fas fa-globe text-slate-400 w-4"></i><a href="${c.website}" target="_blank" class="text-blue-600 hover:underline truncate">${c.website}</a></div>` : ''}
+                                ${c.address ? `<div class="flex items-center gap-2 text-sm"><i class="fas fa-map-marker-alt text-slate-400 w-4"></i><span class="text-slate-600">${c.address}</span></div>` : ''}
+                            </div>
+                        </div>
+
+                        <!-- Deal Info -->
+                        <div class="bg-slate-50 rounded-xl p-4">
+                            <h4 class="font-semibold text-slate-900 mb-3 text-sm">Deal Info</h4>
+                            <div class="space-y-2">
+                                ${c.value > 0 ? `<div class="flex justify-between text-sm"><span class="text-slate-500">Value</span><span class="font-bold text-green-600">$${parseFloat(c.value).toFixed(2)}</span></div>` : ''}
+                                ${c.deal_stage ? `<div class="flex justify-between text-sm"><span class="text-slate-500">Stage</span><span class="font-medium text-slate-900 capitalize">${c.deal_stage}</span></div>` : ''}
+                                ${c.last_contact ? `<div class="flex justify-between text-sm"><span class="text-slate-500">Last Contact</span><span class="text-slate-900">${c.last_contact}</span></div>` : ''}
+                                ${c.next_followup ? `<div class="flex justify-between text-sm"><span class="text-slate-500">Follow-up</span><span class="font-medium ${new Date(c.next_followup) <= new Date() ? 'text-red-600' : 'text-amber-600'}">${c.next_followup}</span></div>` : ''}
+                                ${c.source ? `<div class="flex justify-between text-sm"><span class="text-slate-500">Source</span><span class="text-slate-900">${c.source}</span></div>` : ''}
+                            </div>
+                        </div>
+
+                        <!-- Tags -->
+                        ${tags.length > 0 ? `
+                        <div class="bg-slate-50 rounded-xl p-4">
+                            <h4 class="font-semibold text-slate-900 mb-2 text-sm">Tags</h4>
+                            <div class="flex flex-wrap gap-1">
+                                ${tags.map(t => `<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">#${t}</span>`).join('')}
+                            </div>
+                        </div>` : ''}
+
+                        <!-- Linked Projects -->
+                        ${projects.length > 0 ? `
+                        <div class="bg-slate-50 rounded-xl p-4">
+                            <h4 class="font-semibold text-slate-900 mb-2 text-sm">Linked Projects</h4>
+                            <div class="space-y-2">
+                                ${projects.map(p => `
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-sm text-slate-700 truncate">${p.name}</span>
+                                        <span class="text-xs px-2 py-0.5 ${p.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'} rounded">${p.status}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>` : ''}
+
+                        <!-- Notes -->
+                        ${c.notes ? `
+                        <div class="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                            <h4 class="font-semibold text-slate-900 mb-2 text-sm"><i class="fas fa-sticky-note text-amber-500 mr-1"></i>Notes</h4>
+                            <p class="text-sm text-slate-600 whitespace-pre-wrap">${c.notes}</p>
+                        </div>` : ''}
+                    </div>
+
+                    <!-- Right Column: Activity Log -->
+                    <div class="md:col-span-2">
+                        <div class="flex items-center justify-between mb-4">
+                            <h4 class="font-semibold text-slate-900">Activity Log</h4>
+                            <button onclick="addActivityLog(${c.client_id})" class="px-3 py-1 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                                <i class="fas fa-plus mr-1"></i>Log Activity
+                            </button>
+                        </div>
+
+                        <!-- Set Follow-up -->
+                        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-2 flex-1">
+                                <i class="fas fa-calendar-check text-amber-500"></i>
+                                <span class="text-sm font-medium text-amber-800">Next Follow-up</span>
+                            </div>
+                            <input type="date" id="followup-date-${c.client_id}" value="${c.next_followup || ''}"
+                                class="px-3 py-1 border border-amber-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-amber-400 outline-none">
+                            <button onclick="saveFollowupDate(${c.client_id})" class="px-3 py-1 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600">
+                                Save
+                            </button>
+                        </div>
+
+                        <!-- Activity Timeline -->
+                        <div class="space-y-3 max-h-96 overflow-y-auto pr-1">
+                            ${activities.length === 0 ? `
+                                <div class="text-center py-8 text-slate-400">
+                                    <i class="fas fa-history text-3xl mb-2 block text-slate-300"></i>
+                                    <p class="text-sm">No activities yet. Log your first interaction!</p>
+                                </div>` :
+                                activities.map(a => `
+                                    <div class="flex gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                        <div class="flex-shrink-0 w-8 h-8 bg-white border border-slate-200 rounded-full flex items-center justify-center">
+                                            <i class="fas ${activityIcons[a.type] || 'fa-circle text-slate-400'} text-sm"></i>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center justify-between gap-2 mb-1">
+                                                <span class="text-sm font-medium text-slate-900 capitalize">${a.type}</span>
+                                                <span class="text-xs text-slate-400 flex-shrink-0">${a.date || ''}</span>
+                                            </div>
+                                            <p class="text-sm text-slate-600">${a.notes || ''}</p>
+                                            ${a.outcome ? `<p class="text-xs text-slate-400 mt-1">Outcome: ${a.outcome}</p>` : ''}
+                                        </div>
+                                    </div>
+                                `).join('')
+                            }
+                        </div>
+
+                        <!-- Quick Note -->
+                        <div class="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                            <p class="text-xs font-medium text-slate-600 mb-2">Quick Note</p>
+                            <textarea id="quick-note-${c.client_id}" rows="2" placeholder="Add a quick note..."
+                                class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none">${c.notes || ''}</textarea>
+                            <button onclick="saveClientNote(${c.client_id})" class="mt-2 px-3 py-1 bg-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-300">
+                                Save Note
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        // Close on backdrop click
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
     } catch (e) {
-        document.getElementById('crm-table-body').innerHTML = 
-            `<tr><td colspan="6" class="px-4 py-8 text-center text-red-500">${e.message || 'Failed to load CRM'}</td></tr>`;
+        showToast('Failed to load client details: ' + e.message, 'error');
+    }
+}
+
+async function saveFollowupDate(clientId) {
+    const date = document.getElementById(`followup-date-${clientId}`)?.value;
+    try {
+        await apiCall('crm', { method: 'PUT', client_id: clientId, next_followup: date });
+        showToast('Follow-up date saved');
+        loadCRMData();
+    } catch (e) {
+        showToast(e.message || 'Failed to save follow-up', 'error');
+    }
+}
+
+async function saveClientNote(clientId) {
+    const notes = document.getElementById(`quick-note-${clientId}`)?.value;
+    try {
+        await apiCall('crm', { method: 'PUT', client_id: clientId, notes: notes });
+        showToast('Note saved');
+        loadCRMData();
+    } catch (e) {
+        showToast(e.message || 'Failed to save note', 'error');
+    }
+}
+
+function addActivityLog(clientId) {
+    const modal = document.createElement('div');
+    modal.id = 'activity-modal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[60]';
+    modal.innerHTML = `
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div class="p-6">
+                <h3 class="text-lg font-bold text-slate-900 mb-4">Log Activity</h3>
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Type</label>
+                            <select id="act-type" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                <option value="call">📞 Call</option>
+                                <option value="email">📧 Email</option>
+                                <option value="meeting">📅 Meeting</option>
+                                <option value="demo">🖥️ Demo</option>
+                                <option value="proposal">📄 Proposal</option>
+                                <option value="note">📝 Note</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Date</label>
+                            <input type="date" id="act-date" value="${getTodayDate()}" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Notes <span class="text-red-500">*</span></label>
+                        <textarea id="act-notes" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none" placeholder="What happened? What was discussed?" autofocus></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Outcome</label>
+                        <select id="act-outcome" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                            <option value="">No outcome</option>
+                            <option value="interested">Interested</option>
+                            <option value="not_interested">Not Interested</option>
+                            <option value="follow_up">Follow-up Required</option>
+                            <option value="proposal_sent">Proposal Sent</option>
+                            <option value="deal_closed">Deal Closed</option>
+                            <option value="no_response">No Response</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Update Status</label>
+                        <select id="act-status" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                            <option value="">No change</option>
+                            <option value="lead">Lead</option>
+                            <option value="prospect">Prospect</option>
+                            <option value="negotiation">Negotiation</option>
+                            <option value="customer">Customer</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex gap-3 mt-6">
+                    <button onclick="submitActivityLog(${clientId})" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Save Activity</button>
+                    <button onclick="document.getElementById('activity-modal').remove()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    setTimeout(() => document.getElementById('act-notes')?.focus(), 100);
+}
+
+async function submitActivityLog(clientId) {
+    const notes = document.getElementById('act-notes')?.value?.trim();
+    if (!notes) { showToast('Please enter activity notes', 'error'); return; }
+
+    const type = document.getElementById('act-type').value;
+    const date = document.getElementById('act-date').value;
+    const outcome = document.getElementById('act-outcome').value;
+    const newStatus = document.getElementById('act-status').value;
+
+    try {
+        await apiCall('crm/activities', {
+            method: 'POST',
+            client_id: clientId,
+            type: type,
+            date: date,
+            notes: notes,
+            outcome: outcome
+        });
+
+        if (newStatus) {
+            await apiCall('crm', { method: 'PUT', client_id: clientId, status: newStatus, last_contact: date });
+        } else {
+            await apiCall('crm', { method: 'PUT', client_id: clientId, last_contact: date });
+        }
+
+        document.getElementById('activity-modal').remove();
+        document.getElementById('client-detail-modal')?.remove();
+        clearCache();
+        showToast('Activity logged');
+        loadCRMData();
+    } catch (e) {
+        showToast(e.message || 'Failed to log activity', 'error');
     }
 }
 
 function createClientForm() {
     const modal = document.createElement('div');
     modal.id = 'client-modal';
-    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto p-4';
     modal.innerHTML = `
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg my-4">
             <div class="p-6">
-                <h3 class="text-xl font-bold text-slate-900 mb-4">New Client</h3>
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Type</label>
-                        <select id="client-type" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                            <option value="lead">Lead</option>
-                            <option value="prospect">Prospect</option>
-                            <option value="customer">Customer</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Company Name</label>
-                        <input type="text" id="client-company" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Contact Name</label>
-                        <input type="text" id="client-contact" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                        <input type="email" id="client-email" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Phone</label>
-                        <input type="tel" id="client-phone" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Potential Value ($)</label>
-                        <input type="number" id="client-value" step="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                <h3 class="text-xl font-bold text-slate-900 mb-4">Add New Client</h3>
+                <div class="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Company Name</label>
+                            <input type="text" id="client-company" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" autofocus>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Contact Name</label>
+                            <input type="text" id="client-contact" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                            <select id="client-type" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                <option value="lead">Lead</option>
+                                <option value="prospect">Prospect</option>
+                                <option value="customer">Customer</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                            <input type="email" id="client-email" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+                            <input type="tel" id="client-phone" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Website</label>
+                            <input type="url" id="client-website" placeholder="https://" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Deal Value ($)</label>
+                            <input type="number" id="client-value" step="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Address</label>
+                            <input type="text" id="client-address" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Lead Source</label>
+                            <select id="client-source" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                <option value="">Unknown</option>
+                                <option value="referral">Referral</option>
+                                <option value="website">Website</option>
+                                <option value="social">Social Media</option>
+                                <option value="cold_outreach">Cold Outreach</option>
+                                <option value="event">Event/Conference</option>
+                                <option value="ad">Advertisement</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Next Follow-up</label>
+                            <input type="date" id="client-followup" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Tags <span class="text-xs text-slate-400">(comma separated)</span></label>
+                            <input type="text" id="client-tags" placeholder="e.g. enterprise, saas, priority" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Custom Fields</label>
+                            <input type="text" id="client-custom" placeholder='e.g. Industry: SaaS, Size: 50+ employees' class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                            <textarea id="client-notes" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+                        </div>
                     </div>
                 </div>
-                <div class="flex gap-3 mt-6">
+                <div class="flex gap-3 mt-4 pt-4 border-t border-slate-100">
                     <button onclick="submitClient()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Save Client</button>
                     <button onclick="document.getElementById('client-modal').remove()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
                 </div>
@@ -3572,32 +4202,31 @@ function createClientForm() {
         </div>
     `;
     document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
 async function submitClient() {
-    const type = document.getElementById('client-type').value;
-    const company = document.getElementById('client-company').value;
-    const contact = document.getElementById('client-contact').value;
-    const email = document.getElementById('client-email').value;
-    const phone = document.getElementById('client-phone').value;
-    const value = parseFloat(document.getElementById('client-value').value) || 0;
-    
-    if (!company && !contact) {
-        showToast('Please enter company or contact name', 'error');
-        return;
-    }
-    
+    const company = document.getElementById('client-company').value.trim();
+    const contact = document.getElementById('client-contact').value.trim();
+    if (!company && !contact) { showToast('Please enter a company or contact name', 'error'); return; }
+
     try {
         await apiCall('crm', {
             method: 'POST',
-            type: type,
+            type: document.getElementById('client-type').value,
             company_name: company,
             contact_name: contact,
-            email: email,
-            phone: phone,
-            value: value
+            email: document.getElementById('client-email').value,
+            phone: document.getElementById('client-phone').value,
+            website: document.getElementById('client-website').value,
+            value: parseFloat(document.getElementById('client-value').value) || 0,
+            address: document.getElementById('client-address').value,
+            source: document.getElementById('client-source').value,
+            next_followup: document.getElementById('client-followup').value,
+            tags: document.getElementById('client-tags').value,
+            custom_fields: document.getElementById('client-custom').value,
+            notes: document.getElementById('client-notes').value
         });
-        
         document.getElementById('client-modal').remove();
         clearCache();
         showToast('Client added');
@@ -3605,6 +4234,139 @@ async function submitClient() {
     } catch (e) {
         showToast(e.message || 'Failed to add client', 'error');
     }
+}
+
+async function editClientForm(clientId) {
+    try {
+        const data = await apiCall('crm', { client_id: clientId });
+        const clients = data.clients || [];
+        const c = clients.find(cl => cl.client_id == clientId) || clients[0];
+        if (!c) { showToast('Client not found', 'error'); return; }
+
+        document.getElementById('client-detail-modal')?.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'client-edit-modal';
+        modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto p-4';
+        modal.innerHTML = `
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg my-4">
+                <div class="p-6">
+                    <h3 class="text-xl font-bold text-slate-900 mb-4">Edit Client</h3>
+                    <div class="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="col-span-2">
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Company Name</label>
+                                <input type="text" id="edit-client-company" value="${c.company_name || ''}" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Contact Name</label>
+                                <input type="text" id="edit-client-contact" value="${c.contact_name || ''}" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                                <select id="edit-client-status" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                    <option value="lead" ${c.status === 'lead' ? 'selected' : ''}>Lead</option>
+                                    <option value="prospect" ${c.status === 'prospect' ? 'selected' : ''}>Prospect</option>
+                                    <option value="negotiation" ${c.status === 'negotiation' ? 'selected' : ''}>Negotiation</option>
+                                    <option value="customer" ${c.status === 'customer' ? 'selected' : ''}>Customer</option>
+                                    <option value="inactive" ${c.status === 'inactive' ? 'selected' : ''}>Inactive</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                                <input type="email" id="edit-client-email" value="${c.email || ''}" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+                                <input type="tel" id="edit-client-phone" value="${c.phone || ''}" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Website</label>
+                                <input type="url" id="edit-client-website" value="${c.website || ''}" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Deal Value ($)</label>
+                                <input type="number" id="edit-client-value" value="${c.value || ''}" step="0.01" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Address</label>
+                                <input type="text" id="edit-client-address" value="${c.address || ''}" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Lead Source</label>
+                                <select id="edit-client-source" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                    <option value="" ${!c.source ? 'selected' : ''}>Unknown</option>
+                                    <option value="referral" ${c.source === 'referral' ? 'selected' : ''}>Referral</option>
+                                    <option value="website" ${c.source === 'website' ? 'selected' : ''}>Website</option>
+                                    <option value="social" ${c.source === 'social' ? 'selected' : ''}>Social Media</option>
+                                    <option value="cold_outreach" ${c.source === 'cold_outreach' ? 'selected' : ''}>Cold Outreach</option>
+                                    <option value="event" ${c.source === 'event' ? 'selected' : ''}>Event</option>
+                                    <option value="ad" ${c.source === 'ad' ? 'selected' : ''}>Advertisement</option>
+                                    <option value="other" ${c.source === 'other' ? 'selected' : ''}>Other</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Next Follow-up</label>
+                                <input type="date" id="edit-client-followup" value="${c.next_followup || ''}" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Tags <span class="text-xs text-slate-400">(comma separated)</span></label>
+                                <input type="text" id="edit-client-tags" value="${c.tags || ''}" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Custom Fields</label>
+                                <input type="text" id="edit-client-custom" value="${c.custom_fields || ''}" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                                <textarea id="edit-client-notes" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none">${c.notes || ''}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-3 mt-4 pt-4 border-t border-slate-100">
+                        <button onclick="submitEditClient(${clientId})" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Save Changes</button>
+                        <button onclick="document.getElementById('client-edit-modal').remove()" class="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg font-medium hover:bg-slate-300">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    } catch (e) {
+        showToast('Failed to load client: ' + e.message, 'error');
+    }
+}
+
+async function submitEditClient(clientId) {
+    try {
+        await apiCall('crm', {
+            method: 'PUT',
+            client_id: clientId,
+            company_name: document.getElementById('edit-client-company').value,
+            contact_name: document.getElementById('edit-client-contact').value,
+            status: document.getElementById('edit-client-status').value,
+            email: document.getElementById('edit-client-email').value,
+            phone: document.getElementById('edit-client-phone').value,
+            website: document.getElementById('edit-client-website').value,
+            value: parseFloat(document.getElementById('edit-client-value').value) || 0,
+            address: document.getElementById('edit-client-address').value,
+            source: document.getElementById('edit-client-source').value,
+            next_followup: document.getElementById('edit-client-followup').value,
+            tags: document.getElementById('edit-client-tags').value,
+            custom_fields: document.getElementById('edit-client-custom').value,
+            notes: document.getElementById('edit-client-notes').value
+        });
+        document.getElementById('client-edit-modal').remove();
+        clearCache();
+        showToast('Client updated');
+        loadCRMData();
+    } catch (e) {
+        showToast(e.message || 'Failed to update client', 'error');
+    }
+}
+
+async function loadCRMData_old() {
+    // This is replaced by the new loadCRMData above
 }
 
 // ==================== PROJECTS MODULE ====================
@@ -6809,6 +7571,7 @@ async function viewExpiringAssets() {
     </script>
 </body>
 </html>
+
 
 
 
