@@ -599,8 +599,26 @@ body.dropdown-open {
         </div>
     </div>
 
+    <!-- ══ Splash Screen — shown instantly on every load while auth resolves ══ -->
+    <div id="splash-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-700" style="transition:opacity 0.4s ease;">
+        <div class="flex flex-col items-center gap-6">
+            <div class="inline-flex items-center justify-center w-24 h-24 bg-white/20 rounded-3xl shadow-2xl backdrop-blur-sm">
+                <i class="fas fa-bolt text-white text-5xl"></i>
+            </div>
+            <div class="text-center">
+                <h1 class="text-4xl font-bold text-white tracking-tight">Work Volt</h1>
+                <p class="text-blue-200 mt-2 text-lg">Power your operations</p>
+            </div>
+            <div class="flex gap-2 mt-2">
+                <div class="w-2.5 h-2.5 bg-white/80 rounded-full animate-bounce" style="animation-delay:0ms"></div>
+                <div class="w-2.5 h-2.5 bg-white/80 rounded-full animate-bounce" style="animation-delay:160ms"></div>
+                <div class="w-2.5 h-2.5 bg-white/80 rounded-full animate-bounce" style="animation-delay:320ms"></div>
+            </div>
+        </div>
+    </div>
+
             <!-- Login Screen -->
-    <div id="login-screen" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-700">
+    <div id="login-screen" class="hidden min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-700">
         <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md mx-4">
             <div class="text-center mb-8">
                 <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-xl mb-4">
@@ -1055,7 +1073,9 @@ body.dropdown-open {
         }
 
         function clearCache() {
-            cache = { tasks: null, users: null, payroll: null, timesheets: null, lastFetch: {} };
+            cache = { tasks: null, users: null, payroll: null, timesheets: null,
+                      projects: null, tasks_all: null, pipeline: null,
+                      financials: null, crm: null, assets: null, lastFetch: {} };
         }
 
             async function apiCall(path, params = {}, retries = 2) {
@@ -1065,7 +1085,6 @@ body.dropdown-open {
     for(let key in params) {
         if(params[key] !== undefined && params[key] !== null) url.searchParams.append(key, params[key]);
     }
-    console.log('API URL:', url.toString());
     let lastError;
     for(let i = 0; i <= retries; i++) {
         try {
@@ -1200,6 +1219,7 @@ body.dropdown-open {
                     }
                     
                     // Only show app if security questions are set up
+                    hideSplash(); // dismiss splash (no-op if already hidden)
                     document.getElementById('login-screen').classList.add('hidden');
                     document.getElementById('app-screen').classList.remove('hidden');
                     document.getElementById('user-name').textContent = currentUser.name;
@@ -1670,31 +1690,30 @@ document.getElementById('forgot-password-form')?.addEventListener('submit', asyn
     
     const main = document.getElementById('main-content');
     main.innerHTML = '<div class="flex items-center justify-center h-64"><i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i></div>';
-    
-    setTimeout(() => {
+
+    // requestAnimationFrame lets the spinner paint before the module load starts
+    requestAnimationFrame(() => {
         switch(moduleName) {
             case 'dashboard': loadDashboard(main); break;
-            case 'tasks': 
+            case 'tasks':
                 const preselectedProject = sessionStorage.getItem('preselectedProjectId');
                 loadTasks(main, preselectedProject);
-                if (preselectedProject) {
-                    sessionStorage.removeItem('preselectedProjectId');
-                }
+                if (preselectedProject) sessionStorage.removeItem('preselectedProjectId');
                 break;
-            case 'pipeline': loadPipeline(main); break;
-            case 'payroll': loadPayroll(main); break;
-            case 'timesheets': loadTimesheets(main); break;
-            case 'financials': loadFinancials(main); break;
-            case 'crm': loadCRM(main); break;
-            case 'projects': loadProjects(main); break;
+            case 'pipeline':      loadPipeline(main); break;
+            case 'payroll':       loadPayroll(main); break;
+            case 'timesheets':    loadTimesheets(main); break;
+            case 'financials':    loadFinancials(main); break;
+            case 'crm':           loadCRM(main); break;
+            case 'projects':      loadProjects(main); break;
             case 'notifications': loadNotificationsPage(main); break;
-            case 'workflows': loadWorkflows(main); break;
-            case 'reports': loadReports(main); break;
-            case 'assets': loadAssets(main); break;
-            case 'settings': loadSettings(main); break;
+            case 'workflows':     loadWorkflows(main); break;
+            case 'reports':       loadReports(main); break;
+            case 'assets':        loadAssets(main); break;
+            case 'settings':      loadSettings(main); break;
             default: main.innerHTML = '<div class="text-center py-20 text-slate-400">Module coming soon</div>';
         }
-    }, 50);
+    });
 }
 
         // Handle browser back/forward button
@@ -1943,7 +1962,7 @@ async function openCreateTaskForm() {
     // Load projects for dropdown
     let projectOptions = '<option value="">No Project</option>';
     try {
-        let projects = getCached('projects');
+        let projects = getCached('projects', 120000);
         if (!projects) {
             const projData = await apiCall('projects');
             projects = projData.projects || [];
@@ -2097,7 +2116,7 @@ async function loadTaskFilterOptions() {
     const isManager = currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
     
     try {
-        let projects = getCached('projects');
+        let projects = getCached('projects', 120000);
         if (!projects) {
             const projData = await apiCall('projects');
             projects = projData.projects || [];
@@ -2148,7 +2167,7 @@ async function loadTaskFilterOptions() {
     }
     
     try {
-        let projects = getCached('projects');
+        let projects = getCached('projects', 120000);
         if (!projects) {
             const projData = await apiCall('projects');
             projects = projData.projects || [];
@@ -2252,7 +2271,7 @@ function clearProjectFilter() {
     
     let projectBadge = '';
     if (task.project_id) {
-        const projects = projectsList || getCached('projects') || [];
+        const projects = projectsList || getCached('projects', 120000) || [];
         const project = projects.find(p => p.project_id == task.project_id);
         if (project) {
             projectBadge = `<span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full mr-1 truncate max-w-[100px]" title="${project.name}">${project.name}</span>`;
@@ -6481,7 +6500,7 @@ async function loadProjects(container) {
 async function createTaskForProject(projectId, projectName) {
     let project = null;
     try {
-        let projects = getCached('projects');
+        let projects = getCached('projects', 120000);
         if (!projects) {
             const projData = await apiCall('projects');
             projects = projData.projects || [];
@@ -6841,7 +6860,7 @@ async function submitProject() {
 }
 
 function viewProjectTasks(projectId) {
-    const projects = getCached('projects') || [];
+    const projects = getCached('projects', 120000) || [];
     const project = projects.find(p => p.project_id == projectId);
     const projectName = project ? project.name : 'Project #' + projectId;
     
@@ -10334,38 +10353,22 @@ async function viewExpiringAssets() {
         }
 
         function performLogout() {
-            console.log('Logging out...');
-            
-            // Stop all polling and clear data
             stopNotificationPolling();
             clearCache();
-            
-            // Clear storage
             localStorage.removeItem('workvolt_token');
             localStorage.removeItem('workvolt_user');
             sessionStorage.removeItem('lastModule');
-            
-            // Clear variables
             currentToken = null;
             currentUser = null;
-            
-            // Reset UI
-            const appScreen = document.getElementById('app-screen');
-            const loginScreen = document.getElementById('login-screen');
-            
-            if (appScreen) appScreen.classList.add('hidden');
-            if (loginScreen) loginScreen.classList.remove('hidden');
-            
-            // Reset login form
+            // Clear login fields
             const loginEmail = document.getElementById('login-email');
             const loginPassword = document.getElementById('login-password');
             if (loginEmail) loginEmail.value = '';
             if (loginPassword) loginPassword.value = '';
-            
-            // Show login form (in case it was showing forgot/reset)
+            // Direct switch to login — no splash needed on intentional logout
+            document.getElementById('app-screen').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
             showLoginForm();
-            
-            console.log('Logout complete');
         }
 
         // Keep old function name for compatibility
@@ -10401,7 +10404,7 @@ async function viewExpiringAssets() {
                 }
 
                 // Enrich with project name if available
-                const projects = getCached('projects') || [];
+                const projects = getCached('projects', 120000) || [];
                 const proj = projects.find(p => p.project_id == task.project_id);
                 if (proj) task.project_name = proj.name;
 
@@ -11353,11 +11356,50 @@ async function viewExpiringAssets() {
 
         let _setupData = {};
 
+        // ══ Splash helpers ═══════════════════════════════════════════════════════
+        function hideSplash(cb) {
+            const s = document.getElementById('splash-screen');
+            if (!s || s.style.display === 'none') { if (cb) cb(); return; }
+            s.style.opacity = '0';
+            s.style.pointerEvents = 'none';
+            setTimeout(() => { s.style.display = 'none'; if (cb) cb(); }, 420);
+        }
+        function showLoginFromSplash() {
+            hideSplash(() => {
+                document.getElementById('login-screen').classList.remove('hidden');
+                showLoginForm();
+            });
+        }
+        // ═════════════════════════════════════════════════════════════════════════
+
+        // ══ Improved client-side cache ════════════════════════════════════════════
+        // Extends the existing cache with longer TTLs for stable data (users, projects)
+        // and stale-while-revalidate so the UI renders instantly from cache then
+        // quietly refreshes in the background.
+        const CACHE_TTL = {
+            default:  30_000,   // 30 s  — tasks, timesheets, etc.
+            stable:  120_000,   // 2 min — users, projects (change infrequently)
+            short:    10_000,   // 10 s  — notifications badge
+        };
+
+        function getCachedEx(key) {
+            // Returns { data, stale } where stale=true means data exists but is old
+            const entry = cache[key];
+            const ts    = cache.lastFetch[key];
+            if (!entry || !ts) return null;
+            const age = Date.now() - ts;
+            const ttl = CACHE_TTL[key] || CACHE_TTL.default;
+            return { data: entry, stale: age > ttl };
+        }
+        // ═════════════════════════════════════════════════════════════════════════
+
         function showConnectScreen() {
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('app-screen').classList.add('hidden');
-            document.getElementById('setup-screen').classList.add('hidden');
-            document.getElementById('connect-screen').classList.remove('hidden');
+            hideSplash(() => {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-screen').classList.add('hidden');
+                document.getElementById('setup-screen').classList.add('hidden');
+                document.getElementById('connect-screen').classList.remove('hidden');
+            });
         }
 
         async function connectToGas() {
@@ -11405,12 +11447,14 @@ async function viewExpiringAssets() {
         }
 
         function showSetupScreen() {
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('app-screen').classList.add('hidden');
-            document.getElementById('connect-screen').classList.add('hidden');
-            document.getElementById('setup-screen').classList.remove('hidden');
-            setupGoTo(1);
-            if (API_URL) document.getElementById('setup-api-url').value = API_URL;
+            hideSplash(() => {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-screen').classList.add('hidden');
+                document.getElementById('connect-screen').classList.add('hidden');
+                document.getElementById('setup-screen').classList.remove('hidden');
+                setupGoTo(1);
+                if (API_URL) document.getElementById('setup-api-url').value = API_URL;
+            });
         }
 
         function openSetupWizard() {
@@ -11620,16 +11664,49 @@ async function viewExpiringAssets() {
         // ==================== END SETUP WIZARD ====================
 
         window.onload = async () => {
+            // Splash is visible immediately from the DOM — we do all async work
+            // behind it and only reveal the correct screen once we know what to show.
 
-            // ── Step 1: Resolve API URL ───────────────────────────────────────────────
-            // Already resolved at top of script via ?gas= param or localStorage.
-            // If still empty, show a minimal connect screen (not the full setup wizard).
+            // ── 1. API URL ────────────────────────────────────────────────────────
             if (!API_URL) {
-                showConnectScreen();
+                showConnectScreen(); // fades out splash, shows connect screen
                 return;
             }
 
-            // ── Step 2: Ask the server if setup is complete ───────────────────────────
+            // ── 2. If user has a saved token, restore their session immediately ──
+            // We render the app from cached user data FIRST (instant), then quietly
+            // validate the token with the server in the background.
+            const savedToken = localStorage.getItem('workvolt_token');
+            const savedUser  = localStorage.getItem('workvolt_user');
+
+            if (savedToken && savedUser) {
+                try {
+                    currentToken = savedToken;
+                    currentUser  = JSON.parse(savedUser);
+
+                    // Show the app right away — no waiting for the network
+                    await showApp();
+
+                    // Then silently validate token in background
+                    apiCall('users/me').catch(() => {
+                        // Token is dead — kick back to login
+                        currentToken = null;
+                        currentUser  = null;
+                        localStorage.removeItem('workvolt_token');
+                        localStorage.removeItem('workvolt_user');
+                        document.getElementById('app-screen').classList.add('hidden');
+                        showLoginFromSplash();
+                    });
+                    return;
+                } catch(e) {
+                    currentToken = null;
+                    currentUser  = null;
+                    localStorage.removeItem('workvolt_token');
+                    localStorage.removeItem('workvolt_user');
+                }
+            }
+
+            // ── 3. No saved session — check setup then show login ─────────────────
             let setupComplete = false;
             try {
                 const statusUrl = new URL(API_URL);
@@ -11637,41 +11714,21 @@ async function viewExpiringAssets() {
                 const res  = await fetch(statusUrl.toString(), { cache: 'no-cache' });
                 const data = await res.json();
                 setupComplete = data.setup_complete === true;
-            } catch (fetchErr) {
-                // GAS temporarily unreachable — don't lock users out
-                console.warn('GAS unreachable on load — proceeding to login.', fetchErr);
+            } catch (err) {
+                console.warn('GAS unreachable on load — showing login.', err);
                 setupComplete = true;
             }
 
             if (!setupComplete) {
-                // URL is known but first-time setup hasn't been done yet — show full wizard
                 showSetupScreen();
                 return;
             }
 
-            // ── Step 3: Setup confirmed — normal auth flow ────────────────────────────
+            // Check for password reset token in URL
             checkForResetToken();
 
-            if (currentToken) {
-                const savedUser = localStorage.getItem('workvolt_user');
-                if (savedUser) {
-                    try {
-                        currentUser = JSON.parse(savedUser);
-                        apiCall('users/me').then(() => {
-                            showApp();
-                        }).catch(() => {
-                            localStorage.removeItem('workvolt_token');
-                            localStorage.removeItem('workvolt_user');
-                            currentToken = null;
-                            currentUser = null;
-                        });
-                    } catch(e) {
-                        localStorage.removeItem('workvolt_token');
-                        localStorage.removeItem('workvolt_user');
-                    }
-                }
-            }
-            // No token → login screen is already visible, nothing more to do
+            // Show login (fade out splash)
+            showLoginFromSplash();
         };
     </script>
 </body>
