@@ -981,8 +981,13 @@ body.dropdown-open {
     </div>
 
     <script>
-        // API_URL is stored in localStorage after Setup Wizard completes
-        let API_URL = localStorage.getItem('workvolt_api_url') || '';
+        // ── DEPLOYMENT SETTING ──────────────────────────────────────────────────────
+        // Paste your GAS Web App URL here once and it works on every device/browser.
+        // localStorage is only used as a runtime cache — never as the source of truth.
+        const HARDCODED_API_URL = ''; // ← PASTE YOUR GAS URL HERE e.g. 'https://script.google.com/macros/s/XXXX/exec'
+        // ───────────────────────────────────────────────────────────────────────────
+
+        let API_URL = HARDCODED_API_URL || localStorage.getItem('workvolt_api_url') || '';
         let currentUser = null;
         let currentToken = localStorage.getItem('workvolt_token');
         let dashboardSortable = null;
@@ -11539,68 +11544,62 @@ async function viewExpiringAssets() {
         // ==================== END SETUP WIZARD ====================
 
         window.onload = async () => {
-            // ── Step 1: Determine the API URL ──────────────────────────────────────────
-            // The API URL is the only thing we still read from localStorage on first load,
-            // because it cannot be discovered automatically.  Every other gate (setup
-            // complete, sheet IDs, etc.) is verified against the server so that any
-            // device/browser gets the correct state without manual re-setup.
-            const apiUrl = localStorage.getItem('workvolt_api_url') || '';
 
-            if (!apiUrl) {
-                // Truly first time — no URL known anywhere; show setup wizard
-                showSetupScreen();
-                return;
-            }
+            // ── If we have any API URL (hardcoded or cached), go straight to the server ──
+            if (API_URL) {
+                localStorage.setItem('workvolt_api_url', API_URL); // keep cache in sync
 
-            API_URL = apiUrl;
-
-            // ── Step 2: Ask the SERVER whether setup is complete ───────────────────────
-            let setupComplete = false;
-            try {
-                const statusUrl = new URL(API_URL);
-                statusUrl.searchParams.set('path', 'setup/status');
-                const res  = await fetch(statusUrl.toString(), { cache: 'no-cache' });
-                const data = await res.json();
-                setupComplete = data.setup_complete === true;
-                // Keep localStorage in sync so offline fallback stays accurate
-                if (setupComplete) {
-                    localStorage.setItem('workvolt_setup_complete', 'true');
-                } else {
-                    localStorage.removeItem('workvolt_setup_complete');
+                let setupComplete = false;
+                try {
+                    const statusUrl = new URL(API_URL);
+                    statusUrl.searchParams.set('path', 'setup/status');
+                    const res  = await fetch(statusUrl.toString(), { cache: 'no-cache' });
+                    const data = await res.json();
+                    setupComplete = data.setup_complete === true;
+                    if (setupComplete) localStorage.setItem('workvolt_setup_complete', 'true');
+                } catch (fetchErr) {
+                    // GAS temporarily unreachable — trust the local cache so existing
+                    // logged-in users aren't thrown to setup on a bad network moment
+                    console.warn('GAS unreachable on load, using cached setup flag.', fetchErr);
+                    setupComplete = localStorage.getItem('workvolt_setup_complete') === 'true';
                 }
-            } catch (fetchErr) {
-                // Network issue — fall back to cached localStorage flag so the app
-                // doesn't break on a temporary GAS outage for already-configured devices
-                console.warn('Could not reach GAS to verify setup status, falling back to localStorage cache.', fetchErr);
-                setupComplete = localStorage.getItem('workvolt_setup_complete') === 'true';
-            }
 
-            if (!setupComplete) {
-                showSetupScreen();
-                return;
-            }
+                if (!setupComplete) {
+                    // API URL is known but admin hasn't finished setup yet — show wizard
+                    // pre-filled with the URL so they only need to do steps 2-3
+                    showSetupScreen();
+                    return;
+                }
 
-            // ── Step 3: Setup confirmed — proceed with normal auth flow ────────────────
-            checkForResetToken();
-            
-            if(currentToken) {
-                const savedUser = localStorage.getItem('workvolt_user');
-                if(savedUser) {
-                    try {
-                        currentUser = JSON.parse(savedUser);
-                        apiCall('users/me').then(() => {
-                            showApp();
-                        }).catch(err => {
+                // ── Setup confirmed — proceed with normal auth flow ────────────────
+                checkForResetToken();
+
+                if (currentToken) {
+                    const savedUser = localStorage.getItem('workvolt_user');
+                    if (savedUser) {
+                        try {
+                            currentUser = JSON.parse(savedUser);
+                            apiCall('users/me').then(() => {
+                                showApp();
+                            }).catch(() => {
+                                localStorage.removeItem('workvolt_token');
+                                localStorage.removeItem('workvolt_user');
+                                currentToken = null;
+                                currentUser = null;
+                            });
+                        } catch(e) {
                             localStorage.removeItem('workvolt_token');
                             localStorage.removeItem('workvolt_user');
-                            currentToken = null;
-                            currentUser = null;
-                        });
-                    } catch(e) {
-                        localStorage.removeItem('workvolt_token');
-                        localStorage.removeItem('workvolt_user');
+                        }
                     }
                 }
+                // If no token, the login screen is already visible — nothing more to do
+
+            } else {
+                // ── No API URL anywhere (HARDCODED_API_URL is blank AND localStorage
+                //    is empty) — this is a truly fresh deployment that hasn't been
+                //    pointed at a GAS yet.  Show the setup wizard. ──────────────────
+                showSetupScreen();
             }
         };
     </script>
