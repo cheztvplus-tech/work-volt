@@ -758,6 +758,143 @@ body.dropdown-open {
         </div>
     </div>
 
+    <!-- ============================================================
+         SETUP WIZARD — shown on first launch before login
+         ============================================================ -->
+    <div id="setup-screen" class="hidden min-h-screen bg-gradient-to-br from-slate-900 to-blue-900 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
+
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 p-8 text-white text-center">
+          <div class="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-2xl mb-4">
+            <i class="fas fa-bolt text-3xl"></i>
+          </div>
+          <h1 class="text-3xl font-bold">Work Volt Setup</h1>
+          <p class="text-blue-100 mt-2">Let's configure your workspace in a few steps</p>
+        </div>
+
+        <!-- Step tabs -->
+        <div class="flex border-b border-slate-200 text-center text-xs font-semibold" id="setup-tabs">
+          <div class="setup-step-tab flex-1 py-3" id="stab-1"><span id="snum-1" class="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold mr-1 bg-blue-600 text-white">1</span>Connect GAS</div>
+          <div class="setup-step-tab flex-1 py-3 text-slate-400" id="stab-2"><span id="snum-2" class="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold mr-1 bg-slate-200 text-slate-500">2</span>Sheet IDs</div>
+          <div class="setup-step-tab flex-1 py-3 text-slate-400" id="stab-3"><span id="snum-3" class="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold mr-1 bg-slate-200 text-slate-500">3</span>Admin Account</div>
+          <div class="setup-step-tab flex-1 py-3 text-slate-400" id="stab-4"><span id="snum-4" class="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold mr-1 bg-slate-200 text-slate-500">4</span>Done!</div>
+        </div>
+
+        <div class="p-8">
+
+          <!-- STEP 1 – Web App URL -->
+          <div id="setup-step-1">
+            <h2 class="text-xl font-bold text-slate-900 mb-1">Step 1 — Connect Google Apps Script</h2>
+            <p class="text-slate-500 text-sm mb-5">Deploy your GAS script and paste the Web App URL here.</p>
+            <div class="space-y-3 mb-6">
+              <div class="flex gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span class="flex-shrink-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">1</span>
+                <p class="text-sm text-slate-700">Open <strong>script.google.com</strong>, create a new project, and paste your <code class="bg-slate-200 px-1 rounded">gas.txt</code> code into it.</p>
+              </div>
+              <div class="flex gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span class="flex-shrink-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">2</span>
+                <p class="text-sm text-slate-700">Click <strong>Deploy → New Deployment</strong>. Type: <strong>Web App</strong>. Execute as: <strong>Me</strong>. Access: <strong>Anyone</strong>. Click Deploy and authorize.</p>
+              </div>
+              <div class="flex gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span class="flex-shrink-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">3</span>
+                <p class="text-sm text-slate-700">Copy the <strong>Web App URL</strong> that appears and paste it below. It looks like:<br><code class="text-xs bg-slate-200 px-1 rounded break-all">https://script.google.com/macros/s/AKfyc.../exec</code></p>
+              </div>
+            </div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Web App URL <span class="text-red-500">*</span></label>
+            <input type="url" id="setup-api-url" placeholder="https://script.google.com/macros/s/.../exec"
+              class="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:border-blue-500 outline-none text-sm font-mono mb-3">
+            <div id="s1-error" class="hidden text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl mb-3"></div>
+            <div id="s1-success" class="hidden text-sm text-green-700 bg-green-50 px-4 py-3 rounded-xl mb-3"></div>
+            <div class="flex justify-end">
+              <button onclick="setupStep1()" id="s1-btn" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 flex items-center gap-2">
+                Test & Continue <i class="fas fa-arrow-right"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- STEP 2 – Sheet IDs -->
+          <div id="setup-step-2" class="hidden">
+            <h2 class="text-xl font-bold text-slate-900 mb-1">Step 2 — Google Sheet IDs</h2>
+            <p class="text-slate-500 text-sm mb-2">Find the Sheet ID in the Google Sheets URL:</p>
+            <code class="block bg-slate-100 px-3 py-2 rounded-lg text-xs text-slate-600 mb-5 break-all">
+              https://docs.google.com/spreadsheets/d/<strong class="text-blue-600 bg-blue-50 px-1 rounded">SHEET_ID_IS_THIS_PART</strong>/edit
+            </code>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-bold text-slate-700 mb-1">Main Sheet ID <span class="text-red-500">*</span> <span class="text-xs font-normal text-slate-400">— your TASKS, USERS, etc. data</span></label>
+                <input type="text" id="setup-main-sheet" placeholder="e.g. 1XdEusgd2Q-QZizJ3KN7..."
+                  class="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:border-blue-500 outline-none text-sm font-mono">
+              </div>
+              <div>
+                <label class="block text-sm font-bold text-slate-700 mb-1">Archive Sheet ID <span class="text-xs font-normal text-slate-400">— separate sheet for archives (recommended, leave blank to use main)</span></label>
+                <input type="text" id="setup-archive-sheet" placeholder="e.g. 1MiFEMZDMqZmSiZofuyW5c..."
+                  class="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:border-blue-500 outline-none text-sm font-mono">
+                <p class="text-xs text-slate-400 mt-1"><i class="fas fa-info-circle mr-1"></i>Create a new blank Google Sheet, copy its ID from the URL, and paste here.</p>
+              </div>
+              <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800">
+                <i class="fas fa-exclamation-triangle mr-1"></i> Both sheets must be accessible by the same Google account running your GAS script.
+              </div>
+            </div>
+            <div id="s2-error" class="hidden mt-4 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl"></div>
+            <div class="flex justify-between mt-6">
+              <button onclick="setupGoTo(1)" class="px-5 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200"><i class="fas fa-arrow-left mr-2"></i>Back</button>
+              <button onclick="setupStep2()" id="s2-btn" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 flex items-center gap-2">Continue <i class="fas fa-arrow-right"></i></button>
+            </div>
+          </div>
+
+          <!-- STEP 3 – Admin Account -->
+          <div id="setup-step-3" class="hidden">
+            <h2 class="text-xl font-bold text-slate-900 mb-1">Step 3 — Create your Admin account</h2>
+            <p class="text-slate-500 text-sm mb-5">This will be the first SuperAdmin. You can add more users after logging in.</p>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Full Name <span class="text-red-500">*</span></label>
+                <input type="text" id="setup-admin-name" placeholder="e.g. Jane Smith"
+                  class="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:border-blue-500 outline-none text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Email Address <span class="text-red-500">*</span></label>
+                <input type="email" id="setup-admin-email" placeholder="admin@yourcompany.com"
+                  class="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:border-blue-500 outline-none text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Password <span class="text-red-500">*</span> <span class="text-xs text-slate-400">(min. 6 characters)</span></label>
+                <input type="password" id="setup-admin-password" placeholder="Choose a strong password"
+                  class="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:border-blue-500 outline-none text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Confirm Password <span class="text-red-500">*</span></label>
+                <input type="password" id="setup-admin-confirm" placeholder="Repeat your password"
+                  class="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:border-blue-500 outline-none text-sm">
+              </div>
+            </div>
+            <div id="s3-error" class="hidden mt-4 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl"></div>
+            <div class="flex justify-between mt-6">
+              <button onclick="setupGoTo(2)" class="px-5 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200"><i class="fas fa-arrow-left mr-2"></i>Back</button>
+              <button onclick="setupStep3()" id="s3-btn" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 flex items-center gap-2"><i class="fas fa-check mr-1"></i>Complete Setup</button>
+            </div>
+          </div>
+
+          <!-- STEP 4 – Done -->
+          <div id="setup-step-4" class="hidden text-center py-4">
+            <div class="inline-flex w-20 h-20 bg-green-100 rounded-full items-center justify-center mb-4">
+              <i class="fas fa-check-circle text-4xl text-green-500"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">You're all set!</h2>
+            <p class="text-slate-500 mb-6">Work Volt is configured. Log in with your admin credentials to get started.</p>
+            <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800 text-left mb-6">
+              <i class="fas fa-info-circle mr-2"></i>You can update the Web App URL, Sheet IDs, or manage users anytime from <strong>Settings → Configuration</strong>.
+            </div>
+            <button onclick="setupFinish()" class="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700">
+              <i class="fas fa-sign-in-alt mr-2"></i>Go to Login
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
     <div id="app-screen" class="hidden min-h-screen flex flex-col">
         <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
             <div class="flex items-center justify-between px-4 py-3">
@@ -844,7 +981,8 @@ body.dropdown-open {
     </div>
 
     <script>
-        const API_URL = 'https://script.google.com/macros/s/AKfycbwY-oCLRpuxl8ghe-avGACVid5F2WPqE01V1P5s42QJFjl0U6RA2WBJ1M6SNWMOkOMz/exec';
+        // API_URL is stored in localStorage after Setup Wizard completes
+        let API_URL = localStorage.getItem('workvolt_api_url') || '';
         let currentUser = null;
         let currentToken = localStorage.getItem('workvolt_token');
         let dashboardSortable = null;
@@ -10734,6 +10872,9 @@ async function viewExpiringAssets() {
                             <button onclick="switchSettingsTab('backup')" id="stab-backup" class="settings-tab flex-1 py-3 px-4 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">
                                 <i class="fas fa-cloud-download-alt mr-2"></i>Backup & Schedule
                             </button>
+                            <button onclick="switchSettingsTab('config')" id="stab-config" class="settings-tab flex-1 py-3 px-4 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+                                <i class="fas fa-sliders-h mr-2"></i>Configuration
+                            </button>
                         </div>
 
                         <!-- Users Tab -->
@@ -10811,19 +10952,60 @@ async function viewExpiringAssets() {
                             <div class="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
                                 <i class="fas fa-info-circle mr-1"></i> 
                                 Backup sheets are named <code>BACKUP_SHEETNAME_YYYY-MM-DD_HH-MM</code> and are created in your Google Spreadsheet. 
-                                To use a separate Google Sheet for archives, set the <code>ARCHIVE_SHEET_ID</code> constant in your GAS code.
                             </div>
                         </div>
+
+                        <!-- Configuration Tab -->
+                        <div id="settings-panel-config" class="p-6 hidden">
+                            <h3 class="font-semibold text-slate-900 mb-1"><i class="fas fa-sliders-h text-blue-600 mr-2"></i>App Configuration</h3>
+                            <p class="text-sm text-slate-500 mb-6">Update connection settings. Changes take effect immediately.</p>
+
+                            <div class="space-y-5">
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-700 mb-1">Web App URL (GAS Deployment)</label>
+                                    <p class="text-xs text-slate-400 mb-2">Update this if you redeploy your Google Apps Script and get a new URL.</p>
+                                    <input type="url" id="cfg-api-url" placeholder="https://script.google.com/macros/s/.../exec"
+                                        class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:border-blue-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-700 mb-1">Main Sheet ID</label>
+                                    <p class="text-xs text-slate-400 mb-2">The Google Sheet that holds TASKS, USERS, PAYROLL, etc.</p>
+                                    <input type="text" id="cfg-main-sheet" placeholder="e.g. 1XdEusgd2Q-QZizJ3KN7..."
+                                        class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:border-blue-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-700 mb-1">Archive Sheet ID</label>
+                                    <p class="text-xs text-slate-400 mb-2">Separate Google Sheet for archived tasks and backups. Leave blank to use main sheet.</p>
+                                    <input type="text" id="cfg-archive-sheet" placeholder="e.g. 1MiFEMZDMqZmSiZofuyW5c... (leave blank = use main sheet)"
+                                        class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:border-blue-500 outline-none">
+                                </div>
+                            </div>
+
+                            <div id="cfg-error" class="hidden mt-4 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-lg"></div>
+                            <div id="cfg-success" class="hidden mt-4 text-sm text-green-700 bg-green-50 px-4 py-3 rounded-lg"></div>
+
+                            <div class="flex justify-between mt-6 items-center">
+                                <button onclick="openSetupWizard()" class="text-sm text-slate-500 hover:text-blue-600 underline">
+                                    <i class="fas fa-redo mr-1"></i>Re-run Full Setup Wizard
+                                </button>
+                                <button onclick="saveConfiguration()" id="cfg-save-btn"
+                                    class="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2">
+                                    <i class="fas fa-save"></i> Save Changes
+                                </button>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             `;
 
             loadSettingsUsers();
             loadSettingsBackupSchedule();
+            loadConfigurationPanel();
         }
 
         function switchSettingsTab(tab) {
-            ['users', 'archive', 'backup'].forEach(t => {
+            ['users', 'archive', 'backup', 'config'].forEach(t => {
                 const panel = document.getElementById('settings-panel-' + t);
                 const btn = document.getElementById('stab-' + t);
                 if (panel) panel.classList.toggle('hidden', t !== tab);
@@ -11124,7 +11306,222 @@ async function viewExpiringAssets() {
         // ==================== END SETTINGS MODULE ====================
 
          // Initialize on load
+        // ==================== SETUP WIZARD ====================
+
+        let _setupData = {};
+
+        function showSetupScreen() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('app-screen').classList.add('hidden');
+            document.getElementById('setup-screen').classList.remove('hidden');
+            setupGoTo(1);
+            // Pre-fill if URL was already saved
+            const saved = localStorage.getItem('workvolt_api_url') || '';
+            if (saved) document.getElementById('setup-api-url').value = saved;
+        }
+
+        function openSetupWizard() {
+            // Called from Settings → Configuration → Re-run Setup
+            document.getElementById('app-screen').classList.add('hidden');
+            document.getElementById('setup-screen').classList.remove('hidden');
+            setupGoTo(1);
+            const saved = localStorage.getItem('workvolt_api_url') || '';
+            if (saved) document.getElementById('setup-api-url').value = saved;
+        }
+
+        function setupGoTo(step) {
+            [1, 2, 3, 4].forEach(n => {
+                const panel = document.getElementById('setup-step-' + n);
+                const num   = document.getElementById('snum-' + n);
+                const tab   = document.getElementById('stab-' + n);
+                if (panel) panel.classList.toggle('hidden', n !== step);
+                if (num && tab) {
+                    if (n < step) {
+                        num.className = 'inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold mr-1 bg-green-500 text-white';
+                        num.innerHTML = '<i class="fas fa-check text-xs"></i>';
+                        tab.className = tab.className.replace('text-slate-400','') + ' text-green-600';
+                    } else if (n === step) {
+                        num.className = 'inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold mr-1 bg-blue-600 text-white';
+                        num.textContent = n;
+                        tab.classList.remove('text-slate-400');
+                        tab.classList.add('text-blue-600');
+                    } else {
+                        num.className = 'inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold mr-1 bg-slate-200 text-slate-500';
+                        num.textContent = n;
+                        tab.classList.add('text-slate-400');
+                        tab.classList.remove('text-blue-600','text-green-600');
+                    }
+                }
+            });
+        }
+
+        async function setupStep1() {
+            const url = (document.getElementById('setup-api-url').value || '').trim();
+            const errDiv = document.getElementById('s1-error');
+            const okDiv  = document.getElementById('s1-success');
+            const btn    = document.getElementById('s1-btn');
+            errDiv.classList.add('hidden'); okDiv.classList.add('hidden');
+
+            if (!url.startsWith('https://script.google.com')) {
+                errDiv.textContent = 'Please enter a valid GAS Web App URL (must start with https://script.google.com)';
+                errDiv.classList.remove('hidden'); return;
+            }
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i>Testing...';
+            try {
+                const testUrl = new URL(url);
+                testUrl.searchParams.set('path', 'setup/ping');
+                const res  = await fetch(testUrl.toString(), { cache: 'no-cache' });
+                const data = await res.json();
+                if (data.ok || data.message) {
+                    okDiv.innerHTML = '<i class="fas fa-check-circle mr-2 text-green-600"></i>Connection successful!';
+                    okDiv.classList.remove('hidden');
+                    _setupData.apiUrl = url;
+                    API_URL = url;
+                    localStorage.setItem('workvolt_api_url', url);
+                    setTimeout(() => setupGoTo(2), 700);
+                } else throw new Error(data.error || 'Unexpected response');
+            } catch(e) {
+                errDiv.textContent = e.message.includes('fetch') 
+                    ? 'Cannot reach that URL. Check your deployment settings (Execute as: Me, Access: Anyone) and try again.'
+                    : 'Error: ' + e.message;
+                errDiv.classList.remove('hidden');
+            }
+            btn.disabled = false;
+            btn.innerHTML = 'Test & Continue <i class="fas fa-arrow-right"></i>';
+        }
+
+        function setupStep2() {
+            const mainId    = (document.getElementById('setup-main-sheet').value || '').trim();
+            const archiveId = (document.getElementById('setup-archive-sheet').value || '').trim();
+            const errDiv    = document.getElementById('s2-error');
+            errDiv.classList.add('hidden');
+            if (!mainId) { errDiv.textContent = 'Main Sheet ID is required.'; errDiv.classList.remove('hidden'); return; }
+            _setupData.mainSheetId    = mainId;
+            _setupData.archiveSheetId = archiveId;
+            setupGoTo(3);
+        }
+
+        async function setupStep3() {
+            const name    = (document.getElementById('setup-admin-name').value || '').trim();
+            const email   = (document.getElementById('setup-admin-email').value || '').trim();
+            const pwd     = document.getElementById('setup-admin-password').value;
+            const confirm = document.getElementById('setup-admin-confirm').value;
+            const errDiv  = document.getElementById('s3-error');
+            const btn     = document.getElementById('s3-btn');
+            errDiv.classList.add('hidden');
+
+            if (!name || !email || !pwd)  { errDiv.textContent = 'All fields are required.'; errDiv.classList.remove('hidden'); return; }
+            if (!email.includes('@'))      { errDiv.textContent = 'Enter a valid email.'; errDiv.classList.remove('hidden'); return; }
+            if (pwd.length < 6)            { errDiv.textContent = 'Password must be at least 6 characters.'; errDiv.classList.remove('hidden'); return; }
+            if (pwd !== confirm)           { errDiv.textContent = 'Passwords do not match.'; errDiv.classList.remove('hidden'); return; }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i>Setting up...';
+            try {
+                const u = new URL(API_URL);
+                u.searchParams.set('path', 'setup/save-config');
+                u.searchParams.set('main_sheet_id', _setupData.mainSheetId);
+                if (_setupData.archiveSheetId) u.searchParams.set('archive_sheet_id', _setupData.archiveSheetId);
+                u.searchParams.set('admin_name', name);
+                u.searchParams.set('admin_email', email);
+                u.searchParams.set('admin_password', pwd);
+
+                const res  = await fetch(u.toString(), { cache: 'no-cache' });
+                const data = await res.json();
+                if (data.success) {
+                    localStorage.setItem('workvolt_setup_complete', 'true');
+                    localStorage.setItem('workvolt_main_sheet_id', _setupData.mainSheetId);
+                    if (_setupData.archiveSheetId) localStorage.setItem('workvolt_archive_sheet_id', _setupData.archiveSheetId);
+                    localStorage.setItem('_setup_admin_email', email);
+                    setupGoTo(4);
+                } else throw new Error(data.error || 'Setup failed');
+            } catch(e) {
+                errDiv.textContent = e.message;
+                errDiv.classList.remove('hidden');
+            }
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check mr-1"></i>Complete Setup';
+        }
+
+        function setupFinish() {
+            document.getElementById('setup-screen').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
+            const email = localStorage.getItem('_setup_admin_email') || '';
+            if (email) { const el = document.getElementById('login-email'); if (el) el.value = email; }
+        }
+
+        // ── Configuration panel (Settings → Configuration tab) ──
+        function loadConfigurationPanel() {
+            const apiUrl = localStorage.getItem('workvolt_api_url') || '';
+            const mainId = localStorage.getItem('workvolt_main_sheet_id') || '';
+            const archId = localStorage.getItem('workvolt_archive_sheet_id') || '';
+            const u = document.getElementById('cfg-api-url');
+            const m = document.getElementById('cfg-main-sheet');
+            const a = document.getElementById('cfg-archive-sheet');
+            if (u) u.value = apiUrl;
+            if (m) m.value = mainId;
+            if (a) a.value = archId;
+        }
+
+        async function saveConfiguration() {
+            const newUrl  = (document.getElementById('cfg-api-url').value || '').trim();
+            const mainId  = (document.getElementById('cfg-main-sheet').value || '').trim();
+            const archId  = (document.getElementById('cfg-archive-sheet').value || '').trim();
+            const errDiv  = document.getElementById('cfg-error');
+            const okDiv   = document.getElementById('cfg-success');
+            const btn     = document.getElementById('cfg-save-btn');
+            errDiv.classList.add('hidden'); okDiv.classList.add('hidden');
+
+            if (newUrl && !newUrl.startsWith('https://script.google.com')) {
+                errDiv.textContent = 'Invalid Web App URL.'; errDiv.classList.remove('hidden'); return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-1"></i>Saving...';
+
+            try {
+                // Update API URL locally first
+                if (newUrl) { API_URL = newUrl; localStorage.setItem('workvolt_api_url', newUrl); }
+
+                // Push sheet ID changes to GAS Script Properties
+                if (mainId || archId !== undefined) {
+                    const data = await apiCall('admin/update-config', {
+                        main_sheet_id: mainId || undefined,
+                        archive_sheet_id: archId
+                    });
+                    if (data.error) throw new Error(data.error);
+                }
+
+                // Save to localStorage
+                if (mainId) localStorage.setItem('workvolt_main_sheet_id', mainId);
+                localStorage.setItem('workvolt_archive_sheet_id', archId);
+
+                okDiv.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Configuration saved successfully!';
+                okDiv.classList.remove('hidden');
+            } catch(e) {
+                errDiv.textContent = 'Error: ' + e.message;
+                errDiv.classList.remove('hidden');
+            }
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save"></i> Save Changes';
+        }
+
+        // ==================== END SETUP WIZARD ====================
+
         window.onload = () => {
+            // Check if setup has been completed
+            const apiUrl = localStorage.getItem('workvolt_api_url') || '';
+            const setupComplete = localStorage.getItem('workvolt_setup_complete') === 'true';
+
+            if (!apiUrl || !setupComplete) {
+                showSetupScreen();
+                return;
+            }
+
+            // Setup done — use saved API URL
+            API_URL = apiUrl;
+
             // Check for password reset token first
             checkForResetToken();
             
