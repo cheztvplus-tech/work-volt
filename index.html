@@ -2184,114 +2184,698 @@ function clearProjectFilter() {
             }
         }
 
+        // ==================== PIPELINE MODULE ====================
+
+        const PIPE_STAGES = ['Applied','Screened','Qualified','Interview','Final Interview','Offer','Hired'];
+        const PIPE_REJECTED = 'Rejected';
+        let pipeAllCandidates = [];
+        let pipeFilter = { stage: '', position: '', source: '', search: '' };
+
+        const PIPE_STAGE_STYLE = {
+            'Applied':         { dot: 'bg-slate-400',  badge: 'bg-slate-100 text-slate-600',   col: 'border-slate-200'  },
+            'Screened':        { dot: 'bg-blue-400',   badge: 'bg-blue-50 text-blue-700',      col: 'border-blue-200'   },
+            'Qualified':       { dot: 'bg-indigo-400', badge: 'bg-indigo-50 text-indigo-700',  col: 'border-indigo-200' },
+            'Interview':       { dot: 'bg-violet-500', badge: 'bg-violet-50 text-violet-700',  col: 'border-violet-200' },
+            'Final Interview': { dot: 'bg-amber-500',  badge: 'bg-amber-50 text-amber-700',    col: 'border-amber-200'  },
+            'Offer':           { dot: 'bg-orange-500', badge: 'bg-orange-50 text-orange-700',  col: 'border-orange-200' },
+            'Hired':           { dot: 'bg-green-500',  badge: 'bg-green-100 text-green-700',   col: 'border-green-300'  },
+            'Rejected':        { dot: 'bg-red-400',    badge: 'bg-red-50 text-red-600',        col: 'border-red-200'    },
+        };
+
+        // Stage SLA in days — idle threshold
+        const STAGE_SLA = { 'Applied':2,'Screened':3,'Qualified':3,'Interview':5,'Final Interview':4,'Offer':3 };
+
         async function loadPipeline(container) {
             container.innerHTML = `
                 <div class="page-transition">
-                    <div class="flex items-center justify-between mb-4">
+                    <!-- Header -->
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
                         <div>
                             <h2 class="text-2xl font-bold text-slate-900">Hiring Pipeline</h2>
-                            <p class="text-slate-500">Drag to move, drop on Hired to convert</p>
+                            <p class="text-slate-500 text-sm">7-stage modern pipeline · drag to advance · click to review</p>
                         </div>
-                        <button onclick="createCandidate()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-                            <i class="fas fa-plus mr-2"></i>Add Candidate
+                        <div class="flex gap-2 flex-wrap">
+                            <button onclick="pipeShowRejected()" class="px-3 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50">
+                                <i class="fas fa-user-times mr-1 text-red-400"></i>Rejected
+                            </button>
+                            <button onclick="openAddCandidateModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                                <i class="fas fa-plus mr-2"></i>Add Candidate
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Metrics strip -->
+                    <div id="pipe-metrics" class="flex flex-col gap-3 mb-5"></div>
+
+                    <!-- Filters -->
+                    <div class="bg-white rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap gap-3 items-end">
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Search</label>
+                            <input type="text" id="pipe-search" placeholder="Name or position…" oninput="pipeApplyFilters()"
+                                class="px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-400 w-44" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Stage</label>
+                            <select id="pipe-filter-stage" onchange="pipeApplyFilters()" class="px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none">
+                                <option value="">All stages</option>
+                                ${PIPE_STAGES.map(s => `<option value="${s}">${s}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Source</label>
+                            <select id="pipe-filter-source" onchange="pipeApplyFilters()" class="px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none">
+                                <option value="">All sources</option>
+                                <option>LinkedIn</option><option>Indeed</option><option>Referral</option><option>Website</option><option>Other</option>
+                            </select>
+                        </div>
+                        <button onclick="pipeApplyFilters(true)" class="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-sm hover:bg-slate-200">
+                            <i class="fas fa-rotate-right"></i>
                         </button>
                     </div>
-                    <div class="flex gap-6 overflow-x-auto kanban-scroll pb-4" id="pipeline-board">
-                        ${renderPipelineColumn('Applied')}
-                        ${renderPipelineColumn('Screening')}
-                        ${renderPipelineColumn('Interview')}
-                        ${renderPipelineColumn('Offer')}
-                        ${renderPipelineColumn('Hired', true)}
+
+                    <!-- Kanban board -->
+                    <div class="flex gap-4 overflow-x-auto kanban-scroll pb-6" id="pipeline-board">
+                        ${PIPE_STAGES.map(s => pipeBuildColumn(s)).join('')}
                     </div>
-                </div>
-            `;
-            
+                </div>`;
+
+            await pipeLoadData();
+        }
+
+        function pipeBuildColumn(stage) {
+            const st = PIPE_STAGE_STYLE[stage] || PIPE_STAGE_STYLE['Applied'];
+            return `
+                <div class="flex-shrink-0 w-72">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="w-2.5 h-2.5 rounded-full ${st.dot} flex-shrink-0"></span>
+                        <h3 class="font-semibold text-slate-700 text-sm">${stage}</h3>
+                        <span class="ml-auto text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full" id="pipe-count-${stage.replace(' ','-')}">0</span>
+                    </div>
+                    <div class="min-h-48 rounded-xl p-2 space-y-2 border-2 border-dashed ${st.col} bg-white/60"
+                         id="pipe-col-${stage.replace(/ /g,'-')}" data-stage="${stage}">
+                    </div>
+                </div>`;
+        }
+
+        async function pipeLoadData(forceRefresh = false) {
             try {
-                const data = await apiCall('pipeline');
-                const candidates = data.candidates || [];
-                
-                ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'].forEach(stage => {
-                    const col = document.getElementById(`pipe-${stage}`);
-                    if(col) col.innerHTML = '';
-                });
-                
-                candidates.forEach(c => {
-                    const col = document.getElementById(`pipe-${c.stage}`);
-                    if(col) col.innerHTML += renderCandidateCard(c);
-                });
-                
-                ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'].forEach(stage => {
-                    new Sortable(document.getElementById(`pipe-${stage}`), {
-                        group: 'pipeline', animation: 150, delay: 100, delayOnTouchOnly: true,
+                const params = forceRefresh ? {force_refresh: true} : {};
+                const data = await apiCall('pipeline', params);
+                pipeAllCandidates = data.candidates || [];
+                pipeRenderBoard();
+                pipeRenderMetrics();
+            } catch(e) {
+                showToast('Failed to load pipeline: ' + e.message, 'error');
+            }
+        }
+
+        function pipeApplyFilters(refresh = false) {
+            if (refresh) { pipeLoadData(true); return; }
+            pipeFilter.search   = document.getElementById('pipe-search')?.value.toLowerCase() || '';
+            pipeFilter.stage    = document.getElementById('pipe-filter-stage')?.value || '';
+            pipeFilter.source   = document.getElementById('pipe-filter-source')?.value || '';
+            pipeRenderBoard();
+        }
+
+        function pipeFilteredCandidates() {
+            return pipeAllCandidates.filter(c => {
+                if (c.stage === 'Rejected') return false;
+                if (pipeFilter.stage  && c.stage  !== pipeFilter.stage)  return false;
+                if (pipeFilter.source && c.source !== pipeFilter.source) return false;
+                if (pipeFilter.search && !`${c.name} ${c.position}`.toLowerCase().includes(pipeFilter.search)) return false;
+                return true;
+            });
+        }
+
+        function pipeRenderBoard() {
+            // Clear columns
+            PIPE_STAGES.forEach(stage => {
+                const col = document.getElementById(`pipe-col-${stage.replace(/ /g,'-')}`);
+                if (col) col.innerHTML = '';
+                const cnt = document.getElementById(`pipe-count-${stage.replace(' ','-')}`);
+                if (cnt) cnt.textContent = '0';
+            });
+
+            const filtered = pipeFilteredCandidates();
+
+            // Group by stage
+            const grouped = {};
+            PIPE_STAGES.forEach(s => grouped[s] = []);
+            filtered.forEach(c => { if (grouped[c.stage]) grouped[c.stage].push(c); });
+
+            // Render cards
+            PIPE_STAGES.forEach(stage => {
+                const col = document.getElementById(`pipe-col-${stage.replace(/ /g,'-')}`);
+                const cnt = document.getElementById(`pipe-count-${stage.replace(' ','-')}`);
+                if (!col) return;
+                if (cnt) cnt.textContent = grouped[stage].length;
+
+                if (grouped[stage].length === 0) {
+                    col.innerHTML = `<div class="text-center py-6 text-slate-300 text-xs">Drop here</div>`;
+                } else {
+                    grouped[stage].forEach(c => col.innerHTML += pipeCandidateCard(c));
+                }
+            });
+
+            // Init sortable on each column
+            PIPE_STAGES.forEach(stage => {
+                const col = document.getElementById(`pipe-col-${stage.replace(/ /g,'-')}`);
+                if (col && !col.classList.contains('pipe-sortable')) {
+                    col.classList.add('pipe-sortable');
+                    new Sortable(col, {
+                        group: 'pipeline', animation: 150, delay: 80, delayOnTouchOnly: true,
+                        ghostClass: 'sortable-ghost', dragClass: 'sortable-drag',
                         onEnd: async function(evt) {
                             const candidateId = evt.item.dataset.candidateId;
-                            const newStage = evt.to.dataset.stage;
-                            if(newStage === 'Hired' && !confirm('Hire this candidate? Creates employee record.')) {
-                                evt.from.appendChild(evt.item);
-                                return;
-                            }
-                            try {
-                                const endpoint = newStage === 'Hired' ? 'pipeline/hire' : 'pipeline/move';
-                                await apiCall(endpoint, {candidate_id: candidateId, to_stage: newStage});
-                                showToast(newStage === 'Hired' ? 'Hired! Employee created.' : `Moved to ${newStage}`);
-                                if(newStage === 'Hired') {
-                                    evt.item.classList.add('bg-green-50', 'border-green-200');
-                                    evt.item.innerHTML += '<div class="mt-2 text-xs text-green-600 font-medium">✓ Employee record created</div>';
+                            const newStage    = evt.to.dataset.stage;
+                            const oldStage    = evt.from.dataset.stage;
+                            if (newStage === oldStage) return;
+
+                            if (newStage === 'Hired') {
+                                if (!confirm('Hire this candidate? This will create an employee record.')) {
+                                    evt.from.appendChild(evt.item); return;
                                 }
-                            } catch(e) {
-                                evt.from.appendChild(evt.item);
-                                showToast(e.message || 'Failed to move', 'error');
+                                try {
+                                    const res = await apiCall('pipeline/hire', {candidate_id: candidateId});
+                                    showToast('Hired! Employee record created. Temp password sent via notification.', 'success');
+                                    // Update local state
+                                    const c = pipeAllCandidates.find(x => x.candidate_id == candidateId);
+                                    if (c) { c.stage = 'Hired'; c.hired_date = new Date().toLocaleDateString(); }
+                                    pipeRenderBoard(); pipeRenderMetrics();
+                                } catch(e) { evt.from.appendChild(evt.item); showToast(e.message || 'Failed to hire', 'error'); }
+                            } else {
+                                try {
+                                    await apiCall('pipeline/move', {candidate_id: candidateId, to_stage: newStage});
+                                    showToast(`Moved to ${newStage}`);
+                                    const c = pipeAllCandidates.find(x => x.candidate_id == candidateId);
+                                    if (c) c.stage = newStage;
+                                    pipeRenderBoard(); pipeRenderMetrics();
+                                } catch(e) { evt.from.appendChild(evt.item); showToast(e.message || 'Failed to move', 'error'); }
                             }
                         }
                     });
-                });
-            } catch(e) {
-                container.innerHTML += `<div class="text-red-500 mt-4">${e.message || 'Failed to load pipeline'}</div>`;
-            }
+                }
+            });
         }
 
-        function renderPipelineColumn(stage, isFinal) {
-            return `
-                <div class="flex-shrink-0 w-80">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="font-semibold ${isFinal ? 'text-green-700' : 'text-slate-700'}">${stage}</h3>
-                    </div>
-                    <div class="space-y-3 min-h-[200px] ${isFinal ? 'bg-green-50/50' : 'bg-slate-100/50'} rounded-xl p-2" id="pipe-${stage}" data-stage="${stage}"></div>
-                </div>
-            `;
+        function pipeDaysInStage(c) {
+            const created = c.created_at ? new Date(c.created_at) : null;
+            if (!created || isNaN(created)) return 0;
+            return Math.floor((Date.now() - created) / 86400000);
         }
 
-        function renderCandidateCard(c) {
-            const isHired = c.stage === 'Hired';
+        function pipeIsIdle(c) {
+            const sla = STAGE_SLA[c.stage];
+            if (!sla) return false;
+            return pipeDaysInStage(c) > sla;
+        }
+
+        function pipeCandidateCard(c) {
+            const st      = PIPE_STAGE_STYLE[c.stage] || PIPE_STAGE_STYLE['Applied'];
+            const initials = c.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+            const idle    = pipeIsIdle(c);
+            const days    = pipeDaysInStage(c);
+            const rating  = parseFloat(c.rating) || 0;
+            const stars   = rating ? `<span class="text-amber-500 text-xs font-bold">★ ${rating}</span>` : '';
+            const idleBadge = idle ? `<span class="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium"><i class="fas fa-clock mr-1"></i>${days}d idle</span>` : '';
+            const sourceBadge = c.source ? `<span class="text-xs text-slate-400">${c.source}</span>` : '';
+
             return `
-                <div class="bg-white p-4 rounded-lg shadow-sm border ${isHired ? 'border-green-200 bg-green-50' : 'border-slate-200'} card-hover cursor-move mb-2" data-candidate-id="${c.candidate_id}">
-                    <div class="flex items-start justify-between mb-2">
-                        <div class="w-10 h-10 ${isHired ? 'bg-green-500 text-white' : 'bg-blue-100 text-blue-600'} rounded-full flex items-center justify-center font-bold text-sm">
-                            ${c.name.split(' ').map(n => n[0]).join('')}
+                <div class="bg-white rounded-xl border ${idle ? 'border-red-200' : 'border-slate-200'} p-3 cursor-pointer hover:shadow-md transition-shadow mb-1"
+                     data-candidate-id="${c.candidate_id}"
+                     onclick="openCandidateModal(${c.candidate_id})">
+                    <div class="flex items-start gap-3">
+                        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                            ${initials}
                         </div>
-                        ${c.rating ? `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">★ ${c.rating}</span>` : ''}
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center justify-between gap-1">
+                                <p class="font-semibold text-slate-900 text-sm truncate">${c.name}</p>
+                                ${stars}
+                            </div>
+                            <p class="text-xs text-slate-500 truncate">${c.position || 'No position'}</p>
+                            <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+                                ${sourceBadge}
+                                ${idleBadge}
+                            </div>
+                        </div>
                     </div>
-                    <h4 class="font-medium text-slate-900">${c.name}</h4>
-                    <p class="text-sm text-slate-500 mb-1">${c.position || 'No position'}</p>
-                    ${isHired ? '<div class="text-xs text-green-600 font-medium">✓ Converted to employee</div>' : ''}
-                </div>
-            `;
+                </div>`;
         }
 
-        async function createCandidate() {
-            const name = prompt('Candidate name:');
-            if(!name) return;
-            const email = prompt('Email:');
-            if(!email) return;
-            const position = prompt('Position:') || '';
+        function pipeRenderMetrics() {
+            const container = document.getElementById('pipe-metrics');
+            if (!container) return;
+
+            const all    = pipeAllCandidates;
+            const active = all.filter(c => c.stage !== 'Rejected');
+            const hired  = all.filter(c => c.stage === 'Hired');
+            const idle   = all.filter(c => pipeIsIdle(c));
+            const total  = all.length;
+
+            // Avg time to hire
+            const hireTimes = hired.filter(c => c.created_at && c.hired_date).map(c =>
+                Math.floor((new Date(c.hired_date) - new Date(c.created_at)) / 86400000)
+            ).filter(d => d > 0);
+            const avgHire = hireTimes.length ? Math.round(hireTimes.reduce((a,b)=>a+b,0)/hireTimes.length) : null;
+
+            // Overall conversion rate
+            const convRate = total ? Math.round((hired.length / total) * 100) : 0;
+
+            // Stage funnel — count per stage
+            const stageCounts = {};
+            PIPE_STAGES.forEach(s => stageCounts[s] = 0);
+            all.forEach(c => { if (stageCounts[c.stage] !== undefined) stageCounts[c.stage]++; });
+            const maxStageCount = Math.max(...Object.values(stageCounts), 1);
+
+            // Source quality — hired per source
+            const sourceHired = {};
+            const sourceTotal = {};
+            all.forEach(c => {
+                const src = c.source || 'Unknown';
+                sourceTotal[src] = (sourceTotal[src] || 0) + 1;
+                if (c.stage === 'Hired') sourceHired[src] = (sourceHired[src] || 0) + 1;
+            });
+            const sourceRanked = Object.entries(sourceTotal)
+                .map(([src, tot]) => ({ src, tot, hires: sourceHired[src]||0, rate: tot ? Math.round(((sourceHired[src]||0)/tot)*100) : 0 }))
+                .sort((a,b) => b.hires - a.hires)
+                .slice(0, 4);
+
+            // Best candidate right now: highest rating among non-hired, non-rejected active
+            const scoredCandidates = active.filter(c => c.stage !== 'Hired' && parseFloat(c.rating) > 0)
+                .sort((a,b) => parseFloat(b.rating) - parseFloat(a.rating));
+            const best = scoredCandidates[0] || null;
+
+            container.innerHTML = `
+                <!-- Row 1: KPI cards -->
+                <div class="col-span-2 sm:col-span-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
+                        <p class="text-xs text-slate-400 uppercase tracking-wide mb-1">Active</p>
+                        <p class="text-2xl font-bold text-slate-800">${active.length}</p>
+                        <p class="text-xs text-slate-400 mt-0.5">${total} total</p>
+                    </div>
+                    <div class="bg-green-50 rounded-xl border border-green-200 px-4 py-3">
+                        <p class="text-xs text-green-500 uppercase tracking-wide mb-1">Hired</p>
+                        <p class="text-2xl font-bold text-green-700">${hired.length}</p>
+                        <p class="text-xs text-green-400 mt-0.5">${convRate}% conv. rate</p>
+                    </div>
+                    <div class="${idle.length > 0 ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'} rounded-xl border px-4 py-3">
+                        <p class="text-xs ${idle.length > 0 ? 'text-red-500' : 'text-slate-400'} uppercase tracking-wide mb-1">Idle / SLA</p>
+                        <p class="text-2xl font-bold ${idle.length > 0 ? 'text-red-600' : 'text-slate-700'}">${idle.length}</p>
+                        <p class="text-xs ${idle.length > 0 ? 'text-red-400' : 'text-slate-400'} mt-0.5">past deadline</p>
+                    </div>
+                    <div class="bg-indigo-50 rounded-xl border border-indigo-200 px-4 py-3">
+                        <p class="text-xs text-indigo-400 uppercase tracking-wide mb-1">Avg to Hire</p>
+                        <p class="text-2xl font-bold text-indigo-700">${avgHire !== null ? avgHire + 'd' : '—'}</p>
+                        <p class="text-xs text-indigo-300 mt-0.5">days from applied</p>
+                    </div>
+                </div>
+
+                <!-- Row 2: Funnel + Source + Best Candidate -->
+                <div class="col-span-2 sm:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+
+                    <!-- Stage Funnel -->
+                    <div class="bg-white rounded-xl border border-slate-200 p-4">
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Stage Funnel</p>
+                        <div class="space-y-2">
+                            ${PIPE_STAGES.map(s => {
+                                const cnt = stageCounts[s];
+                                const pct = Math.round((cnt / maxStageCount) * 100);
+                                const st  = PIPE_STAGE_STYLE[s];
+                                const idleCnt = all.filter(c => c.stage === s && pipeIsIdle(c)).length;
+                                return `<div>
+                                    <div class="flex justify-between text-xs mb-0.5">
+                                        <span class="text-slate-600 font-medium">${s}</span>
+                                        <span class="text-slate-400">${cnt}${idleCnt > 0 ? ' <span class="text-red-500">· '+idleCnt+' idle</span>' : ''}</span>
+                                    </div>
+                                    <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                        <div class="h-full ${st.dot} rounded-full transition-all" style="width:${pct}%"></div>
+                                    </div>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Source Quality -->
+                    <div class="bg-white rounded-xl border border-slate-200 p-4">
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Source Quality</p>
+                        ${sourceRanked.length === 0
+                            ? '<p class="text-xs text-slate-300 italic">No data yet</p>'
+                            : `<div class="space-y-2.5">
+                                ${sourceRanked.map(s => `
+                                    <div class="flex items-center gap-2">
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex justify-between text-xs mb-0.5">
+                                                <span class="text-slate-700 font-medium truncate">${s.src}</span>
+                                                <span class="text-slate-400 flex-shrink-0 ml-1">${s.hires} hired · ${s.rate}%</span>
+                                            </div>
+                                            <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                <div class="h-full bg-blue-400 rounded-full" style="width:${s.rate}%"></div>
+                                            </div>
+                                        </div>
+                                    </div>`).join('')}
+                              </div>`}
+                        <p class="text-xs text-slate-300 mt-3">% = hires / total from that source</p>
+                    </div>
+
+                    <!-- Best Candidate Now -->
+                    <div class="bg-white rounded-xl border border-slate-200 p-4">
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">🧠 Best Candidate Now</p>
+                        ${best ? (() => {
+                            const bst = PIPE_STAGE_STYLE[best.stage] || PIPE_STAGE_STYLE['Applied'];
+                            const bInitials = best.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+                            const bDays = pipeDaysInStage(best);
+                            const bIdle = pipeIsIdle(best);
+                            return `
+                                <div class="cursor-pointer" onclick="openCandidateModal(${best.candidate_id})">
+                                    <div class="flex items-center gap-3 mb-3">
+                                        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold text-sm flex-shrink-0">${bInitials}</div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="font-semibold text-slate-900 text-sm">${best.name}</p>
+                                            <p class="text-xs text-slate-500 truncate">${best.position || 'No position'}</p>
+                                        </div>
+                                        <span class="text-lg font-bold text-amber-500">★${best.rating}</span>
+                                    </div>
+                                    <div class="flex items-center justify-between text-xs">
+                                        <span class="px-2 py-0.5 rounded-full font-medium ${bst.badge}">${best.stage}</span>
+                                        <span class="${bIdle ? 'text-red-500 font-semibold' : 'text-slate-400'}">${bDays}d in stage</span>
+                                    </div>
+                                    <p class="text-xs text-blue-500 mt-2 hover:underline">→ Open profile</p>
+                                </div>`;
+                        })() : '<div class="text-center py-4"><p class="text-xs text-slate-300 italic">Score candidates to see the top pick</p><p class="text-xs text-slate-300 mt-1">Open any candidate → Scorecard → Submit</p></div>'}
+                    </div>
+                </div>`;
+        }
+
+        // ── Add Candidate Modal ────────────────────────────────────────────
+        function openAddCandidateModal() {
+            const modal = document.createElement('div');
+            modal.id = 'add-candidate-modal';
+            modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+            modal.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+                    <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                        <h3 class="text-xl font-bold text-slate-900">Add Candidate</h3>
+                        <button onclick="document.getElementById('add-candidate-modal').remove()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-lg"></i></button>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="col-span-2">
+                                <label class="block text-xs font-medium text-slate-600 mb-1">Full Name <span class="text-red-500">*</span></label>
+                                <input type="text" id="nc-name" placeholder="Jane Doe" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-400" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 mb-1">Email <span class="text-red-500">*</span></label>
+                                <input type="email" id="nc-email" placeholder="jane@example.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-400" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 mb-1">Phone</label>
+                                <input type="text" id="nc-phone" placeholder="+1 555 000 0000" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-400" />
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs font-medium text-slate-600 mb-1">Position <span class="text-red-500">*</span></label>
+                                <input type="text" id="nc-position" placeholder="e.g. Senior Developer" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-400" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 mb-1">Source</label>
+                                <select id="nc-source" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none">
+                                    <option value="">Select…</option>
+                                    <option>LinkedIn</option><option>Indeed</option><option>Referral</option><option>Website</option><option>Other</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 mb-1">Resume URL</label>
+                                <input type="url" id="nc-resume" placeholder="https://…" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-400" />
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+                                <textarea id="nc-notes" rows="2" placeholder="Initial observations…" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none resize-none focus:ring-2 focus:ring-blue-400"></textarea>
+                            </div>
+                        </div>
+                        <div id="nc-error" class="hidden text-sm text-red-600 bg-red-50 p-3 rounded-lg"></div>
+                    </div>
+                    <div class="p-6 pt-0 flex gap-3">
+                        <button onclick="submitAddCandidate()" class="flex-1 bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 text-sm">Add to Pipeline</button>
+                        <button onclick="document.getElementById('add-candidate-modal').remove()" class="flex-1 bg-slate-100 text-slate-700 py-2.5 rounded-lg font-medium hover:bg-slate-200 text-sm">Cancel</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+            modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+            document.getElementById('nc-name').focus();
+        }
+
+        async function submitAddCandidate() {
+            const name     = document.getElementById('nc-name')?.value.trim();
+            const email    = document.getElementById('nc-email')?.value.trim();
+            const position = document.getElementById('nc-position')?.value.trim();
+            const errDiv   = document.getElementById('nc-error');
+            if (!name || !email || !position) {
+                errDiv.textContent = 'Name, email and position are required.';
+                errDiv.classList.remove('hidden'); return;
+            }
             try {
-                await apiCall('pipeline', {method: 'POST', name: name, email: email, position: position});
-                showToast('Candidate added');
-                loadPipeline(document.getElementById('main-content'));
+                await apiCall('pipeline', {
+                    method: 'POST', name, email, position,
+                    phone:  document.getElementById('nc-phone')?.value || '',
+                    source: document.getElementById('nc-source')?.value || '',
+                    resume_url: document.getElementById('nc-resume')?.value || '',
+                    notes:  document.getElementById('nc-notes')?.value || ''
+                });
+                showToast('Candidate added to pipeline!', 'success');
+                document.getElementById('add-candidate-modal')?.remove();
+                await pipeLoadData(true);
             } catch(e) {
-                showToast(e.message || 'Failed to add candidate', 'error');
+                errDiv.textContent = e.message || 'Failed to add candidate.';
+                errDiv.classList.remove('hidden');
             }
         }
+
+        // ── Candidate Detail Modal ─────────────────────────────────────────
+        function openCandidateModal(candidateId) {
+            const c = pipeAllCandidates.find(x => x.candidate_id == candidateId);
+            if (!c) return;
+            const st = PIPE_STAGE_STYLE[c.stage] || PIPE_STAGE_STYLE['Applied'];
+            const initials = c.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+            const rating = parseFloat(c.rating) || 0;
+            const idle = pipeIsIdle(c);
+            const days = pipeDaysInStage(c);
+
+            const modal = document.createElement('div');
+            modal.id = 'candidate-detail-modal';
+            modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto';
+            modal.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-auto">
+                    <!-- Header -->
+                    <div class="p-6 border-b border-slate-100">
+                        <div class="flex items-start gap-4">
+                            <div class="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold text-lg flex-shrink-0">${initials}</div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-3 flex-wrap mb-1">
+                                    <h3 class="text-xl font-bold text-slate-900">${c.name}</h3>
+                                    <span class="px-2.5 py-1 rounded-full text-xs font-semibold ${st.badge}">${c.stage}</span>
+                                    ${idle ? `<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded font-medium"><i class="fas fa-exclamation-circle mr-1"></i>${days}d idle — past SLA</span>` : ''}
+                                </div>
+                                <p class="text-slate-500">${c.position || 'No position specified'}</p>
+                                <div class="flex items-center gap-4 mt-2 text-sm text-slate-500 flex-wrap">
+                                    ${c.email ? `<span><i class="fas fa-envelope mr-1 text-slate-300"></i>${c.email}</span>` : ''}
+                                    ${c.phone ? `<span><i class="fas fa-phone mr-1 text-slate-300"></i>${c.phone}</span>` : ''}
+                                    ${c.source ? `<span><i class="fas fa-sign-in-alt mr-1 text-slate-300"></i>${c.source}</span>` : ''}
+                                </div>
+                            </div>
+                            <button onclick="document.getElementById('candidate-detail-modal').remove()" class="text-slate-400 hover:text-slate-600 flex-shrink-0"><i class="fas fa-times text-lg"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- Body: two column -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-0">
+                        <!-- Left -->
+                        <div class="p-6 border-r border-slate-100 space-y-5">
+
+                            <!-- Stage progress -->
+                            <div>
+                                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Stage Progress</p>
+                                <div class="space-y-1.5">
+                                    ${PIPE_STAGES.map((s,i) => {
+                                        const cur = PIPE_STAGES.indexOf(c.stage);
+                                        const done = i < cur;
+                                        const active = i === cur;
+                                        return `<div class="flex items-center gap-2">
+                                            <div class="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold
+                                                ${done ? 'bg-green-500 text-white' : active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}">
+                                                ${done ? '<i class="fas fa-check" style="font-size:0.6rem"></i>' : (i+1)}
+                                            </div>
+                                            <span class="text-sm ${active ? 'font-semibold text-slate-900' : done ? 'text-slate-400 line-through' : 'text-slate-500'}">${s}</span>
+                                        </div>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+
+                            <!-- Move stage -->
+                            <div>
+                                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Advance Stage</p>
+                                <div class="flex gap-2 flex-wrap">
+                                    ${PIPE_STAGES.filter(s => s !== c.stage && s !== 'Hired').map(s => `
+                                        <button onclick="pipeQuickMove(${c.candidate_id}, '${s}')"
+                                            class="px-2.5 py-1 text-xs border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-medium">${s}</button>`).join('')}
+                                    <button onclick="pipeQuickMove(${c.candidate_id}, 'Hired')" class="px-2.5 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">✓ Hire</button>
+                                    <button onclick="pipeReject(${c.candidate_id})" class="px-2.5 py-1 text-xs bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 font-medium">✗ Reject</button>
+                                </div>
+                            </div>
+
+                            <!-- Notes -->
+                            <div>
+                                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Notes</p>
+                                <textarea id="cand-notes-${c.candidate_id}" rows="4"
+                                    class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none outline-none focus:ring-2 focus:ring-blue-300"
+                                    placeholder="Add notes…">${c.notes || ''}</textarea>
+                                <button onclick="pipeSaveNotes(${c.candidate_id})" class="mt-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200">Save Notes</button>
+                            </div>
+
+                            <!-- Resume link -->
+                            ${c.resume_url ? `<div><p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Resume</p>
+                                <a href="${c.resume_url}" target="_blank" class="text-sm text-blue-600 hover:underline"><i class="fas fa-external-link-alt mr-1"></i>View Resume</a></div>` : ''}
+                        </div>
+
+                        <!-- Right: Scorecard -->
+                        <div class="p-6 space-y-5">
+                            <div>
+                                <div class="flex items-center justify-between mb-3">
+                                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Scorecard</p>
+                                    ${rating ? `<span class="text-sm font-bold text-amber-600">★ ${rating} / 5</span>` : ''}
+                                </div>
+                                <div class="space-y-3">
+                                    ${[['skills','Skills / Technical'],['culture','Culture Fit'],['communication','Communication'],['experience','Experience Relevance']].map(([id,label]) => `
+                                        <div>
+                                            <div class="flex justify-between text-xs text-slate-500 mb-1">
+                                                <span>${label}</span>
+                                                <span id="score-val-${id}-${c.candidate_id}">—</span>
+                                            </div>
+                                            <input type="range" min="1" max="5" step="1" value="3" id="score-${id}-${c.candidate_id}"
+                                                class="w-full accent-indigo-500"
+                                                oninput="document.getElementById('score-val-${id}-${c.candidate_id}').textContent=this.value+'/5'" />
+                                        </div>`).join('')}
+                                </div>
+                                <button onclick="pipeSubmitScore(${c.candidate_id})" class="mt-4 w-full px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
+                                    <i class="fas fa-star mr-1"></i>Submit Score
+                                </button>
+                            </div>
+
+                            <!-- Metadata -->
+                            <div class="border-t border-slate-100 pt-4 space-y-2">
+                                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Details</p>
+                                <div class="flex justify-between text-sm"><span class="text-slate-400">Added</span><span class="text-slate-700">${c.created_at || '—'}</span></div>
+                                <div class="flex justify-between text-sm"><span class="text-slate-400">Days in stage</span><span class="text-slate-700 ${idle ? 'text-red-600 font-semibold' : ''}">${days}d</span></div>
+                                ${c.hired_date ? `<div class="flex justify-between text-sm"><span class="text-slate-400">Hired</span><span class="text-green-600 font-medium">${c.hired_date}</span></div>` : ''}
+                            </div>
+
+                            <!-- Danger zone -->
+                            <div class="border-t border-slate-100 pt-4">
+                                <button onclick="pipeDeleteCandidate(${c.candidate_id})" class="w-full text-sm text-red-500 hover:text-red-700 hover:bg-red-50 py-2 rounded-lg transition-colors">
+                                    <i class="fas fa-trash mr-1"></i>Delete candidate record
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+
+            document.body.appendChild(modal);
+            modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        }
+
+        async function pipeQuickMove(candidateId, stage) {
+            if (stage === 'Hired' && !confirm('Hire this candidate? This creates an employee record.')) return;
+            try {
+                const endpoint = stage === 'Hired' ? 'pipeline/hire' : 'pipeline/move';
+                await apiCall(endpoint, {candidate_id: candidateId, to_stage: stage});
+                const c = pipeAllCandidates.find(x => x.candidate_id == candidateId);
+                if (c) { c.stage = stage; if (stage === 'Hired') c.hired_date = new Date().toLocaleDateString(); }
+                document.getElementById('candidate-detail-modal')?.remove();
+                pipeRenderBoard(); pipeRenderMetrics();
+                showToast(stage === 'Hired' ? 'Hired! Employee record created.' : `Moved to ${stage}`, 'success');
+            } catch(e) { showToast(e.message || 'Failed', 'error'); }
+        }
+
+        async function pipeReject(candidateId) {
+            const reason = prompt('Reason for rejection (optional):') ?? null;
+            if (reason === null) return; // cancelled
+            try {
+                await apiCall('pipeline/reject', {candidate_id: candidateId, reason: reason || ''});
+                const c = pipeAllCandidates.find(x => x.candidate_id == candidateId);
+                if (c) c.stage = 'Rejected';
+                document.getElementById('candidate-detail-modal')?.remove();
+                pipeRenderBoard(); pipeRenderMetrics();
+                showToast('Candidate rejected');
+            } catch(e) { showToast(e.message || 'Failed to reject', 'error'); }
+        }
+
+        async function pipeSaveNotes(candidateId) {
+            const notes = document.getElementById(`cand-notes-${candidateId}`)?.value || '';
+            try {
+                await apiCall('pipeline/update', {candidate_id: candidateId, notes});
+                const c = pipeAllCandidates.find(x => x.candidate_id == candidateId);
+                if (c) c.notes = notes;
+                showToast('Notes saved');
+            } catch(e) { showToast(e.message || 'Failed to save notes', 'error'); }
+        }
+
+        async function pipeSubmitScore(candidateId) {
+            const get = id => parseFloat(document.getElementById(`score-${id}-${candidateId}`)?.value || 3);
+            const payload = { candidate_id: candidateId, skills: get('skills'), culture: get('culture'), communication: get('communication'), experience: get('experience') };
+            try {
+                const res = await apiCall('pipeline/score', payload);
+                const c = pipeAllCandidates.find(x => x.candidate_id == candidateId);
+                if (c) c.rating = res.rating;
+                showToast(`Score submitted — average: ★ ${res.rating}`, 'success');
+                document.getElementById('candidate-detail-modal')?.remove();
+                pipeRenderBoard();
+            } catch(e) { showToast(e.message || 'Failed to score', 'error'); }
+        }
+
+        async function pipeDeleteCandidate(candidateId) {
+            if (!confirm('Permanently delete this candidate? This cannot be undone.')) return;
+            try {
+                await apiCall('pipeline/delete', {candidate_id: candidateId});
+                pipeAllCandidates = pipeAllCandidates.filter(x => x.candidate_id != candidateId);
+                document.getElementById('candidate-detail-modal')?.remove();
+                pipeRenderBoard(); pipeRenderMetrics();
+                showToast('Candidate deleted');
+            } catch(e) { showToast(e.message || 'Failed to delete', 'error'); }
+        }
+
+        function pipeShowRejected() {
+            const rejected = pipeAllCandidates.filter(c => c.stage === 'Rejected');
+            const modal = document.createElement('div');
+            modal.id = 'rejected-modal';
+            modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+            modal.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+                    <div class="p-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                        <h3 class="font-bold text-slate-900">Rejected Candidates (${rejected.length})</h3>
+                        <button onclick="document.getElementById('rejected-modal').remove()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="overflow-y-auto flex-1 p-4 space-y-2">
+                        ${rejected.length === 0
+                            ? '<p class="text-center text-slate-400 py-8">No rejected candidates</p>'
+                            : rejected.map(c => `
+                                <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                                    <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500">${c.name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm font-medium text-slate-800">${c.name}</p>
+                                        <p class="text-xs text-slate-400">${c.position || '—'}</p>
+                                    </div>
+                                    <button onclick="pipeQuickMove(${c.candidate_id},'Applied');document.getElementById('rejected-modal').remove()"
+                                        class="text-xs text-blue-600 hover:underline">Re-apply</button>
+                                </div>`).join('')}
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+            modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        }
+
+        // keep old stub for compatibility
+        function createCandidate() { openAddCandidateModal(); }
+
+        // ==================== END PIPELINE MODULE ====================
 
         async function loadPayroll(container) {
     const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'SuperAdmin';
