@@ -442,6 +442,151 @@ body.dropdown-open {
     }
 }
   
+        /* ============================================
+           TASK DETAIL PAGE STYLES
+           ============================================ */
+        #task-detail-overlay {
+            position: fixed; inset: 0;
+            background: rgba(15,23,42,0.6);
+            z-index: 200;
+            backdrop-filter: blur(4px);
+            display: flex; align-items: flex-start; justify-content: center;
+            overflow-y: auto; padding: 20px;
+            animation: fadeIn 0.15s ease;
+        }
+        #task-detail-page {
+            background: #fff; border-radius: 16px;
+            width: 100%; max-width: 1100px; min-height: 80vh;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.2);
+            display: flex; flex-direction: column;
+            animation: tdpSlideUp 0.2s ease; margin: auto;
+        }
+        @keyframes tdpSlideUp { from { transform:translateY(20px);opacity:0; } to { transform:translateY(0);opacity:1; } }
+        .task-detail-header {
+            position: sticky; top: 0; background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+            border-radius: 16px 16px 0 0;
+            padding: 14px 20px; z-index: 10;
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        }
+        .tdp-title-input {
+            font-size: 1.15rem; font-weight: 700; color: #0f172a;
+            border: none; outline: none; flex: 1; min-width: 180px;
+            background: transparent; padding: 4px 6px; border-radius: 6px;
+            transition: background 0.15s;
+        }
+        .tdp-title-input:hover, .tdp-title-input:focus { background: #f1f5f9; }
+        .tdp-status-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 5px 12px; border-radius: 20px;
+            font-size: 0.75rem; font-weight: 600; cursor: pointer;
+            border: 1.5px solid transparent; transition: all 0.15s; white-space: nowrap;
+        }
+        .tdp-status-badge:hover { opacity: 0.85; }
+        .tdp-status-todo { background:#f1f5f9;color:#475569;border-color:#cbd5e1; }
+        .tdp-status-inprogress { background:#eff6ff;color:#2563eb;border-color:#bfdbfe; }
+        .tdp-status-done { background:#f0fdf4;color:#16a34a;border-color:#bbf7d0; }
+        .tdp-status-blocked { background:#fff1f2;color:#e11d48;border-color:#fecdd3; }
+        .tdp-status-backlog { background:#faf5ff;color:#7c3aed;border-color:#ddd6fe; }
+        .tdp-status-review { background:#fff7ed;color:#ea580c;border-color:#fed7aa; }
+        .tdp-priority-flag {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 5px 10px; border-radius: 20px;
+            font-size: 0.75rem; font-weight: 600; cursor: pointer; border: 1.5px solid;
+        }
+        .tdp-pri-low { background:#f0fdf4;color:#16a34a;border-color:#bbf7d0; }
+        .tdp-pri-medium { background:#fffbeb;color:#d97706;border-color:#fde68a; }
+        .tdp-pri-high { background:#fff7ed;color:#ea580c;border-color:#fed7aa; }
+        .tdp-pri-urgent { background:#fff1f2;color:#e11d48;border-color:#fecdd3; }
+        .tdp-avatar {
+            width:30px;height:30px;border-radius:50%;
+            background:linear-gradient(135deg,#6366f1,#8b5cf6);
+            color:#fff;font-size:0.7rem;font-weight:700;
+            display:inline-flex;align-items:center;justify-content:center;
+            border:2px solid #fff;box-shadow:0 0 0 2px #e2e8f0;flex-shrink:0;
+        }
+        .tdp-quick-actions { display:flex;gap:6px;margin-left:auto;flex-wrap:wrap; }
+        .tdp-btn {
+            padding:6px 12px;border-radius:8px;font-size:0.78rem;font-weight:500;
+            border:1.5px solid #e2e8f0;background:#fff;color:#475569;
+            cursor:pointer;transition:all 0.15s;display:flex;align-items:center;gap:5px;
+        }
+        .tdp-btn:hover { background:#f8fafc;border-color:#94a3b8; }
+        .tdp-btn-complete { border-color:#bbf7d0!important;color:#16a34a!important; }
+        .tdp-btn-complete:hover { background:#f0fdf4!important; }
+        .tdp-btn-delete { border-color:#fecdd3!important;color:#e11d48!important; }
+        .tdp-btn-delete:hover { background:#fff1f2!important; }
+        .tdp-btn-focus.active { background:#ede9fe;border-color:#c4b5fd;color:#7c3aed; }
+        .task-detail-body { display:grid;grid-template-columns:1fr 290px;gap:0;flex:1; }
+        .tdp-main { padding:22px;border-right:1px solid #e2e8f0;overflow-y:auto;max-height:calc(90vh - 80px); }
+        .tdp-side { padding:18px;overflow-y:auto;max-height:calc(90vh - 80px);background:#fafafa;border-radius:0 0 16px 0; }
+        .tdp-section { margin-bottom:26px; }
+        .tdp-section-title {
+            font-size:0.68rem;font-weight:700;letter-spacing:0.08em;
+            text-transform:uppercase;color:#94a3b8;margin-bottom:10px;
+            display:flex;align-items:center;gap:6px;
+        }
+        .tdp-desc {
+            width:100%;min-height:90px;border:1.5px solid #e2e8f0;
+            border-radius:10px;padding:11px 13px;font-size:0.875rem;
+            line-height:1.6;color:#334155;resize:vertical;outline:none;
+            transition:border-color 0.15s;font-family:inherit;background:#fff;
+        }
+        .tdp-desc:focus { border-color:#6366f1; }
+        .tdp-subtask-item {
+            display:flex;align-items:center;gap:10px;padding:7px 8px;
+            border-radius:8px;transition:background 0.12s;
+        }
+        .tdp-subtask-item:hover { background:#f8fafc; }
+        .tdp-subtask-item.done .tdp-subtask-label { text-decoration:line-through;color:#94a3b8; }
+        .tdp-subtask-item input[type="checkbox"] { width:16px;height:16px;accent-color:#6366f1;cursor:pointer;flex-shrink:0; }
+        .tdp-subtask-label { flex:1;font-size:0.875rem;color:#334155;background:transparent;border:none;outline:none; }
+        .tdp-subtask-del { opacity:0;background:none;border:none;color:#94a3b8;cursor:pointer;padding:2px 5px;font-size:0.8rem;transition:opacity 0.1s; }
+        .tdp-subtask-item:hover .tdp-subtask-del { opacity:1; }
+        .tdp-progress-bar { height:5px;background:#e2e8f0;border-radius:99px;margin-bottom:10px;overflow:hidden; }
+        .tdp-progress-fill { height:100%;background:linear-gradient(90deg,#6366f1,#8b5cf6);border-radius:99px;transition:width 0.3s ease; }
+        .tdp-add-row {
+            display:flex;align-items:center;gap:8px;padding:6px 10px;
+            border:1.5px dashed #cbd5e1;border-radius:8px;margin-top:6px;cursor:text;transition:border-color 0.15s;
+        }
+        .tdp-add-row:focus-within { border-color:#6366f1; }
+        .tdp-add-input { flex:1;border:none;outline:none;font-size:0.875rem;color:#334155;background:transparent; }
+        .tdp-add-input::placeholder { color:#cbd5e1; }
+        .tdp-activity-item { display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9; }
+        .tdp-activity-item:last-child { border-bottom:none; }
+        .tdp-dot { width:8px;height:8px;border-radius:50%;background:#6366f1;margin-top:5px;flex-shrink:0; }
+        .tdp-dot.ds { background:#f59e0b; } .tdp-dot.dc { background:#6366f1; } .tdp-dot.df { background:#10b981; }
+        .tdp-activity-meta { font-size:0.72rem;color:#94a3b8;margin-top:1px; }
+        .tdp-comment-row { display:flex;gap:8px;align-items:flex-start;margin-top:10px; }
+        .tdp-comment-row textarea { flex:1;border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:0.85rem;resize:none;outline:none;font-family:inherit;transition:border-color 0.15s; }
+        .tdp-comment-row textarea:focus { border-color:#6366f1; }
+        .tdp-send-btn { padding:9px 13px;background:#6366f1;color:#fff;border:none;border-radius:10px;cursor:pointer;transition:background 0.15s;font-size:0.85rem; }
+        .tdp-send-btn:hover { background:#4f46e5; }
+        .tdp-meta-row { display:flex;align-items:flex-start;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:0.81rem; }
+        .tdp-meta-row:last-child { border-bottom:none; }
+        .tdp-meta-label { color:#94a3b8;font-weight:500; }
+        .tdp-meta-value { color:#334155;font-weight:500;text-align:right;max-width:150px; }
+        .tdp-tag { display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:0.72rem;font-weight:600;background:#ede9fe;color:#7c3aed;cursor:pointer;margin:2px; }
+        .tdp-tag-x { opacity:0;font-size:0.65rem; } .tdp-tag:hover .tdp-tag-x { opacity:1; }
+        .tdp-dep-item { display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;margin-bottom:5px;font-size:0.8rem;color:#334155; }
+        .tdp-auto-rule { display:flex;align-items:center;gap:6px;padding:7px 10px;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;margin-bottom:5px;font-size:0.78rem;color:#475569; }
+        .tdp-autosave { font-size:0.71rem;color:#94a3b8;display:flex;align-items:center;gap:4px;transition:color 0.3s; }
+        .tdp-autosave.saved { color:#10b981; }
+        .tdp-live-dot { display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;animation:tdpPulse 2s infinite;margin-right:3px; }
+        @keyframes tdpPulse { 0%,100%{opacity:1;}50%{opacity:0.3;} }
+        .tdp-kbd { display:inline-block;padding:1px 5px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:4px;font-size:0.7rem;font-family:monospace;color:#475569; }
+        .tdp-dropdown { position:absolute;top:calc(100% + 4px);left:0;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.12);z-index:300;min-width:160px;padding:4px 0; }
+        .tdp-dropdown button { width:100%;text-align:left;padding:9px 14px;font-size:0.85rem;background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:8px;color:#334155; }
+        .tdp-dropdown button:hover { background:#f8fafc; }
+        body.tdp-focus-mode #task-detail-page .tdp-side { display:none; }
+        body.tdp-focus-mode #task-detail-page .task-detail-body { grid-template-columns:1fr; }
+        body.tdp-focus-mode #task-detail-page .tdp-section.activity-section { display:none; }
+        @media (max-width:768px) {
+            .task-detail-body { grid-template-columns:1fr; }
+            .tdp-side { border-radius:0 0 16px 16px;border-right:none;border-top:1px solid #e2e8f0; }
+            .tdp-quick-actions { width:100%;justify-content:flex-end; }
+            #task-detail-overlay { padding:8px; }
+        }
     </style>
 </head>
     
@@ -1910,7 +2055,7 @@ function clearProjectFilter() {
     }
     
     return `
-        <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-200 card-hover cursor-move mb-2" data-task-id="${task.task_id}">
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-200 card-hover cursor-pointer mb-2" data-task-id="${task.task_id}" onclick="openTaskDetail(${task.task_id}, event)">
             <div class="flex items-start justify-between mb-2">
                 <div class="flex flex-wrap gap-1 flex-1 min-w-0">
                     ${projectBadge}
@@ -8908,6 +9053,472 @@ async function viewExpiringAssets() {
         function logout() {
             performLogout();
         }
+
+        // ==================== TASK DETAIL PAGE ====================
+
+        let tdpState = {
+            task: null, subtasks: [], activity: [], tags: [],
+            focusMode: false, autoSaveTimer: null, kbHandler: null
+        };
+
+        async function openTaskDetail(taskId, event) {
+            // Don't fire if dragging
+            if (event && event.target.closest('button')) return;
+
+            document.getElementById('task-detail-overlay')?.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = 'task-detail-overlay';
+            overlay.innerHTML = `<div style="margin:auto;color:#fff;font-size:1.1rem;padding:40px;"><i class="fas fa-circle-notch fa-spin mr-2"></i>Loading task…</div>`;
+            document.body.appendChild(overlay);
+
+            try {
+                // Try cache first, fallback to API
+                let allTasks = getCached('tasks_all') || [];
+                let task = allTasks.find(t => t.task_id == taskId);
+                if (!task) {
+                    const data = await apiCall('tasks/detail', { task_id: taskId });
+                    task = data.task || data;
+                }
+
+                // Enrich with project name if available
+                const projects = getCached('projects') || [];
+                const proj = projects.find(p => p.project_id == task.project_id);
+                if (proj) task.project_name = proj.name;
+
+                tdpState.task = task;
+                tdpState.subtasks = task.subtasks || [
+                    { id: 1, label: 'Research & plan', done: true },
+                    { id: 2, label: 'Design & build', done: false },
+                    { id: 3, label: 'Review & test', done: false }
+                ];
+                tdpState.activity = [
+                    { type: 'status', text: 'Task opened', user: currentUser?.name || 'You', time: tdpNow() }
+                ];
+                tdpState.tags = task.tags ? (Array.isArray(task.tags) ? task.tags : task.tags.split(',').filter(Boolean)) : [];
+
+                tdpRender(task);
+                tdpInitKeys();
+
+            } catch (e) {
+                overlay.innerHTML = `<div style="background:#fff;padding:32px;border-radius:14px;text-align:center;max-width:400px;margin:auto;">
+                    <i class="fas fa-exclamation-circle text-red-400 text-3xl mb-3"></i>
+                    <p class="text-slate-700 font-medium mb-3">Failed to load task</p>
+                    <p class="text-sm text-slate-400 mb-4">${e.message}</p>
+                    <button onclick="document.getElementById('task-detail-overlay').remove()" class="px-4 py-2 bg-slate-100 rounded-lg text-sm text-slate-700 hover:bg-slate-200">Close</button>
+                </div>`;
+            }
+        }
+
+        function tdpNow() {
+            return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function tdpEsc(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function tdpStatusIcon(s) {
+            return {'Todo':'⭕','In Progress':'🔵','In-Progress':'🔵','Done':'✅','Blocked':'🚫','Backlog':'📋','Review':'🔍'}[s]||'⭕';
+        }
+
+        function tdpStatusClass(s) {
+            return {'Todo':'tdp-status-todo','In Progress':'tdp-status-inprogress','In-Progress':'tdp-status-inprogress',
+                    'Done':'tdp-status-done','Blocked':'tdp-status-blocked','Backlog':'tdp-status-backlog','Review':'tdp-status-review'}[s]||'tdp-status-todo';
+        }
+
+        function tdpPriorityClass(p) {
+            return {'Low':'tdp-pri-low','Medium':'tdp-pri-medium','High':'tdp-pri-high','Urgent':'tdp-pri-urgent'}[p]||'tdp-pri-medium';
+        }
+
+        function tdpProgress() {
+            const s = tdpState.subtasks;
+            if (!s.length) return 0;
+            return Math.round((s.filter(x => x.done).length / s.length) * 100);
+        }
+
+        function tdpRender(task) {
+            const overlay = document.getElementById('task-detail-overlay');
+            const initials = (task.assignee_name || currentUser?.name || 'U').split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
+            const statusCls = tdpStatusClass(task.status);
+            const priCls = tdpPriorityClass(task.priority);
+
+            overlay.innerHTML = `
+            <div id="task-detail-page">
+
+              <!-- STICKY HEADER -->
+              <div class="task-detail-header">
+                <button onclick="tdpClose()" title="Close (Esc)" style="color:#94a3b8;background:none;border:none;cursor:pointer;font-size:1.1rem;padding:4px 8px;border-radius:6px;" onmouseover="this.style.color='#334155'" onmouseout="this.style.color='#94a3b8'">
+                  <i class="fas fa-arrow-left"></i>
+                </button>
+
+                <input id="tdp-title" class="tdp-title-input" value="${tdpEsc(task.title)}"
+                       oninput="tdpScheduleSave()" onblur="tdpSaveField('title',this.value)" title="Click to edit" />
+
+                <!-- Status -->
+                <div style="position:relative">
+                  <span id="tdp-status-badge" class="tdp-status-badge ${statusCls}" onclick="tdpToggleMenu('status-menu',event)">
+                    ${tdpStatusIcon(task.status)} ${task.status||'Todo'}
+                  </span>
+                  <div id="status-menu" class="tdp-dropdown hidden">
+                    ${['Backlog','Todo','In Progress','Review','Done','Blocked'].map(s=>`
+                      <button onclick="tdpSetStatus('${s}')">${tdpStatusIcon(s)} ${s}</button>`).join('')}
+                  </div>
+                </div>
+
+                <!-- Priority -->
+                <div style="position:relative">
+                  <span id="tdp-pri-badge" class="tdp-priority-flag ${priCls}" onclick="tdpToggleMenu('priority-menu',event)">
+                    <i class="fas fa-flag"></i> ${task.priority||'Medium'}
+                  </span>
+                  <div id="priority-menu" class="tdp-dropdown hidden">
+                    ${[['Low','text-green-500'],['Medium','text-amber-500'],['High','text-orange-500'],['Urgent','text-red-500']].map(([p,c])=>`
+                      <button onclick="tdpSetPriority('${p}')"><i class="fas fa-flag ${c}"></i> ${p}</button>`).join('')}
+                  </div>
+                </div>
+
+                <!-- Assignee avatar -->
+                <span class="tdp-avatar" title="${tdpEsc(task.assignee_name||currentUser?.name||'Unassigned')}">${initials}</span>
+
+                <!-- Due date -->
+                <input type="date" id="tdp-due" value="${task.due_date||''}"
+                       onchange="tdpSaveField('due_date',this.value);tdpScheduleSave()"
+                       style="font-size:0.82rem;border:1.5px solid #e2e8f0;border-radius:8px;padding:5px 10px;color:#475569;outline:none;cursor:pointer;" />
+
+                <!-- Autosave -->
+                <span id="tdp-autosave" class="tdp-autosave"><i class="fas fa-cloud"></i> <span id="tdp-autosave-txt">Saved</span></span>
+
+                <!-- Quick actions -->
+                <div class="tdp-quick-actions">
+                  <button class="tdp-btn tdp-btn-complete" onclick="tdpComplete()" title="Complete (C)"><i class="fas fa-check"></i> Complete</button>
+                  <button class="tdp-btn" onclick="tdpFocusTitle()" title="Edit title (T)"><i class="fas fa-pen"></i> Edit</button>
+                  <button class="tdp-btn tdp-btn-focus" id="tdp-focus-btn" onclick="tdpToggleFocus()" title="Focus mode (F)"><i class="fas fa-expand-alt"></i> Focus</button>
+                  <button class="tdp-btn" onclick="event.stopPropagation();quickLogHours(${task.task_id})" title="Log hours"><i class="fas fa-clock"></i> Log</button>
+                  <button class="tdp-btn tdp-btn-delete" onclick="tdpDelete(${task.task_id})" title="Delete"><i class="fas fa-trash"></i></button>
+                  <button class="tdp-btn" onclick="tdpClose()" title="Close (Esc)"><i class="fas fa-times"></i></button>
+                </div>
+              </div>
+
+              <!-- BODY -->
+              <div class="task-detail-body">
+
+                <!-- LEFT MAIN -->
+                <div class="tdp-main">
+
+                  <!-- Description -->
+                  <div class="tdp-section">
+                    <div class="tdp-section-title"><i class="fas fa-align-left"></i> Description</div>
+                    <textarea id="tdp-desc" class="tdp-desc"
+                              placeholder="Add a description… (use /due or /tag as shortcuts)"
+                              oninput="tdpScheduleSave()"
+                              onblur="tdpSaveField('description',this.value)">${tdpEsc(task.description||'')}</textarea>
+                    <p style="font-size:0.71rem;color:#c4b5fd;margin-top:4px;"><span class="tdp-kbd">/due</span> <span class="tdp-kbd">/tag</span> <span class="tdp-kbd">/assign</span> — slash commands</p>
+                  </div>
+
+                  <!-- Subtasks -->
+                  <div class="tdp-section">
+                    <div class="tdp-section-title">
+                      <i class="fas fa-tasks"></i> Subtasks
+                      <span id="tdp-sub-count" style="margin-left:auto;font-weight:400;font-size:0.75rem;color:#64748b;text-transform:none;letter-spacing:0;"></span>
+                    </div>
+                    <div class="tdp-progress-bar"><div id="tdp-prog-fill" class="tdp-progress-fill"></div></div>
+                    <div id="tdp-subtask-list"></div>
+                    <div class="tdp-add-row">
+                      <i class="fas fa-plus" style="color:#cbd5e1;font-size:0.75rem;"></i>
+                      <input class="tdp-add-input" id="tdp-sub-input" placeholder="Add subtask… then press Enter"
+                             onkeydown="tdpAddSubtask(event)" />
+                    </div>
+                  </div>
+
+                  <!-- Activity -->
+                  <div class="tdp-section activity-section">
+                    <div class="tdp-section-title">
+                      <i class="fas fa-history"></i> Activity
+                      <span style="margin-left:8px;"><span class="tdp-live-dot"></span><span style="font-size:0.72rem;color:#94a3b8;font-weight:400;text-transform:none;letter-spacing:0;">Live</span></span>
+                    </div>
+                    <div id="tdp-activity-feed"></div>
+                    <div class="tdp-comment-row">
+                      <span class="tdp-avatar">${initials}</span>
+                      <textarea id="tdp-comment" rows="1" placeholder="Add a comment… (Ctrl+Enter to send)"
+                                onkeydown="tdpCommentKey(event)"
+                                oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+                      <button class="tdp-send-btn" onclick="tdpSendComment()" title="Send (Ctrl+Enter)"><i class="fas fa-paper-plane"></i></button>
+                    </div>
+                  </div>
+
+                </div>
+
+                <!-- RIGHT SIDE -->
+                <div class="tdp-side">
+
+                  <!-- Metadata -->
+                  <div class="tdp-section">
+                    <div class="tdp-section-title"><i class="fas fa-info-circle"></i> Details</div>
+                    <div class="tdp-meta-row"><span class="tdp-meta-label">Project</span><span class="tdp-meta-value">${tdpEsc(task.project_name||'—')}</span></div>
+                    <div class="tdp-meta-row"><span class="tdp-meta-label">Assigned to</span><span class="tdp-meta-value">${tdpEsc(task.assignee_name||currentUser?.name||'—')}</span></div>
+                    <div class="tdp-meta-row"><span class="tdp-meta-label">Created</span><span class="tdp-meta-value">${task.created_at||'—'}</span></div>
+                    <div class="tdp-meta-row"><span class="tdp-meta-label">Est. hours</span><span class="tdp-meta-value">${task.estimated_hours?task.estimated_hours+'h':'—'}</span></div>
+                    <div class="tdp-meta-row"><span class="tdp-meta-label">Logged</span><span class="tdp-meta-value">${task.actual_hours?task.actual_hours+'h':'0h'}</span></div>
+                    ${task.pay_per_task?`<div class="tdp-meta-row"><span class="tdp-meta-label">Pay/task</span><span class="tdp-meta-value" style="color:#16a34a;font-weight:700;">$${task.pay_per_task}</span></div>`:''}
+                    ${task.billable?`<div class="tdp-meta-row"><span class="tdp-meta-label">Billable</span><span class="tdp-meta-value" style="color:#7c3aed;">Yes</span></div>`:''}
+                  </div>
+
+                  <!-- Tags -->
+                  <div class="tdp-section">
+                    <div class="tdp-section-title"><i class="fas fa-tags"></i> Tags</div>
+                    <div id="tdp-tags-container"></div>
+                    <div class="tdp-add-row" style="margin-top:6px;">
+                      <i class="fas fa-plus" style="color:#cbd5e1;font-size:0.75rem;"></i>
+                      <input class="tdp-add-input" id="tdp-tag-input" placeholder="Add tag… Enter" onkeydown="tdpAddTag(event)" />
+                    </div>
+                  </div>
+
+                  <!-- Dependencies -->
+                  <div class="tdp-section">
+                    <div class="tdp-section-title"><i class="fas fa-link"></i> Dependencies</div>
+                    <div id="tdp-deps">
+                      ${(!task.blocked_by?.length&&!task.blocks_tasks?.length)?'<p style="font-size:0.78rem;color:#94a3b8;font-style:italic;">No dependencies</p>':''}
+                      ${(task.blocked_by||[]).map(d=>`<div class="tdp-dep-item"><i class="fas fa-arrow-right" style="color:#f87171;"></i> Blocked by: ${tdpEsc(d.title)}</div>`).join('')}
+                      ${(task.blocks_tasks||[]).map(d=>`<div class="tdp-dep-item"><i class="fas fa-arrow-right" style="color:#fbbf24;"></i> Blocks: ${tdpEsc(d.title)}</div>`).join('')}
+                    </div>
+                  </div>
+
+                  <!-- Automation -->
+                  <div class="tdp-section">
+                    <div class="tdp-section-title"><i class="fas fa-bolt"></i> Automations</div>
+                    <div class="tdp-auto-rule"><i class="fas fa-bolt" style="color:#f59e0b;"></i> Done → Notify manager</div>
+                    <div class="tdp-auto-rule"><i class="fas fa-bolt" style="color:#f59e0b;"></i> Overdue → Send alert</div>
+                    <div class="tdp-auto-rule"><i class="fas fa-bolt" style="color:#f59e0b;"></i> Assigned → Add to calendar</div>
+                    <button onclick="showToast('Automation builder coming soon!','info')" style="margin-top:6px;font-size:0.78rem;color:#6366f1;background:none;border:none;cursor:pointer;padding:0;">
+                      <i class="fas fa-plus mr-1"></i>Add rule…
+                    </button>
+                  </div>
+
+                  <!-- Shortcuts -->
+                  <div class="tdp-section">
+                    <div class="tdp-section-title"><i class="fas fa-keyboard"></i> Shortcuts</div>
+                    <div style="font-size:0.78rem;color:#64748b;display:flex;flex-direction:column;gap:5px;">
+                      <div style="display:flex;justify-content:space-between;"><span>Complete</span><span class="tdp-kbd">C</span></div>
+                      <div style="display:flex;justify-content:space-between;"><span>Focus mode</span><span class="tdp-kbd">F</span></div>
+                      <div style="display:flex;justify-content:space-between;"><span>Edit title</span><span class="tdp-kbd">T</span></div>
+                      <div style="display:flex;justify-content:space-between;"><span>Send comment</span><span class="tdp-kbd">Ctrl+↵</span></div>
+                      <div style="display:flex;justify-content:space-between;"><span>Close</span><span class="tdp-kbd">Esc</span></div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>`;
+
+            tdpRenderSubtasks();
+            tdpRenderActivity();
+            tdpRenderTags();
+
+            // Slash commands in description
+            document.getElementById('tdp-desc').addEventListener('input', function() {
+                const v = this.value;
+                if (v.endsWith('/due')) { this.value = v.slice(0,-4); document.getElementById('tdp-due').focus(); }
+                else if (v.endsWith('/tag')) { this.value = v.slice(0,-4); document.getElementById('tdp-tag-input').focus(); }
+                else if (v.endsWith('/assign')) { this.value = v.slice(0,-7); showToast('Assignee picker — coming soon!'); }
+            });
+
+            // Close on overlay background click
+            overlay.addEventListener('mousedown', e => { if (e.target === overlay) tdpClose(); });
+        }
+
+        // ── Status / Priority ──
+        function tdpToggleMenu(id, e) {
+            e.stopPropagation();
+            ['status-menu','priority-menu'].forEach(m => {
+                const el = document.getElementById(m);
+                if (el) el.classList.add('hidden');
+            });
+            const menu = document.getElementById(id);
+            if (menu) {
+                menu.classList.remove('hidden');
+                setTimeout(() => document.addEventListener('click', () => menu.classList.add('hidden'), { once: true }), 10);
+            }
+        }
+
+        function tdpSetStatus(s) {
+            tdpState.task.status = s;
+            const badge = document.getElementById('tdp-status-badge');
+            if (badge) { badge.className = 'tdp-status-badge ' + tdpStatusClass(s); badge.innerHTML = tdpStatusIcon(s) + ' ' + s; }
+            document.getElementById('status-menu')?.classList.add('hidden');
+            tdpSaveField('status', s);
+            tdpAddActivity('ds', `changed status to <strong>${s}</strong>`);
+        }
+
+        function tdpSetPriority(p) {
+            tdpState.task.priority = p;
+            const badge = document.getElementById('tdp-pri-badge');
+            if (badge) { badge.className = 'tdp-priority-flag ' + tdpPriorityClass(p); badge.innerHTML = `<i class="fas fa-flag"></i> ${p}`; }
+            document.getElementById('priority-menu')?.classList.add('hidden');
+            tdpSaveField('priority', p);
+        }
+
+        // ── Auto-save ──
+        function tdpScheduleSave() {
+            const txt = document.getElementById('tdp-autosave-txt');
+            const badge = document.getElementById('tdp-autosave');
+            if (txt) { txt.textContent = 'Saving…'; badge.classList.remove('saved'); }
+            clearTimeout(tdpState.autoSaveTimer);
+            tdpState.autoSaveTimer = setTimeout(async () => {
+                const title = document.getElementById('tdp-title')?.value;
+                const desc = document.getElementById('tdp-desc')?.value;
+                if (title) await tdpSaveField('title', title, true);
+                if (desc !== undefined) await tdpSaveField('description', desc, true);
+                if (txt) { txt.textContent = 'Saved'; badge.classList.add('saved'); }
+            }, 1400);
+        }
+
+        async function tdpSaveField(field, value, silent = false) {
+            if (!tdpState.task) return;
+            const taskId = tdpState.task.task_id;
+            try {
+                await apiCall('tasks/update', { task_id: taskId, [field]: value });
+                // Update cache
+                const cached = getCached('tasks_all');
+                if (cached) {
+                    const idx = cached.findIndex(t => t.task_id == taskId);
+                    if (idx !== -1) { cached[idx][field] = value; setCached('tasks_all', cached); }
+                }
+                if (!silent) showToast('Saved ✓', 'success');
+            } catch(e) {
+                if (!silent) showToast('Save failed: ' + (e.message||'error'), 'error');
+            }
+        }
+
+        // ── Subtasks ──
+        function tdpRenderSubtasks() {
+            const list = document.getElementById('tdp-subtask-list');
+            if (!list) return;
+            list.innerHTML = tdpState.subtasks.map((s,i) => `
+                <div class="tdp-subtask-item${s.done?' done':''}" id="tdsub-${s.id}">
+                    <input type="checkbox" ${s.done?'checked':''} onchange="tdpToggleSub(${i})" />
+                    <input class="tdp-subtask-label" value="${tdpEsc(s.label)}" onchange="tdpUpdateSub(${i},this.value)" />
+                    <button class="tdp-subtask-del" onclick="tdpDeleteSub(${i})" title="Remove"><i class="fas fa-times"></i></button>
+                </div>`).join('');
+            const pct = tdpProgress();
+            const fill = document.getElementById('tdp-prog-fill');
+            const count = document.getElementById('tdp-sub-count');
+            if (fill) fill.style.width = pct + '%';
+            if (count) count.textContent = `${tdpState.subtasks.filter(s=>s.done).length}/${tdpState.subtasks.length} done`;
+        }
+
+        function tdpToggleSub(i) { tdpState.subtasks[i].done = !tdpState.subtasks[i].done; tdpRenderSubtasks(); tdpScheduleSave(); }
+        function tdpUpdateSub(i,v) { tdpState.subtasks[i].label = v; tdpScheduleSave(); }
+        function tdpDeleteSub(i) { tdpState.subtasks.splice(i,1); tdpRenderSubtasks(); tdpScheduleSave(); }
+        function tdpAddSubtask(e) {
+            if (e.key !== 'Enter') return;
+            const input = document.getElementById('tdp-sub-input');
+            const label = input.value.trim();
+            if (!label) return;
+            tdpState.subtasks.push({ id: Date.now(), label, done: false });
+            input.value = '';
+            tdpRenderSubtasks();
+            tdpScheduleSave();
+        }
+
+        // ── Activity ──
+        function tdpRenderActivity() {
+            const feed = document.getElementById('tdp-activity-feed');
+            if (!feed) return;
+            feed.innerHTML = tdpState.activity.slice().reverse().map(a => `
+                <div class="tdp-activity-item">
+                    <div class="tdp-dot ${a.type==='status'?'ds':a.type==='file'?'df':'dc'}"></div>
+                    <div>
+                        <span style="font-size:0.85rem;color:#334155;"><strong>${tdpEsc(a.user)}</strong> ${a.text}</span>
+                        <div class="tdp-activity-meta">${a.time}</div>
+                    </div>
+                </div>`).join('');
+        }
+
+        function tdpAddActivity(type, text) {
+            tdpState.activity.push({ type, text, user: currentUser?.name||'You', time: tdpNow() });
+            tdpRenderActivity();
+        }
+
+        function tdpCommentKey(e) { if (e.key==='Enter'&&e.ctrlKey) tdpSendComment(); }
+        function tdpSendComment() {
+            const input = document.getElementById('tdp-comment');
+            const text = input?.value?.trim();
+            if (!text) return;
+            tdpAddActivity('comment', `commented: <em>"${tdpEsc(text)}"</em>`);
+            input.value = ''; input.style.height = 'auto';
+            showToast('Comment added');
+        }
+
+        // ── Tags ──
+        function tdpRenderTags() {
+            const c = document.getElementById('tdp-tags-container');
+            if (!c) return;
+            c.innerHTML = tdpState.tags.length
+                ? tdpState.tags.map((t,i) => `<span class="tdp-tag">${tdpEsc(t)} <span class="tdp-tag-x" onclick="tdpRemoveTag(${i})">✕</span></span>`).join('')
+                : '<p style="font-size:0.78rem;color:#94a3b8;font-style:italic;">No tags</p>';
+        }
+        function tdpAddTag(e) {
+            if (e.key!=='Enter') return;
+            const input = document.getElementById('tdp-tag-input');
+            const tag = input.value.trim();
+            if (!tag || tdpState.tags.includes(tag)) return;
+            tdpState.tags.push(tag); input.value=''; tdpRenderTags(); tdpScheduleSave();
+        }
+        function tdpRemoveTag(i) { tdpState.tags.splice(i,1); tdpRenderTags(); tdpScheduleSave(); }
+
+        // ── Actions ──
+        function tdpComplete() {
+            tdpSetStatus('Done');
+            showToast('Task marked complete! 🎉', 'success');
+            setTimeout(tdpClose, 900);
+        }
+
+        async function tdpDelete(taskId) {
+            if (!confirm('Delete this task? This cannot be undone.')) return;
+            try {
+                await apiCall('tasks/delete', { task_id: taskId });
+                cache.tasks = null; cache.lastFetch.tasks = null;
+                setCached('tasks_all', null);
+                showToast('Task deleted');
+                tdpClose();
+                applyTaskFilters();
+            } catch(e) {
+                showToast(e.message||'Failed to delete', 'error');
+            }
+        }
+
+        function tdpFocusTitle() { const t = document.getElementById('tdp-title'); if(t){t.focus();t.select();} }
+
+        function tdpToggleFocus() {
+            tdpState.focusMode = !tdpState.focusMode;
+            document.body.classList.toggle('tdp-focus-mode', tdpState.focusMode);
+            const btn = document.getElementById('tdp-focus-btn');
+            if (btn) btn.classList.toggle('active', tdpState.focusMode);
+            showToast(tdpState.focusMode ? 'Focus mode ON — sidebar hidden' : 'Focus mode OFF');
+        }
+
+        function tdpClose() {
+            document.getElementById('task-detail-overlay')?.remove();
+            document.body.classList.remove('tdp-focus-mode');
+            if (tdpState.kbHandler) document.removeEventListener('keydown', tdpState.kbHandler);
+            tdpState = { task:null, subtasks:[], activity:[], tags:[], focusMode:false, autoSaveTimer:null, kbHandler:null };
+        }
+
+        function tdpInitKeys() {
+            tdpState.kbHandler = function(e) {
+                if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+                switch(e.key) {
+                    case 'Escape': tdpClose(); break;
+                    case 'c': case 'C': tdpComplete(); break;
+                    case 'f': case 'F': tdpToggleFocus(); break;
+                    case 't': case 'T': tdpFocusTitle(); break;
+                }
+            };
+            document.addEventListener('keydown', tdpState.kbHandler);
+        }
+
+        // ==================== END TASK DETAIL PAGE ====================
 
                     function toggleUserMenu(e) {
             if (e) {
