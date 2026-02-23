@@ -1493,6 +1493,7 @@ document.getElementById('forgot-password-form')?.addEventListener('submit', asyn
             case 'financials': loadFinancials(main); break;
             case 'crm': loadCRM(main); break;
             case 'projects': loadProjects(main); break;
+            case 'notifications': loadNotificationsPage(main); break;
             case 'workflows': loadWorkflows(main); break; // Add this when ready
             case 'reports': loadReports(main); break;
             case 'assets': loadAssets(main); break;
@@ -6050,190 +6051,316 @@ function editProject(projectId) {
         let notificationPollingInterval = null;
         let lastNotificationCount = 0;
 
+            // ==================== NOTIFICATION SYSTEM ====================
+
             function toggleNotificationDropdown() {
-    const dropdown = document.getElementById('notification-dropdown');
-    const isHidden = dropdown.classList.contains('hidden');
-    
-    if (isHidden) {
-        // Open dropdown
-        dropdown.classList.remove('hidden');
-        document.body.classList.add('dropdown-open'); // Prevent body scroll
-        loadNotifications();
-        
-        // Close when clicking outside
-        setTimeout(() => {
-            document.addEventListener('click', closeDropdownOutside);
-        }, 100);
-    } else {
-        // Close dropdown
-        dropdown.classList.add('hidden');
-        document.body.classList.remove('dropdown-open');
-        document.removeEventListener('click', closeDropdownOutside);
-    }
-}
-
-function closeDropdownOutside(e) {
-    const dropdown = document.getElementById('notification-dropdown');
-    const bellBtn = document.querySelector('button[onclick="toggleNotificationDropdown()"]');
-    
-    if (!dropdown.contains(e.target) && !bellBtn.contains(e.target)) {
-        dropdown.classList.add('hidden');
-        document.body.classList.remove('dropdown-open');
-        document.removeEventListener('click', closeDropdownOutside);
-    }
-}
-
-        async function loadNotifications() {
-    const listContainer = document.getElementById('notification-list');
-    
-    try {
-        const data = await apiCall('notifications', {limit: 10});
-        const notifications = data.notifications || [];
-        const unreadCount = data.unread_count || 0;
-        
-        updateNotificationBadge(unreadCount);
-        renderNotificationList(notifications);
-    } catch (e) {
-        if (e.message && e.message.includes('Failed to load')) {
-            listContainer.innerHTML = `
-                <div class="p-8 text-center text-slate-400">
-                    <i class="fas fa-bell-slash text-3xl mb-2 text-slate-300"></i>
-                    <p class="text-sm">No notifications yet</p>
-                </div>
-            `;
-        } else {
-            listContainer.innerHTML = `
-                <div class="p-8 text-center text-slate-400">
-                    <i class="fas fa-bell text-3xl mb-2 text-slate-300"></i>
-                    <p class="text-sm text-slate-500">No new notifications</p>
-                </div>
-            `;
-        }
-    }
-}
-
-        function updateNotificationBadge(count) {
-            const badge = document.getElementById('notif-badge');
-            if (count > 0) {
-                badge.textContent = count > 99 ? '99+' : count;
-                badge.classList.remove('hidden');
-                
-                if (count > lastNotificationCount) {
-                    badge.classList.add('animate-pulse');
-                    setTimeout(() => badge.classList.remove('animate-pulse'), 2000);
+                const dropdown = document.getElementById('notification-dropdown');
+                const isHidden = dropdown.classList.contains('hidden');
+                if (isHidden) {
+                    dropdown.classList.remove('hidden');
+                    document.body.classList.add('dropdown-open');
+                    loadNotifications();
+                    setTimeout(() => document.addEventListener('click', closeDropdownOutside), 100);
+                } else {
+                    dropdown.classList.add('hidden');
+                    document.body.classList.remove('dropdown-open');
+                    document.removeEventListener('click', closeDropdownOutside);
                 }
-            } else {
-                badge.classList.add('hidden');
             }
-            lastNotificationCount = count;
-        }
 
-                function renderNotificationList(notifications) {
-    const listContainer = document.getElementById('notification-list');
-    
-    if (notifications.length === 0) {
-        listContainer.innerHTML = `
-            <div class="p-8 text-center text-slate-400">
-                <i class="fas fa-bell-slash text-3xl mb-2 text-slate-300"></i>
-                <p class="text-sm">No notifications yet</p>
-            </div>
-        `;
-        return;
-    }
-    
-    const typeIcons = {
-        'task': 'fa-check-circle text-blue-500',
-        'payroll': 'fa-money-bill-wave text-green-500',
-        'project': 'fa-folder-open text-purple-500',
-        'system': 'fa-info-circle text-slate-500',
-        'mention': 'fa-at text-amber-500'
-    };
-    
-    const html = notifications.map(n => `
-        <div class="p-4 border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer ${n.read ? 'opacity-60' : 'bg-blue-50/30'}" 
-             onclick="handleNotificationClick(${n.notification_id}, '${n.type}', '${(n.data || {}).action || ''}', '${(n.data || {}).entity_id || ''}')">
-            <div class="flex gap-3 min-w-0">
-                <div class="flex-shrink-0 mt-1">
-                    <i class="fas ${typeIcons[n.type] || 'fa-bell text-slate-400'}"></i>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-slate-900 ${n.read ? 'font-normal' : ''} truncate">${n.title}</p>
-                    <p class="text-xs text-slate-600 mt-1 line-clamp-2">${n.message}</p>
-                    <p class="text-xs text-slate-400 mt-1">${formatRelativeTime(n.created_at)}</p>
-                </div>
-                ${!n.read ? '<span class="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full mt-2 ml-2"></span>' : ''}
-            </div>
-        </div>
-    `).join('');
-    
-    listContainer.innerHTML = html;
-}
-        
-        function formatRelativeTime(dateString) {
-            const date = new Date(dateString);
-            const now = new Date();
-            const diffMs = now - date;
-            const diffMins = Math.floor(diffMs / 60000);
-            const diffHours = Math.floor(diffMs / 3600000);
-            const diffDays = Math.floor(diffMs / 86400000);
-            
-            if (diffMins < 1) return 'Just now';
-            if (diffMins < 60) return `${diffMins}m ago`;
-            if (diffHours < 24) return `${diffHours}h ago`;
-            if (diffDays < 7) return `${diffDays}d ago`;
-            return date.toLocaleDateString();
-        }
-
-        async function handleNotificationClick(notificationId, type, action, entityId) {
-            try {
-                await apiCall('notifications/mark-read', {notification_id: notificationId});
-                
-                const data = await apiCall('notifications', {limit: 1});
-                updateNotificationBadge(data.unread_count || 0);
-                
-                if (action === 'view_task' && entityId) {
-                    showModule('tasks');
-                } else if (action === 'view_payroll' && entityId) {
-                    showModule('payroll');
-                } else if (action === 'view_project' && entityId) {
-                    showModule('projects');
+            function closeDropdownOutside(e) {
+                const dropdown = document.getElementById('notification-dropdown');
+                const bellBtn = document.querySelector('button[onclick="toggleNotificationDropdown()"]');
+                if (dropdown && !dropdown.contains(e.target) && bellBtn && !bellBtn.contains(e.target)) {
+                    dropdown.classList.add('hidden');
+                    document.body.classList.remove('dropdown-open');
+                    document.removeEventListener('click', closeDropdownOutside);
                 }
-                
-                toggleNotificationDropdown();
-            } catch (e) {
-                console.error('Failed to mark notification read:', e);
             }
-        }
 
-        async function markAllNotificationsRead() {
-            try {
-                await apiCall('notifications/mark-read', {mark_all: true});
-                updateNotificationBadge(0);
-                loadNotifications();
-                showToast('All notifications marked as read');
-            } catch (e) {
-                showToast('Failed to mark notifications as read', 'error');
-            }
-        }
-
-        function startNotificationPolling() {
-            notificationPollingInterval = setInterval(async () => {
-                if (!currentToken || !currentUser) return;
-                
+            async function loadNotifications() {
+                const listContainer = document.getElementById('notification-list');
                 try {
-                    const data = await apiCall('notifications', {limit: 1});
+                    const data = await apiCall('notifications', {limit: 15});
+                    const notifications = data.notifications || [];
                     updateNotificationBadge(data.unread_count || 0);
+                    renderNotificationDropdown(notifications);
                 } catch (e) {
-                    console.log('Notification poll failed:', e);
+                    listContainer.innerHTML = `
+                        <div class="p-8 text-center text-slate-400">
+                            <i class="fas fa-bell-slash text-3xl mb-2 text-slate-300"></i>
+                            <p class="text-sm">No notifications yet</p>
+                        </div>`;
                 }
-            }, 60000);
-            
-            if (currentToken && currentUser) {
-                apiCall('notifications', {limit: 1}).then(data => {
-                    updateNotificationBadge(data.unread_count || 0);
-                }).catch(() => {});
             }
-        }
+
+            function updateNotificationBadge(count) {
+                const badge = document.getElementById('notif-badge');
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : count;
+                    badge.classList.remove('hidden');
+                    if (count > lastNotificationCount) {
+                        badge.classList.add('animate-pulse');
+                        setTimeout(() => badge.classList.remove('animate-pulse'), 2000);
+                    }
+                } else {
+                    badge.classList.add('hidden');
+                }
+                lastNotificationCount = count;
+            }
+
+            function formatRelativeTime(dateString) {
+                if (!dateString) return '';
+                const date = new Date(dateString);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMs / 3600000);
+                const diffDays = Math.floor(diffMs / 86400000);
+                if (diffMins < 1) return 'Just now';
+                if (diffMins < 60) return `${diffMins}m ago`;
+                if (diffHours < 24) return `${diffHours}h ago`;
+                if (diffDays < 7) return `${diffDays}d ago`;
+                return date.toLocaleDateString();
+            }
+
+            const notifTypeIcons = {
+                'task':    'fa-check-circle text-blue-500',
+                'payroll': 'fa-money-bill-wave text-green-500',
+                'project': 'fa-folder-open text-purple-500',
+                'system':  'fa-info-circle text-slate-400',
+                'mention': 'fa-at text-amber-500',
+                'crm':     'fa-handshake text-teal-500',
+                'pipeline':'fa-user-tie text-indigo-500',
+                'workflow':'fa-robot text-orange-500'
+            };
+
+            // ── Bell dropdown list (compact, unread only) ──────────────────
+            function renderNotificationDropdown(notifications) {
+                const listContainer = document.getElementById('notification-list');
+                // Show only unread in the bell dropdown
+                const unread = notifications.filter(n => !n.read);
+
+                if (unread.length === 0) {
+                    listContainer.innerHTML = `
+                        <div class="p-8 text-center text-slate-400">
+                            <i class="fas fa-check-circle text-3xl mb-2 text-green-300"></i>
+                            <p class="text-sm font-medium text-slate-500">You're all caught up!</p>
+                        </div>`;
+                    return;
+                }
+
+                listContainer.innerHTML = unread.map(n => `
+                    <div class="flex items-start gap-3 p-4 border-b border-slate-100 bg-blue-50/40 hover:bg-blue-50 transition-colors group"
+                         id="notif-drop-${n.notification_id}">
+                        <i class="fas ${notifTypeIcons[n.type] || 'fa-bell text-slate-400'} mt-0.5 flex-shrink-0 text-sm"></i>
+                        <div class="flex-1 min-w-0 cursor-pointer"
+                             onclick="handleNotificationClick(${n.notification_id}, '${n.type}', '${(n.data||{}).action||''}', '${(n.data||{}).entity_id||''}')">
+                            <p class="text-sm font-semibold text-slate-900 truncate">${n.title}</p>
+                            <p class="text-xs text-slate-600 mt-0.5 line-clamp-2">${n.message}</p>
+                            <p class="text-xs text-slate-400 mt-1">${formatRelativeTime(n.created_at)}</p>
+                        </div>
+                        <button onclick="dismissNotification(${n.notification_id}, event)"
+                            class="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-slate-300 hover:text-slate-500 hover:bg-slate-200"
+                            title="Dismiss">
+                            <i class="fas fa-times text-xs"></i>
+                        </button>
+                    </div>`).join('');
+            }
+
+            // Mark read + navigate to the right module/entity
+            async function handleNotificationClick(notificationId, type, action, entityId) {
+                try {
+                    await apiCall('notifications/mark-read', {notification_id: notificationId});
+                    // Remove unread dot from bell dropdown without reloading
+                    const el = document.getElementById('notif-drop-' + notificationId);
+                    if (el) el.remove();
+                    // Decrement badge
+                    const badge = document.getElementById('notif-badge');
+                    const cur = parseInt(badge.textContent) || 0;
+                    updateNotificationBadge(Math.max(0, cur - 1));
+                } catch(e) { /* non-blocking */ }
+
+                // Close dropdown
+                const dropdown = document.getElementById('notification-dropdown');
+                if (dropdown) { dropdown.classList.add('hidden'); document.body.classList.remove('dropdown-open'); }
+                document.removeEventListener('click', closeDropdownOutside);
+
+                // Navigate to the correct module + open specific entity
+                navigateToNotification(type, action, entityId);
+            }
+
+            function navigateToNotification(type, action, entityId) {
+                // Map action/type to module + optional deep-link
+                const actionMap = {
+                    'view_task':     () => { showModule('tasks');     if (entityId) setTimeout(() => openTaskDetail(entityId), 400); },
+                    'view_payroll':  () => { showModule('payroll');   },
+                    'view_project':  () => { showModule('projects');  if (entityId) sessionStorage.setItem('preselectedProjectId', entityId); },
+                    'view_pipeline': () => { showModule('pipeline');  },
+                    'view_crm':      () => { showModule('crm');       },
+                    'view_invoice':  () => { showModule('financials');},
+                    'view_dashboard':() => { showModule('dashboard'); },
+                    'view_workflow': () => { showModule('workflows'); }
+                };
+
+                // Try action first, then fall back to type
+                const typeMap = {
+                    'task':     'view_task',
+                    'payroll':  'view_payroll',
+                    'project':  'view_project',
+                    'pipeline': 'view_pipeline',
+                    'crm':      'view_crm',
+                    'workflow': 'view_workflow'
+                };
+
+                const resolvedAction = action || typeMap[type] || null;
+                if (resolvedAction && actionMap[resolvedAction]) {
+                    actionMap[resolvedAction]();
+                } else {
+                    showModule('dashboard');
+                }
+            }
+
+            // Dismiss from bell (mark read, hide from badge) but keep in View All
+            async function dismissNotification(notificationId, event) {
+                event.stopPropagation();
+                try {
+                    await apiCall('notifications/mark-read', {notification_id: notificationId});
+                    const el = document.getElementById('notif-drop-' + notificationId);
+                    if (el) { el.style.transition = 'opacity 0.2s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 200); }
+                    const badge = document.getElementById('notif-badge');
+                    const cur = parseInt(badge.textContent) || 0;
+                    updateNotificationBadge(Math.max(0, cur - 1));
+                } catch(e) {
+                    showToast('Could not dismiss notification', 'error');
+                }
+            }
+
+            async function markAllNotificationsRead() {
+                try {
+                    await apiCall('notifications/mark-read', {mark_all: true});
+                    updateNotificationBadge(0);
+                    loadNotifications();
+                    showToast('All notifications marked as read');
+                } catch (e) {
+                    showToast('Failed to mark as read', 'error');
+                }
+            }
+
+            function startNotificationPolling() {
+                notificationPollingInterval = setInterval(async () => {
+                    if (!currentToken || !currentUser) return;
+                    try {
+                        const data = await apiCall('notifications', {limit: 1});
+                        updateNotificationBadge(data.unread_count || 0);
+                    } catch (e) {}
+                }, 60000);
+
+                if (currentToken && currentUser) {
+                    apiCall('notifications', {limit: 1}).then(data => {
+                        updateNotificationBadge(data.unread_count || 0);
+                    }).catch(() => {});
+                }
+            }
+
+            // ── View All Notifications full-page ──────────────────────────
+            async function loadNotificationsPage(container) {
+                container.innerHTML = `
+                    <div class="page-transition">
+                        <div class="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 class="text-2xl font-bold text-slate-900">Notifications</h2>
+                                <p class="text-slate-500">Your activity feed</p>
+                            </div>
+                            <button onclick="markAllNotificationsRead()" class="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">
+                                <i class="fas fa-check-double mr-2"></i>Mark all read
+                            </button>
+                        </div>
+                        <div id="notif-page-list" class="space-y-2">
+                            <div class="flex items-center justify-center h-48">
+                                <i class="fas fa-circle-notch fa-spin text-3xl text-blue-500"></i>
+                            </div>
+                        </div>
+                    </div>`;
+                await renderNotificationsPage();
+            }
+
+            async function renderNotificationsPage() {
+                const list = document.getElementById('notif-page-list');
+                if (!list) return;
+                try {
+                    const data = await apiCall('notifications', {limit: 100});
+                    const notifications = data.notifications || [];
+
+                    if (notifications.length === 0) {
+                        list.innerHTML = `
+                            <div class="text-center py-20 bg-white rounded-xl border border-slate-200">
+                                <i class="fas fa-bell-slash text-5xl text-slate-200 mb-4"></i>
+                                <p class="text-slate-500 font-medium">No notifications yet</p>
+                            </div>`;
+                        return;
+                    }
+
+                    list.innerHTML = notifications.map(n => `
+                        <div class="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-4 hover:shadow-sm transition-shadow ${n.read ? '' : 'border-l-4 border-l-blue-500'}"
+                             id="notif-page-${n.notification_id}">
+                            <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0
+                                ${n.read ? 'bg-slate-100' : 'bg-blue-50'}">
+                                <i class="fas ${notifTypeIcons[n.type] || 'fa-bell text-slate-400'} text-sm"></i>
+                            </div>
+                            <div class="flex-1 min-w-0 cursor-pointer"
+                                 onclick="handleNotificationClick(${n.notification_id}, '${n.type}', '${(n.data||{}).action||''}', '${(n.data||{}).entity_id||''}')">
+                                <div class="flex items-center gap-2 flex-wrap mb-0.5">
+                                    <p class="text-sm font-semibold text-slate-900">${n.title}</p>
+                                    ${!n.read ? '<span class="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>' : ''}
+                                    <span class="text-xs text-slate-400 capitalize">${n.type}</span>
+                                </div>
+                                <p class="text-sm text-slate-600">${n.message}</p>
+                                <p class="text-xs text-slate-400 mt-1">${formatRelativeTime(n.created_at)}</p>
+                            </div>
+                            <div class="flex items-center gap-1 flex-shrink-0">
+                                ${!n.read ? `
+                                <button onclick="markOneRead(${n.notification_id})" title="Mark as read"
+                                    class="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors text-xs">
+                                    <i class="fas fa-check"></i>
+                                </button>` : ''}
+                                <button onclick="permanentlyDeleteNotification(${n.notification_id})" title="Delete permanently"
+                                    class="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors text-xs">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>`).join('');
+                } catch(e) {
+                    list.innerHTML = `<div class="text-center py-12 text-red-500">${e.message || 'Failed to load notifications'}</div>`;
+                }
+            }
+
+            async function markOneRead(notificationId) {
+                try {
+                    await apiCall('notifications/mark-read', {notification_id: notificationId});
+                    // Update badge
+                    const badge = document.getElementById('notif-badge');
+                    const cur = parseInt(badge.textContent) || 0;
+                    updateNotificationBadge(Math.max(0, cur - 1));
+                    // Re-render page list
+                    await renderNotificationsPage();
+                } catch(e) {
+                    showToast('Failed to mark as read', 'error');
+                }
+            }
+
+            async function permanentlyDeleteNotification(notificationId) {
+                try {
+                    await apiCall('notifications/delete', {notification_id: notificationId});
+                    const el = document.getElementById('notif-page-' + notificationId);
+                    if (el) { el.style.transition = 'opacity 0.2s, max-height 0.3s'; el.style.opacity = '0'; el.style.maxHeight = '0'; el.style.overflow = 'hidden'; setTimeout(() => el.remove(), 300); }
+                    showToast('Notification deleted');
+                } catch(e) {
+                    showToast(e.message || 'Failed to delete', 'error');
+                }
+            }
+
+            // ==================== END NOTIFICATION SYSTEM ====================
 
             // ==================== WORKFLOW MODULE ====================
 
