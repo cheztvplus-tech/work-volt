@@ -761,6 +761,34 @@ body.dropdown-open {
     <!-- ============================================================
          SETUP WIZARD — shown on first launch before login
          ============================================================ -->
+    <!-- ── Connect Screen (shown only on new devices with no URL saved) ── -->
+    <div id="connect-screen" class="hidden min-h-screen bg-gradient-to-br from-slate-900 to-blue-900 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg">
+                    <i class="fas fa-bolt text-white text-2xl"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-slate-800">Connect to Work Volt</h1>
+                <p class="text-slate-500 mt-2 text-sm">Enter the Work Volt URL provided by your admin</p>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Work Volt URL</label>
+                    <input id="connect-url-input" type="url" placeholder="https://script.google.com/macros/s/..." 
+                        class="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div id="connect-error" class="hidden text-red-600 text-sm bg-red-50 rounded-lg px-4 py-2"></div>
+                <button onclick="connectToGas()" id="connect-btn"
+                    class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
+                    Connect <i class="fas fa-arrow-right ml-1"></i>
+                </button>
+                <p class="text-center text-xs text-slate-400 mt-2">
+                    Ask your administrator for the Work Volt link, or open the link they shared with you directly.
+                </p>
+            </div>
+        </div>
+    </div>
+
     <div id="setup-screen" class="hidden min-h-screen bg-gradient-to-br from-slate-900 to-blue-900 flex items-center justify-center p-4">
       <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
 
@@ -981,13 +1009,24 @@ body.dropdown-open {
     </div>
 
     <script>
-        // ── DEPLOYMENT SETTING ──────────────────────────────────────────────────────
-        // Paste your GAS Web App URL here once and it works on every device/browser.
-        // localStorage is only used as a runtime cache — never as the source of truth.
-        const HARDCODED_API_URL = ''; // ← PASTE YOUR GAS URL HERE e.g. 'https://script.google.com/macros/s/XXXX/exec'
+        // ── API URL RESOLUTION ─────────────────────────────────────────────────────
+        // Priority order:
+        //   1. ?gas= query parameter in the URL  ← share THIS link with all users
+        //   2. localStorage (remembered from a previous visit on this device)
+        //   3. Empty (shows the connect screen so user can enter it once)
+        //
+        // The shareable link for your deployment:
+        // https://cheztvplus-tech.github.io/work-volt/?gas=https://script.google.com/macros/s/AKfycbwY-oCLRpuxl8ghe-avGACVid5F2WPqE01V1P5s42QJFjl0U6RA2WBJ1M6SNWMOkOMz/exec
         // ───────────────────────────────────────────────────────────────────────────
-
-        let API_URL = HARDCODED_API_URL || localStorage.getItem('workvolt_api_url') || '';
+        (function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const gasFromUrl = urlParams.get('gas');
+            if (gasFromUrl) {
+                // Save it so this device remembers it on future visits without the ?gas= param
+                localStorage.setItem('workvolt_api_url', gasFromUrl);
+            }
+        })();
+        let API_URL = localStorage.getItem('workvolt_api_url') || '';
         let currentUser = null;
         let currentToken = localStorage.getItem('workvolt_token');
         let dashboardSortable = null;
@@ -6303,7 +6342,7 @@ async function saveScoreConfig() {
 // ==================== CRM: LEAD CAPTURE FORM GENERATOR ====================
 
 function openLeadCaptureModal() {
-    const apiUrl = window.API_URL || 'YOUR_GAS_ENDPOINT_URL';
+    const apiUrl = API_URL || 'YOUR_GAS_ENDPOINT_URL';
     const embedCode = `<!-- Work Volt Lead Capture Form -->
 <form id="wv-lead-form" style="font-family:sans-serif;max-width:480px">
   <input name="contact_name" placeholder="Your Name *" required style="width:100%;padding:10px;margin:6px 0;border:1px solid #ddd;border-radius:8px">
@@ -11315,23 +11354,73 @@ async function viewExpiringAssets() {
 
         let _setupData = {};
 
+        function showConnectScreen() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('app-screen').classList.add('hidden');
+            document.getElementById('setup-screen').classList.add('hidden');
+            document.getElementById('connect-screen').classList.remove('hidden');
+        }
+
+        async function connectToGas() {
+            const url = (document.getElementById('connect-url-input').value || '').trim();
+            const errDiv = document.getElementById('connect-error');
+            const btn = document.getElementById('connect-btn');
+            errDiv.classList.add('hidden');
+
+            if (!url.startsWith('https://script.google.com')) {
+                errDiv.textContent = 'Please enter a valid Work Volt URL (starts with https://script.google.com)';
+                errDiv.classList.remove('hidden');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i>Connecting...';
+
+            try {
+                const statusUrl = new URL(url);
+                statusUrl.searchParams.set('path', 'setup/status');
+                const res  = await fetch(statusUrl.toString(), { cache: 'no-cache' });
+                const data = await res.json();
+
+                // Save the URL so this device remembers it on future visits (no ?gas= needed next time)
+                localStorage.setItem('workvolt_api_url', url);
+                // Update API_URL for the rest of this session
+                API_URL = url;
+
+                if (data.setup_complete) {
+                    // Setup already done — go straight to login
+                    document.getElementById('connect-screen').classList.add('hidden');
+                    document.getElementById('login-screen').classList.remove('hidden');
+                } else {
+                    // First time — show full setup wizard
+                    document.getElementById('connect-screen').classList.add('hidden');
+                    showSetupScreen();
+                }
+            } catch(e) {
+                errDiv.textContent = 'Could not reach that URL. Check it is correct and the GAS is deployed as a Web App with access set to Anyone.';
+                errDiv.classList.remove('hidden');
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = 'Connect <i class="fas fa-arrow-right ml-1"></i>';
+        }
+
         function showSetupScreen() {
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('app-screen').classList.add('hidden');
+            document.getElementById('connect-screen').classList.add('hidden');
             document.getElementById('setup-screen').classList.remove('hidden');
             setupGoTo(1);
-            // Pre-fill if URL was already saved
-            const saved = localStorage.getItem('workvolt_api_url') || '';
-            if (saved) document.getElementById('setup-api-url').value = saved;
+            if (API_URL) document.getElementById('setup-api-url').value = API_URL;
         }
 
         function openSetupWizard() {
             // Called from Settings → Configuration → Re-run Setup
             document.getElementById('app-screen').classList.add('hidden');
+            document.getElementById('connect-screen').classList.add('hidden');
             document.getElementById('setup-screen').classList.remove('hidden');
             setupGoTo(1);
-            const saved = localStorage.getItem('workvolt_api_url') || '';
-            if (saved) document.getElementById('setup-api-url').value = saved;
+            if (API_URL) document.getElementById('setup-api-url').value = API_URL;
         }
 
         function setupGoTo(step) {
@@ -11382,19 +11471,17 @@ async function viewExpiringAssets() {
                     okDiv.innerHTML = '<i class="fas fa-check-circle mr-2 text-green-600"></i>Connection successful!';
                     okDiv.classList.remove('hidden');
                     _setupData.apiUrl = url;
-                    API_URL = url;
-                    localStorage.setItem('workvolt_api_url', url);
+                    // Note: API_URL is hardcoded in the HTML — we don't store it in localStorage
 
                     // Check if this GAS deployment is already fully configured
-                    // (e.g. admin is on a new device but setup was done before)
+                    // (admin on a new device, or re-opening the wizard)
                     try {
                         const statusUrl = new URL(url);
                         statusUrl.searchParams.set('path', 'setup/status');
                         const statusRes  = await fetch(statusUrl.toString(), { cache: 'no-cache' });
                         const statusData = await statusRes.json();
                         if (statusData.setup_complete) {
-                            // Already set up — skip to the "all done" step
-                            localStorage.setItem('workvolt_setup_complete', 'true');
+                            // Already set up server-side — go straight to login
                             okDiv.innerHTML = '<i class="fas fa-check-circle mr-2 text-green-600"></i>This deployment is already configured! Redirecting to login…';
                             setTimeout(() => setupFinish(), 1500);
                             return;
@@ -11452,10 +11539,9 @@ async function viewExpiringAssets() {
                 const res  = await fetch(u.toString(), { cache: 'no-cache' });
                 const data = await res.json();
                 if (data.success) {
-                    localStorage.setItem('workvolt_setup_complete', 'true');
-                    localStorage.setItem('workvolt_main_sheet_id', _setupData.mainSheetId);
-                    if (_setupData.archiveSheetId) localStorage.setItem('workvolt_archive_sheet_id', _setupData.archiveSheetId);
-                    localStorage.setItem('_setup_admin_email', email);
+                    // Everything is stored server-side in GAS Script Properties.
+                    // We only keep the admin email briefly so the login field can be pre-filled.
+                    sessionStorage.setItem('_setup_admin_email', email);
                     setupGoTo(4);
                 } else throw new Error(data.error || 'Setup failed');
             } catch(e) {
@@ -11469,32 +11555,30 @@ async function viewExpiringAssets() {
         function setupFinish() {
             document.getElementById('setup-screen').classList.add('hidden');
             document.getElementById('login-screen').classList.remove('hidden');
-            const email = localStorage.getItem('_setup_admin_email') || '';
+            const email = sessionStorage.getItem('_setup_admin_email') || '';
+            sessionStorage.removeItem('_setup_admin_email');
             if (email) { const el = document.getElementById('login-email'); if (el) el.value = email; }
         }
 
         // ── Configuration panel (Settings → Configuration tab) ──
         async function loadConfigurationPanel() {
-            const apiUrl = localStorage.getItem('workvolt_api_url') || API_URL || '';
             const u = document.getElementById('cfg-api-url');
             const m = document.getElementById('cfg-main-sheet');
             const a = document.getElementById('cfg-archive-sheet');
-            if (u) u.value = apiUrl;
-            // Pull current sheet IDs from the server (source of truth)
+            // API URL is hardcoded — just display it read-only
+            if (u) { u.value = API_URL; u.readOnly = true; }
+            // Pull current sheet IDs from the server — single source of truth
             try {
-                const statusUrl = new URL(apiUrl || API_URL);
+                const statusUrl = new URL(API_URL);
                 statusUrl.searchParams.set('path', 'setup/status');
                 const res  = await fetch(statusUrl.toString(), { cache: 'no-cache' });
                 const data = await res.json();
                 if (m) m.value = data.main_sheet_id || '';
                 if (a) a.value = data.archive_sheet_id || '';
-                // Keep localStorage in sync
-                if (data.main_sheet_id)    localStorage.setItem('workvolt_main_sheet_id', data.main_sheet_id);
-                if (data.archive_sheet_id) localStorage.setItem('workvolt_archive_sheet_id', data.archive_sheet_id);
             } catch(_) {
-                // Fallback to localStorage if server unreachable
-                if (m) m.value = localStorage.getItem('workvolt_main_sheet_id') || '';
-                if (a) a.value = localStorage.getItem('workvolt_archive_sheet_id') || '';
+                // Server unreachable — fields stay blank
+                if (m) m.value = '';
+                if (a) a.value = '';
             }
         }
 
@@ -11515,10 +11599,7 @@ async function viewExpiringAssets() {
             btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-1"></i>Saving...';
 
             try {
-                // Update API URL locally first
-                if (newUrl) { API_URL = newUrl; localStorage.setItem('workvolt_api_url', newUrl); }
-
-                // Push sheet ID changes to GAS Script Properties
+                // Push sheet ID changes to GAS Script Properties (server is the only store)
                 if (mainId || archId !== undefined) {
                     const data = await apiCall('admin/update-config', {
                         main_sheet_id: mainId || undefined,
@@ -11526,10 +11607,6 @@ async function viewExpiringAssets() {
                     });
                     if (data.error) throw new Error(data.error);
                 }
-
-                // Save to localStorage
-                if (mainId) localStorage.setItem('workvolt_main_sheet_id', mainId);
-                localStorage.setItem('workvolt_archive_sheet_id', archId);
 
                 okDiv.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Configuration saved successfully!';
                 okDiv.classList.remove('hidden');
@@ -11545,62 +11622,57 @@ async function viewExpiringAssets() {
 
         window.onload = async () => {
 
-            // ── If we have any API URL (hardcoded or cached), go straight to the server ──
-            if (API_URL) {
-                localStorage.setItem('workvolt_api_url', API_URL); // keep cache in sync
+            // ── Step 1: Resolve API URL ───────────────────────────────────────────────
+            // Already resolved at top of script via ?gas= param or localStorage.
+            // If still empty, show a minimal connect screen (not the full setup wizard).
+            if (!API_URL) {
+                showConnectScreen();
+                return;
+            }
 
-                let setupComplete = false;
-                try {
-                    const statusUrl = new URL(API_URL);
-                    statusUrl.searchParams.set('path', 'setup/status');
-                    const res  = await fetch(statusUrl.toString(), { cache: 'no-cache' });
-                    const data = await res.json();
-                    setupComplete = data.setup_complete === true;
-                    if (setupComplete) localStorage.setItem('workvolt_setup_complete', 'true');
-                } catch (fetchErr) {
-                    // GAS temporarily unreachable — trust the local cache so existing
-                    // logged-in users aren't thrown to setup on a bad network moment
-                    console.warn('GAS unreachable on load, using cached setup flag.', fetchErr);
-                    setupComplete = localStorage.getItem('workvolt_setup_complete') === 'true';
-                }
+            // ── Step 2: Ask the server if setup is complete ───────────────────────────
+            let setupComplete = false;
+            try {
+                const statusUrl = new URL(API_URL);
+                statusUrl.searchParams.set('path', 'setup/status');
+                const res  = await fetch(statusUrl.toString(), { cache: 'no-cache' });
+                const data = await res.json();
+                setupComplete = data.setup_complete === true;
+            } catch (fetchErr) {
+                // GAS temporarily unreachable — don't lock users out
+                console.warn('GAS unreachable on load — proceeding to login.', fetchErr);
+                setupComplete = true;
+            }
 
-                if (!setupComplete) {
-                    // API URL is known but admin hasn't finished setup yet — show wizard
-                    // pre-filled with the URL so they only need to do steps 2-3
-                    showSetupScreen();
-                    return;
-                }
+            if (!setupComplete) {
+                // URL is known but first-time setup hasn't been done yet — show full wizard
+                showSetupScreen();
+                return;
+            }
 
-                // ── Setup confirmed — proceed with normal auth flow ────────────────
-                checkForResetToken();
+            // ── Step 3: Setup confirmed — normal auth flow ────────────────────────────
+            checkForResetToken();
 
-                if (currentToken) {
-                    const savedUser = localStorage.getItem('workvolt_user');
-                    if (savedUser) {
-                        try {
-                            currentUser = JSON.parse(savedUser);
-                            apiCall('users/me').then(() => {
-                                showApp();
-                            }).catch(() => {
-                                localStorage.removeItem('workvolt_token');
-                                localStorage.removeItem('workvolt_user');
-                                currentToken = null;
-                                currentUser = null;
-                            });
-                        } catch(e) {
+            if (currentToken) {
+                const savedUser = localStorage.getItem('workvolt_user');
+                if (savedUser) {
+                    try {
+                        currentUser = JSON.parse(savedUser);
+                        apiCall('users/me').then(() => {
+                            showApp();
+                        }).catch(() => {
                             localStorage.removeItem('workvolt_token');
                             localStorage.removeItem('workvolt_user');
-                        }
+                            currentToken = null;
+                            currentUser = null;
+                        });
+                    } catch(e) {
+                        localStorage.removeItem('workvolt_token');
+                        localStorage.removeItem('workvolt_user');
                     }
                 }
-                // If no token, the login screen is already visible — nothing more to do
-
-            } else {
-                // ── No API URL anywhere (HARDCODED_API_URL is blank AND localStorage
-                //    is empty) — this is a truly fresh deployment that hasn't been
-                //    pointed at a GAS yet.  Show the setup wizard. ──────────────────
-                showSetupScreen();
             }
+            // No token → login screen is already visible, nothing more to do
         };
     </script>
 </body>
