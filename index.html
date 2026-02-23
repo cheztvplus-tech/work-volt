@@ -6235,152 +6235,529 @@ function closeDropdownOutside(e) {
             }
         }
 
-            // Add loadWorkflows function
+            // ==================== WORKFLOW MODULE ====================
+
             async function loadWorkflows(container) {
               container.innerHTML = `
                 <div class="page-transition">
                   <div class="flex items-center justify-between mb-6">
-        <div>
-          <h2 class="text-2xl font-bold text-slate-900">Workflow Automation</h2>
-          <p class="text-slate-500">Create automated rules and triggers</p>
-        </div>
-        <button onclick="createWorkflowForm()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-          <i class="fas fa-plus mr-2"></i>New Workflow
-        </button>
-      </div>
-      
-      <div id="workflows-list" class="space-y-4">
-        <div class="flex items-center justify-center h-64">
-          <i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i>
-        </div>
-      </div>
-    </div>
-  `;
-  
-  await loadWorkflowsData();
-}
+                    <div>
+                      <h2 class="text-2xl font-bold text-slate-900">Workflow Automation</h2>
+                      <p class="text-slate-500">Automate tasks, alerts, and data updates with rules</p>
+                    </div>
+                    <button onclick="openWorkflowModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                      <i class="fas fa-plus mr-2"></i>New Workflow
+                    </button>
+                  </div>
+                  <div id="workflows-list" class="space-y-4">
+                    <div class="flex items-center justify-center h-64">
+                      <i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i>
+                    </div>
+                  </div>
+                </div>
+              `;
+              await loadWorkflowsData();
+            }
 
-async function loadWorkflowsData() {
-  try {
-    const data = await apiCall('workflows');
-    const workflows = data.workflows || [];
-    
-    if (workflows.length === 0) {
-      document.getElementById('workflows-list').innerHTML = `
-        <div class="text-center py-12 bg-white rounded-xl border border-slate-200">
-          <i class="fas fa-robot text-4xl text-slate-300 mb-4"></i>
-          <p class="text-slate-500">No workflows configured yet</p>
-          <button onclick="createWorkflowForm()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Create your first workflow</button>
-        </div>
-      `;
-      return;
-    }
-    
-    const triggerLabels = {
-      'on_edit': 'When data changes',
-      'on_form_submit': 'On form submission',
-      'time_based': 'Scheduled',
-      'webhook': 'External webhook'
-    };
-    
-    const actionLabels = {
-      'notification': 'In-app Notification',
-      'webhook': 'Call Webhook',
-      'update_sheet': 'Update Sheet',
-      'create_task': 'Create Task',
-      'slack': 'Slack Message'
-    };
-    
-    const html = workflows.map(wf => `
-      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 ${wf.active ? '' : 'opacity-60'}">
-        <div class="flex items-start justify-between mb-4">
-          <div>
-            <div class="flex items-center gap-2 mb-1">
-              <h3 class="font-bold text-slate-900">${wf.name}</h3>
-              ${wf.active ? 
-                '<span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">Active</span>' : 
-                '<span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full">Paused</span>'}
-            </div>
-            <p class="text-sm text-slate-500">${wf.description || 'No description'}</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <button onclick="toggleWorkflow('${wf.workflow_id}', ${!wf.active})" class="p-2 ${wf.active ? 'text-green-600 hover:bg-green-50' : 'text-slate-400 hover:bg-slate-100'} rounded-lg" title="${wf.active ? 'Pause' : 'Activate'}">
-              <i class="fas ${wf.active ? 'fa-pause' : 'fa-play'}"></i>
-            </button>
-            <button onclick="testWorkflow('${wf.workflow_id}')" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Test">
-              <i class="fas fa-vial"></i>
-            </button>
-            <button onclick="editWorkflow('${wf.workflow_id}')" class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg" title="Edit">
-              <i class="fas fa-pen"></i>
-            </button>
-            <button onclick="deleteWorkflow('${wf.workflow_id}')" class="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Delete">
-              <i class="fas fa-trash"></i>
-            </button>
-          </div>
-        </div>
-        
-        <div class="flex items-center gap-4 text-sm mb-3">
-          <div class="flex items-center gap-2 text-slate-600">
-            <i class="fas fa-bolt text-amber-500"></i>
-            <span>${triggerLabels[wf.trigger_type] || wf.trigger_type}</span>
-          </div>
-          <i class="fas fa-arrow-right text-slate-300"></i>
-          <div class="flex items-center gap-2 text-slate-600">
-            <i class="fas fa-cog text-blue-500"></i>
-            <span>${actionLabels[wf.action_type] || wf.action_type}</span>
-          </div>
-        </div>
-        
-        <div class="flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-100">
-          <span>Runs: ${wf.run_count || 0}</span>
-          <span>Last run: ${wf.last_run || 'Never'}</span>
-        </div>
-      </div>
-    `).join('');
-    
-    document.getElementById('workflows-list').innerHTML = html;
-  } catch (e) {
-    document.getElementById('workflows-list').innerHTML = 
-      `<div class="text-center py-12 text-red-500">${e.message || 'Failed to load workflows'}</div>`;
-  }
-}
+            async function loadWorkflowsData() {
+              try {
+                const data = await apiCall('workflows');
+                const workflows = data.workflows || [];
 
-// Add form functions similar to your other modules...
-function createWorkflowForm() {
-  // Implementation for workflow creation form
-  showToast('Workflow creation form - implement based on your modal pattern');
-}
+                if (workflows.length === 0) {
+                  document.getElementById('workflows-list').innerHTML = `
+                    <div class="text-center py-16 bg-white rounded-xl border border-slate-200">
+                      <i class="fas fa-robot text-5xl text-slate-200 mb-4"></i>
+                      <p class="text-slate-600 font-semibold mb-1">No workflows yet</p>
+                      <p class="text-sm text-slate-400 mb-5">Automate alerts, task creation, and data changes</p>
+                      <button onclick="openWorkflowModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                        Create your first workflow
+                      </button>
+                    </div>`;
+                  return;
+                }
 
-async function toggleWorkflow(id, active) {
-  try {
-    await apiCall('workflows/toggle', {workflow_id: id, active: active});
-    showToast(active ? 'Workflow activated' : 'Workflow paused');
-    loadWorkflowsData();
-  } catch (e) {
-    showToast(e.message || 'Failed to toggle workflow', 'error');
-  }
-}
+                const triggerLabels = {
+                  'on_edit': 'When data changes',
+                  'on_form_submit': 'On form submission',
+                  'time_based': 'Scheduled',
+                  'webhook': 'External webhook'
+                };
+                const triggerIcons = {
+                  'on_edit': 'fa-edit',
+                  'on_form_submit': 'fa-file-alt',
+                  'time_based': 'fa-clock',
+                  'webhook': 'fa-plug'
+                };
+                const actionLabels = {
+                  'notification': 'In-app Notification',
+                  'webhook': 'Call Webhook',
+                  'update_sheet': 'Update Sheet',
+                  'create_task': 'Create Task',
+                  'slack': 'Slack Message'
+                };
+                const actionIcons = {
+                  'notification': 'fa-bell',
+                  'webhook': 'fa-plug',
+                  'update_sheet': 'fa-table',
+                  'create_task': 'fa-tasks',
+                  'slack': 'fa-hashtag'
+                };
 
-async function testWorkflow(id) {
-  try {
-    await apiCall('workflows/test', {workflow_id: id});
-    showToast('Workflow test executed');
-  } catch (e) {
-    showToast(e.message || 'Test failed', 'error');
-  }
-}
+                const html = workflows.map(wf => `
+                  <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 transition-opacity ${wf.active ? '' : 'opacity-60'}" id="wf-card-${wf.workflow_id}">
+                    <div class="flex items-start justify-between mb-3">
+                      <div class="flex-1 min-w-0 mr-4">
+                        <div class="flex items-center gap-2 mb-1 flex-wrap">
+                          <h3 class="font-bold text-slate-900">${wf.name}</h3>
+                          <span class="px-2 py-0.5 text-xs rounded-full font-medium ${wf.active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
+                            ${wf.active ? 'Active' : 'Paused'}
+                          </span>
+                        </div>
+                        <p class="text-sm text-slate-500">${wf.description || 'No description'}</p>
+                      </div>
+                      <div class="flex items-center gap-1 flex-shrink-0">
+                        <button onclick="toggleWorkflow('${wf.workflow_id}', ${!wf.active})"
+                          class="p-2 rounded-lg transition-colors ${wf.active ? 'text-green-600 hover:bg-green-50' : 'text-slate-400 hover:bg-slate-100'}"
+                          title="${wf.active ? 'Pause workflow' : 'Activate workflow'}">
+                          <i class="fas ${wf.active ? 'fa-pause' : 'fa-play'}"></i>
+                        </button>
+                        <button onclick="testWorkflow('${wf.workflow_id}', '${wf.name.replace(/'/g, '')}')"
+                          class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Test workflow">
+                          <i class="fas fa-vial"></i>
+                        </button>
+                        <button onclick="openWorkflowModal('${wf.workflow_id}')"
+                          class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Edit workflow">
+                          <i class="fas fa-pen"></i>
+                        </button>
+                        <button onclick="deleteWorkflow('${wf.workflow_id}')"
+                          class="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete workflow">
+                          <i class="fas fa-trash"></i>
+                        </button>
+                      </div>
+                    </div>
 
-async function deleteWorkflow(id) {
-  if (!confirm('Delete this workflow?')) return;
-  try {
-    await apiCall('workflows', {method: 'DELETE', workflow_id: id});
-    showToast('Workflow deleted');
-    loadWorkflowsData();
-  } catch (e) {
-    showToast(e.message || 'Failed to delete', 'error');
-  }
-}
-        
+                    <div class="flex items-center gap-3 text-sm">
+                      <div class="flex items-center gap-2 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg">
+                        <i class="fas ${triggerIcons[wf.trigger_type] || 'fa-bolt'} text-xs"></i>
+                        <span>${triggerLabels[wf.trigger_type] || wf.trigger_type}</span>
+                      </div>
+                      <i class="fas fa-arrow-right text-slate-300 text-xs"></i>
+                      <div class="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg">
+                        <i class="fas ${actionIcons[wf.action_type] || 'fa-cog'} text-xs"></i>
+                        <span>${actionLabels[wf.action_type] || wf.action_type}</span>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center justify-between text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100">
+                      <span><i class="fas fa-play-circle mr-1"></i>Runs: ${wf.run_count || 0}</span>
+                      <span>Last run: ${wf.last_run || 'Never'}</span>
+                    </div>
+                  </div>
+                `).join('');
+
+                document.getElementById('workflows-list').innerHTML = html;
+              } catch (e) {
+                document.getElementById('workflows-list').innerHTML =
+                  `<div class="text-center py-12 bg-white rounded-xl border border-red-200">
+                    <i class="fas fa-exclamation-circle text-red-400 text-3xl mb-3"></i>
+                    <p class="text-red-600 font-medium">${e.message || 'Failed to load workflows'}</p>
+                  </div>`;
+              }
+            }
+
+            // ── Workflow Modal (Create + Edit) ───────────────────────────────
+            async function openWorkflowModal(workflowId = null) {
+              // If editing, fetch current data from already-loaded list
+              let wf = null;
+              if (workflowId) {
+                try {
+                  const data = await apiCall('workflows');
+                  wf = (data.workflows || []).find(w => w.workflow_id == workflowId);
+                } catch(e) {}
+              }
+
+              const isEdit = !!wf;
+              const modal = document.createElement('div');
+              modal.id = 'workflow-modal';
+              modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+              modal.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                  <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                    <h3 class="text-xl font-bold text-slate-900">${isEdit ? 'Edit Workflow' : 'New Workflow'}</h3>
+                    <button onclick="document.getElementById('workflow-modal').remove()" class="text-slate-400 hover:text-slate-600">
+                      <i class="fas fa-times text-lg"></i>
+                    </button>
+                  </div>
+                  <div class="p-6 space-y-5">
+
+                    <!-- Name -->
+                    <div>
+                      <label class="block text-sm font-medium text-slate-700 mb-1">Workflow Name <span class="text-red-500">*</span></label>
+                      <input type="text" id="wf-name" value="${wf ? wf.name : ''}"
+                        placeholder="e.g. Overdue Task Alert"
+                        class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                    </div>
+
+                    <!-- Description -->
+                    <div>
+                      <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                      <input type="text" id="wf-desc" value="${wf ? (wf.description || '') : ''}"
+                        placeholder="What does this workflow do?"
+                        class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                    </div>
+
+                    <!-- Trigger Type -->
+                    <div>
+                      <label class="block text-sm font-medium text-slate-700 mb-1">Trigger <span class="text-red-500">*</span></label>
+                      <select id="wf-trigger" onchange="wfUpdateTriggerConfig()" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                        <option value="time_based" ${wf && wf.trigger_type === 'time_based' ? 'selected' : ''}>⏰ Scheduled (Time-based)</option>
+                        <option value="on_edit" ${wf && wf.trigger_type === 'on_edit' ? 'selected' : ''}>✏️ When data changes (On Edit)</option>
+                        <option value="on_form_submit" ${wf && wf.trigger_type === 'on_form_submit' ? 'selected' : ''}>📋 On form submission</option>
+                        <option value="webhook" ${wf && wf.trigger_type === 'webhook' ? 'selected' : ''}>🔌 External webhook</option>
+                      </select>
+                    </div>
+
+                    <!-- Trigger Config (dynamic) -->
+                    <div id="wf-trigger-config"></div>
+
+                    <!-- Action Type -->
+                    <div>
+                      <label class="block text-sm font-medium text-slate-700 mb-1">Action <span class="text-red-500">*</span></label>
+                      <select id="wf-action" onchange="wfUpdateActionConfig()" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                        <option value="notification" ${wf && wf.action_type === 'notification' ? 'selected' : ''}>🔔 In-app Notification</option>
+                        <option value="create_task" ${wf && wf.action_type === 'create_task' ? 'selected' : ''}>✅ Create Task</option>
+                        <option value="update_sheet" ${wf && wf.action_type === 'update_sheet' ? 'selected' : ''}>📊 Update Sheet</option>
+                        <option value="webhook" ${wf && wf.action_type === 'webhook' ? 'selected' : ''}>🔌 Call Webhook</option>
+                        <option value="slack" ${wf && wf.action_type === 'slack' ? 'selected' : ''}>💬 Slack Message</option>
+                      </select>
+                    </div>
+
+                    <!-- Action Config (dynamic) -->
+                    <div id="wf-action-config"></div>
+
+                    <!-- Active toggle -->
+                    <div class="flex items-center gap-3">
+                      <input type="checkbox" id="wf-active" ${!wf || wf.active ? 'checked' : ''} class="w-4 h-4 accent-blue-600" />
+                      <label for="wf-active" class="text-sm font-medium text-slate-700">Active (run immediately when triggered)</label>
+                    </div>
+
+                    <!-- Error -->
+                    <div id="wf-error" class="hidden text-sm text-red-600 bg-red-50 p-3 rounded-lg"></div>
+                  </div>
+
+                  <div class="p-6 pt-0 flex gap-3">
+                    <button onclick="submitWorkflow(${isEdit ? "'" + workflowId + "'" : 'null'})"
+                      class="flex-1 bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 text-sm">
+                      ${isEdit ? 'Save Changes' : 'Create Workflow'}
+                    </button>
+                    <button onclick="document.getElementById('workflow-modal').remove()"
+                      class="flex-1 bg-slate-100 text-slate-700 py-2.5 rounded-lg font-medium hover:bg-slate-200 text-sm">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              `;
+              document.body.appendChild(modal);
+
+              // Populate config fields based on current selections
+              wfUpdateTriggerConfig(wf ? wf.trigger_config : null);
+              wfUpdateActionConfig(wf ? wf.action_config : null);
+
+              modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+            }
+
+            function wfUpdateTriggerConfig(existing = null) {
+              const type = document.getElementById('wf-trigger')?.value;
+              const container = document.getElementById('wf-trigger-config');
+              if (!container) return;
+
+              let html = '';
+              if (type === 'time_based') {
+                html = `
+                  <div class="bg-slate-50 rounded-lg p-4 space-y-3">
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Schedule Settings</p>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="block text-xs text-slate-600 mb-1">Frequency</label>
+                        <select id="wf-tc-freq" class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm">
+                          <option value="daily" ${existing?.frequency === 'daily' ? 'selected' : ''}>Daily</option>
+                          <option value="weekly" ${existing?.frequency === 'weekly' ? 'selected' : ''}>Weekly</option>
+                          <option value="monthly" ${existing?.frequency === 'monthly' ? 'selected' : ''}>Monthly</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="block text-xs text-slate-600 mb-1">Hour (0–23)</label>
+                        <input type="number" id="wf-tc-hour" min="0" max="23" value="${existing?.hour ?? 9}"
+                          class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                      </div>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-slate-600 mb-1">Condition</label>
+                      <select id="wf-tc-cond" class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm">
+                        <option value="none" ${(!existing?.condition_type || existing?.condition_type === 'none') ? 'selected' : ''}>Always run (no condition)</option>
+                        <option value="overdue_tasks" ${existing?.condition_type === 'overdue_tasks' ? 'selected' : ''}>Overdue tasks exist</option>
+                        <option value="unlogged_hours" ${existing?.condition_type === 'unlogged_hours' ? 'selected' : ''}>Missing timesheet hours</option>
+                        <option value="pending_invoices" ${existing?.condition_type === 'pending_invoices' ? 'selected' : ''}>Pending invoices overdue</option>
+                        <option value="payroll_due" ${existing?.condition_type === 'payroll_due' ? 'selected' : ''}>Payroll period ended</option>
+                        <option value="project_deadline" ${existing?.condition_type === 'project_deadline' ? 'selected' : ''}>Project deadline approaching</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-slate-600 mb-1">Days threshold (overdue/before)</label>
+                      <input type="number" id="wf-tc-days" min="0" value="${existing?.days_overdue ?? existing?.days_before ?? existing?.days_back ?? 1}"
+                        class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                    </div>
+                  </div>`;
+              } else if (type === 'on_edit') {
+                html = `
+                  <div class="bg-slate-50 rounded-lg p-4 space-y-3">
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Edit Trigger Settings</p>
+                    <div>
+                      <label class="block text-xs text-slate-600 mb-1">Sheet name to watch</label>
+                      <input type="text" id="wf-tc-sheet" value="${existing?.sheet_name || 'TASKS'}"
+                        class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" placeholder="e.g. TASKS" />
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="block text-xs text-slate-600 mb-1">Column number</label>
+                        <input type="number" id="wf-tc-col" value="${existing?.column || ''}"
+                          placeholder="e.g. 7 for status" class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-slate-600 mb-1">Condition</label>
+                        <select id="wf-tc-editcond" class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm">
+                          <option value="changes_to" ${existing?.condition === 'changes_to' ? 'selected' : ''}>Changes to</option>
+                          <option value="equals" ${existing?.condition === 'equals' ? 'selected' : ''}>Equals</option>
+                          <option value="not_equals" ${existing?.condition === 'not_equals' ? 'selected' : ''}>Does not equal</option>
+                          <option value="contains" ${existing?.condition === 'contains' ? 'selected' : ''}>Contains</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-slate-600 mb-1">Value to match</label>
+                      <input type="text" id="wf-tc-val" value="${existing?.value || ''}"
+                        placeholder="e.g. Done" class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                    </div>
+                  </div>`;
+              } else {
+                html = `<div class="bg-slate-50 rounded-lg p-3 text-sm text-slate-500">No additional configuration needed for this trigger type.</div>`;
+              }
+              container.innerHTML = html;
+            }
+
+            function wfUpdateActionConfig(existing = null) {
+              const type = document.getElementById('wf-action')?.value;
+              const container = document.getElementById('wf-action-config');
+              if (!container) return;
+
+              let html = '';
+              if (type === 'notification') {
+                html = `
+                  <div class="bg-slate-50 rounded-lg p-4 space-y-3">
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Notification Settings</p>
+                    <div>
+                      <label class="block text-xs text-slate-600 mb-1">Recipient User ID <span class="text-slate-400">(or {{assigned_to}})</span></label>
+                      <input type="text" id="wf-ac-uid" value="${existing?.user_id || '{{assigned_to}}'}"
+                        class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-slate-600 mb-1">Title</label>
+                      <input type="text" id="wf-ac-title" value="${existing?.title || ''}"
+                        placeholder="e.g. Task Overdue: {{task_title}}" class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-slate-600 mb-1">Message</label>
+                      <textarea id="wf-ac-msg" rows="3" placeholder="Use {{variable}} for dynamic values"
+                        class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm resize-none">${existing?.message || ''}</textarea>
+                    </div>
+                    <p class="text-xs text-slate-400">Variables: {{task_title}}, {{due_date}}, {{status}}, {{assigned_to}}, {{days_overdue}}</p>
+                  </div>`;
+              } else if (type === 'create_task') {
+                html = `
+                  <div class="bg-slate-50 rounded-lg p-4 space-y-3">
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Task Settings</p>
+                    <div>
+                      <label class="block text-xs text-slate-600 mb-1">Task Title</label>
+                      <input type="text" id="wf-ac-tasktitle" value="${existing?.title || ''}"
+                        placeholder="e.g. Follow up: {{task_title}}" class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="block text-xs text-slate-600 mb-1">Priority</label>
+                        <select id="wf-ac-pri" class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm">
+                          <option value="Low" ${existing?.priority === 'Low' ? 'selected' : ''}>Low</option>
+                          <option value="Medium" ${!existing?.priority || existing?.priority === 'Medium' ? 'selected' : ''}>Medium</option>
+                          <option value="High" ${existing?.priority === 'High' ? 'selected' : ''}>High</option>
+                          <option value="Urgent" ${existing?.priority === 'Urgent' ? 'selected' : ''}>Urgent</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="block text-xs text-slate-600 mb-1">Assign to (user_id)</label>
+                        <input type="text" id="wf-ac-assign" value="${existing?.assigned_to || ''}"
+                          placeholder="User ID or {{assigned_to}}" class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                      </div>
+                    </div>
+                  </div>`;
+              } else if (type === 'webhook') {
+                html = `
+                  <div class="bg-slate-50 rounded-lg p-4 space-y-3">
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Webhook Settings</p>
+                    <div>
+                      <label class="block text-xs text-slate-600 mb-1">URL <span class="text-red-500">*</span></label>
+                      <input type="url" id="wf-ac-url" value="${existing?.url || ''}"
+                        placeholder="https://hooks.example.com/..." class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-slate-600 mb-1">Method</label>
+                      <select id="wf-ac-method" class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm">
+                        <option value="POST" ${!existing?.method || existing?.method === 'POST' ? 'selected' : ''}>POST</option>
+                        <option value="GET" ${existing?.method === 'GET' ? 'selected' : ''}>GET</option>
+                      </select>
+                    </div>
+                  </div>`;
+              } else if (type === 'slack') {
+                html = `
+                  <div class="bg-slate-50 rounded-lg p-4 space-y-3">
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Slack Settings</p>
+                    <div>
+                      <label class="block text-xs text-slate-600 mb-1">Webhook URL <span class="text-red-500">*</span></label>
+                      <input type="url" id="wf-ac-slack-url" value="${existing?.url || ''}"
+                        placeholder="https://hooks.slack.com/services/..." class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-slate-600 mb-1">Message</label>
+                      <textarea id="wf-ac-slack-msg" rows="2" class="w-full px-2 py-1.5 border border-slate-300 rounded text-sm resize-none"
+                        placeholder="{{task_title}} is overdue!">${existing?.message || ''}</textarea>
+                    </div>
+                  </div>`;
+              } else {
+                html = `<div class="bg-slate-50 rounded-lg p-3 text-sm text-slate-500">No additional configuration needed.</div>`;
+              }
+              container.innerHTML = html;
+            }
+
+            async function submitWorkflow(editId = null) {
+              const name = document.getElementById('wf-name')?.value.trim();
+              const errorDiv = document.getElementById('wf-error');
+              if (!name) {
+                errorDiv.textContent = 'Workflow name is required.';
+                errorDiv.classList.remove('hidden');
+                return;
+              }
+
+              const triggerType = document.getElementById('wf-trigger').value;
+              const actionType = document.getElementById('wf-action').value;
+
+              // Build trigger config
+              let triggerConfig = {};
+              if (triggerType === 'time_based') {
+                const condType = document.getElementById('wf-tc-cond')?.value || 'none';
+                const days = parseInt(document.getElementById('wf-tc-days')?.value) || 1;
+                triggerConfig = {
+                  frequency: document.getElementById('wf-tc-freq')?.value || 'daily',
+                  hour: parseInt(document.getElementById('wf-tc-hour')?.value) || 9,
+                  minute: 0,
+                  condition_type: condType,
+                  days_overdue: days,
+                  days_before: days,
+                  days_back: days * 7
+                };
+              } else if (triggerType === 'on_edit') {
+                triggerConfig = {
+                  sheet_name: document.getElementById('wf-tc-sheet')?.value || 'TASKS',
+                  column: document.getElementById('wf-tc-col')?.value || '',
+                  condition: document.getElementById('wf-tc-editcond')?.value || 'changes_to',
+                  value: document.getElementById('wf-tc-val')?.value || ''
+                };
+              }
+
+              // Build action config
+              let actionConfig = {};
+              if (actionType === 'notification') {
+                actionConfig = {
+                  user_id: document.getElementById('wf-ac-uid')?.value || '{{assigned_to}}',
+                  title: document.getElementById('wf-ac-title')?.value || 'Workflow Alert',
+                  message: document.getElementById('wf-ac-msg')?.value || ''
+                };
+              } else if (actionType === 'create_task') {
+                actionConfig = {
+                  title: document.getElementById('wf-ac-tasktitle')?.value || 'Auto Task',
+                  priority: document.getElementById('wf-ac-pri')?.value || 'Medium',
+                  assigned_to: document.getElementById('wf-ac-assign')?.value || ''
+                };
+              } else if (actionType === 'webhook') {
+                actionConfig = {
+                  url: document.getElementById('wf-ac-url')?.value || '',
+                  method: document.getElementById('wf-ac-method')?.value || 'POST'
+                };
+              } else if (actionType === 'slack') {
+                actionConfig = {
+                  url: document.getElementById('wf-ac-slack-url')?.value || '',
+                  message: document.getElementById('wf-ac-slack-msg')?.value || ''
+                };
+              }
+
+              const payload = {
+                name,
+                description: document.getElementById('wf-desc')?.value.trim() || '',
+                trigger_type: triggerType,
+                trigger_config: JSON.stringify(triggerConfig),
+                action_type: actionType,
+                action_config: JSON.stringify(actionConfig),
+                active: document.getElementById('wf-active')?.checked ? 'true' : 'false'
+              };
+
+              try {
+                if (editId) {
+                  payload.workflow_id = editId;
+                  payload.method = 'PUT';
+                  await apiCall('workflows', payload);
+                  showToast('Workflow updated');
+                } else {
+                  payload.method = 'POST';
+                  await apiCall('workflows', payload);
+                  showToast('Workflow created!', 'success');
+                }
+                document.getElementById('workflow-modal')?.remove();
+                await loadWorkflowsData();
+              } catch(e) {
+                errorDiv.textContent = e.message || 'Failed to save workflow.';
+                errorDiv.classList.remove('hidden');
+              }
+            }
+
+            async function toggleWorkflow(id, active) {
+              try {
+                await apiCall('workflows/toggle', {workflow_id: id, active: active});
+                showToast(active ? 'Workflow activated' : 'Workflow paused');
+                await loadWorkflowsData();
+              } catch (e) {
+                showToast(e.message || 'Failed to toggle workflow', 'error');
+              }
+            }
+
+            async function testWorkflow(id, name) {
+              showToast('Running test for: ' + name + '…');
+              try {
+                const result = await apiCall('workflows/test', {workflow_id: id});
+                showToast(result.message || 'Workflow test executed successfully', 'success');
+              } catch (e) {
+                showToast('Test failed: ' + (e.message || 'Unknown error'), 'error');
+              }
+            }
+
+            async function deleteWorkflow(id) {
+              if (!confirm('Delete this workflow? This cannot be undone.')) return;
+              try {
+                await apiCall('workflows', {method: 'DELETE', workflow_id: id});
+                showToast('Workflow deleted');
+                await loadWorkflowsData();
+              } catch (e) {
+                showToast(e.message || 'Failed to delete workflow', 'error');
+              }
+            }
+
         function stopNotificationPolling() {
             if (notificationPollingInterval) {
                 clearInterval(notificationPollingInterval);
