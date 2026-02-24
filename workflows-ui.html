@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflows — Work Volt</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+    .fade-in { animation: fadeIn .2s ease forwards; }
+    .wf-card { transition: box-shadow .15s, transform .15s; }
+    .wf-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,.08); transform: translateY(-1px); }
+    #toast { position:fixed; bottom:1.25rem; left:50%; transform:translateX(-50%) translateY(60px);
+      background:#1e293b; color:#fff; padding:.5rem 1.1rem; border-radius:9999px;
+      font-size:.85rem; font-weight:500; transition:transform .25s; z-index:999; white-space:nowrap; }
+    #toast.show { transform:translateX(-50%) translateY(0); }
+    #toast.success { background:#16a34a; }
+    #toast.error   { background:#dc2626; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- Loading state shown until parent passes token -->
+<div id="loading" class="flex items-center justify-center h-screen">
+  <div class="text-center">
+    <i class="fas fa-circle-notch fa-spin text-3xl text-blue-500 mb-3"></i>
+    <p class="text-slate-400 text-sm">Connecting to Work Volt…</p>
+  </div>
+</div>
+
+<!-- Main app — hidden until token received -->
+<div id="app" class="hidden min-h-screen">
+
+  <!-- Header (only shown when opened standalone, not in iframe) -->
+  <div id="standalone-header" class="hidden bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <div class="w-7 h-7 rounded-lg bg-orange-500 flex items-center justify-center">
+        <i class="fas fa-robot text-white text-xs"></i>
+      </div>
+      <span class="font-semibold text-slate-800 text-sm">Workflows</span>
+    </div>
+    <button onclick="standaloneLogout()" class="text-xs text-slate-400 hover:text-red-500 transition-colors">
+      <i class="fas fa-sign-out-alt mr-1"></i>Sign out
+    </button>
+  </div>
+
+  <!-- Content -->
+  <main class="max-w-3xl mx-auto px-4 py-6">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h2 class="text-xl font-bold text-slate-900">Workflow Automation</h2>
+        <p class="text-slate-500 text-sm">Automate alerts, task creation, and data updates</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="init-btn" onclick="initDefaults()" class="hidden px-3 py-2 text-sm border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors">
+          <i class="fas fa-magic mr-1"></i>Load defaults
+        </button>
+        <button onclick="openModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm">
+          <i class="fas fa-plus mr-1.5"></i>New Workflow
+        </button>
+      </div>
+    </div>
+    <div id="list" class="space-y-3">
+      <div class="flex items-center justify-center h-40">
+        <i class="fas fa-circle-notch fa-spin text-2xl text-blue-400"></i>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Standalone login (only used when not in iframe) -->
+<div id="login" class="hidden min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+    <div class="text-center mb-2">
+      <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-orange-500 mb-3">
+        <i class="fas fa-robot text-white text-lg"></i>
+      </div>
+      <h1 class="text-xl font-bold text-slate-900">Workflows</h1>
+      <p class="text-slate-400 text-sm">Sign in with your Work Volt account</p>
+    </div>
+    <input id="login-url" type="url" placeholder="GAS Web App URL"
+      class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-400">
+    <input id="login-email" type="email" placeholder="Email"
+      class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-400">
+    <input id="login-pwd" type="password" placeholder="Password"
+      onkeydown="if(event.key==='Enter')standaloneLogin()"
+      class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-400">
+    <div id="login-err" class="hidden text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2"></div>
+    <button onclick="standaloneLogin()" class="w-full py-2.5 bg-orange-500 text-white rounded-xl font-semibold text-sm hover:bg-orange-600 transition-colors">
+      Sign In
+    </button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ─── State ────────────────────────────────────────────────────────────────
+  let GAS_URL = '', TOKEN = '', USER = null;
+  const TRIGGER_LABELS = { on_edit:'When data changes', on_form_submit:'On form submit', time_based:'Scheduled', webhook:'Webhook' };
+  const TRIGGER_ICONS  = { on_edit:'fa-edit', on_form_submit:'fa-file-alt', time_based:'fa-clock', webhook:'fa-plug' };
+  const ACTION_LABELS  = { notification:'Notification', webhook:'Webhook', update_sheet:'Update Sheet', create_task:'Create Task', slack:'Slack' };
+  const ACTION_ICONS   = { notification:'fa-bell', webhook:'fa-plug', update_sheet:'fa-table', create_task:'fa-tasks', slack:'fa-hashtag' };
+
+  // ─── Token bridge (iframe from Work Volt) ────────────────────────────────
+  window.addEventListener('message', e => {
+    if (e.data?.type === 'workvolt_token') {
+      GAS_URL = e.data.gas_url || GAS_URL;
+      TOKEN   = e.data.token;
+      USER    = e.data.user;
+      boot();
+    }
+  });
+  // Tell parent we're ready
+  if (window.parent !== window) window.parent.postMessage({ type: 'workvolt_workflows_ready' }, '*');
+
+  // ─── API ──────────────────────────────────────────────────────────────────
+  async function api(path, body = {}) {
+    const u = new URL(GAS_URL);
+    u.searchParams.set('path', path);
+    if (TOKEN) u.searchParams.set('token', TOKEN);
+    Object.entries(body).forEach(([k,v]) => { if (v !== undefined) u.searchParams.set(k, v); });
+    const r = await fetch(u.toString(), { cache: 'no-cache' });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    return d;
+  }
+
+  // ─── Toast ────────────────────────────────────────────────────────────────
+  let _tt;
+  function toast(msg, type = '') {
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.className = 'show' + (type ? ' ' + type : '');
+    clearTimeout(_tt); _tt = setTimeout(() => el.className = '', 3000);
+  }
+
+  // ─── Boot ─────────────────────────────────────────────────────────────────
+  function boot() {
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    // Show standalone header only when not embedded
+    if (window.parent === window) document.getElementById('standalone-header').classList.remove('hidden');
+    loadData();
+  }
+
+  // ─── Standalone login (direct URL access, not iframe) ────────────────────
+  async function standaloneLogin() {
+    const url = document.getElementById('login-url').value.trim();
+    const email = document.getElementById('login-email').value.trim();
+    const pwd   = document.getElementById('login-pwd').value;
+    const err   = document.getElementById('login-err');
+    err.classList.add('hidden');
+    if (!url || !email || !pwd) { err.textContent = 'All fields required.'; err.classList.remove('hidden'); return; }
+    try {
+      GAS_URL = url;
+      const d = await api('auth/login', { email, password: pwd });
+      TOKEN = d.token; USER = d.user;
+      localStorage.setItem('wf_gas', GAS_URL);
+      localStorage.setItem('wf_token', TOKEN);
+      localStorage.setItem('wf_user', JSON.stringify(USER));
+      document.getElementById('login').classList.add('hidden');
+      boot();
+    } catch(e) { err.textContent = e.message; err.classList.remove('hidden'); }
+  }
+
+  function standaloneLogout() {
+    TOKEN = ''; USER = null;
+    localStorage.removeItem('wf_token'); localStorage.removeItem('wf_user');
+    document.getElementById('app').classList.add('hidden');
+    document.getElementById('login').classList.remove('hidden');
+  }
+
+  // ─── Load workflows ───────────────────────────────────────────────────────
+  async function loadData() {
+    const list = document.getElementById('list');
+    list.innerHTML = '<div class="flex items-center justify-center h-40"><i class="fas fa-circle-notch fa-spin text-2xl text-blue-400"></i></div>';
+    try {
+      const { workflows: wfs = [] } = await api('workflows');
+      document.getElementById('init-btn').classList.toggle('hidden', wfs.length > 0);
+      if (!wfs.length) {
+        list.innerHTML = `<div class="text-center py-14 bg-white rounded-2xl border border-slate-200 fade-in">
+          <i class="fas fa-robot text-5xl text-slate-200 mb-3"></i>
+          <p class="font-semibold text-slate-700 mb-1">No workflows yet</p>
+          <p class="text-sm text-slate-400 mb-5">Automate alerts, tasks, and data changes</p>
+          <button onclick="openModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 mr-2">Create one</button>
+          <button onclick="initDefaults()" class="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50">Load defaults</button>
+        </div>`;
+        return;
+      }
+      list.innerHTML = wfs.map(w => `
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 wf-card fade-in ${w.active ? '' : 'opacity-60'}" id="wc-${w.workflow_id}">
+          <div class="flex items-start justify-between mb-2">
+            <div class="flex-1 min-w-0 mr-3">
+              <div class="flex items-center gap-2 flex-wrap mb-0.5">
+                <span class="font-semibold text-slate-900 text-sm">${esc(w.name)}</span>
+                <span class="text-xs px-2 py-0.5 rounded-full font-semibold ${w.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}">${w.active ? 'Active' : 'Paused'}</span>
+              </div>
+              ${w.description ? `<p class="text-xs text-slate-400">${esc(w.description)}</p>` : ''}
+            </div>
+            <div class="flex items-center gap-1 flex-shrink-0">
+              <button onclick="toggle('${w.workflow_id}',${!w.active})" title="${w.active ? 'Pause' : 'Activate'}"
+                class="w-7 h-7 flex items-center justify-center rounded-lg text-sm transition-colors ${w.active ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-400 hover:bg-slate-100'}">
+                <i class="fas ${w.active ? 'fa-pause' : 'fa-play'}"></i></button>
+              <button onclick="testWf('${w.workflow_id}','${esc(w.name)}')" title="Test"
+                class="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 transition-colors text-sm">
+                <i class="fas fa-vial"></i></button>
+              <button onclick="openModal('${w.workflow_id}')" title="Edit"
+                class="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition-colors text-sm">
+                <i class="fas fa-pen"></i></button>
+              <button onclick="del('${w.workflow_id}')" title="Delete"
+                class="w-7 h-7 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-50 transition-colors text-sm">
+                <i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 text-xs flex-wrap">
+            <span class="flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-1 rounded-lg font-medium">
+              <i class="fas ${TRIGGER_ICONS[w.trigger_type] || 'fa-bolt'}"></i> ${TRIGGER_LABELS[w.trigger_type] || w.trigger_type}</span>
+            <i class="fas fa-arrow-right text-slate-200"></i>
+            <span class="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded-lg font-medium">
+              <i class="fas ${ACTION_ICONS[w.action_type] || 'fa-cog'}"></i> ${ACTION_LABELS[w.action_type] || w.action_type}</span>
+          </div>
+          <div class="flex justify-between text-xs text-slate-300 mt-2 pt-2 border-t border-slate-100">
+            <span>Runs: ${w.run_count || 0}</span><span>Last: ${w.last_run || 'Never'}</span>
+          </div>
+        </div>`).join('');
+    } catch(e) {
+      list.innerHTML = `<div class="text-center py-12 bg-white rounded-2xl border border-red-100 fade-in">
+        <i class="fas fa-exclamation-circle text-red-300 text-2xl mb-2"></i>
+        <p class="text-red-400 text-sm">${e.message}</p>
+        <button onclick="loadData()" class="mt-2 text-sm text-blue-500 hover:underline">Retry</button></div>`;
+    }
+  }
+
+  // ─── Actions ─────────────────────────────────────────────────────────────
+  async function toggle(id, active) {
+    try { await api('workflows/toggle', {workflow_id:id, active}); toast(active ? 'Activated' : 'Paused', active ? 'success' : ''); loadData(); }
+    catch(e) { toast(e.message, 'error'); }
+  }
+  async function testWf(id, name) {
+    toast('Testing: ' + name + '…');
+    try { const r = await api('workflows/test', {workflow_id:id}); toast(r.message || 'Test done', 'success'); }
+    catch(e) { toast(e.message, 'error'); }
+  }
+  async function del(id) {
+    if (!confirm('Delete this workflow?')) return;
+    try { await api('workflows', {method:'DELETE', workflow_id:id}); toast('Deleted'); loadData(); }
+    catch(e) { toast(e.message, 'error'); }
+  }
+  async function initDefaults() {
+    if (!confirm('Load 5 example workflows?')) return;
+    try { const r = await api('workflows/init'); toast(r.message || 'Defaults loaded', 'success'); loadData(); }
+    catch(e) { toast(e.message, 'error'); }
+  }
+
+  // ─── Modal ────────────────────────────────────────────────────────────────
+  async function openModal(wfId = null) {
+    let wf = null;
+    if (wfId) { try { wf = ((await api('workflows')).workflows || []).find(w => w.workflow_id == wfId); } catch(e){} }
+    const isEdit = !!wf;
+    const m = document.createElement('div');
+    m.id = 'wf-modal';
+    m.className = 'fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4';
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between p-5 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
+          <h3 class="font-bold text-slate-900">${isEdit ? 'Edit' : 'New'} Workflow</h3>
+          <button onclick="document.getElementById('wf-modal').remove()" class="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
+            <i class="fas fa-times text-sm"></i></button>
+        </div>
+        <div class="p-5 space-y-4">
+          ${field('Workflow Name *','wf-name',`<input type="text" id="wf-name" value="${esc(wf?.name||'')}" placeholder="e.g. Overdue Task Alert" class="${inp}">`)}
+          ${field('Description','wf-desc',`<input type="text" id="wf-desc" value="${esc(wf?.description||'')}" placeholder="What does this do?" class="${inp}">`)}
+          ${field('Trigger *','wf-trigger',`<select id="wf-trigger" onchange="renderTrigCfg()" class="${sel}">
+            ${opt('time_based','⏰ Scheduled',wf?.trigger_type)}
+            ${opt('on_edit','✏️ When data changes',wf?.trigger_type)}
+            ${opt('on_form_submit','📋 On form submit',wf?.trigger_type)}
+            ${opt('webhook','🔌 Webhook',wf?.trigger_type)}
+          </select>`)}
+          <div id="trig-cfg"></div>
+          ${field('Action *','wf-action',`<select id="wf-action" onchange="renderActCfg()" class="${sel}">
+            ${opt('notification','🔔 Notification',wf?.action_type)}
+            ${opt('create_task','✅ Create Task',wf?.action_type)}
+            ${opt('update_sheet','📊 Update Sheet',wf?.action_type)}
+            ${opt('webhook','🔌 Webhook',wf?.action_type)}
+            ${opt('slack','💬 Slack',wf?.action_type)}
+          </select>`)}
+          <div id="act-cfg"></div>
+          <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input type="checkbox" id="wf-active" ${!wf || wf.active ? 'checked' : ''} class="w-4 h-4 accent-blue-600 rounded">
+            Active — run when triggered
+          </label>
+          <div id="wf-err" class="hidden text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2"></div>
+        </div>
+        <div class="p-5 pt-0 flex gap-3">
+          <button onclick="submitWf(${isEdit ? `'${wfId}'` : 'null'})"
+            class="flex-1 bg-blue-600 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-blue-700 transition-colors">
+            ${isEdit ? 'Save Changes' : 'Create Workflow'}</button>
+          <button onclick="document.getElementById('wf-modal').remove()"
+            class="flex-1 bg-slate-100 text-slate-700 py-2.5 rounded-xl font-medium text-sm hover:bg-slate-200 transition-colors">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    renderTrigCfg(wf?.trigger_config);
+    renderActCfg(wf?.action_config);
+  }
+
+  // Helpers for modal markup
+  const inp = 'w-full px-3 py-2 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-400';
+  const sel = inp + ' bg-white';
+  const sml = 'w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-400';
+  const smlSel = sml + ' bg-white';
+  function field(label, id, control) { return `<div><label class="block text-sm font-medium text-slate-700 mb-1">${label}</label>${control}</div>`; }
+  function opt(val, label, cur) { return `<option value="${val}" ${val === cur ? 'selected' : ''}>${label}</option>`; }
+  function sField(label, control) { return `<div><label class="block text-xs font-medium text-slate-600 mb-1">${label}</label>${control}</div>`; }
+  function box(title, inner) { return `<div class="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-100"><p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">${title}</p>${inner}</div>`; }
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function renderTrigCfg(ex = null) {
+    const type = document.getElementById('wf-trigger')?.value;
+    const el   = document.getElementById('trig-cfg');
+    if (!el) return;
+    if (type === 'time_based') {
+      el.innerHTML = box('Schedule', `
+        <div class="grid grid-cols-2 gap-3">
+          ${sField('Frequency', `<select id="wf-tc-freq" class="${smlSel}">
+            ${['daily','weekly','monthly'].map(f => `<option value="${f}" ${ex?.frequency===f?'selected':''}>${f.charAt(0).toUpperCase()+f.slice(1)}</option>`).join('')}
+          </select>`)}
+          ${sField('Hour (0–23)', `<input type="number" id="wf-tc-hour" min="0" max="23" value="${ex?.hour??9}" class="${sml}">`)}
+        </div>
+        ${sField('Condition', `<select id="wf-tc-cond" class="${smlSel}">
+          ${[['none','Always run'],['overdue_tasks','Overdue tasks'],['unlogged_hours','Missing timesheet hours'],
+            ['pending_invoices','Pending invoices'],['payroll_due','Payroll period ended'],['project_deadline','Project deadline']
+          ].map(([v,l]) => `<option value="${v}" ${ex?.condition_type===v?'selected':''}>${l}</option>`).join('')}
+        </select>`)}
+        ${sField('Days threshold', `<input type="number" id="wf-tc-days" min="0" value="${ex?.days_overdue??ex?.days_before??ex?.days_back??1}" class="${sml}">`)}
+      `);
+    } else if (type === 'on_edit') {
+      el.innerHTML = box('Edit Trigger', `
+        ${sField('Sheet to watch', `<input type="text" id="wf-tc-sheet" value="${esc(ex?.sheet_name||'TASKS')}" class="${sml}">`)}
+        <div class="grid grid-cols-2 gap-3">
+          ${sField('Column #', `<input type="number" id="wf-tc-col" value="${ex?.column||''}" placeholder="e.g. 7" class="${sml}">`)}
+          ${sField('Condition', `<select id="wf-tc-editcond" class="${smlSel}">
+            ${[['changes_to','Changes to'],['equals','Equals'],['not_equals','Not equal'],['contains','Contains']]
+              .map(([v,l]) => `<option value="${v}" ${ex?.condition===v?'selected':''}>${l}</option>`).join('')}
+          </select>`)}
+        </div>
+        ${sField('Value', `<input type="text" id="wf-tc-val" value="${esc(ex?.value||'')}" placeholder="e.g. Done" class="${sml}">`)}
+      `);
+    } else {
+      el.innerHTML = `<p class="text-xs text-slate-400 bg-slate-50 px-3 py-2 rounded-lg">No additional config needed.</p>`;
+    }
+  }
+
+  function renderActCfg(ex = null) {
+    const type = document.getElementById('wf-action')?.value;
+    const el   = document.getElementById('act-cfg');
+    if (!el) return;
+    if (type === 'notification') {
+      el.innerHTML = box('Notification', `
+        ${sField('Recipient User ID', `<input type="text" id="wf-ac-uid" value="${esc(ex?.user_id||'{{assigned_to}}')}" class="${sml}">`)}
+        ${sField('Title', `<input type="text" id="wf-ac-title" value="${esc(ex?.title||'')}" placeholder="Task Overdue: {{task_title}}" class="${sml}">`)}
+        ${sField('Message', `<textarea id="wf-ac-msg" rows="2" class="${sml} resize-none">${esc(ex?.message||'')}</textarea>`)}
+        <p class="text-xs text-slate-400">Use: {{task_title}} {{due_date}} {{status}} {{assigned_to}} {{days_overdue}}</p>
+      `);
+    } else if (type === 'create_task') {
+      el.innerHTML = box('Create Task', `
+        ${sField('Task Title', `<input type="text" id="wf-ac-ttitle" value="${esc(ex?.title||'')}" placeholder="Follow up: {{task_title}}" class="${sml}">`)}
+        <div class="grid grid-cols-2 gap-3">
+          ${sField('Priority', `<select id="wf-ac-pri" class="${smlSel}">${['Low','Medium','High','Urgent'].map(p=>`<option ${ex?.priority===p?'selected':''}>${p}</option>`).join('')}</select>`)}
+          ${sField('Assign to', `<input type="text" id="wf-ac-assign" value="${esc(ex?.assigned_to||'')}" placeholder="User ID" class="${sml}">`)}
+        </div>
+      `);
+    } else if (type === 'webhook' || type === 'slack') {
+      el.innerHTML = box(type === 'slack' ? 'Slack' : 'Webhook', `
+        ${sField('Webhook URL', `<input type="url" id="wf-ac-url" value="${esc(ex?.webhook_url||ex?.url||'')}" placeholder="https://hooks.example.com/..." class="${sml}">`)}
+        ${sField('Message / Payload', `<textarea id="wf-ac-msg2" rows="2" class="${sml} resize-none">${esc(ex?.message||'')}</textarea>`)}
+      `);
+    } else {
+      el.innerHTML = `<p class="text-xs text-slate-400 bg-slate-50 px-3 py-2 rounded-lg">No additional config needed.</p>`;
+    }
+  }
+
+  async function submitWf(editId = null) {
+    const name   = document.getElementById('wf-name')?.value.trim();
+    const errDiv = document.getElementById('wf-err');
+    errDiv.classList.add('hidden');
+    if (!name) { errDiv.textContent = 'Name is required.'; errDiv.classList.remove('hidden'); return; }
+
+    const tType = document.getElementById('wf-trigger').value;
+    const aType = document.getElementById('wf-action').value;
+    let tCfg = {}, aCfg = {};
+
+    if (tType === 'time_based') {
+      const days = parseInt(document.getElementById('wf-tc-days')?.value) || 1;
+      tCfg = { frequency: document.getElementById('wf-tc-freq')?.value||'daily',
+        hour: parseInt(document.getElementById('wf-tc-hour')?.value)||9, minute:0,
+        condition_type: document.getElementById('wf-tc-cond')?.value||'none',
+        days_overdue: days, days_before: days, days_back: days*7 };
+    } else if (tType === 'on_edit') {
+      tCfg = { sheet_name: document.getElementById('wf-tc-sheet')?.value||'TASKS',
+        column: document.getElementById('wf-tc-col')?.value||'',
+        condition: document.getElementById('wf-tc-editcond')?.value||'changes_to',
+        value: document.getElementById('wf-tc-val')?.value||'' };
+    }
+
+    if (aType === 'notification') {
+      aCfg = { user_id: document.getElementById('wf-ac-uid')?.value||'{{assigned_to}}',
+        title: document.getElementById('wf-ac-title')?.value||'', message: document.getElementById('wf-ac-msg')?.value||'' };
+    } else if (aType === 'create_task') {
+      aCfg = { title: document.getElementById('wf-ac-ttitle')?.value||'Auto Task',
+        priority: document.getElementById('wf-ac-pri')?.value||'Medium', assigned_to: document.getElementById('wf-ac-assign')?.value||'' };
+    } else if (aType === 'webhook' || aType === 'slack') {
+      aCfg = { webhook_url: document.getElementById('wf-ac-url')?.value||'', url: document.getElementById('wf-ac-url')?.value||'',
+        message: document.getElementById('wf-ac-msg2')?.value||'' };
+    }
+
+    const payload = { name, description: document.getElementById('wf-desc')?.value.trim()||'',
+      trigger_type: tType, trigger_config: JSON.stringify(tCfg),
+      action_type: aType, action_config: JSON.stringify(aCfg),
+      active: document.getElementById('wf-active')?.checked ? 'true' : 'false',
+      method: editId ? 'PUT' : 'POST' };
+    if (editId) payload.workflow_id = editId;
+
+    try {
+      await api('workflows', payload);
+      toast(editId ? 'Workflow updated' : 'Workflow created!', 'success');
+      document.getElementById('wf-modal')?.remove();
+      loadData();
+    } catch(e) { errDiv.textContent = e.message||'Failed.'; errDiv.classList.remove('hidden'); }
+  }
+
+  // ─── On load — check for standalone saved session ─────────────────────────
+  window.addEventListener('load', () => {
+    // If opened directly (not iframe), check saved credentials
+    if (window.parent === window) {
+      const savedGas   = localStorage.getItem('wf_gas');
+      const savedToken = localStorage.getItem('wf_token');
+      const savedUser  = localStorage.getItem('wf_user');
+      if (savedGas && savedToken && savedUser) {
+        GAS_URL = savedGas; TOKEN = savedToken; USER = JSON.parse(savedUser);
+        document.getElementById('loading').classList.add('hidden');
+        boot();
+      } else {
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('login').classList.remove('hidden');
+      }
+    }
+    // If in iframe, wait for postMessage from parent (already set up above)
+  });
+</script>
+</body>
+</html>
