@@ -1089,11 +1089,13 @@ body.dropdown-open {
     for(let i = 0; i <= retries; i++) {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000); // Increased to 15s
+            const timeoutId = setTimeout(() => controller.abort(), 20000);
             
+            // GAS Web Apps redirect to script.googleusercontent.com — must use
+            // redirect:'follow' without mode:'cors' to handle that redirect correctly.
             const response = await fetch(url.toString(), {
-                method: 'GET', 
-                mode: 'cors', 
+                method: 'GET',
+                redirect: 'follow',
                 cache: 'no-cache',
                 signal: controller.signal
             });
