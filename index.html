@@ -1078,87 +1078,55 @@ body.dropdown-open {
                       financials: null, crm: null, assets: null, lastFetch: {} };
         }
 
-            async function apiCall(path, params = {}, retries = 2) {
-    const url = new URL(API_URL);
-    url.searchParams.append('path', path);
-    if(currentToken) url.searchParams.append('token', currentToken);
-    for(let key in params) {
-        if(params[key] !== undefined && params[key] !== null) url.searchParams.append(key, params[key]);
-    }
-    let lastError;
-    for(let i = 0; i <= retries; i++) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000); // Increased to 15s
-            
-            const response = await fetch(url.toString(), {
-                method: 'GET', 
-                mode: 'cors', 
-                cache: 'no-cache',
-                signal: controller.signal
-            });
-            
-            clearTimeout(timeoutId);
-            
-            // Handle HTTP 401/403 specifically as auth errors
-            if(response.status === 401 || response.status === 403) {
-                throw new Error('TOKEN_INVALID');
-            }
-            
-            if(!response.ok) {
-                // Don't logout for server errors (500, 502, etc), just retry
-                if(response.status >= 500) {
-                    throw new Error('Server error: ' + response.status);
+            // JSONP — bypasses GAS CORS redirect. fetch() fails from external
+            // origins because GAS redirects to script.googleusercontent.com without
+            // Access-Control-Allow-Origin. Script tags are not subject to CORS.
+            function apiCall(path, params = {}, retries = 2) {
+              return new Promise((resolve, reject) => {
+                const cbName = '__wvcb_' + Date.now() + '_' + Math.floor(Math.random()*1e6);
+                const url = new URL(API_URL);
+                url.searchParams.set('path', path);
+                url.searchParams.set('callback', cbName);
+                if (currentToken) url.searchParams.set('token', currentToken);
+                for (const key in params) {
+                  if (params[key] !== undefined && params[key] !== null)
+                    url.searchParams.set(key, params[key]);
                 }
-                throw new Error('HTTP ' + response.status);
-            }
-            
-            const text = await response.text();
-            if(!text || text.trim() === '') throw new Error('Empty response');
-            
-            let data;
-            try {
-                data = JSON.parse(text);
-            } catch(e) {
-                throw new Error('Invalid JSON: ' + text.substring(0, 100));
-            }
-            
-            // Only logout for specific auth error codes from GAS
-            if(data.error && (data.code === 'TOKEN_INVALID' || data.error === 'Unauthorized' || data.error === 'TOKEN_INVALID')) {
-                throw new Error('TOKEN_INVALID');
-            }
-            
-            if(data.error) throw new Error(data.error);
-            return data;
-        } catch(err) {
-            lastError = err;
-            
-            // Handle abort/timeout - don't logout, just retry
-            if(err.name === 'AbortError') {
-                lastError = new Error('Request timeout - please try again');
-                // Don't logout on timeout, just retry
-            }
-            // Only logout for explicit auth errors, not network errors or server errors
-            else if(err.message === 'TOKEN_INVALID' || err.message === 'Unauthorized') {
-                // Only logout if we're not in the middle of a login attempt
-                if(path !== 'auth/login') {
-                    localStorage.removeItem('workvolt_token');
-                    localStorage.removeItem('workvolt_user');
-                    sessionStorage.removeItem('lastModule');
-                    currentToken = null;
-                    currentUser = null;
-                    document.getElementById('app-screen').classList.add('hidden');
-                    document.getElementById('login-screen').classList.remove('hidden');
-                    showToast('Session expired. Please log in again.', 'error');
-                    throw new Error('Session expired');
+                let attempts = 0;
+                function attempt() {
+                  const script = document.createElement('script');
+                  let settled = false;
+                  const timer = setTimeout(() => {
+                    if (settled) return; settled = true; cleanup();
+                    if (attempts < retries) { attempts++; attempt(); }
+                    else reject(new Error('Request timed out — check your GAS URL'));
+                  }, 20000);
+                  window[cbName] = function(data) {
+                    if (settled) return; settled = true; cleanup();
+                    if (data.code === 'TOKEN_INVALID' || (data.error === 'Unauthorized' && path !== 'auth/login')) {
+                      localStorage.removeItem('workvolt_token'); localStorage.removeItem('workvolt_user');
+                      sessionStorage.removeItem('lastModule');
+                      currentToken = null; currentUser = null;
+                      document.getElementById('app-screen').classList.add('hidden');
+                      document.getElementById('login-screen').classList.remove('hidden');
+                      showToast('Session expired. Please log in again.', 'error');
+                      reject(new Error('Session expired')); return;
+                    }
+                    if (data.error) { reject(new Error(data.error)); return; }
+                    resolve(data);
+                  };
+                  script.onerror = function() {
+                    if (settled) return; settled = true; cleanup();
+                    if (attempts < retries) { attempts++; attempt(); }
+                    else reject(new Error('Cannot reach GAS — check the URL and deployment settings'));
+                  };
+                  function cleanup() { clearTimeout(timer); script.remove(); delete window[cbName]; }
+                  script.src = url.toString();
+                  document.head.appendChild(script);
                 }
+                attempt();
+              });
             }
-            
-            if(i < retries) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-        }
-    }
-    throw lastError || new Error('Network error - please refresh');
-}
 
         // Login with timeout protection
 
