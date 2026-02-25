@@ -300,7 +300,7 @@
   //  CONFIG & STATE
   // ─────────────────────────────────────────────
   let API_URL      = ''; // Will be set when Google Sheet is connected
-  let currentUser  = { name: 'Demo User', email: 'demo@workvolt.app', role: 'SuperAdmin' };
+  let currentUser  = { user_id: '00000000-demo-0000-0000-000000000000', name: 'Demo User', email: 'demo@workvolt.app', role: 'SuperAdmin' };
   let currentToken = 'demo-token';
   let _setupData   = {};
   let _notifPollTimer = null;
@@ -455,7 +455,7 @@
 
   function forceLogout(msg) {
     currentToken = 'demo-token';
-    currentUser  = { name: 'Demo User', email: 'demo@workvolt.app', role: 'SuperAdmin' };
+    currentUser  = { user_id: '00000000-demo-0000-0000-000000000000', name: 'Demo User', email: 'demo@workvolt.app', role: 'SuperAdmin' };
     stopNotificationPolling();
     document.getElementById('app-screen').classList.add('hidden');
     if (msg) showToast(msg, 'error');
