@@ -355,14 +355,15 @@ window.WorkVoltPages['settings'] = function(container) {
     var btnLabel  = isEdit ? '<i class="fas fa-save text-sm"></i> Save Changes' : '<i class="fas fa-user-plus text-sm"></i> Create User';
     var val       = function(f) { return isEdit && user[f] ? String(user[f]).replace(/"/g, '&quot;') : ''; };
     var roles     = ['SuperAdmin', 'Admin', 'Manager', 'Employee', 'Contractor'];
-    var payTypes  = ['', 'hourly', 'salary'];
+    var payTypes  = ['', 'hourly', 'salary', 'pay_per_task'];
 
     var roleOpts = roles.map(function(r) {
       return '<option value="' + r + '"' + (val('role') === r ? ' selected' : '') + '>' + r + '</option>';
     }).join('');
 
+    var payTypeLabels = { '': '— Select —', 'hourly': 'Hourly', 'salary': 'Salary', 'pay_per_task': 'Pay Per Task' };
     var payOpts = payTypes.map(function(p) {
-      return '<option value="' + p + '"' + (val('pay_type') === p ? ' selected' : '') + '>' + (p || '— Select —') + '</option>';
+      return '<option value="' + p + '"' + (val('pay_type') === p ? ' selected' : '') + '>' + payTypeLabels[p] + '</option>';
     }).join('');
 
     var passwordField = !isEdit
