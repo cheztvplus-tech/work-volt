@@ -67,7 +67,7 @@ window.WorkVoltPages['dashboard'] = function(container) {
     <div class="min-h-full bg-slate-50 fade-in">
 
       <!-- ══ HERO WELCOME ══════════════════════════════════════════════ -->
-      <div class="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 px-6 md:px-10 pt-10 pb-20">
+      <div class="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 px-6 md:px-10 pt-10 pb-6">
 
         <!-- Background glow blobs -->
         <div class="absolute inset-0 pointer-events-none">
@@ -125,7 +125,7 @@ window.WorkVoltPages['dashboard'] = function(container) {
       </div>
 
       <!-- ══ MAIN CONTENT ══════════════════════════════════════════════ -->
-      <div class="max-w-5xl mx-auto px-6 md:px-10 -mt-8 pb-16 space-y-6">
+      <div class="max-w-5xl mx-auto px-6 md:px-10 pb-16 space-y-6">
 
         <!-- ── Setup checklist card ── -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">

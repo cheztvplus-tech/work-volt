@@ -168,7 +168,7 @@ window.WorkVoltPages['store'] = function(container) {
       <div class="min-h-full bg-slate-50">
 
         <!-- ── Hero header ── -->
-        <div class="bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 px-6 md:px-10 pt-10 pb-16 relative overflow-hidden">
+        <div class="bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 px-6 md:px-10 pt-10 pb-6 relative overflow-hidden">
           <div class="absolute inset-0 opacity-10" style="background-image:radial-gradient(circle at 20% 50%, #6366f1 0%, transparent 50%), radial-gradient(circle at 80% 20%, #3b82f6 0%, transparent 40%)"></div>
           <div class="relative max-w-4xl mx-auto">
             <div class="flex items-center gap-3 mb-4">
@@ -192,7 +192,7 @@ window.WorkVoltPages['store'] = function(container) {
           </div>
         </div>
 
-        <div class="max-w-4xl mx-auto px-6 md:px-10 -mt-6 pb-16">
+        <div class="max-w-4xl mx-auto px-6 md:px-10 pb-16">
 
           <!-- ── Installed strip ── -->
           ${installed.length ? `
