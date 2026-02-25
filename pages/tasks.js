@@ -2,19 +2,13 @@ window.WorkVoltPages = window.WorkVoltPages || {};
 
 window.WorkVoltPages['tasks'] = function(container) {
 
-  // ── State ──────────────────────────────────────────────────────
+  // ── State ─────────────────────────────────────────────────────
   var savedUrl    = localStorage.getItem('wv_gas_url')    || '';
   var savedSecret = localStorage.getItem('wv_api_secret') || '';
-  var tasksCache  = [];
-  var usersCache  = [];   // for assign-by-name dropdowns
-  // Persist view preference across navigation
+  var tasksCache  = {};   // keyed by task_id for fast lookup
+  var usersCache  = [];
   var activeView  = sessionStorage.getItem('tasks_view') || 'list';
-  var filters     = { status: '', priority: '', assigned_to: '' };
-  var editingTask = null;
-  // Read role lazily so window.WorkVolt is guaranteed to exist
-  function currentRole() {
-    return (window.WorkVolt && window.WorkVolt.user && window.WorkVolt.user() && window.WorkVolt.user().role) || 'SuperAdmin';
-  }
+  var filters     = { status: '', priority: '' };
 
   var STATUSES   = ['Todo', 'In Progress', 'In Review', 'Done', 'Cancelled'];
   var PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
@@ -26,215 +20,242 @@ window.WorkVoltPages['tasks'] = function(container) {
     'Done':        'bg-green-100 text-green-700',
     'Cancelled':   'bg-red-100 text-red-600',
   };
-
   var PRIORITY_COLORS = {
     'Low':    'bg-slate-100 text-slate-500',
     'Medium': 'bg-amber-100 text-amber-700',
     'High':   'bg-orange-100 text-orange-700',
     'Urgent': 'bg-red-100 text-red-600',
   };
-
   var PRIORITY_DOT = {
-    'Low':    'bg-slate-400',
-    'Medium': 'bg-amber-400',
-    'High':   'bg-orange-500',
-    'Urgent': 'bg-red-500',
+    'Low': 'bg-slate-400', 'Medium': 'bg-amber-400',
+    'High': 'bg-orange-500', 'Urgent': 'bg-red-500',
   };
 
-  var ADMIN_ROLES = ['SuperAdmin', 'Admin'];
-  function isAdmin() { return ADMIN_ROLES.includes(currentRole()); }
-
+  function getRole() {
+    try { return window.WorkVolt.user().role || 'SuperAdmin'; } catch(e) { return 'SuperAdmin'; }
+  }
+  function isAdmin() { return ['SuperAdmin','Admin'].includes(getRole()); }
 
   // ================================================================
-  //  API HELPER
+  //  API
   // ================================================================
   async function api(path, params) {
     var url = new URL(savedUrl);
     url.searchParams.set('path',  path);
     url.searchParams.set('token', savedSecret);
-    if (params) {
-      Object.entries(params).forEach(function(kv) {
-        if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
-          url.searchParams.set(kv[0], String(kv[1]));
-        }
-      });
-    }
+    if (params) Object.entries(params).forEach(function(kv) {
+      if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '')
+        url.searchParams.set(kv[0], String(kv[1]));
+    });
     var res  = await fetch(url.toString(), { cache: 'no-cache' });
     var data = await res.json();
     if (data.error) throw new Error(data.error);
     return data;
   }
 
+  // ================================================================
+  //  HELPERS
+  // ================================================================
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function fmtDate(d) {
+    if (!d) return '';
+    try { return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+    catch(e){ return d; }
+  }
+  function userName(uid) {
+    if (!uid) return '—';
+    var u = usersCache.find(function(u){ return u.user_id === uid; });
+    return u ? (u.name || u.email) : '—';
+  }
+  function statusBadge(s) {
+    var c = STATUS_COLORS[s] || 'bg-slate-100 text-slate-600';
+    return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold '+c+'">'+(s||'—')+'</span>';
+  }
+  function priorityBadge(p) {
+    var c = PRIORITY_COLORS[p]||'bg-slate-100 text-slate-500';
+    var d = PRIORITY_DOT[p]||'bg-slate-400';
+    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold '+c+'"><span class="w-1.5 h-1.5 rounded-full '+d+'"></span>'+(p||'—')+'</span>';
+  }
+  function toast(msg, type) {
+    if (window.WorkVolt && window.WorkVolt.toast) window.WorkVolt.toast(msg, type||'info');
+  }
 
   // ================================================================
-  //  BADGES & HELPERS
+  //  MODAL — uses a portal div OUTSIDE the page container
   // ================================================================
-  function statusBadge(status) {
-    var cls = STATUS_COLORS[status] || 'bg-slate-100 text-slate-600';
-    return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ' + cls + '">' + (status || '—') + '</span>';
+  var MODAL_ID = 'wv-tasks-modal-portal';
+
+  function getPortal() {
+    var el = document.getElementById(MODAL_ID);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = MODAL_ID;
+      document.body.appendChild(el);
+    }
+    return el;
   }
 
-  function priorityBadge(priority) {
-    var cls = PRIORITY_COLORS[priority] || 'bg-slate-100 text-slate-500';
-    var dot = PRIORITY_DOT[priority]    || 'bg-slate-400';
-    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ' + cls + '"><span class="w-1.5 h-1.5 rounded-full ' + dot + '"></span>' + (priority || '—') + '</span>';
+  function showModal(html) {
+    var portal = getPortal();
+    portal.innerHTML =
+      '<div id="tm-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9998;display:flex;align-items:center;justify-content:center;padding:1rem;">' +
+        '<div id="tm-box" style="background:#fff;border-radius:1rem;box-shadow:0 25px 60px rgba(0,0,0,0.25);width:100%;max-width:680px;max-height:90vh;overflow-y:auto;position:relative;z-index:9999;">' +
+          html +
+        '</div>' +
+      '</div>';
+    document.getElementById('tm-backdrop').addEventListener('click', function(e){
+      if (e.target.id === 'tm-backdrop') closeModal();
+    });
   }
 
-  // Look up a user's display name from the users cache
-  function userName(userId) {
-    if (!userId) return '—';
-    var u = usersCache.find(function(u) { return u.user_id === userId; });
-    return u ? (u.name || u.email) : userId.substring(0, 8) + '…';
+  function closeModal() {
+    var portal = document.getElementById(MODAL_ID);
+    if (portal) portal.innerHTML = '';
   }
 
-  function setModalContent(html) {
-    document.getElementById('task-modal').innerHTML = html;
-    document.getElementById('task-modal-backdrop').classList.remove('hidden');
-  }
-
-  function setFormStatus(msg, ok) {
-    var el = document.getElementById('task-form-status');
+  function modalStatus(msg, ok) {
+    var el = document.getElementById('tm-status');
     if (!el) return;
     if (!msg) { el.innerHTML = ''; return; }
-    el.innerHTML = (
+    el.innerHTML =
       '<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium mb-3 ' +
       (ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200') + '">' +
-        '<i class="fas ' + (ok ? 'fa-check-circle' : 'fa-exclamation-circle') + '"></i>' +
-        '<span>' + msg + '</span>' +
-      '</div>'
-    );
+      '<i class="fas '+(ok?'fa-check-circle':'fa-exclamation-circle')+'"></i><span>'+esc(msg)+'</span></div>';
   }
-
-  function escHtml(str) {
-    return String(str || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  function formatDate(d) {
-    if (!d) return '';
-    try {
-      return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    } catch(e) { return d; }
-  }
-
 
   // ================================================================
-  //  MAIN RENDER
+  //  MAIN SHELL RENDER
   // ================================================================
   function render() {
-    var listActive   = activeView === 'list';
-    var kanbanActive = activeView === 'kanban';
+    container.innerHTML =
+      '<div class="min-h-full bg-slate-50">' +
 
-    container.innerHTML = `
-      <div class="min-h-full bg-slate-50">
+        // Header
+        '<div class="bg-white border-b border-slate-200 px-6 md:px-8 py-5 flex items-center justify-between gap-4 flex-wrap">' +
+          '<div>' +
+            '<h1 class="text-xl font-extrabold text-slate-900">Tasks</h1>' +
+            '<p class="text-slate-500 text-sm mt-0.5" id="tasks-count">Loading…</p>' +
+          '</div>' +
+          '<div class="flex items-center gap-2">' +
+            '<div class="flex items-center bg-slate-100 rounded-lg p-0.5">' +
+              '<button id="btn-view-list" class="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ' + (activeView==='list'?'bg-white text-slate-900 shadow-sm':'text-slate-500 hover:text-slate-700') + '">' +
+                '<i class="fas fa-list mr-1"></i>List</button>' +
+              '<button id="btn-view-kanban" class="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ' + (activeView==='kanban'?'bg-white text-slate-900 shadow-sm':'text-slate-500 hover:text-slate-700') + '">' +
+                '<i class="fas fa-columns mr-1"></i>Kanban</button>' +
+            '</div>' +
+            '<button id="btn-new-task" class="btn-primary"><i class="fas fa-plus text-sm"></i> New Task</button>' +
+          '</div>' +
+        '</div>' +
 
-        <!-- Header -->
-        <div class="bg-white border-b border-slate-200 px-6 md:px-8 py-5 flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 class="text-xl font-extrabold text-slate-900">Tasks</h1>
-            <p class="text-slate-500 text-sm mt-0.5" id="tasks-count">Loading…</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="flex items-center bg-slate-100 rounded-lg p-0.5">
-              <button onclick="tasksSetView('list')" id="view-list-btn"
-                class="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${listActive ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">
-                <i class="fas fa-list mr-1"></i>List
-              </button>
-              <button onclick="tasksSetView('kanban')" id="view-kanban-btn"
-                class="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${kanbanActive ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">
-                <i class="fas fa-columns mr-1"></i>Kanban
-              </button>
-            </div>
-            <button onclick="tasksOpenAdd()" class="btn-primary">
-              <i class="fas fa-plus text-sm"></i> New Task
-            </button>
-          </div>
-        </div>
+        // Filters
+        '<div class="bg-white border-b border-slate-200 px-6 md:px-8 py-3 flex flex-wrap items-center gap-3">' +
+          '<select id="filter-status" class="field text-xs py-1.5 w-36">' +
+            '<option value="">All Statuses</option>' +
+            STATUSES.map(function(s){ return '<option value="'+s+'"'+(filters.status===s?' selected':'')+'>'+s+'</option>'; }).join('') +
+          '</select>' +
+          '<select id="filter-priority" class="field text-xs py-1.5 w-36">' +
+            '<option value="">All Priorities</option>' +
+            PRIORITIES.map(function(p){ return '<option value="'+p+'"'+(filters.priority===p?' selected':'')+'>'+p+'</option>'; }).join('') +
+          '</select>' +
+          '<button id="btn-clear-filters" class="text-xs text-slate-500 hover:text-slate-700 font-medium px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">' +
+            '<i class="fas fa-times mr-1"></i>Clear</button>' +
+          '<div class="ml-auto">' +
+            '<input id="task-search" type="text" placeholder="Search tasks…" class="field text-xs py-1.5 w-52">' +
+          '</div>' +
+        '</div>' +
 
-        <!-- Filters -->
-        <div class="bg-white border-b border-slate-200 px-6 md:px-8 py-3 flex flex-wrap items-center gap-3">
-          <select id="filter-status" onchange="tasksApplyFilter()" class="field text-xs py-1.5 w-36">
-            <option value="">All Statuses</option>
-            ${STATUSES.map(function(s) { return '<option value="' + s + '"' + (filters.status === s ? ' selected' : '') + '>' + s + '</option>'; }).join('')}
-          </select>
-          <select id="filter-priority" onchange="tasksApplyFilter()" class="field text-xs py-1.5 w-36">
-            <option value="">All Priorities</option>
-            ${PRIORITIES.map(function(p) { return '<option value="' + p + '"' + (filters.priority === p ? ' selected' : '') + '>' + p + '</option>'; }).join('')}
-          </select>
-          <button onclick="tasksClearFilters()" class="text-xs text-slate-500 hover:text-slate-700 font-medium px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-            <i class="fas fa-times mr-1"></i>Clear
-          </button>
-          <div class="ml-auto">
-            <input id="task-search" type="text" placeholder="Search tasks…" oninput="tasksSearch()" class="field text-xs py-1.5 w-52">
-          </div>
-        </div>
+        // Content area
+        '<div id="tasks-content" class="p-6 md:p-8">' +
+          '<div class="flex items-center justify-center py-16 text-slate-400">' +
+            '<i class="fas fa-circle-notch fa-spin text-2xl"></i>' +
+          '</div>' +
+        '</div>' +
 
-        <!-- Content -->
-        <div id="tasks-content" class="p-6 md:p-8">
-          <div class="flex items-center justify-center py-16 text-slate-400">
-            <i class="fas fa-circle-notch fa-spin text-2xl"></i>
-          </div>
-        </div>
+      '</div>';
 
-        <!-- Modal -->
-        <div id="task-modal-backdrop" class="hidden fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4"
-          onclick="tasksBackdropClick(event)">
-          <div id="task-modal" class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-screen overflow-y-auto z-50"></div>
-        </div>
+    // ── Attach listeners using addEventListener (no inline onclick) ──
+    container.querySelector('#btn-view-list').addEventListener('click', function(){ setView('list'); });
+    container.querySelector('#btn-view-kanban').addEventListener('click', function(){ setView('kanban'); });
+    container.querySelector('#btn-new-task').addEventListener('click', function(){ openTaskForm(null); });
+    container.querySelector('#btn-clear-filters').addEventListener('click', function(){
+      filters = { status:'', priority:'' };
+      render();
+    });
+    container.querySelector('#filter-status').addEventListener('change', function(){
+      filters.status = this.value; loadData();
+    });
+    container.querySelector('#filter-priority').addEventListener('change', function(){
+      filters.priority = this.value; loadData();
+    });
+    container.querySelector('#task-search').addEventListener('input', function(){
+      doSearch(this.value);
+    });
 
-      </div>
-    `;
+    // Delegate clicks on the content area (handles dynamic rows/cards)
+    container.querySelector('#tasks-content').addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      e.stopPropagation();
+      var action = btn.dataset.action;
+      var id     = btn.dataset.id;
+      var title  = btn.dataset.title || '';
+      if (action === 'edit')     openTaskForm(tasksCache[id]);
+      if (action === 'delete')   openDeleteModal(id, title);
+      if (action === 'complete') quickAction('tasks/complete', { task_id: id }, 'Task completed!');
+      if (action === 'cancel')   quickAction('tasks/update',   { task_id: id, status: 'Cancelled' }, 'Task cancelled.');
+      if (action === 'reopen')   quickAction('tasks/reopen',   { task_id: id }, 'Task reopened.');
+    });
 
     loadData();
   }
 
+  function setView(v) {
+    activeView = v;
+    sessionStorage.setItem('tasks_view', v);
+    render();
+  }
+
 
   // ================================================================
-  //  LOAD DATA — tasks + users in parallel
+  //  DATA LOADING
   // ================================================================
   async function loadData() {
     if (!savedUrl || !savedSecret) {
       document.getElementById('tasks-content').innerHTML =
         '<div class="flex flex-col items-center justify-center py-20 text-slate-400">' +
           '<i class="fas fa-plug text-4xl mb-4"></i>' +
-          '<p class="font-semibold text-slate-500">Google Sheet not connected</p>' +
+          '<p class="font-semibold text-slate-500 mt-2">Google Sheet not connected</p>' +
           '<p class="text-sm mt-1">Go to Settings → Connection to set up your GAS URL.</p>' +
         '</div>';
       var c = document.getElementById('tasks-count');
       if (c) c.textContent = '';
       return;
     }
-
     try {
-      // Load tasks and users in parallel
       var results = await Promise.all([
-        api('tasks/list', {
-          status:      filters.status      || undefined,
-          priority:    filters.priority    || undefined,
-          assigned_to: filters.assigned_to || undefined,
-        }),
-        api('users/list').catch(function() { return { rows: [] }; }),
+        api('tasks/list', { status: filters.status||undefined, priority: filters.priority||undefined }),
+        api('users/list').catch(function(){ return { rows:[] }; }),
       ]);
-
-      tasksCache = results[0].rows || [];
+      var rows = results[0].rows || [];
       usersCache = results[1].rows || [];
 
-      var countEl = document.getElementById('tasks-count');
-      if (countEl) countEl.textContent = tasksCache.length + ' task' + (tasksCache.length !== 1 ? 's' : '');
+      // Store by id for O(1) lookup
+      tasksCache = {};
+      rows.forEach(function(t){ tasksCache[t.task_id] = t; });
 
-      if (activeView === 'kanban') {
-        renderKanban(tasksCache);
-      } else {
-        renderList(tasksCache);
-      }
+      var c = document.getElementById('tasks-count');
+      if (c) c.textContent = rows.length + ' task' + (rows.length !== 1 ? 's' : '');
+
+      if (activeView === 'kanban') renderKanban(rows);
+      else renderList(rows);
+
     } catch(e) {
       document.getElementById('tasks-content').innerHTML =
         '<div class="flex flex-col items-center justify-center py-20 text-red-400">' +
           '<i class="fas fa-exclamation-circle text-4xl mb-4"></i>' +
-          '<p class="font-semibold">' + e.message + '</p>' +
+          '<p class="font-semibold">'+esc(e.message)+'</p>' +
         '</div>';
     }
   }
@@ -245,80 +266,62 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   function renderList(tasks) {
     var content = document.getElementById('tasks-content');
+    if (!content) return;
     if (!tasks.length) {
       content.innerHTML =
         '<div class="flex flex-col items-center justify-center py-20 text-slate-400">' +
           '<i class="fas fa-check-circle text-4xl mb-4"></i>' +
           '<p class="font-semibold text-slate-500">No tasks found</p>' +
-          '<p class="text-sm mt-1">Create your first task to get started.</p>' +
+          '<p class="text-sm mt-1">Click <strong>New Task</strong> to get started.</p>' +
         '</div>';
       return;
     }
 
     var rows = tasks.map(function(t) {
-      var due     = t.due_date ? formatDate(t.due_date) : '—';
       var overdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'Done' && t.status !== 'Cancelled';
-      var dueClass = overdue ? 'text-red-500 font-semibold' : 'text-slate-500';
+      var isDone  = t.status === 'Done' || t.status === 'Cancelled';
 
-      // Action buttons — all users can complete/reopen/edit/cancel; only admins can delete
-      var actionBtns = '';
+      var actions =
+        (!isDone
+          ? '<button data-action="complete" data-id="'+t.task_id+'" title="Complete" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors"><i class="fas fa-check text-xs"></i></button>' +
+            '<button data-action="cancel"   data-id="'+t.task_id+'" title="Cancel"   class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-orange-500 hover:bg-orange-50 transition-colors"><i class="fas fa-ban text-xs"></i></button>'
+          : '<button data-action="reopen"   data-id="'+t.task_id+'" title="Reopen"   class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-undo text-xs"></i></button>') +
+        '<button data-action="edit" data-id="'+t.task_id+'" title="Edit" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-pencil text-xs"></i></button>' +
+        (isAdmin()
+          ? '<button data-action="delete" data-id="'+t.task_id+'" data-title="'+esc(t.title)+'" title="Delete" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><i class="fas fa-trash text-xs"></i></button>'
+          : '');
 
-      if (t.status !== 'Done' && t.status !== 'Cancelled') {
-        actionBtns += '<button onclick="tasksQuickComplete(\'' + t.task_id + '\')" title="Mark complete" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors"><i class="fas fa-check text-xs"></i></button>';
-        actionBtns += '<button onclick="tasksQuickCancel(\'' + t.task_id + '\')" title="Cancel task" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-orange-500 hover:bg-orange-50 transition-colors"><i class="fas fa-ban text-xs"></i></button>';
-      } else {
-        actionBtns += '<button onclick="tasksQuickReopen(\'' + t.task_id + '\')" title="Reopen" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-undo text-xs"></i></button>';
-      }
-
-      actionBtns += '<button onclick="tasksOpenEdit(\'' + t.task_id + '\')" title="Edit" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-pencil text-xs"></i></button>';
-
-      if (isAdmin()) {
-        actionBtns += '<button onclick="tasksConfirmDelete(\'' + t.task_id + '\',\'' + escHtml(t.title).replace(/'/g, '') + '\')" title="Delete" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><i class="fas fa-trash text-xs"></i></button>';
-      }
-
-      return (
-        '<tr class="border-t border-slate-100 hover:bg-slate-50 transition-colors">' +
-          // Title cell — clicking opens edit
-          '<td class="px-4 py-3 max-w-xs cursor-pointer" onclick="tasksOpenEdit(\'' + t.task_id + '\')">' +
-            '<div class="font-semibold text-slate-900 text-sm truncate">' + escHtml(t.title) + '</div>' +
-            (t.description ? '<div class="text-xs text-slate-400 truncate mt-0.5">' + escHtml(t.description) + '</div>' : '') +
-          '</td>' +
-          '<td class="px-4 py-3 whitespace-nowrap">' + statusBadge(t.status) + '</td>' +
-          '<td class="px-4 py-3 whitespace-nowrap">' + priorityBadge(t.priority) + '</td>' +
-          '<td class="px-4 py-3 text-xs ' + dueClass + ' whitespace-nowrap">' +
-            due + (overdue ? ' <i class="fas fa-exclamation-circle ml-0.5"></i>' : '') +
-          '</td>' +
-          '<td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">' + escHtml(userName(t.assigned_to)) + '</td>' +
-          '<td class="px-4 py-3 whitespace-nowrap">' +
-            (String(t.billable) === 'true'
-              ? '<span class="text-xs text-green-600 font-semibold"><i class="fas fa-dollar-sign mr-0.5"></i>Billable</span>'
-              : '<span class="text-xs text-slate-400">—</span>') +
-          '</td>' +
-          '<td class="px-4 py-3 whitespace-nowrap">' +
-            '<div class="flex items-center gap-1">' + actionBtns + '</div>' +
-          '</td>' +
-        '</tr>'
-      );
+      return '<tr class="border-t border-slate-100 hover:bg-slate-50 transition-colors">' +
+        '<td class="px-4 py-3 max-w-xs">' +
+          '<div class="font-semibold text-slate-900 text-sm truncate">'+esc(t.title)+'</div>' +
+          (t.description ? '<div class="text-xs text-slate-400 truncate mt-0.5">'+esc(t.description)+'</div>' : '') +
+        '</td>' +
+        '<td class="px-4 py-3 whitespace-nowrap">'+statusBadge(t.status)+'</td>' +
+        '<td class="px-4 py-3 whitespace-nowrap">'+priorityBadge(t.priority)+'</td>' +
+        '<td class="px-4 py-3 text-xs whitespace-nowrap '+(overdue?'text-red-500 font-semibold':'text-slate-500')+'">' +
+          (t.due_date ? fmtDate(t.due_date) + (overdue?' <i class="fas fa-exclamation-circle"></i>':'') : '—') +
+        '</td>' +
+        '<td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">'+esc(userName(t.assigned_to))+'</td>' +
+        '<td class="px-4 py-3 whitespace-nowrap">' +
+          (String(t.billable)==='true' ? '<span class="text-xs text-green-600 font-semibold"><i class="fas fa-dollar-sign mr-0.5"></i>Billable</span>' : '<span class="text-xs text-slate-400">—</span>') +
+        '</td>' +
+        '<td class="px-4 py-3 whitespace-nowrap"><div class="flex items-center gap-1">'+actions+'</div></td>' +
+      '</tr>';
     }).join('');
 
-    content.innerHTML = (
+    content.innerHTML =
       '<div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">' +
         '<div class="overflow-x-auto">' +
           '<table class="w-full text-left">' +
             '<thead><tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">' +
-              '<th class="px-4 py-3">Task</th>' +
-              '<th class="px-4 py-3">Status</th>' +
-              '<th class="px-4 py-3">Priority</th>' +
-              '<th class="px-4 py-3">Due Date</th>' +
-              '<th class="px-4 py-3">Assigned To</th>' +
-              '<th class="px-4 py-3">Billing</th>' +
-              '<th class="px-4 py-3">Actions</th>' +
+              '<th class="px-4 py-3">Task</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Priority</th>' +
+              '<th class="px-4 py-3">Due Date</th><th class="px-4 py-3">Assigned To</th>' +
+              '<th class="px-4 py-3">Billing</th><th class="px-4 py-3">Actions</th>' +
             '</tr></thead>' +
-            '<tbody>' + rows + '</tbody>' +
+            '<tbody>'+rows+'</tbody>' +
           '</table>' +
         '</div>' +
-      '</div>'
-    );
+      '</div>';
   }
 
 
@@ -327,336 +330,276 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   function renderKanban(tasks) {
     var content = document.getElementById('tasks-content');
-    var dotMap = {
-      'Todo': 'bg-slate-400', 'In Progress': 'bg-blue-500',
-      'In Review': 'bg-purple-500', 'Done': 'bg-green-500', 'Cancelled': 'bg-red-400',
-    };
+    if (!content) return;
+    var dotMap = { 'Todo':'bg-slate-400','In Progress':'bg-blue-500','In Review':'bg-purple-500','Done':'bg-green-500','Cancelled':'bg-red-400' };
 
     var cols = STATUSES.map(function(status) {
-      var colTasks = tasks.filter(function(t) { return t.status === status; });
-
+      var colTasks = tasks.filter(function(t){ return t.status === status; });
       var cards = colTasks.map(function(t) {
         var overdue = t.due_date && new Date(t.due_date) < new Date() && status !== 'Done' && status !== 'Cancelled';
-        var assigneeName = userName(t.assigned_to);
-        return (
-          '<div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm card-hover cursor-pointer" onclick="tasksOpenEdit(\'' + t.task_id + '\')">' +
-            '<div class="flex items-start justify-between gap-2 mb-2">' +
-              '<p class="text-sm font-semibold text-slate-900 leading-snug">' + escHtml(t.title) + '</p>' +
-              priorityBadge(t.priority) +
+        return '<div data-action="edit" data-id="'+t.task_id+'" class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm hover:shadow-md cursor-pointer transition-shadow">' +
+          '<div class="flex items-start justify-between gap-2 mb-2">' +
+            '<p class="text-sm font-semibold text-slate-900 leading-snug">'+esc(t.title)+'</p>' +
+            priorityBadge(t.priority) +
+          '</div>' +
+          (t.description ? '<p class="text-xs text-slate-400 mb-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+esc(t.description)+'</p>' : '') +
+          '<div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">' +
+            '<span class="text-xs '+(overdue?'text-red-500 font-semibold':'text-slate-400')+'">' +
+              (t.due_date ? '<i class="fas fa-calendar-alt mr-1"></i>'+fmtDate(t.due_date) : '') +
+            '</span>' +
+            '<div class="flex items-center gap-1">' +
+              (t.assigned_to ? '<span class="text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded font-medium">'+esc(userName(t.assigned_to))+'</span>' : '') +
+              (String(t.billable)==='true' ? '<span class="text-xs text-green-600 ml-1"><i class="fas fa-dollar-sign"></i></span>' : '') +
             '</div>' +
-            (t.description ? '<p class="text-xs text-slate-400 mb-2 line-clamp-2">' + escHtml(t.description) + '</p>' : '') +
-            '<div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">' +
-              '<div class="flex items-center gap-2">' +
-                (t.due_date ? '<span class="text-xs ' + (overdue ? 'text-red-500 font-semibold' : 'text-slate-400') + '"><i class="fas fa-calendar-alt mr-1"></i>' + formatDate(t.due_date) + '</span>' : '') +
-              '</div>' +
-              '<div class="flex items-center gap-1.5">' +
-                (t.assigned_to !== '' ? '<span class="text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded font-medium">' + escHtml(assigneeName) + '</span>' : '') +
-                (String(t.billable) === 'true' ? '<span class="text-xs text-green-600"><i class="fas fa-dollar-sign"></i></span>' : '') +
-              '</div>' +
-            '</div>' +
-          '</div>'
-        );
+          '</div>' +
+        '</div>';
       }).join('');
 
-      return (
-        '<div class="flex-shrink-0 w-72">' +
-          '<div class="flex items-center gap-2 mb-3">' +
-            '<span class="w-2.5 h-2.5 rounded-full ' + (dotMap[status] || 'bg-slate-400') + '"></span>' +
-            '<span class="text-sm font-bold text-slate-700">' + status + '</span>' +
-            '<span class="ml-auto text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">' + colTasks.length + '</span>' +
-          '</div>' +
-          '<div class="space-y-2 min-h-16">' +
-            (cards || '<div class="text-xs text-slate-400 text-center py-6 border-2 border-dashed border-slate-200 rounded-xl">No tasks</div>') +
-          '</div>' +
-        '</div>'
-      );
+      return '<div class="flex-shrink-0 w-72">' +
+        '<div class="flex items-center gap-2 mb-3">' +
+          '<span class="w-2.5 h-2.5 rounded-full '+(dotMap[status]||'bg-slate-400')+'"></span>' +
+          '<span class="text-sm font-bold text-slate-700">'+status+'</span>' +
+          '<span class="ml-auto text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">'+colTasks.length+'</span>' +
+        '</div>' +
+        '<div class="space-y-2 min-h-16">' +
+          (cards || '<div class="text-xs text-slate-400 text-center py-6 border-2 border-dashed border-slate-200 rounded-xl">No tasks</div>') +
+        '</div>' +
+      '</div>';
     }).join('');
 
-    content.innerHTML = '<div class="flex gap-4 overflow-x-auto kanban-scroll pb-4">' + cols + '</div>';
+    content.innerHTML = '<div class="flex gap-4 overflow-x-auto pb-4" style="scrollbar-width:thin">'+cols+'</div>';
   }
 
 
   // ================================================================
-  //  USER SEARCH DROPDOWN (for Assigned To field)
+  //  SEARCH
   // ================================================================
-  function renderUserSearchField(fieldId, labelText, currentUserId) {
-    var currentName = currentUserId ? userName(currentUserId) : '';
-    return (
-      '<div>' +
-        '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">' + labelText + '</label>' +
-        '<div class="relative">' +
-          '<input id="' + fieldId + '-search" type="text" placeholder="Search by name or email…" autocomplete="off"' +
-            ' value="' + escHtml(currentName) + '"' +
-            ' oninput="tasksUserSearchInput(\'' + fieldId + '\')"' +
-            ' onfocus="tasksUserSearchInput(\'' + fieldId + '\')"' +
-            ' class="field text-sm">' +
-          '<input type="hidden" id="' + fieldId + '" value="' + escHtml(currentUserId || '') + '">' +
-          '<div id="' + fieldId + '-dropdown" class="hidden absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto thin-scroll"></div>' +
-        '</div>' +
-      '</div>'
-    );
+  function doSearch(q) {
+    q = q.toLowerCase().trim();
+    var all = Object.values(tasksCache);
+    var filtered = q ? all.filter(function(t){
+      return (t.title||'').toLowerCase().includes(q) ||
+             (t.description||'').toLowerCase().includes(q) ||
+             (t.tags||'').toLowerCase().includes(q) ||
+             userName(t.assigned_to).toLowerCase().includes(q);
+    }) : all;
+    if (activeView === 'kanban') renderKanban(filtered); else renderList(filtered);
+    var c = document.getElementById('tasks-count');
+    if (c) c.textContent = filtered.length + (q ? ' of '+all.length : '') + ' task' + (filtered.length !== 1 ? 's' : '');
   }
 
-  window.tasksUserSearchInput = function(fieldId) {
-    var q   = (document.getElementById(fieldId + '-search')?.value || '').toLowerCase().trim();
-    var dd  = document.getElementById(fieldId + '-dropdown');
-    if (!dd) return;
 
-    var matches = usersCache.filter(function(u) {
-      return String(u.active) !== 'false' && (
-        (u.name  || '').toLowerCase().includes(q) ||
-        (u.email || '').toLowerCase().includes(q)
-      );
-    }).slice(0, 8);
+  // ================================================================
+  //  QUICK ACTIONS
+  // ================================================================
+  async function quickAction(path, params, successMsg) {
+    try {
+      await api(path, params);
+      toast(successMsg, 'success');
+      loadData();
+    } catch(e) {
+      toast(e.message, 'error');
+    }
+  }
 
-    if (!matches.length) {
-      dd.innerHTML = '<div class="px-4 py-3 text-xs text-slate-400">No users found</div>';
+
+  // ================================================================
+  //  USER SEARCH FIELD
+  // ================================================================
+  function userSearchField(fieldId, label, currentId) {
+    var currentName = currentId ? userName(currentId) : '';
+    // If userName returned '—' that means not found, clear it
+    if (currentName === '—') currentName = '';
+    return '<div>' +
+      '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">'+label+'</label>' +
+      '<div class="relative">' +
+        '<input id="'+fieldId+'-search" type="text" placeholder="Search by name or email…" autocomplete="off" value="'+esc(currentName)+'" class="field text-sm">' +
+        '<input type="hidden" id="'+fieldId+'" value="'+esc(currentId||'')+'">' +
+        '<div id="'+fieldId+'-dd" class="hidden absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto" style="z-index:10001"></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function bindUserSearch(fieldId) {
+    var input = document.getElementById(fieldId+'-search');
+    var dd    = document.getElementById(fieldId+'-dd');
+    if (!input || !dd) return;
+
+    function showDropdown() {
+      var q = input.value.toLowerCase().trim();
+      var matches = usersCache.filter(function(u){
+        return String(u.active) !== 'false' &&
+          ((u.name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q));
+      }).slice(0,8);
+
+      if (!matches.length) {
+        dd.innerHTML = '<div class="px-4 py-3 text-xs text-slate-400">No users found</div>';
+      } else {
+        dd.innerHTML = matches.map(function(u){
+          var name = u.name || u.email;
+          var init = name.charAt(0).toUpperCase();
+          return '<button type="button" class="wv-user-pick w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 text-left" data-uid="'+u.user_id+'" data-name="'+esc(name)+'">' +
+            '<div class="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">'+init+'</div>' +
+            '<div><div class="text-sm font-semibold text-slate-900">'+esc(name)+'</div>'+(u.name?'<div class="text-xs text-slate-400">'+esc(u.email)+'</div>':'')+' </div>' +
+          '</button>';
+        }).join('');
+      }
       dd.classList.remove('hidden');
-      return;
+
+      dd.querySelectorAll('.wv-user-pick').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          input.value = this.dataset.name;
+          document.getElementById(fieldId).value = this.dataset.uid;
+          dd.classList.add('hidden');
+        });
+      });
     }
 
-    dd.innerHTML = matches.map(function(u) {
-      var initials = u.name ? u.name.charAt(0).toUpperCase() : u.email.charAt(0).toUpperCase();
-      var display  = u.name || u.email;
-      return (
-        '<button type="button" onclick="tasksSelectUser(\'' + fieldId + '\',\'' + u.user_id + '\',\'' + escHtml(display).replace(/'/g, '') + '\')" ' +
-          'class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left">' +
-          '<div class="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs flex-shrink-0">' + initials + '</div>' +
-          '<div>' +
-            '<div class="text-sm font-semibold text-slate-900">' + escHtml(display) + '</div>' +
-            (u.name ? '<div class="text-xs text-slate-400">' + escHtml(u.email) + '</div>' : '') +
-          '</div>' +
-        '</button>'
-      );
-    }).join('');
-
-    dd.classList.remove('hidden');
-  };
-
-  window.tasksSelectUser = function(fieldId, userId, displayName) {
-    var searchEl = document.getElementById(fieldId + '-search');
-    var hiddenEl = document.getElementById(fieldId);
-    var dd       = document.getElementById(fieldId + '-dropdown');
-    if (searchEl) searchEl.value = displayName;
-    if (hiddenEl) hiddenEl.value = userId;
-    if (dd)       dd.classList.add('hidden');
-  };
-
-  // Close user dropdowns when clicking outside
-  document.addEventListener('click', function(e) {
-    ['tf-assigned_to'].forEach(function(fieldId) {
-      var wrap = document.getElementById(fieldId + '-search');
-      var dd   = document.getElementById(fieldId + '-dropdown');
-      if (dd && wrap && !wrap.contains(e.target) && !dd.contains(e.target)) {
-        dd.classList.add('hidden');
-      }
-    });
-  });
+    input.addEventListener('input',  showDropdown);
+    input.addEventListener('focus',  showDropdown);
+    input.addEventListener('blur', function(){ setTimeout(function(){ dd.classList.add('hidden'); }, 200); });
+  }
 
 
   // ================================================================
   //  TASK FORM MODAL
   // ================================================================
-  function renderTaskForm(task) {
+  function openTaskForm(task) {
     var isEdit   = !!task;
-    var title    = isEdit ? 'Edit Task' : 'New Task';
-    var btnLabel = isEdit ? '<i class="fas fa-save text-sm"></i> Save Changes' : '<i class="fas fa-plus text-sm"></i> Create Task';
-    var val      = function(f) { return isEdit && task[f] != null ? String(task[f]).replace(/"/g, '&quot;') : ''; };
+    var btnLabel = isEdit ? '<i class="fas fa-save text-xs"></i> Save Changes' : '<i class="fas fa-plus text-xs"></i> Create Task';
+    function v(f) { return isEdit && task[f] != null ? esc(String(task[f])) : ''; }
 
-    var statusOpts = STATUSES.map(function(s) {
-      var sel = isEdit ? (task.status === s) : (s === 'Todo');
-      return '<option value="' + s + '"' + (sel ? ' selected' : '') + '>' + s + '</option>';
-    }).join('');
+    var statusOpts   = STATUSES.map(function(s){   return '<option value="'+s+'"'+(isEdit?(task.status===s?' selected':''):(s==='Todo'?' selected':''))+'>'+s+'</option>'; }).join('');
+    var priorityOpts = PRIORITIES.map(function(p){ return '<option value="'+p+'"'+(isEdit?(task.priority===p?' selected':''):(p==='Medium'?' selected':''))+'>'+p+'</option>'; }).join('');
 
-    var priorityOpts = PRIORITIES.map(function(p) {
-      var sel = isEdit ? (task.priority === p) : (p === 'Medium');
-      return '<option value="' + p + '"' + (sel ? ' selected' : '') + '>' + p + '</option>';
-    }).join('');
-
-    var billableChecked = isEdit ? String(task.billable) === 'true' : false;
-    var paidChecked     = isEdit ? String(task.paid)     === 'true' : false;
-
-    return (
-      '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
-        '<h3 class="font-bold text-slate-900">' + title + '</h3>' +
-        '<button onclick="tasksCloseModal()" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100"><i class="fas fa-times text-sm"></i></button>' +
+    var html =
+      '<div style="padding:1.5rem 1.5rem 1rem;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">' +
+        '<h3 style="font-weight:700;font-size:1rem;color:#0f172a">'+(isEdit?'Edit Task':'New Task')+'</h3>' +
+        '<button id="tm-close" style="width:2rem;height:2rem;border-radius:.5rem;border:none;background:transparent;cursor:pointer;color:#94a3b8;font-size:1rem">✕</button>' +
       '</div>' +
-      '<div class="px-6 py-5 space-y-4">' +
-        '<div id="task-form-status"></div>' +
+      '<div style="padding:1.5rem;display:flex;flex-direction:column;gap:1rem">' +
+        '<div id="tm-status"></div>' +
 
-        // Title
-        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Title <span class="text-red-500">*</span></label>' +
-        '<input id="tf-title" type="text" placeholder="Task title" value="' + val('title') + '" class="field text-sm"></div>' +
+        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Title <span style="color:red">*</span></label>' +
+        '<input id="tf-title" class="field text-sm" type="text" placeholder="Task title" value="'+v('title')+'"></div>' +
 
-        // Description
         '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Description</label>' +
-        '<textarea id="tf-description" rows="3" placeholder="Describe the task…" class="field text-sm resize-none">' + (isEdit ? escHtml(task.description || '') : '') + '</textarea></div>' +
+        '<textarea id="tf-description" class="field text-sm" rows="3" style="resize:none" placeholder="Describe the task…">'+v('description')+'</textarea></div>' +
 
-        // Status + Priority
-        '<div class="grid grid-cols-2 gap-3">' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Status</label>' +
-          '<select id="tf-status" class="field text-sm">' + statusOpts + '</select></div>' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Priority</label>' +
-          '<select id="tf-priority" class="field text-sm">' + priorityOpts + '</select></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Status</label><select id="tf-status" class="field text-sm">'+statusOpts+'</select></div>' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Priority</label><select id="tf-priority" class="field text-sm">'+priorityOpts+'</select></div>' +
         '</div>' +
 
-        // Assigned To (user search) + Due Date
-        '<div class="grid grid-cols-2 gap-3">' +
-          renderUserSearchField('tf-assigned_to', 'Assigned To', val('assigned_to')) +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Due Date</label>' +
-          '<input id="tf-due_date" type="date" value="' + val('due_date') + '" class="field text-sm"></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
+          userSearchField('tf-assigned', 'Assigned To', isEdit ? task.assigned_to : '') +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Due Date</label><input id="tf-due_date" class="field text-sm" type="date" value="'+v('due_date')+'"></div>' +
         '</div>' +
 
-        // Project ID + Tags
-        '<div class="grid grid-cols-2 gap-3">' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Project ID</label>' +
-          '<input id="tf-project_id" type="text" placeholder="Project UUID" value="' + val('project_id') + '" class="field text-sm"></div>' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Tags</label>' +
-          '<input id="tf-tags" type="text" placeholder="design, frontend, bug" value="' + val('tags') + '" class="field text-sm"></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Tags</label><input id="tf-tags" class="field text-sm" type="text" placeholder="design, bug" value="'+v('tags')+'"></div>' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Project ID</label><input id="tf-project_id" class="field text-sm" type="text" value="'+v('project_id')+'"></div>' +
         '</div>' +
 
-        // Hours
-        '<div class="grid grid-cols-2 gap-3">' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Estimated Hours</label>' +
-          '<input id="tf-estimated_hours" type="number" placeholder="0.0" step="0.5" value="' + val('estimated_hours') + '" class="field text-sm"></div>' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Actual Hours</label>' +
-          '<input id="tf-actual_hours" type="number" placeholder="0.0" step="0.5" value="' + val('actual_hours') + '" class="field text-sm"></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Est. Hours</label><input id="tf-est" class="field text-sm" type="number" step="0.5" value="'+v('estimated_hours')+'"></div>' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Actual Hours</label><input id="tf-actual" class="field text-sm" type="number" step="0.5" value="'+v('actual_hours')+'"></div>' +
         '</div>' +
 
-        // Pay Per Task + Billable + Paid
-        '<div class="grid grid-cols-3 gap-3">' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Pay Per Task ($)</label>' +
-          '<input id="tf-pay_per_task" type="number" placeholder="0.00" step="0.01" value="' + val('pay_per_task') + '" class="field text-sm"></div>' +
-          '<div class="flex flex-col justify-end pb-1">' +
-            '<label class="flex items-center gap-2 cursor-pointer">' +
-              '<input id="tf-billable" type="checkbox" class="w-4 h-4 rounded accent-blue-600"' + (billableChecked ? ' checked' : '') + '>' +
-              '<span class="text-sm font-medium text-slate-700">Billable</span>' +
-            '</label>' +
-          '</div>' +
-          (isEdit
-            ? '<div class="flex flex-col justify-end pb-1"><label class="flex items-center gap-2 cursor-pointer"><input id="tf-paid" type="checkbox" class="w-4 h-4 rounded accent-green-600"' + (paidChecked ? ' checked' : '') + '><span class="text-sm font-medium text-slate-700">Paid</span></label></div>'
-            : '<div></div>') +
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem;align-items:end">' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Pay Per Task ($)</label><input id="tf-pay" class="field text-sm" type="number" step="0.01" value="'+v('pay_per_task')+'"></div>' +
+          '<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;padding-bottom:.25rem"><input id="tf-billable" type="checkbox" style="width:1rem;height:1rem;accent-color:#2563eb"'+(isEdit&&String(task.billable)==='true'?' checked':'')+'>'+
+            '<span class="text-sm font-medium text-slate-700">Billable</span></label>' +
+          (isEdit ? '<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;padding-bottom:.25rem"><input id="tf-paid" type="checkbox" style="width:1rem;height:1rem;accent-color:#16a34a"'+(String(task.paid)==='true'?' checked':'')+'>'+
+            '<span class="text-sm font-medium text-slate-700">Paid</span></label>' : '<div></div>') +
         '</div>' +
 
-        // Notes
         '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Notes</label>' +
-        '<textarea id="tf-notes" rows="2" placeholder="Internal notes…" class="field text-sm resize-none">' + (isEdit ? escHtml(task.notes || '') : '') + '</textarea></div>' +
+        '<textarea id="tf-notes" class="field text-sm" rows="2" style="resize:none">'+v('notes')+'</textarea></div>' +
 
-        // Actions — admins get Delete button in edit mode
-        '<div class="flex gap-3 pt-2">' +
-          '<button onclick="tasksCloseModal()" class="btn-secondary flex-1">Cancel</button>' +
-          (isEdit && isAdmin()
-            ? '<button onclick="tasksConfirmDelete(\'' + task.task_id + '\',\'' + escHtml(task.title).replace(/'/g,'') + '\')" class="px-4 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-sm font-semibold border border-red-200 transition-colors"><i class="fas fa-trash text-xs"></i></button>'
-            : '') +
-          '<button onclick="tasksSubmitForm(\'' + (isEdit ? task.task_id : '') + '\')" id="task-form-btn" class="btn-primary flex-1">' + btnLabel + '</button>' +
+        '<div style="display:flex;gap:.75rem;padding-top:.5rem">' +
+          '<button id="tm-cancel" class="btn-secondary" style="flex:1">Cancel</button>' +
+          (isEdit && isAdmin() ? '<button id="tm-delete" class="px-4 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-sm font-semibold border border-red-200 transition-colors"><i class="fas fa-trash text-xs"></i></button>' : '') +
+          '<button id="tm-submit" class="btn-primary" style="flex:1">'+btnLabel+'</button>' +
         '</div>' +
-      '</div>'
-    );
+      '</div>';
+
+    showModal(html);
+    bindUserSearch('tf-assigned');
+
+    document.getElementById('tm-close').addEventListener('click', closeModal);
+    document.getElementById('tm-cancel').addEventListener('click', closeModal);
+
+    if (isEdit && isAdmin()) {
+      document.getElementById('tm-delete').addEventListener('click', function(){
+        closeModal();
+        openDeleteModal(task.task_id, task.title);
+      });
+    }
+
+    document.getElementById('tm-submit').addEventListener('click', function(){
+      submitForm(isEdit ? task.task_id : null);
+    });
   }
 
-  function renderDeleteModal(taskId, taskTitle) {
-    return (
-      '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
-        '<h3 class="font-bold text-red-700">Delete Task</h3>' +
-        '<button onclick="tasksCloseModal()" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100"><i class="fas fa-times text-sm"></i></button>' +
+
+  // ================================================================
+  //  DELETE MODAL
+  // ================================================================
+  function openDeleteModal(taskId, taskTitle) {
+    var html =
+      '<div style="padding:1.5rem 1.5rem 1rem;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">' +
+        '<h3 style="font-weight:700;color:#b91c1c">Delete Task</h3>' +
+        '<button id="tm-close" style="width:2rem;height:2rem;border-radius:.5rem;border:none;background:transparent;cursor:pointer;color:#94a3b8;font-size:1rem">✕</button>' +
       '</div>' +
-      '<div class="px-6 py-5 space-y-4">' +
-        '<div class="flex items-start gap-3 p-4 bg-red-50 rounded-xl border border-red-200">' +
-          '<i class="fas fa-exclamation-triangle text-red-500 mt-0.5"></i>' +
-          '<p class="text-sm text-red-700">You are about to permanently delete <strong>' + escHtml(taskTitle) + '</strong>. This cannot be undone.</p>' +
+      '<div style="padding:1.5rem;display:flex;flex-direction:column;gap:1rem">' +
+        '<div style="display:flex;gap:.75rem;padding:1rem;background:#fef2f2;border:1px solid #fecaca;border-radius:.75rem">' +
+          '<i class="fas fa-exclamation-triangle" style="color:#ef4444;margin-top:.1rem"></i>' +
+          '<p style="font-size:.875rem;color:#b91c1c">Permanently delete <strong>'+esc(taskTitle)+'</strong>? This cannot be undone.</p>' +
         '</div>' +
-        '<div id="task-form-status"></div>' +
-        '<div class="flex gap-3">' +
-          '<button onclick="tasksCloseModal()" class="btn-secondary flex-1">Cancel</button>' +
-          '<button onclick="tasksSubmitDelete(\'' + taskId + '\')" id="task-form-btn" ' +
-            'class="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors">' +
+        '<div id="tm-status"></div>' +
+        '<div style="display:flex;gap:.75rem">' +
+          '<button id="tm-cancel" class="btn-secondary" style="flex:1">Cancel</button>' +
+          '<button id="tm-confirm-delete" style="flex:1;display:flex;align-items:center;justify-content:center;gap:.5rem;padding:.65rem 1.25rem;background:#dc2626;color:#fff;border:none;border-radius:.625rem;font-size:.875rem;font-weight:600;cursor:pointer">' +
             '<i class="fas fa-trash text-sm"></i> Delete Permanently' +
           '</button>' +
         '</div>' +
-      '</div>'
-    );
+      '</div>';
+
+    showModal(html);
+    document.getElementById('tm-close').addEventListener('click', closeModal);
+    document.getElementById('tm-cancel').addEventListener('click', closeModal);
+    document.getElementById('tm-confirm-delete').addEventListener('click', function(){
+      submitDelete(taskId);
+    });
   }
 
 
   // ================================================================
-  //  TASK ACTIONS
+  //  FORM SUBMIT
   // ================================================================
-  window.tasksSetView = function(view) {
-    activeView = view;
-    sessionStorage.setItem('tasks_view', view); // persist across navigation
-    render();
-  };
+  async function submitForm(taskId) {
+    var isEdit = !!taskId;
+    var title  = (document.getElementById('tf-title')?.value||'').trim();
+    if (!title) { modalStatus('Title is required.', false); return; }
 
-  window.tasksApplyFilter = function() {
-    filters.status   = document.getElementById('filter-status')?.value   || '';
-    filters.priority = document.getElementById('filter-priority')?.value || '';
-    loadData();
-  };
-
-  window.tasksClearFilters = function() {
-    filters = { status: '', priority: '', assigned_to: '' };
-    render();
-  };
-
-  window.tasksSearch = function() {
-    var q = (document.getElementById('task-search')?.value || '').toLowerCase().trim();
-    if (!q) { renderList(tasksCache); return; }
-    var filtered = tasksCache.filter(function(t) {
-      return (t.title       || '').toLowerCase().includes(q) ||
-             (t.description || '').toLowerCase().includes(q) ||
-             (t.tags        || '').toLowerCase().includes(q) ||
-             userName(t.assigned_to).toLowerCase().includes(q);
-    });
-    if (activeView === 'kanban') { renderKanban(filtered); } else { renderList(filtered); }
-    var countEl = document.getElementById('tasks-count');
-    if (countEl) countEl.textContent = filtered.length + ' of ' + tasksCache.length + ' tasks';
-  };
-
-  window.tasksBackdropClick = function(e) {
-    if (e.target === document.getElementById('task-modal-backdrop')) window.tasksCloseModal();
-  };
-
-  window.tasksOpenAdd = function() {
-    editingTask = null;
-    setModalContent(renderTaskForm(null));
-  };
-
-  window.tasksOpenEdit = function(taskId) {
-    editingTask = tasksCache.find(function(t) { return t.task_id === taskId; }) || null;
-    if (!editingTask) return;
-    setModalContent(renderTaskForm(editingTask));
-  };
-
-  window.tasksCloseModal = function() {
-    var backdrop = document.getElementById('task-modal-backdrop');
-    var modal    = document.getElementById('task-modal');
-    if (backdrop) backdrop.classList.add('hidden');
-    if (modal)    modal.innerHTML = '';
-    editingTask = null;
-  };
-
-  window.tasksSubmitForm = async function(taskId) {
-    var btn    = document.getElementById('task-form-btn');
-    var isEdit = !!(taskId);
-    var title  = (document.getElementById('tf-title')?.value || '').trim();
-    if (!title) return setFormStatus('Title is required.', false);
-
-    var assignedTo = (document.getElementById('tf-assigned_to')?.value || '').trim();
+    var btn = document.getElementById('tm-submit');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Saving…'; }
 
     var params = {
-      title:           title,
-      description:     document.getElementById('tf-description')?.value     || '',
-      status:          document.getElementById('tf-status')?.value          || 'Todo',
-      priority:        document.getElementById('tf-priority')?.value        || 'Medium',
-      assigned_to:     assignedTo,
-      due_date:        document.getElementById('tf-due_date')?.value        || '',
-      project_id:      (document.getElementById('tf-project_id')?.value     || '').trim(),
-      tags:            (document.getElementById('tf-tags')?.value           || '').trim(),
-      estimated_hours: document.getElementById('tf-estimated_hours')?.value || '',
-      actual_hours:    document.getElementById('tf-actual_hours')?.value    || '',
-      pay_per_task:    document.getElementById('tf-pay_per_task')?.value    || '',
-      billable:        document.getElementById('tf-billable')?.checked ? 'true' : 'false',
-      notes:           document.getElementById('tf-notes')?.value           || '',
+      title:            title,
+      description:      document.getElementById('tf-description')?.value    || '',
+      status:           document.getElementById('tf-status')?.value         || 'Todo',
+      priority:         document.getElementById('tf-priority')?.value       || 'Medium',
+      assigned_to:      document.getElementById('tf-assigned')?.value       || '',
+      due_date:         document.getElementById('tf-due_date')?.value       || '',
+      tags:             document.getElementById('tf-tags')?.value           || '',
+      project_id:       document.getElementById('tf-project_id')?.value     || '',
+      estimated_hours:  document.getElementById('tf-est')?.value            || '',
+      actual_hours:     document.getElementById('tf-actual')?.value         || '',
+      pay_per_task:     document.getElementById('tf-pay')?.value            || '',
+      billable:         document.getElementById('tf-billable')?.checked ? 'true' : 'false',
+      notes:            document.getElementById('tf-notes')?.value          || '',
     };
 
     if (isEdit) {
@@ -664,73 +607,37 @@ window.WorkVoltPages['tasks'] = function(container) {
       var paidEl = document.getElementById('tf-paid');
       if (paidEl) params.paid = paidEl.checked ? 'true' : 'false';
     } else {
-      var user = window.WorkVolt && window.WorkVolt.user && window.WorkVolt.user();
-      params.created_by = (user && user.user_id) || 'system';
+      try { params.created_by = window.WorkVolt.user().user_id || 'system'; } catch(e) { params.created_by = 'system'; }
     }
-
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Saving…'; }
 
     try {
       await api(isEdit ? 'tasks/update' : 'tasks/create', params);
-      setFormStatus(isEdit ? 'Task updated.' : 'Task created.', true);
-      setTimeout(function() { window.tasksCloseModal(); loadData(); }, 700);
+      modalStatus(isEdit ? 'Task updated!' : 'Task created!', true);
+      setTimeout(function(){ closeModal(); loadData(); }, 700);
     } catch(e) {
-      setFormStatus(e.message, false);
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = isEdit ? '<i class="fas fa-save text-sm"></i> Save Changes' : '<i class="fas fa-plus text-sm"></i> Create Task';
-      }
+      modalStatus(e.message, false);
+      if (btn) { btn.disabled = false; btn.innerHTML = isEdit ? '<i class="fas fa-save text-xs"></i> Save Changes' : '<i class="fas fa-plus text-xs"></i> Create Task'; }
     }
-  };
+  }
 
-  window.tasksQuickComplete = async function(taskId) {
-    try {
-      await api('tasks/complete', { task_id: taskId });
-      window.WorkVolt?.toast('Task marked as done!', 'success');
-      loadData();
-    } catch(e) {
-      window.WorkVolt?.toast(e.message, 'error');
-    }
-  };
-
-  window.tasksQuickCancel = async function(taskId) {
-    try {
-      await api('tasks/update', { task_id: taskId, status: 'Cancelled' });
-      window.WorkVolt?.toast('Task cancelled.', 'info');
-      loadData();
-    } catch(e) {
-      window.WorkVolt?.toast(e.message, 'error');
-    }
-  };
-
-  window.tasksQuickReopen = async function(taskId) {
-    try {
-      await api('tasks/reopen', { task_id: taskId });
-      window.WorkVolt?.toast('Task reopened.', 'info');
-      loadData();
-    } catch(e) {
-      window.WorkVolt?.toast(e.message, 'error');
-    }
-  };
-
-  window.tasksConfirmDelete = function(taskId, taskTitle) {
-    setModalContent(renderDeleteModal(taskId, taskTitle));
-  };
-
-  window.tasksSubmitDelete = async function(taskId) {
-    var btn = document.getElementById('task-form-btn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Deleting…'; }
+  async function submitDelete(taskId) {
+    var btn = document.getElementById('tm-confirm-delete');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Deleting…'; }
     try {
       await api('tasks/delete', { task_id: taskId });
-      setFormStatus('Task deleted.', true);
-      setTimeout(function() { window.tasksCloseModal(); loadData(); }, 700);
+      modalStatus('Task deleted.', true);
+      setTimeout(function(){ closeModal(); loadData(); }, 700);
     } catch(e) {
-      setFormStatus(e.message, false);
+      modalStatus(e.message, false);
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash text-sm"></i> Delete Permanently'; }
     }
-  };
+  }
 
 
   // ── Boot ──────────────────────────────────────────────────────
+  // Clean up any leftover modal portal from a previous page load
+  var old = document.getElementById(MODAL_ID);
+  if (old) old.innerHTML = '';
+
   render();
 };
