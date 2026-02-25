@@ -577,13 +577,9 @@
       return;
     }
 
-    // Try loading the page script dynamically
+    // Remove stale cached script so the module re-fetches cleanly on re-navigation
     const existing = document.querySelector(`script[data-page="${name}"]`);
-    if (existing) {
-      // Script already loaded but function missing — show placeholder
-      renderPagePlaceholder(name, container);
-      return;
-    }
+    if (existing) existing.remove();
 
     const script = document.createElement('script');
     script.src          = `pages/${name}.js`;
@@ -737,6 +733,17 @@
   });
 
 
+  // Expose globals early so page modules can access them immediately on load
+  window.WorkVolt = {
+    api: apiCall,
+    user: () => currentUser,
+    token: () => currentToken,
+    toast: showToast,
+    navigate: showModule,
+  };
+  window.WorkVoltPages = window.WorkVoltPages || {};
+  window.renderNav = renderNav;
+
   // ─────────────────────────────────────────────
   //  BOOT SEQUENCE
   // ─────────────────────────────────────────────
@@ -747,16 +754,7 @@
     await showApp();
   });
 
-  // Expose globals that page modules may need
-  window.WorkVolt = {
-    api: apiCall,
-    user: () => currentUser,
-    token: () => currentToken,
-    toast: showToast,
-    navigate: showModule,
-  };
-  window.WorkVoltPages = window.WorkVoltPages || {};
-  window.renderNav = renderNav;
+  // window.WorkVolt globals are defined above near the boot sequence
   </script>
 
 </body>
