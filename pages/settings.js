@@ -8,6 +8,7 @@ window.WorkVoltPages['settings'] = function(container) {
   let activeTab   = 'connection';
   let usersCache  = [];
   let editingUser = null;
+  let modulesCache = [];
 
   if (savedUrl)    window.API_URL = savedUrl;
   if (savedSecret) window.API_SECRET_CLIENT = savedSecret;
@@ -131,7 +132,11 @@ window.WorkVoltPages['settings'] = function(container) {
       '<button onclick="settingsTab(\'users\')" ' +
         'class="flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ' +
         (activeTab === 'users' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700') + '">' +
-        '<i class="fas fa-users text-xs"></i>User Management</button>'
+        '<i class="fas fa-users text-xs"></i>User Management</button>' +
+      '<button onclick="settingsTab(\'modules\')" ' +
+        'class="flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ' +
+        (activeTab === 'modules' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700') + '">' +
+        '<i class="fas fa-store text-xs"></i>Modules</button>'
     );
 
     container.innerHTML = `
@@ -147,13 +152,14 @@ window.WorkVoltPages['settings'] = function(container) {
         </div>
 
         <div id="settings-tab-content" class="max-w-4xl mx-auto px-6 md:px-10 py-8">
-          ${activeTab === 'connection' ? renderConnectionTab(connStatus, isConnected) : renderUsersTab()}
+          ${activeTab === 'connection' ? renderConnectionTab(connStatus, isConnected) : activeTab === 'users' ? renderUsersTab() : renderModulesTab()}
         </div>
 
       </div>
     `;
 
-    if (activeTab === 'users') loadUsers();
+    if (activeTab === 'users')   loadUsers();
+    if (activeTab === 'modules') loadModules();
   }
 
 
@@ -616,6 +622,204 @@ window.WorkVoltPages['settings'] = function(container) {
     } catch(e) {
       setFormStatus(e.message, false);
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash text-sm"></i> Delete Permanently'; }
+    }
+  };
+
+
+  // ================================================================
+  //  MODULES TAB
+  // ================================================================
+  var ADDON_CATALOGUE = {
+    tasks:       { label: 'Tasks',                 icon: 'fa-check-circle',       description: 'Create, assign and track tasks with priority, billing and pay-per-task support.' },
+    pipeline:    { label: 'Pipeline',              icon: 'fa-users',              description: 'Visual sales pipeline to manage leads and deals through custom stages.' },
+    payroll:     { label: 'Payroll',               icon: 'fa-money-bill-wave',    description: 'Run payroll for hourly, salaried and pay-per-task employees.' },
+    timesheets:  { label: 'Timesheets',            icon: 'fa-clock',              description: 'Log and approve work hours with project and task tracking.' },
+    financials:  { label: 'Financials',            icon: 'fa-chart-line',         description: 'Track income, expenses and financial KPIs in one place.' },
+    crm:         { label: 'CRM',                   icon: 'fa-address-book',       description: 'Manage contacts, companies and customer relationships.' },
+    projects:    { label: 'Projects',              icon: 'fa-folder-open',        description: 'Organise work into projects with milestones and team assignments.' },
+    reports:     { label: 'Reports',               icon: 'fa-chart-pie',          description: 'Auto-generated reports across all installed modules.' },
+    assets:      { label: 'Assets',                icon: 'fa-box-open',           description: 'Track company assets, assignments and maintenance schedules.' },
+    attendance:  { label: 'Attendance Tracker',    icon: 'fa-calendar-check',     description: 'Monitor employee check-ins, absences and leave requests.' },
+    invoices:    { label: 'Invoice Manager',       icon: 'fa-file-invoice-dollar',description: 'Create and send professional invoices, track payment status.' },
+    inventory:   { label: 'Inventory Control',     icon: 'fa-warehouse',          description: 'Manage stock levels, SKUs, suppliers and reorder points.' },
+    scheduler:   { label: 'Shift Scheduler',       icon: 'fa-calendar-alt',       description: 'Build and publish shift schedules for your team.' },
+    expenses:    { label: 'Expense Claims',        icon: 'fa-receipt',            description: 'Submit, review and reimburse employee expense claims.' },
+    contracts:   { label: 'Contract Hub',          icon: 'fa-file-signature',     description: 'Store and manage contracts with expiry reminders.' },
+    helpdesk:    { label: 'Help Desk',             icon: 'fa-headset',            description: 'Internal ticket system for employee IT and HR requests.' },
+    recruitment: { label: 'Recruitment Pipeline',  icon: 'fa-user-tie',           description: 'Track candidates through your hiring pipeline.' },
+  };
+
+  function renderModulesTab() {
+    return `
+      <div>
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">Modules</h2>
+            <p class="text-sm text-slate-500">Install or remove modules. Each module creates its own Sheet tab on first install.</p>
+          </div>
+          <button onclick="loadModules()" class="btn-secondary text-xs px-3 py-2">
+            <i class="fas fa-sync-alt text-xs"></i> Refresh
+          </button>
+        </div>
+
+        <div id="modules-status"></div>
+
+        <!-- Installed -->
+        <div class="mb-6">
+          <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Installed</h3>
+          <div id="modules-installed" class="space-y-2">
+            <div class="flex items-center justify-center py-8 text-slate-400">
+              <i class="fas fa-circle-notch fa-spin text-xl"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Available -->
+        <div>
+          <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Available</h3>
+          <div id="modules-available" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="flex items-center justify-center py-8 text-slate-400 col-span-2">
+              <i class="fas fa-circle-notch fa-spin text-xl"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function setModuleStatus(msg, ok) {
+    var el = document.getElementById('modules-status');
+    if (!el) return;
+    if (!msg) { el.innerHTML = ''; return; }
+    el.innerHTML = (
+      '<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium mb-4 ' +
+      (ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200') + '">' +
+        '<i class="fas ' + (ok ? 'fa-check-circle' : 'fa-exclamation-circle') + '"></i>' +
+        '<span>' + msg + '</span>' +
+      '</div>'
+    );
+  }
+
+  async function loadModules() {
+    if (!savedUrl || !savedSecret) {
+      var ins = document.getElementById('modules-installed');
+      var avl = document.getElementById('modules-available');
+      var msg = '<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm text-slate-500 bg-slate-50 border border-slate-200"><i class="fas fa-plug text-slate-400"></i><span>Connect your Google Sheet first to manage modules.</span></div>';
+      if (ins) ins.innerHTML = msg;
+      if (avl) avl.innerHTML = '';
+      return;
+    }
+
+    try {
+      var data = await api('config/modules');
+      modulesCache = data.modules || [];
+      renderModuleLists();
+    } catch(e) {
+      setModuleStatus('Could not load modules: ' + e.message, false);
+    }
+  }
+
+  function renderModuleLists() {
+    var installedEl  = document.getElementById('modules-installed');
+    var availableEl  = document.getElementById('modules-available');
+    if (!installedEl || !availableEl) return;
+
+    var installedIds = modulesCache.map(function(m) { return m.id; });
+
+    // ── Installed list ──
+    if (!modulesCache.length) {
+      installedEl.innerHTML = '<p class="text-sm text-slate-400 py-4">No modules installed yet.</p>';
+    } else {
+      installedEl.innerHTML = modulesCache.map(function(m) {
+        var def = ADDON_CATALOGUE[m.id] || {};
+        return (
+          '<div class="flex items-center gap-4 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm">' +
+            '<div class="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">' +
+              '<i class="fas ' + (def.icon || m.icon || 'fa-layer-group') + ' text-blue-600 text-sm"></i>' +
+            '</div>' +
+            '<div class="flex-1 min-w-0">' +
+              '<div class="font-semibold text-slate-900 text-sm">' + (def.label || m.label) + '</div>' +
+              '<div class="text-xs text-slate-400 truncate">' + (def.description || '') + '</div>' +
+            '</div>' +
+            '<div class="flex items-center gap-2 flex-shrink-0">' +
+              '<span class="text-xs text-green-600 font-semibold bg-green-50 px-2 py-1 rounded-lg border border-green-200">' +
+                '<i class="fas fa-check mr-1"></i>Installed' +
+              '</span>' +
+              '<button onclick="modulesUninstall(\'' + m.id + '\')" ' +
+                'class="text-xs text-red-500 hover:text-red-700 font-semibold bg-red-50 hover:bg-red-100 px-2 py-1 rounded-lg border border-red-200 transition-colors">' +
+                'Uninstall' +
+              '</button>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join('');
+    }
+
+    // ── Available list ──
+    var available = Object.keys(ADDON_CATALOGUE).filter(function(id) {
+      return !installedIds.includes(id);
+    });
+
+    if (!available.length) {
+      availableEl.innerHTML = '<p class="text-sm text-slate-400 py-4 col-span-2">All available modules are installed!</p>';
+    } else {
+      availableEl.innerHTML = available.map(function(id) {
+        var def = ADDON_CATALOGUE[id];
+        return (
+          '<div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-3">' +
+            '<div class="flex items-start gap-3">' +
+              '<div class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center flex-shrink-0">' +
+                '<i class="fas ' + def.icon + ' text-slate-500 text-sm"></i>' +
+              '</div>' +
+              '<div class="flex-1 min-w-0">' +
+                '<div class="font-semibold text-slate-900 text-sm">' + def.label + '</div>' +
+                '<div class="text-xs text-slate-500 mt-0.5 leading-relaxed">' + def.description + '</div>' +
+              '</div>' +
+            '</div>' +
+            '<button onclick="modulesInstall(\'' + id + '\')" id="install-btn-' + id + '" ' +
+              'class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors">' +
+              '<i class="fas fa-download text-xs"></i> Install' +
+            '</button>' +
+          '</div>'
+        );
+      }).join('');
+    }
+  }
+
+  window.modulesInstall = async function(moduleId) {
+    var btn = document.getElementById('install-btn-' + moduleId);
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Installing…'; }
+    setModuleStatus('', false);
+    try {
+      var data = await api('module/install', { module: moduleId });
+      setModuleStatus((ADDON_CATALOGUE[moduleId]?.label || moduleId) + ' installed successfully! The sheet tab has been created.', true);
+      // Refresh global INSTALLED_MODULES and re-render nav
+      modulesCache.push({ id: moduleId, label: ADDON_CATALOGUE[moduleId]?.label, icon: ADDON_CATALOGUE[moduleId]?.icon, version: '1.0.0' });
+      if (window.INSTALLED_MODULES !== undefined) {
+        window.INSTALLED_MODULES = modulesCache;
+        if (typeof renderNav === 'function') renderNav();
+      }
+      renderModuleLists();
+    } catch(e) {
+      setModuleStatus('Install failed: ' + e.message, false);
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download text-xs"></i> Install'; }
+    }
+  };
+
+  window.modulesUninstall = async function(moduleId) {
+    if (!confirm('Uninstall ' + (ADDON_CATALOGUE[moduleId]?.label || moduleId) + '? The sheet data will be kept but the module will be removed from the menu.')) return;
+    setModuleStatus('', false);
+    try {
+      await api('module/uninstall', { module: moduleId });
+      setModuleStatus((ADDON_CATALOGUE[moduleId]?.label || moduleId) + ' uninstalled. Sheet data has been kept.', true);
+      modulesCache = modulesCache.filter(function(m) { return m.id !== moduleId; });
+      if (window.INSTALLED_MODULES !== undefined) {
+        window.INSTALLED_MODULES = modulesCache;
+        if (typeof renderNav === 'function') renderNav();
+      }
+      renderModuleLists();
+    } catch(e) {
+      setModuleStatus('Uninstall failed: ' + e.message, false);
     }
   };
 
