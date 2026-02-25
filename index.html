@@ -318,6 +318,7 @@
     reports:    ['SuperAdmin','Admin','Manager'],
     assets:     ['SuperAdmin','Admin','Manager','Employee'],
     settings:   ['SuperAdmin','Admin'],
+    store:      ['SuperAdmin','Admin'],
   };
 
   const MODULE_ICONS = {
@@ -332,6 +333,7 @@
     reports:    'fa-chart-pie',
     assets:     'fa-box-open',
     settings:   'fa-cog',
+    store:      'fa-store',
   };
 
   const MODULE_LABELS = {
@@ -346,7 +348,14 @@
     reports:    'Reports',
     assets:     'Assets',
     settings:   'Settings',
+    store:      'Module Store',
   };
+
+  // ── Installed modules registry (persisted in localStorage) ──
+  let INSTALLED_MODULES = JSON.parse(localStorage.getItem('wv_installed_modules') || '[]');
+  function saveInstalledModules() {
+    localStorage.setItem('wv_installed_modules', JSON.stringify(INSTALLED_MODULES));
+  }
 
 
   // ─────────────────────────────────────────────
@@ -449,9 +458,14 @@
   function renderNav() {
     const nav     = document.getElementById('nav-menu');
     const role    = currentUser?.role || 'Employee';
-    const allowed = Object.keys(MODULE_ROLES).filter(m => MODULE_ROLES[m].includes(role));
 
-    nav.innerHTML = allowed.map(mod => `
+    // Core modules (all except store)
+    const coreModules = Object.keys(MODULE_ROLES).filter(m => m !== 'store' && MODULE_ROLES[m].includes(role));
+
+    // Extra installed modules
+    const extras = INSTALLED_MODULES.filter(m => MODULE_ROLES[m.id]?.[0] || true);
+
+    const coreLinks = coreModules.map(mod => `
       <a href="#${mod}" onclick="showModule('${mod}'); return false;"
          class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
          data-module="${mod}">
@@ -459,6 +473,34 @@
         <span>${MODULE_LABELS[mod]}</span>
       </a>
     `).join('');
+
+    const extraLinks = extras.length ? `
+      <div class="px-3 pt-3 pb-1">
+        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Installed</p>
+      </div>
+      ${extras.map(mod => `
+        <a href="#${mod.id}" onclick="showModule('${mod.id}'); return false;"
+           class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
+           data-module="${mod.id}">
+          <i class="fas ${mod.icon} w-4 text-slate-400"></i>
+          <span>${mod.label}</span>
+        </a>
+      `).join('')}
+    ` : '';
+
+    const storeLink = MODULE_ROLES.store.includes(role) ? `
+      <div class="border-t border-slate-100 mt-2 pt-2">
+        <a href="#store" onclick="showModule('store'); return false;"
+           class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
+           data-module="store">
+          <i class="fas fa-store w-4 text-slate-400"></i>
+          <span>Module Store</span>
+          <span class="ml-auto text-[10px] bg-blue-100 text-blue-600 font-bold px-1.5 py-0.5 rounded-full">NEW</span>
+        </a>
+      </div>
+    ` : '';
+
+    nav.innerHTML = coreLinks + extraLinks + storeLink;
   }
 
   function showModule(name, push = true) {
