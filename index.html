@@ -306,49 +306,45 @@
   let _notifPollTimer = null;
 
   // Module → allowed roles
+  // Core permanent modules (always in sidebar)
   const MODULE_ROLES = {
     dashboard:  ['SuperAdmin','Admin','Manager','Employee','Contractor'],
-    tasks:      ['SuperAdmin','Admin','Manager','Employee','Contractor'],
-    pipeline:   ['SuperAdmin','Admin','Manager'],
-    payroll:    ['SuperAdmin','Admin','Manager','Employee','Contractor'],
-    timesheets: ['SuperAdmin','Admin','Manager','Employee','Contractor'],
-    financials: ['SuperAdmin','Admin','Manager'],
-    crm:        ['SuperAdmin','Admin','Manager'],
-    projects:   ['SuperAdmin','Admin','Manager'],
-    reports:    ['SuperAdmin','Admin','Manager'],
-    assets:     ['SuperAdmin','Admin','Manager','Employee'],
     settings:   ['SuperAdmin','Admin'],
     store:      ['SuperAdmin','Admin'],
   };
 
   const MODULE_ICONS = {
     dashboard:  'fa-th-large',
-    tasks:      'fa-check-circle',
-    pipeline:   'fa-users',
-    payroll:    'fa-money-bill-wave',
-    timesheets: 'fa-clock',
-    financials: 'fa-chart-line',
-    crm:        'fa-address-book',
-    projects:   'fa-folder-open',
-    reports:    'fa-chart-pie',
-    assets:     'fa-box-open',
     settings:   'fa-cog',
     store:      'fa-store',
   };
 
   const MODULE_LABELS = {
     dashboard:  'Dashboard',
-    tasks:      'Tasks',
-    pipeline:   'Pipeline',
-    payroll:    'Payroll',
-    timesheets: 'Timesheets',
-    financials: 'Financials',
-    crm:        'CRM',
-    projects:   'Projects',
-    reports:    'Reports',
-    assets:     'Assets',
     settings:   'Settings',
     store:      'Module Store',
+  };
+
+  // Add-on modules available in the Store
+  // These are registered here so the app knows how to render them once installed
+  const ADDON_CATALOGUE = {
+    tasks:       { label: 'Tasks',                icon: 'fa-check-circle',      roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    pipeline:    { label: 'Pipeline',             icon: 'fa-users',             roles: ['SuperAdmin','Admin','Manager'] },
+    payroll:     { label: 'Payroll',              icon: 'fa-money-bill-wave',   roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    timesheets:  { label: 'Timesheets',           icon: 'fa-clock',             roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    financials:  { label: 'Financials',           icon: 'fa-chart-line',        roles: ['SuperAdmin','Admin','Manager'] },
+    crm:         { label: 'CRM',                  icon: 'fa-address-book',      roles: ['SuperAdmin','Admin','Manager'] },
+    projects:    { label: 'Projects',             icon: 'fa-folder-open',       roles: ['SuperAdmin','Admin','Manager'] },
+    reports:     { label: 'Reports',              icon: 'fa-chart-pie',         roles: ['SuperAdmin','Admin','Manager'] },
+    assets:      { label: 'Assets',               icon: 'fa-box-open',          roles: ['SuperAdmin','Admin','Manager','Employee'] },
+    attendance:  { label: 'Attendance Tracker',   icon: 'fa-calendar-check',    roles: ['SuperAdmin','Admin','Manager','Employee'] },
+    invoices:    { label: 'Invoice Manager',      icon: 'fa-file-invoice-dollar',roles: ['SuperAdmin','Admin','Manager'] },
+    inventory:   { label: 'Inventory Control',    icon: 'fa-warehouse',         roles: ['SuperAdmin','Admin','Manager'] },
+    scheduler:   { label: 'Shift Scheduler',      icon: 'fa-calendar-alt',      roles: ['SuperAdmin','Admin','Manager'] },
+    expenses:    { label: 'Expense Claims',       icon: 'fa-receipt',           roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    contracts:   { label: 'Contract Hub',         icon: 'fa-file-signature',    roles: ['SuperAdmin','Admin','Manager'] },
+    helpdesk:    { label: 'Help Desk',            icon: 'fa-headset',           roles: ['SuperAdmin','Admin','Manager','Employee'] },
+    recruitment: { label: 'Recruitment Pipeline', icon: 'fa-user-tie',          roles: ['SuperAdmin','Admin','Manager'] },
   };
 
   // ── Active modules config ────────────────────────────────────────────
@@ -359,7 +355,18 @@
   // To toggle a module on: uncomment its line below.
   // ───────────────────────────────────────────────────────────────────
   let INSTALLED_MODULES = [
-    // { id: 'attendance',  label: 'Attendance Tracker',   icon: 'fa-calendar-check',     version: '1.0.0' },
+    // ── Former core modules — now install via Module Store ──
+    // { id: 'tasks',       label: 'Tasks',                icon: 'fa-check-circle',        version: '1.0.0' },
+    // { id: 'pipeline',    label: 'Pipeline',             icon: 'fa-users',               version: '1.0.0' },
+    // { id: 'payroll',     label: 'Payroll',              icon: 'fa-money-bill-wave',      version: '1.0.0' },
+    // { id: 'timesheets',  label: 'Timesheets',           icon: 'fa-clock',               version: '1.0.0' },
+    // { id: 'financials',  label: 'Financials',           icon: 'fa-chart-line',          version: '1.0.0' },
+    // { id: 'crm',         label: 'CRM',                  icon: 'fa-address-book',        version: '1.0.0' },
+    // { id: 'projects',    label: 'Projects',             icon: 'fa-folder-open',         version: '1.0.0' },
+    // { id: 'reports',     label: 'Reports',              icon: 'fa-chart-pie',           version: '1.0.0' },
+    // { id: 'assets',      label: 'Assets',               icon: 'fa-box-open',            version: '1.0.0' },
+    // ── Add-on modules ──
+    // { id: 'attendance',  label: 'Attendance Tracker',   icon: 'fa-calendar-check',      version: '1.0.0' },
     // { id: 'invoices',    label: 'Invoice Manager',      icon: 'fa-file-invoice-dollar', version: '1.2.0' },
     // { id: 'inventory',   label: 'Inventory Control',    icon: 'fa-warehouse',           version: '1.1.0' },
     // { id: 'scheduler',   label: 'Shift Scheduler',      icon: 'fa-calendar-alt',        version: '1.0.2' },
@@ -481,51 +488,60 @@
 
   // Build sidebar nav from user role
   function renderNav() {
-    const nav     = document.getElementById('nav-menu');
-    const role    = currentUser?.role || 'Employee';
+    const nav  = document.getElementById('nav-menu');
+    const role = currentUser?.role || 'Employee';
 
-    // Core modules (all except store)
-    const coreModules = Object.keys(MODULE_ROLES).filter(m => m !== 'store' && MODULE_ROLES[m].includes(role));
-
-    // Extra installed modules
-    const extras = INSTALLED_MODULES.filter(m => MODULE_ROLES[m.id]?.[0] || true);
-
-    const coreLinks = coreModules.map(mod => `
-      <a href="#${mod}" onclick="showModule('${mod}'); return false;"
+    // ── Permanent core entries: Dashboard ──
+    const dashLink = `
+      <a href="#dashboard" onclick="showModule('dashboard'); return false;"
          class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
-         data-module="${mod}">
-        <i class="fas ${MODULE_ICONS[mod]} w-4 text-slate-400"></i>
-        <span>${MODULE_LABELS[mod]}</span>
-      </a>
-    `).join('');
+         data-module="dashboard">
+        <i class="fas fa-th-large w-4 text-slate-400"></i>
+        <span>Dashboard</span>
+      </a>`;
 
-    const extraLinks = extras.length ? `
-      <div class="px-3 pt-3 pb-1">
-        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Installed</p>
+    // ── Installed add-on modules (from INSTALLED_MODULES + ADDON_CATALOGUE) ──
+    const addons = INSTALLED_MODULES.filter(m => {
+      const def = ADDON_CATALOGUE[m.id];
+      return def && def.roles.includes(role);
+    });
+
+    const addonLinks = addons.length ? `
+      <div class="px-3 pt-4 pb-1">
+        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Modules</p>
       </div>
-      ${extras.map(mod => `
-        <a href="#${mod.id}" onclick="showModule('${mod.id}'); return false;"
-           class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
-           data-module="${mod.id}">
-          <i class="fas ${mod.icon} w-4 text-slate-400"></i>
-          <span>${mod.label}</span>
-        </a>
-      `).join('')}
+      ${addons.map(m => {
+        const def = ADDON_CATALOGUE[m.id] || {};
+        return `
+          <a href="#${m.id}" onclick="showModule('${m.id}'); return false;"
+             class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
+             data-module="${m.id}">
+            <i class="fas ${def.icon || m.icon} w-4 text-slate-400"></i>
+            <span>${def.label || m.label}</span>
+          </a>`;
+      }).join('')}
     ` : '';
 
-    const storeLink = MODULE_ROLES.store.includes(role) ? `
-      <div class="border-t border-slate-100 mt-2 pt-2">
+    // ── Bottom: Settings + Store ──
+    const bottomLinks = `
+      <div class="border-t border-slate-100 mt-2 pt-2 space-y-0.5">
+        ${MODULE_ROLES.settings.includes(role) ? `
+        <a href="#settings" onclick="showModule('settings'); return false;"
+           class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
+           data-module="settings">
+          <i class="fas fa-cog w-4 text-slate-400"></i>
+          <span>Settings</span>
+        </a>` : ''}
+        ${MODULE_ROLES.store.includes(role) ? `
         <a href="#store" onclick="showModule('store'); return false;"
            class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
            data-module="store">
           <i class="fas fa-store w-4 text-slate-400"></i>
           <span>Module Store</span>
-          <span class="ml-auto text-[10px] bg-blue-100 text-blue-600 font-bold px-1.5 py-0.5 rounded-full">NEW</span>
-        </a>
-      </div>
-    ` : '';
+        </a>` : ''}
+      </div>`;
 
-    nav.innerHTML = coreLinks + extraLinks + storeLink;
+    nav.innerHTML = dashLink + addonLinks + bottomLinks;
   }
 
   function showModule(name, push = true) {
