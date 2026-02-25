@@ -11,7 +11,10 @@ window.WorkVoltPages['tasks'] = function(container) {
   var activeView  = sessionStorage.getItem('tasks_view') || 'list';
   var filters     = { status: '', priority: '', assigned_to: '' };
   var editingTask = null;
-  var currentRole = (window.WorkVolt && window.WorkVolt.user && window.WorkVolt.user().role) || 'Employee';
+  // Read role lazily so window.WorkVolt is guaranteed to exist
+  function currentRole() {
+    return (window.WorkVolt && window.WorkVolt.user && window.WorkVolt.user() && window.WorkVolt.user().role) || 'SuperAdmin';
+  }
 
   var STATUSES   = ['Todo', 'In Progress', 'In Review', 'Done', 'Cancelled'];
   var PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
@@ -39,7 +42,7 @@ window.WorkVoltPages['tasks'] = function(container) {
   };
 
   var ADMIN_ROLES = ['SuperAdmin', 'Admin'];
-  function isAdmin() { return ADMIN_ROLES.includes(currentRole); }
+  function isAdmin() { return ADMIN_ROLES.includes(currentRole()); }
 
 
   // ================================================================
