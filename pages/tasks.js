@@ -6,9 +6,12 @@ window.WorkVoltPages['tasks'] = function(container) {
   var savedUrl    = localStorage.getItem('wv_gas_url')    || '';
   var savedSecret = localStorage.getItem('wv_api_secret') || '';
   var tasksCache  = [];
-  var activeView  = 'list';   // 'list' | 'kanban'
+  var usersCache  = [];   // for assign-by-name dropdowns
+  // Persist view preference across navigation
+  var activeView  = sessionStorage.getItem('tasks_view') || 'list';
   var filters     = { status: '', priority: '', assigned_to: '' };
   var editingTask = null;
+  var currentRole = (window.WorkVolt && window.WorkVolt.user && window.WorkVolt.user().role) || 'Employee';
 
   var STATUSES   = ['Todo', 'In Progress', 'In Review', 'Done', 'Cancelled'];
   var PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
@@ -35,6 +38,9 @@ window.WorkVoltPages['tasks'] = function(container) {
     'Urgent': 'bg-red-500',
   };
 
+  var ADMIN_ROLES = ['SuperAdmin', 'Admin'];
+  function isAdmin() { return ADMIN_ROLES.includes(currentRole); }
+
 
   // ================================================================
   //  API HELPER
@@ -58,7 +64,7 @@ window.WorkVoltPages['tasks'] = function(container) {
 
 
   // ================================================================
-  //  BADGES
+  //  BADGES & HELPERS
   // ================================================================
   function statusBadge(status) {
     var cls = STATUS_COLORS[status] || 'bg-slate-100 text-slate-600';
@@ -69,6 +75,13 @@ window.WorkVoltPages['tasks'] = function(container) {
     var cls = PRIORITY_COLORS[priority] || 'bg-slate-100 text-slate-500';
     var dot = PRIORITY_DOT[priority]    || 'bg-slate-400';
     return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ' + cls + '"><span class="w-1.5 h-1.5 rounded-full ' + dot + '"></span>' + (priority || '—') + '</span>';
+  }
+
+  // Look up a user's display name from the users cache
+  function userName(userId) {
+    if (!userId) return '—';
+    var u = usersCache.find(function(u) { return u.user_id === userId; });
+    return u ? (u.name || u.email) : userId.substring(0, 8) + '…';
   }
 
   function setModalContent(html) {
@@ -89,29 +102,46 @@ window.WorkVoltPages['tasks'] = function(container) {
     );
   }
 
+  function escHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function formatDate(d) {
+    if (!d) return '';
+    try {
+      return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch(e) { return d; }
+  }
+
 
   // ================================================================
   //  MAIN RENDER
   // ================================================================
   function render() {
+    var listActive   = activeView === 'list';
+    var kanbanActive = activeView === 'kanban';
+
     container.innerHTML = `
       <div class="min-h-full bg-slate-50">
 
         <!-- Header -->
-        <div class="bg-white border-b border-slate-200 px-6 md:px-8 py-5 flex items-center justify-between gap-4">
+        <div class="bg-white border-b border-slate-200 px-6 md:px-8 py-5 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 class="text-xl font-extrabold text-slate-900">Tasks</h1>
             <p class="text-slate-500 text-sm mt-0.5" id="tasks-count">Loading…</p>
           </div>
           <div class="flex items-center gap-2">
-            <!-- View toggle -->
             <div class="flex items-center bg-slate-100 rounded-lg p-0.5">
               <button onclick="tasksSetView('list')" id="view-list-btn"
-                class="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${activeView === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">
+                class="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${listActive ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">
                 <i class="fas fa-list mr-1"></i>List
               </button>
               <button onclick="tasksSetView('kanban')" id="view-kanban-btn"
-                class="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${activeView === 'kanban' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">
+                class="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${kanbanActive ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">
                 <i class="fas fa-columns mr-1"></i>Kanban
               </button>
             </div>
@@ -155,14 +185,14 @@ window.WorkVoltPages['tasks'] = function(container) {
       </div>
     `;
 
-    loadTasks();
+    loadData();
   }
 
 
   // ================================================================
-  //  LOAD & DISPLAY
+  //  LOAD DATA — tasks + users in parallel
   // ================================================================
-  async function loadTasks() {
+  async function loadData() {
     if (!savedUrl || !savedSecret) {
       document.getElementById('tasks-content').innerHTML =
         '<div class="flex flex-col items-center justify-center py-20 text-slate-400">' +
@@ -176,13 +206,18 @@ window.WorkVoltPages['tasks'] = function(container) {
     }
 
     try {
-      var params = {};
-      if (filters.status)      params.status   = filters.status;
-      if (filters.priority)    params.priority  = filters.priority;
-      if (filters.assigned_to) params.assigned_to = filters.assigned_to;
+      // Load tasks and users in parallel
+      var results = await Promise.all([
+        api('tasks/list', {
+          status:      filters.status      || undefined,
+          priority:    filters.priority    || undefined,
+          assigned_to: filters.assigned_to || undefined,
+        }),
+        api('users/list').catch(function() { return { rows: [] }; }),
+      ]);
 
-      var data = await api('tasks/list', params);
-      tasksCache = data.rows || [];
+      tasksCache = results[0].rows || [];
+      usersCache = results[1].rows || [];
 
       var countEl = document.getElementById('tasks-count');
       if (countEl) countEl.textContent = tasksCache.length + ' task' + (tasksCache.length !== 1 ? 's' : '');
@@ -218,31 +253,46 @@ window.WorkVoltPages['tasks'] = function(container) {
     }
 
     var rows = tasks.map(function(t) {
-      var due = t.due_date ? formatDate(t.due_date) : '—';
+      var due     = t.due_date ? formatDate(t.due_date) : '—';
       var overdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'Done' && t.status !== 'Cancelled';
       var dueClass = overdue ? 'text-red-500 font-semibold' : 'text-slate-500';
 
+      // Action buttons — all users can complete/reopen/edit/cancel; only admins can delete
+      var actionBtns = '';
+
+      if (t.status !== 'Done' && t.status !== 'Cancelled') {
+        actionBtns += '<button onclick="tasksQuickComplete(\'' + t.task_id + '\')" title="Mark complete" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors"><i class="fas fa-check text-xs"></i></button>';
+        actionBtns += '<button onclick="tasksQuickCancel(\'' + t.task_id + '\')" title="Cancel task" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-orange-500 hover:bg-orange-50 transition-colors"><i class="fas fa-ban text-xs"></i></button>';
+      } else {
+        actionBtns += '<button onclick="tasksQuickReopen(\'' + t.task_id + '\')" title="Reopen" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-undo text-xs"></i></button>';
+      }
+
+      actionBtns += '<button onclick="tasksOpenEdit(\'' + t.task_id + '\')" title="Edit" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-pencil text-xs"></i></button>';
+
+      if (isAdmin()) {
+        actionBtns += '<button onclick="tasksConfirmDelete(\'' + t.task_id + '\',\'' + escHtml(t.title).replace(/'/g, '') + '\')" title="Delete" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><i class="fas fa-trash text-xs"></i></button>';
+      }
+
       return (
-        '<tr class="border-t border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer" onclick="tasksOpenEdit(\'' + t.task_id + '\')">' +
-          '<td class="px-4 py-3 max-w-xs">' +
+        '<tr class="border-t border-slate-100 hover:bg-slate-50 transition-colors">' +
+          // Title cell — clicking opens edit
+          '<td class="px-4 py-3 max-w-xs cursor-pointer" onclick="tasksOpenEdit(\'' + t.task_id + '\')">' +
             '<div class="font-semibold text-slate-900 text-sm truncate">' + escHtml(t.title) + '</div>' +
             (t.description ? '<div class="text-xs text-slate-400 truncate mt-0.5">' + escHtml(t.description) + '</div>' : '') +
           '</td>' +
           '<td class="px-4 py-3 whitespace-nowrap">' + statusBadge(t.status) + '</td>' +
           '<td class="px-4 py-3 whitespace-nowrap">' + priorityBadge(t.priority) + '</td>' +
-          '<td class="px-4 py-3 text-xs ' + dueClass + ' whitespace-nowrap">' + due + (overdue ? ' <i class="fas fa-exclamation-circle ml-0.5"></i>' : '') + '</td>' +
-          '<td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">' + (t.assigned_to ? '<span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">' + escHtml(t.assigned_to.substring(0,8)) + '…</span>' : '—') + '</td>' +
+          '<td class="px-4 py-3 text-xs ' + dueClass + ' whitespace-nowrap">' +
+            due + (overdue ? ' <i class="fas fa-exclamation-circle ml-0.5"></i>' : '') +
+          '</td>' +
+          '<td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">' + escHtml(userName(t.assigned_to)) + '</td>' +
           '<td class="px-4 py-3 whitespace-nowrap">' +
-            (String(t.billable) === 'true' ? '<span class="text-xs text-green-600 font-semibold"><i class="fas fa-dollar-sign mr-0.5"></i>Billable</span>' : '<span class="text-xs text-slate-400">—</span>') +
+            (String(t.billable) === 'true'
+              ? '<span class="text-xs text-green-600 font-semibold"><i class="fas fa-dollar-sign mr-0.5"></i>Billable</span>'
+              : '<span class="text-xs text-slate-400">—</span>') +
           '</td>' +
           '<td class="px-4 py-3 whitespace-nowrap">' +
-            '<div class="flex items-center gap-1" onclick="event.stopPropagation()">' +
-              (t.status !== 'Done' && t.status !== 'Cancelled'
-                ? '<button onclick="tasksQuickComplete(\'' + t.task_id + '\')" title="Mark complete" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors"><i class="fas fa-check text-xs"></i></button>'
-                : '<button onclick="tasksQuickReopen(\'' + t.task_id + '\')" title="Reopen" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-undo text-xs"></i></button>') +
-              '<button onclick="tasksOpenEdit(\'' + t.task_id + '\')" title="Edit" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-pencil text-xs"></i></button>' +
-              '<button onclick="tasksConfirmDelete(\'' + t.task_id + '\',\'' + escHtml(t.title).replace(/'/g,'') + '\')" title="Delete" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><i class="fas fa-trash text-xs"></i></button>' +
-            '</div>' +
+            '<div class="flex items-center gap-1">' + actionBtns + '</div>' +
           '</td>' +
         '</tr>'
       );
@@ -274,19 +324,17 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   function renderKanban(tasks) {
     var content = document.getElementById('tasks-content');
+    var dotMap = {
+      'Todo': 'bg-slate-400', 'In Progress': 'bg-blue-500',
+      'In Review': 'bg-purple-500', 'Done': 'bg-green-500', 'Cancelled': 'bg-red-400',
+    };
 
     var cols = STATUSES.map(function(status) {
       var colTasks = tasks.filter(function(t) { return t.status === status; });
-      var dotCls = {
-        'Todo':        'bg-slate-400',
-        'In Progress': 'bg-blue-500',
-        'In Review':   'bg-purple-500',
-        'Done':        'bg-green-500',
-        'Cancelled':   'bg-red-400',
-      }[status] || 'bg-slate-400';
 
       var cards = colTasks.map(function(t) {
         var overdue = t.due_date && new Date(t.due_date) < new Date() && status !== 'Done' && status !== 'Cancelled';
+        var assigneeName = userName(t.assigned_to);
         return (
           '<div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm card-hover cursor-pointer" onclick="tasksOpenEdit(\'' + t.task_id + '\')">' +
             '<div class="flex items-start justify-between gap-2 mb-2">' +
@@ -295,10 +343,13 @@ window.WorkVoltPages['tasks'] = function(container) {
             '</div>' +
             (t.description ? '<p class="text-xs text-slate-400 mb-2 line-clamp-2">' + escHtml(t.description) + '</p>' : '') +
             '<div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">' +
-              '<span class="text-xs ' + (overdue ? 'text-red-500 font-semibold' : 'text-slate-400') + '">' +
-                (t.due_date ? '<i class="fas fa-calendar-alt mr-1"></i>' + formatDate(t.due_date) : '') +
-              '</span>' +
-              (String(t.billable) === 'true' ? '<span class="text-xs text-green-600"><i class="fas fa-dollar-sign"></i></span>' : '') +
+              '<div class="flex items-center gap-2">' +
+                (t.due_date ? '<span class="text-xs ' + (overdue ? 'text-red-500 font-semibold' : 'text-slate-400') + '"><i class="fas fa-calendar-alt mr-1"></i>' + formatDate(t.due_date) + '</span>' : '') +
+              '</div>' +
+              '<div class="flex items-center gap-1.5">' +
+                (t.assigned_to !== '' ? '<span class="text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded font-medium">' + escHtml(assigneeName) + '</span>' : '') +
+                (String(t.billable) === 'true' ? '<span class="text-xs text-green-600"><i class="fas fa-dollar-sign"></i></span>' : '') +
+              '</div>' +
             '</div>' +
           '</div>'
         );
@@ -307,19 +358,97 @@ window.WorkVoltPages['tasks'] = function(container) {
       return (
         '<div class="flex-shrink-0 w-72">' +
           '<div class="flex items-center gap-2 mb-3">' +
-            '<span class="w-2.5 h-2.5 rounded-full ' + dotCls + '"></span>' +
+            '<span class="w-2.5 h-2.5 rounded-full ' + (dotMap[status] || 'bg-slate-400') + '"></span>' +
             '<span class="text-sm font-bold text-slate-700">' + status + '</span>' +
             '<span class="ml-auto text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">' + colTasks.length + '</span>' +
           '</div>' +
-          '<div class="space-y-2 min-h-16">' + (cards || '<div class="text-xs text-slate-400 text-center py-6 border-2 border-dashed border-slate-200 rounded-xl">No tasks</div>') + '</div>' +
+          '<div class="space-y-2 min-h-16">' +
+            (cards || '<div class="text-xs text-slate-400 text-center py-6 border-2 border-dashed border-slate-200 rounded-xl">No tasks</div>') +
+          '</div>' +
         '</div>'
       );
     }).join('');
 
-    content.innerHTML = (
-      '<div class="flex gap-4 overflow-x-auto kanban-scroll pb-4">' + cols + '</div>'
+    content.innerHTML = '<div class="flex gap-4 overflow-x-auto kanban-scroll pb-4">' + cols + '</div>';
+  }
+
+
+  // ================================================================
+  //  USER SEARCH DROPDOWN (for Assigned To field)
+  // ================================================================
+  function renderUserSearchField(fieldId, labelText, currentUserId) {
+    var currentName = currentUserId ? userName(currentUserId) : '';
+    return (
+      '<div>' +
+        '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">' + labelText + '</label>' +
+        '<div class="relative">' +
+          '<input id="' + fieldId + '-search" type="text" placeholder="Search by name or email…" autocomplete="off"' +
+            ' value="' + escHtml(currentName) + '"' +
+            ' oninput="tasksUserSearchInput(\'' + fieldId + '\')"' +
+            ' onfocus="tasksUserSearchInput(\'' + fieldId + '\')"' +
+            ' class="field text-sm">' +
+          '<input type="hidden" id="' + fieldId + '" value="' + escHtml(currentUserId || '') + '">' +
+          '<div id="' + fieldId + '-dropdown" class="hidden absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto thin-scroll"></div>' +
+        '</div>' +
+      '</div>'
     );
   }
+
+  window.tasksUserSearchInput = function(fieldId) {
+    var q   = (document.getElementById(fieldId + '-search')?.value || '').toLowerCase().trim();
+    var dd  = document.getElementById(fieldId + '-dropdown');
+    if (!dd) return;
+
+    var matches = usersCache.filter(function(u) {
+      return String(u.active) !== 'false' && (
+        (u.name  || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q)
+      );
+    }).slice(0, 8);
+
+    if (!matches.length) {
+      dd.innerHTML = '<div class="px-4 py-3 text-xs text-slate-400">No users found</div>';
+      dd.classList.remove('hidden');
+      return;
+    }
+
+    dd.innerHTML = matches.map(function(u) {
+      var initials = u.name ? u.name.charAt(0).toUpperCase() : u.email.charAt(0).toUpperCase();
+      var display  = u.name || u.email;
+      return (
+        '<button type="button" onclick="tasksSelectUser(\'' + fieldId + '\',\'' + u.user_id + '\',\'' + escHtml(display).replace(/'/g, '') + '\')" ' +
+          'class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left">' +
+          '<div class="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs flex-shrink-0">' + initials + '</div>' +
+          '<div>' +
+            '<div class="text-sm font-semibold text-slate-900">' + escHtml(display) + '</div>' +
+            (u.name ? '<div class="text-xs text-slate-400">' + escHtml(u.email) + '</div>' : '') +
+          '</div>' +
+        '</button>'
+      );
+    }).join('');
+
+    dd.classList.remove('hidden');
+  };
+
+  window.tasksSelectUser = function(fieldId, userId, displayName) {
+    var searchEl = document.getElementById(fieldId + '-search');
+    var hiddenEl = document.getElementById(fieldId);
+    var dd       = document.getElementById(fieldId + '-dropdown');
+    if (searchEl) searchEl.value = displayName;
+    if (hiddenEl) hiddenEl.value = userId;
+    if (dd)       dd.classList.add('hidden');
+  };
+
+  // Close user dropdowns when clicking outside
+  document.addEventListener('click', function(e) {
+    ['tf-assigned_to'].forEach(function(fieldId) {
+      var wrap = document.getElementById(fieldId + '-search');
+      var dd   = document.getElementById(fieldId + '-dropdown');
+      if (dd && wrap && !wrap.contains(e.target) && !dd.contains(e.target)) {
+        dd.classList.add('hidden');
+      }
+    });
+  });
 
 
   // ================================================================
@@ -329,15 +458,15 @@ window.WorkVoltPages['tasks'] = function(container) {
     var isEdit   = !!task;
     var title    = isEdit ? 'Edit Task' : 'New Task';
     var btnLabel = isEdit ? '<i class="fas fa-save text-sm"></i> Save Changes' : '<i class="fas fa-plus text-sm"></i> Create Task';
-    var val      = function(f) { return isEdit && task[f] ? String(task[f]).replace(/"/g, '&quot;') : ''; };
+    var val      = function(f) { return isEdit && task[f] != null ? String(task[f]).replace(/"/g, '&quot;') : ''; };
 
     var statusOpts = STATUSES.map(function(s) {
-      var sel = isEdit ? (val('status') === s) : (s === 'Todo');
+      var sel = isEdit ? (task.status === s) : (s === 'Todo');
       return '<option value="' + s + '"' + (sel ? ' selected' : '') + '>' + s + '</option>';
     }).join('');
 
     var priorityOpts = PRIORITIES.map(function(p) {
-      var sel = isEdit ? (val('priority') === p) : (p === 'Medium');
+      var sel = isEdit ? (task.priority === p) : (p === 'Medium');
       return '<option value="' + p + '"' + (sel ? ' selected' : '') + '>' + p + '</option>';
     }).join('');
 
@@ -368,10 +497,9 @@ window.WorkVoltPages['tasks'] = function(container) {
           '<select id="tf-priority" class="field text-sm">' + priorityOpts + '</select></div>' +
         '</div>' +
 
-        // Assigned To + Due Date
+        // Assigned To (user search) + Due Date
         '<div class="grid grid-cols-2 gap-3">' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Assigned To (user_id)</label>' +
-          '<input id="tf-assigned_to" type="text" placeholder="User UUID" value="' + val('assigned_to') + '" class="field text-sm"></div>' +
+          renderUserSearchField('tf-assigned_to', 'Assigned To', val('assigned_to')) +
           '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Due Date</label>' +
           '<input id="tf-due_date" type="date" value="' + val('due_date') + '" class="field text-sm"></div>' +
         '</div>' +
@@ -396,36 +524,34 @@ window.WorkVoltPages['tasks'] = function(container) {
         '<div class="grid grid-cols-3 gap-3">' +
           '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Pay Per Task ($)</label>' +
           '<input id="tf-pay_per_task" type="number" placeholder="0.00" step="0.01" value="' + val('pay_per_task') + '" class="field text-sm"></div>' +
-          '<div class="flex flex-col justify-end">' +
-            '<label class="flex items-center gap-2 cursor-pointer pb-1">' +
+          '<div class="flex flex-col justify-end pb-1">' +
+            '<label class="flex items-center gap-2 cursor-pointer">' +
               '<input id="tf-billable" type="checkbox" class="w-4 h-4 rounded accent-blue-600"' + (billableChecked ? ' checked' : '') + '>' +
               '<span class="text-sm font-medium text-slate-700">Billable</span>' +
             '</label>' +
           '</div>' +
-          (isEdit ? (
-            '<div class="flex flex-col justify-end">' +
-              '<label class="flex items-center gap-2 cursor-pointer pb-1">' +
-                '<input id="tf-paid" type="checkbox" class="w-4 h-4 rounded accent-green-600"' + (paidChecked ? ' checked' : '') + '>' +
-                '<span class="text-sm font-medium text-slate-700">Paid</span>' +
-              '</label>' +
-            '</div>'
-          ) : '<div></div>') +
+          (isEdit
+            ? '<div class="flex flex-col justify-end pb-1"><label class="flex items-center gap-2 cursor-pointer"><input id="tf-paid" type="checkbox" class="w-4 h-4 rounded accent-green-600"' + (paidChecked ? ' checked' : '') + '><span class="text-sm font-medium text-slate-700">Paid</span></label></div>'
+            : '<div></div>') +
         '</div>' +
 
         // Notes
         '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Notes</label>' +
         '<textarea id="tf-notes" rows="2" placeholder="Internal notes…" class="field text-sm resize-none">' + (isEdit ? escHtml(task.notes || '') : '') + '</textarea></div>' +
 
-        // Actions
+        // Actions — admins get Delete button in edit mode
         '<div class="flex gap-3 pt-2">' +
           '<button onclick="tasksCloseModal()" class="btn-secondary flex-1">Cancel</button>' +
+          (isEdit && isAdmin()
+            ? '<button onclick="tasksConfirmDelete(\'' + task.task_id + '\',\'' + escHtml(task.title).replace(/'/g,'') + '\')" class="px-4 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-sm font-semibold border border-red-200 transition-colors"><i class="fas fa-trash text-xs"></i></button>'
+            : '') +
           '<button onclick="tasksSubmitForm(\'' + (isEdit ? task.task_id : '') + '\')" id="task-form-btn" class="btn-primary flex-1">' + btnLabel + '</button>' +
         '</div>' +
       '</div>'
     );
   }
 
-  function renderDeleteModal(taskId, title) {
+  function renderDeleteModal(taskId, taskTitle) {
     return (
       '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
         '<h3 class="font-bold text-red-700">Delete Task</h3>' +
@@ -434,7 +560,7 @@ window.WorkVoltPages['tasks'] = function(container) {
       '<div class="px-6 py-5 space-y-4">' +
         '<div class="flex items-start gap-3 p-4 bg-red-50 rounded-xl border border-red-200">' +
           '<i class="fas fa-exclamation-triangle text-red-500 mt-0.5"></i>' +
-          '<p class="text-sm text-red-700">You are about to permanently delete <strong>' + escHtml(title) + '</strong>. This cannot be undone.</p>' +
+          '<p class="text-sm text-red-700">You are about to permanently delete <strong>' + escHtml(taskTitle) + '</strong>. This cannot be undone.</p>' +
         '</div>' +
         '<div id="task-form-status"></div>' +
         '<div class="flex gap-3">' +
@@ -454,13 +580,14 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   window.tasksSetView = function(view) {
     activeView = view;
+    sessionStorage.setItem('tasks_view', view); // persist across navigation
     render();
   };
 
   window.tasksApplyFilter = function() {
     filters.status   = document.getElementById('filter-status')?.value   || '';
     filters.priority = document.getElementById('filter-priority')?.value || '';
-    loadTasks();
+    loadData();
   };
 
   window.tasksClearFilters = function() {
@@ -474,9 +601,10 @@ window.WorkVoltPages['tasks'] = function(container) {
     var filtered = tasksCache.filter(function(t) {
       return (t.title       || '').toLowerCase().includes(q) ||
              (t.description || '').toLowerCase().includes(q) ||
-             (t.tags        || '').toLowerCase().includes(q);
+             (t.tags        || '').toLowerCase().includes(q) ||
+             userName(t.assigned_to).toLowerCase().includes(q);
     });
-    renderList(filtered);
+    if (activeView === 'kanban') { renderKanban(filtered); } else { renderList(filtered); }
     var countEl = document.getElementById('tasks-count');
     if (countEl) countEl.textContent = filtered.length + ' of ' + tasksCache.length + ' tasks';
   };
@@ -507,24 +635,25 @@ window.WorkVoltPages['tasks'] = function(container) {
   window.tasksSubmitForm = async function(taskId) {
     var btn    = document.getElementById('task-form-btn');
     var isEdit = !!(taskId);
-
-    var title = (document.getElementById('tf-title')?.value || '').trim();
+    var title  = (document.getElementById('tf-title')?.value || '').trim();
     if (!title) return setFormStatus('Title is required.', false);
 
+    var assignedTo = (document.getElementById('tf-assigned_to')?.value || '').trim();
+
     var params = {
-      title:            title,
-      description:      document.getElementById('tf-description')?.value     || '',
-      status:           document.getElementById('tf-status')?.value          || 'Todo',
-      priority:         document.getElementById('tf-priority')?.value        || 'Medium',
-      assigned_to:      (document.getElementById('tf-assigned_to')?.value    || '').trim(),
-      due_date:         document.getElementById('tf-due_date')?.value        || '',
-      project_id:       (document.getElementById('tf-project_id')?.value     || '').trim(),
-      tags:             (document.getElementById('tf-tags')?.value           || '').trim(),
-      estimated_hours:  document.getElementById('tf-estimated_hours')?.value || '',
-      actual_hours:     document.getElementById('tf-actual_hours')?.value    || '',
-      pay_per_task:     document.getElementById('tf-pay_per_task')?.value    || '',
-      billable:         document.getElementById('tf-billable')?.checked ? 'true' : 'false',
-      notes:            document.getElementById('tf-notes')?.value           || '',
+      title:           title,
+      description:     document.getElementById('tf-description')?.value     || '',
+      status:          document.getElementById('tf-status')?.value          || 'Todo',
+      priority:        document.getElementById('tf-priority')?.value        || 'Medium',
+      assigned_to:     assignedTo,
+      due_date:        document.getElementById('tf-due_date')?.value        || '',
+      project_id:      (document.getElementById('tf-project_id')?.value     || '').trim(),
+      tags:            (document.getElementById('tf-tags')?.value           || '').trim(),
+      estimated_hours: document.getElementById('tf-estimated_hours')?.value || '',
+      actual_hours:    document.getElementById('tf-actual_hours')?.value    || '',
+      pay_per_task:    document.getElementById('tf-pay_per_task')?.value    || '',
+      billable:        document.getElementById('tf-billable')?.checked ? 'true' : 'false',
+      notes:           document.getElementById('tf-notes')?.value           || '',
     };
 
     if (isEdit) {
@@ -532,7 +661,8 @@ window.WorkVoltPages['tasks'] = function(container) {
       var paidEl = document.getElementById('tf-paid');
       if (paidEl) params.paid = paidEl.checked ? 'true' : 'false';
     } else {
-      params.created_by = 'current-user'; // TODO: replace with actual user_id from session
+      var user = window.WorkVolt && window.WorkVolt.user && window.WorkVolt.user();
+      params.created_by = (user && user.user_id) || 'system';
     }
 
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Saving…'; }
@@ -540,7 +670,7 @@ window.WorkVoltPages['tasks'] = function(container) {
     try {
       await api(isEdit ? 'tasks/update' : 'tasks/create', params);
       setFormStatus(isEdit ? 'Task updated.' : 'Task created.', true);
-      setTimeout(function() { window.tasksCloseModal(); loadTasks(); }, 700);
+      setTimeout(function() { window.tasksCloseModal(); loadData(); }, 700);
     } catch(e) {
       setFormStatus(e.message, false);
       if (btn) {
@@ -554,7 +684,17 @@ window.WorkVoltPages['tasks'] = function(container) {
     try {
       await api('tasks/complete', { task_id: taskId });
       window.WorkVolt?.toast('Task marked as done!', 'success');
-      loadTasks();
+      loadData();
+    } catch(e) {
+      window.WorkVolt?.toast(e.message, 'error');
+    }
+  };
+
+  window.tasksQuickCancel = async function(taskId) {
+    try {
+      await api('tasks/update', { task_id: taskId, status: 'Cancelled' });
+      window.WorkVolt?.toast('Task cancelled.', 'info');
+      loadData();
     } catch(e) {
       window.WorkVolt?.toast(e.message, 'error');
     }
@@ -564,14 +704,14 @@ window.WorkVoltPages['tasks'] = function(container) {
     try {
       await api('tasks/reopen', { task_id: taskId });
       window.WorkVolt?.toast('Task reopened.', 'info');
-      loadTasks();
+      loadData();
     } catch(e) {
       window.WorkVolt?.toast(e.message, 'error');
     }
   };
 
-  window.tasksConfirmDelete = function(taskId, title) {
-    setModalContent(renderDeleteModal(taskId, title));
+  window.tasksConfirmDelete = function(taskId, taskTitle) {
+    setModalContent(renderDeleteModal(taskId, taskTitle));
   };
 
   window.tasksSubmitDelete = async function(taskId) {
@@ -580,31 +720,12 @@ window.WorkVoltPages['tasks'] = function(container) {
     try {
       await api('tasks/delete', { task_id: taskId });
       setFormStatus('Task deleted.', true);
-      setTimeout(function() { window.tasksCloseModal(); loadTasks(); }, 700);
+      setTimeout(function() { window.tasksCloseModal(); loadData(); }, 700);
     } catch(e) {
       setFormStatus(e.message, false);
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash text-sm"></i> Delete Permanently'; }
     }
   };
-
-
-  // ================================================================
-  //  UTILS
-  // ================================================================
-  function formatDate(d) {
-    if (!d) return '';
-    try {
-      return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    } catch(e) { return d; }
-  }
-
-  function escHtml(str) {
-    return String(str || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
 
 
   // ── Boot ──────────────────────────────────────────────────────
