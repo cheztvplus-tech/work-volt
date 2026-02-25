@@ -351,10 +351,35 @@
     store:      'Module Store',
   };
 
-  // ── Installed modules registry (persisted in localStorage) ──
-  let INSTALLED_MODULES = JSON.parse(localStorage.getItem('wv_installed_modules') || '[]');
+  // ── Active modules config ────────────────────────────────────────────
+  // Admin controls which add-on modules are active for ALL users here.
+  // When Google Sheet is connected, replace INSTALLED_MODULES by calling:
+  //   apiCall('config/modules')  then reassign and call renderNav().
+  //
+  // To toggle a module on: uncomment its line below.
+  // ───────────────────────────────────────────────────────────────────
+  let INSTALLED_MODULES = [
+    // { id: 'attendance',  label: 'Attendance Tracker',   icon: 'fa-calendar-check',     version: '1.0.0' },
+    // { id: 'invoices',    label: 'Invoice Manager',      icon: 'fa-file-invoice-dollar', version: '1.2.0' },
+    // { id: 'inventory',   label: 'Inventory Control',    icon: 'fa-warehouse',           version: '1.1.0' },
+    // { id: 'scheduler',   label: 'Shift Scheduler',      icon: 'fa-calendar-alt',        version: '1.0.2' },
+    // { id: 'expenses',    label: 'Expense Claims',       icon: 'fa-receipt',             version: '2.0.0' },
+    // { id: 'contracts',   label: 'Contract Hub',         icon: 'fa-file-signature',      version: '1.0.0' },
+    // { id: 'helpdesk',    label: 'Help Desk',            icon: 'fa-headset',             version: '1.3.0' },
+    // { id: 'recruitment', label: 'Recruitment Pipeline', icon: 'fa-user-tie',            version: '1.0.1' },
+  ];
+
+  // Saves active modules — swap for apiCall('config/save-modules') when Sheet is ready.
+  // Until then, changes are in-memory only (all users see whatever is uncommented above).
   function saveInstalledModules() {
-    localStorage.setItem('wv_installed_modules', JSON.stringify(INSTALLED_MODULES));
+    // TODO: await apiCall('config/save-modules', { modules: JSON.stringify(INSTALLED_MODULES) });
+  }
+
+  // Loads config on boot — swap for apiCall('config/modules') when Sheet is ready.
+  async function loadInstalledModules() {
+    // TODO: const data = await apiCall('config/modules');
+    //       INSTALLED_MODULES = data.modules || [];
+    //       renderNav();
   }
 
 
@@ -701,6 +726,7 @@
   // ─────────────────────────────────────────────
   window.addEventListener('load', async () => {
     // Go straight to app — login & Google Sheet will be connected later
+    await loadInstalledModules(); // no-op until Sheet connected; swaps for apiCall later
     hideSplash();
     await showApp();
   });
