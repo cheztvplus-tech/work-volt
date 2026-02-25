@@ -44,7 +44,7 @@ window.WorkVoltPages['tasks'] = function(container) {
     url.searchParams.set('path',  path);
     url.searchParams.set('token', savedSecret);
     if (params) Object.entries(params).forEach(function(kv) {
-      if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '')
+      if (kv[1] !== undefined && kv[1] !== null)
         url.searchParams.set(kv[0], String(kv[1]));
     });
     var res  = await fetch(url.toString(), { cache: 'no-cache' });
@@ -200,8 +200,9 @@ window.WorkVoltPages['tasks'] = function(container) {
       e.stopPropagation();
       var action = btn.dataset.action;
       var id     = btn.dataset.id;
-      var title  = btn.dataset.title || '';
-      if (action === 'edit')     openTaskForm(tasksCache[id]);
+      var task   = tasksCache[id];
+      var title  = (task && task.title) || btn.dataset.title || '';
+      if (action === 'edit')     openTaskForm(task);
       if (action === 'delete')   openDeleteModal(id, title);
       if (action === 'complete') quickAction('tasks/complete', { task_id: id }, 'Task completed!');
       if (action === 'cancel')   quickAction('tasks/update',   { task_id: id, status: 'Cancelled' }, 'Task cancelled.');
@@ -288,7 +289,7 @@ window.WorkVoltPages['tasks'] = function(container) {
           : '<button data-action="reopen"   data-id="'+t.task_id+'" title="Reopen"   class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-undo text-xs"></i></button>') +
         '<button data-action="edit" data-id="'+t.task_id+'" title="Edit" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-pencil text-xs"></i></button>' +
         (isAdmin()
-          ? '<button data-action="delete" data-id="'+t.task_id+'" data-title="'+esc(t.title)+'" title="Delete" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><i class="fas fa-trash text-xs"></i></button>'
+          ? '<button data-action="delete" data-id="'+t.task_id+'" data-title="'+t.title.replace(/"/g,'&quot;').replace(/'/g,'&#39;')+'" title="Delete" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><i class="fas fa-trash text-xs"></i></button>'
           : '');
 
       return '<tr class="border-t border-slate-100 hover:bg-slate-50 transition-colors">' +
@@ -580,6 +581,7 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   async function submitForm(taskId) {
     var isEdit = !!taskId;
+    if (isEdit && !taskId) { modalStatus('Error: task ID is missing.', false); return; }
     var title  = (document.getElementById('tf-title')?.value||'').trim();
     if (!title) { modalStatus('Title is required.', false); return; }
 
@@ -624,6 +626,7 @@ window.WorkVoltPages['tasks'] = function(container) {
   }
 
   async function submitDelete(taskId) {
+    if (!taskId) { modalStatus('Error: task ID is missing. Please close and try again.', false); return; }
     var btn = document.getElementById('tm-confirm-delete');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Deleting…'; }
     try {
