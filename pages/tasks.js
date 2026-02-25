@@ -607,7 +607,10 @@ window.WorkVoltPages['tasks'] = function(container) {
       var paidEl = document.getElementById('tf-paid');
       if (paidEl) params.paid = paidEl.checked ? 'true' : 'false';
     } else {
-      try { params.created_by = window.WorkVolt.user().user_id || 'system'; } catch(e) { params.created_by = 'system'; }
+      // Use logged-in user_id, fall back to demo UUID until real auth is wired up
+      var _u = null;
+      try { _u = window.WorkVolt.user(); } catch(e) {}
+      params.created_by = (_u && _u.user_id) ? _u.user_id : '00000000-demo-0000-0000-000000000000';
     }
 
     try {
