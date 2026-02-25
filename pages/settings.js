@@ -414,8 +414,18 @@ window.WorkVoltPages['settings'] = function(container) {
         '<div class="grid grid-cols-2 gap-3">' +
           '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Start Date</label>' +
           '<input id="uf-start_date" type="date" value="' + val('start_date') + '" class="field text-sm"></div>' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Manager ID</label>' +
-          '<input id="uf-manager_id" type="text" placeholder="UUID of manager" value="' + val('manager_id') + '" class="field text-sm"></div>' +
+          // Manager — searchable by name
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Manager</label>' +
+            '<div class="relative">' +
+              '<input id="uf-manager_id-search" type="text" placeholder="Search by name…" autocomplete="off"' +
+                ' value="' + (isEdit && user.manager_id ? escMgrName(user.manager_id) : '') + '"' +
+                ' oninput="settingsManagerSearch()"' +
+                ' onfocus="settingsManagerSearch()"' +
+                ' class="field text-sm">' +
+              '<input type="hidden" id="uf-manager_id" value="' + val('manager_id') + '">' +
+              '<div id="uf-manager_id-dropdown" class="hidden absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto thin-scroll"></div>' +
+            '</div>' +
+          '</div>' +
         '</div>' +
         '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Avatar URL</label>' +
         '<input id="uf-avatar_url" type="url" placeholder="https://…" value="' + val('avatar_url') + '" class="field text-sm"></div>' +
@@ -472,8 +482,68 @@ window.WorkVoltPages['settings'] = function(container) {
   }
 
 
-  // ================================================================
-  //  USER ACTIONS
+  // Helper — look up manager display name from usersCache for pre-filling the search field
+  function escMgrName(managerId) {
+    if (!managerId) return '';
+    var u = usersCache.find(function(u) { return u.user_id === managerId; });
+    return u ? (u.name || u.email) : '';
+  }
+
+  window.settingsManagerSearch = function() {
+    var q  = (document.getElementById('uf-manager_id-search')?.value || '').toLowerCase().trim();
+    var dd = document.getElementById('uf-manager_id-dropdown');
+    if (!dd) return;
+
+    var matches = usersCache.filter(function(u) {
+      return String(u.active) !== 'false' && (
+        (u.name  || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q)
+      );
+    }).slice(0, 8);
+
+    if (!matches.length) {
+      dd.innerHTML = '<div class="px-4 py-3 text-xs text-slate-400">No users found</div>';
+      dd.classList.remove('hidden');
+      return;
+    }
+
+    dd.innerHTML = matches.map(function(u) {
+      var initials = u.name ? u.name.charAt(0).toUpperCase() : u.email.charAt(0).toUpperCase();
+      var display  = u.name || u.email;
+      return (
+        '<button type="button" onclick="settingsSelectManager(\'' + u.user_id + '\',\'' + (display).replace(/'/g, '') + '\')" ' +
+          'class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left">' +
+          '<div class="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs flex-shrink-0">' + initials + '</div>' +
+          '<div>' +
+            '<div class="text-sm font-semibold text-slate-900">' + display + '</div>' +
+            (u.name ? '<div class="text-xs text-slate-400">' + u.email + '</div>' : '') +
+          '</div>' +
+        '</button>'
+      );
+    }).join('');
+
+    dd.classList.remove('hidden');
+  };
+
+  window.settingsSelectManager = function(userId, displayName) {
+    var s = document.getElementById('uf-manager_id-search');
+    var h = document.getElementById('uf-manager_id');
+    var d = document.getElementById('uf-manager_id-dropdown');
+    if (s) s.value = displayName;
+    if (h) h.value = userId;
+    if (d) d.classList.add('hidden');
+  };
+
+  // Close manager dropdown on outside click
+  document.addEventListener('click', function(e) {
+    var wrap = document.getElementById('uf-manager_id-search');
+    var dd   = document.getElementById('uf-manager_id-dropdown');
+    if (dd && wrap && !wrap.contains(e.target) && !dd.contains(e.target)) {
+      dd.classList.add('hidden');
+    }
+  });
+
+
   // ================================================================
   async function loadUsers() {
     if (!savedUrl || !savedSecret) {
@@ -490,8 +560,7 @@ window.WorkVoltPages['settings'] = function(container) {
     try {
       var data = await api('users/list');
       usersCache = data.rows || [];
-      var countEl = document.getElementById('users-count');
-      if (countEl) countEl.textContent = usersCache.length + ' user' + (usersCache.length !== 1 ? 's' : '');
+      var countEl = document.getElementById('users-count');      if (countEl) countEl.textContent = usersCache.length + ' user' + (usersCache.length !== 1 ? 's' : '');
       document.getElementById('users-table-wrap').innerHTML = renderUsersTable(usersCache);
     } catch(e) {
       document.getElementById('users-table-wrap').innerHTML =
