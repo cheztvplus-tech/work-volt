@@ -1034,19 +1034,14 @@ body.dropdown-open {
         //   3. Empty (shows the connect screen so user can enter it once)
         //
         // The shareable link for your deployment:
-        // https://cheztvplus-tech.github.io/work-volt/?gas=https://script.google.com/macros/s/AKfycbwY-oCLRpuxl8ghe-avGACVid5F2WPqE01V1P5s42QJFjl0U6RA2WBJ1M6SNWMOkOMz/exec
+        // https://cheztvplus-tech.github.io/work-volt/
         // ───────────────────────────────────────────────────────────────────────────
-        (function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const gasFromUrl = urlParams.get('gas');
-            if (gasFromUrl) {
-                // Save it so this device remembers it on future visits without the ?gas= param
-                localStorage.setItem('workvolt_api_url', gasFromUrl);
-            }
-        })();
-        const NEW_GAS_URL = 'https://script.google.com/macros/s/AKfycbwBk-f1ZexiAXQZgusTp7Kg_CHQoSVdYX5UznLmWSrr8wD2S0Bx_-VQFNHjSHsCQiR5/exec';
-        localStorage.setItem('workvolt_api_url', NEW_GAS_URL);
-        let API_URL = NEW_GAS_URL;
+        // API URL is hardcoded — no localStorage or ?gas= param needed.
+        // To update: change the URL below and redeploy the HTML.
+        const HARDCODED_API_URL = 'https://script.google.com/macros/s/AKfycbwBk-f1ZexiAXQZgusTp7Kg_CHQoSVdYX5UznLmWSrr8wD2S0Bx_-VQFNHjSHsCQiR5/exec';
+        // Clear any stale URL from localStorage so it never overrides the hardcoded one
+        localStorage.removeItem('workvolt_api_url');
+        let API_URL = HARDCODED_API_URL;
         let currentUser = null;
         let currentToken = localStorage.getItem('workvolt_token');
         let dashboardSortable = null;
@@ -11425,10 +11420,7 @@ async function viewExpiringAssets() {
                 const res  = await fetch(statusUrl.toString(), { cache: 'no-cache' });
                 const data = await res.json();
 
-                // Save the URL so this device remembers it on future visits (no ?gas= needed next time)
-                localStorage.setItem('workvolt_api_url', url);
-                // Update API_URL for the rest of this session
-                API_URL = url;
+                // API_URL is hardcoded — no need to save to localStorage
 
                 if (data.setup_complete) {
                     // Setup already done — go straight to login
