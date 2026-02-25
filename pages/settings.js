@@ -2,14 +2,41 @@ window.WorkVoltPages = window.WorkVoltPages || {};
 
 window.WorkVoltPages['settings'] = function(container) {
 
-  // Load saved values
+  // ── State ──────────────────────────────────────────────────────
   let savedUrl    = localStorage.getItem('wv_gas_url')    || '';
   let savedSecret = localStorage.getItem('wv_api_secret') || '';
+  let activeTab   = 'connection';
+  let usersCache  = [];
+  let editingUser = null;
 
-  // Sync to global API_URL so apiCall() works immediately after save
   if (savedUrl)    window.API_URL = savedUrl;
   if (savedSecret) window.API_SECRET_CLIENT = savedSecret;
 
+
+  // ================================================================
+  //  API HELPER
+  // ================================================================
+  async function api(path, params) {
+    const url = new URL(savedUrl);
+    url.searchParams.set('path',  path);
+    url.searchParams.set('token', savedSecret);
+    if (params) {
+      Object.entries(params).forEach(function(kv) {
+        if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
+          url.searchParams.set(kv[0], kv[1]);
+        }
+      });
+    }
+    const res  = await fetch(url.toString(), { cache: 'no-cache' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+  }
+
+
+  // ================================================================
+  //  RENDER HELPERS
+  // ================================================================
   function renderProvision(provision) {
     if (!provision) return '';
     return (
@@ -53,208 +80,613 @@ window.WorkVoltPages['settings'] = function(container) {
     );
   }
 
-  function render(status) {
-    const isConnected = !!(savedUrl && savedSecret);
+  function roleBadge(role) {
+    var map = {
+      SuperAdmin: 'bg-purple-100 text-purple-700',
+      Admin:      'bg-blue-100 text-blue-700',
+      Manager:    'bg-indigo-100 text-indigo-700',
+      Employee:   'bg-green-100 text-green-700',
+      Contractor: 'bg-amber-100 text-amber-700',
+    };
+    var cls = map[role] || 'bg-slate-100 text-slate-600';
+    return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ' + cls + '">' + (role || '—') + '</span>';
+  }
+
+  function activeBadge(active) {
+    return String(active) === 'true'
+      ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Active</span>'
+      : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-500"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>Inactive</span>';
+  }
+
+  function setModalContent(html) {
+    document.getElementById('user-modal').innerHTML = html;
+    document.getElementById('user-modal-backdrop').classList.remove('hidden');
+  }
+
+  function setFormStatus(msg, ok) {
+    var el = document.getElementById('user-form-status');
+    if (!el) return;
+    if (!msg) { el.innerHTML = ''; return; }
+    el.innerHTML = (
+      '<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium mb-3 ' +
+      (ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200') + '">' +
+        '<i class="fas ' + (ok ? 'fa-check-circle' : 'fa-exclamation-circle') + '"></i>' +
+        '<span>' + msg + '</span>' +
+      '</div>'
+    );
+  }
+
+
+  // ================================================================
+  //  MAIN RENDER
+  // ================================================================
+  function render(connStatus) {
+    var isConnected = !!(savedUrl && savedSecret);
+
+    var tabNav = (
+      '<button onclick="settingsTab(\'connection\')" ' +
+        'class="flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ' +
+        (activeTab === 'connection' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700') + '">' +
+        '<i class="fas fa-plug text-xs"></i>Connection</button>' +
+      '<button onclick="settingsTab(\'users\')" ' +
+        'class="flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ' +
+        (activeTab === 'users' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700') + '">' +
+        '<i class="fas fa-users text-xs"></i>User Management</button>'
+    );
+
     container.innerHTML = `
       <div class="min-h-full bg-slate-50">
 
-        <!-- Header -->
         <div class="bg-white border-b border-slate-200 px-6 md:px-10 py-6">
           <h1 class="text-xl font-extrabold text-slate-900">Settings</h1>
           <p class="text-slate-500 text-sm mt-1">Configure your Work Volt workspace</p>
         </div>
 
-        <div class="max-w-2xl mx-auto px-6 md:px-10 py-8 space-y-6">
+        <div class="bg-white border-b border-slate-200 px-6 md:px-10 flex gap-1">
+          ${tabNav}
+        </div>
 
-          <!-- Connection card -->
-          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div class="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
-              <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
-                <i class="fas fa-plug text-white text-sm"></i>
-              </div>
-              <div>
-                <h2 class="font-bold text-slate-900">Google Sheet Connection</h2>
-                <p class="text-xs text-slate-500">Connect your GAS Web App to power all modules</p>
-              </div>
-              <div class="ml-auto">
-                <span class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full
-                  ${isConnected ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
-                  <span class="w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-slate-400'}"></span>
-                  ${isConnected ? 'Connected' : 'Not connected'}
-                </span>
-              </div>
+        <div id="settings-tab-content" class="max-w-4xl mx-auto px-6 md:px-10 py-8">
+          ${activeTab === 'connection' ? renderConnectionTab(connStatus, isConnected) : renderUsersTab()}
+        </div>
+
+      </div>
+    `;
+
+    if (activeTab === 'users') loadUsers();
+  }
+
+
+  // ================================================================
+  //  CONNECTION TAB
+  // ================================================================
+  function renderConnectionTab(status, isConnected) {
+    var howToSteps = [
+      ['1', 'Go to <strong>script.google.com</strong> → New Project'],
+      ['2', 'Create a new Google Sheet → copy the Sheet ID from its URL'],
+      ['3', 'Paste all your <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">.gs</code> files into the Apps Script editor (one file each)'],
+      ['4', 'Set <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">MASTER_SHEET_ID</code> and <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">API_SECRET</code> in <strong>Code.gs</strong>'],
+      ['5', 'Click <strong>Deploy → New Deployment</strong>'],
+      ['6', 'Type: <strong>Web App</strong> · Execute as: <strong>Me</strong> · Access: <strong>Anyone</strong>'],
+      ['7', 'Copy the Web App URL → paste it above'],
+      ['8', 'Paste your <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">API_SECRET</code> value above → Save'],
+    ].map(function(s) {
+      return '<div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">' + s[0] + '</span><p class="text-sm text-slate-600 pt-0.5">' + s[1] + '</p></div>';
+    }).join('');
+
+    return `
+      <div class="max-w-2xl space-y-6">
+
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
+            <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
+              <i class="fas fa-plug text-white text-sm"></i>
             </div>
-            <div class="px-6 py-5 space-y-4">
-
-              ${renderStatus(status)}
-
-              <div>
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
-                  GAS Web App URL
-                </label>
-                <input id="settings-gas-url" type="url"
-                  placeholder="https://script.google.com/macros/s/.../exec"
-                  value="${savedUrl}"
-                  class="field font-mono text-xs">
-                <p class="text-xs text-slate-400 mt-1.5">
-                  Deploy your <code class="bg-slate-100 px-1 rounded">Code.gs</code> as a Web App and paste the URL here.
-                </p>
-              </div>
-
-              <div>
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
-                  API Secret
-                </label>
-                <div class="relative">
-                  <input id="settings-secret" type="password"
-                    placeholder="Your API_SECRET from Code.gs"
-                    value="${savedSecret}"
-                    class="field font-mono text-xs pr-10">
-                  <button onclick="toggleSecretVis()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                    <i id="secret-eye" class="fas fa-eye text-sm"></i>
-                  </button>
-                </div>
-                <p class="text-xs text-slate-400 mt-1.5">
-                  Must match <code class="bg-slate-100 px-1 rounded">API_SECRET</code> in your <code class="bg-slate-100 px-1 rounded">Code.gs</code>.
-                </p>
-              </div>
-
-              <div class="flex gap-3 pt-1">
-                <button onclick="settingsTestConnection()"
-                  id="settings-test-btn"
-                  class="btn-secondary flex-1">
-                  <i class="fas fa-vial text-sm"></i> Test Connection
-                </button>
-                <button onclick="settingsSave()"
-                  id="settings-save-btn"
-                  class="btn-primary flex-1">
-                  <i class="fas fa-save text-sm"></i> Save
-                </button>
-              </div>
-
+            <div>
+              <h2 class="font-bold text-slate-900">Google Sheet Connection</h2>
+              <p class="text-xs text-slate-500">Connect your GAS Web App to power all modules</p>
+            </div>
+            <div class="ml-auto">
+              <span class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full
+                ${isConnected ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
+                <span class="w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-slate-400'}"></span>
+                ${isConnected ? 'Connected' : 'Not connected'}
+              </span>
             </div>
           </div>
-
-          <!-- How to deploy card -->
-          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <button onclick="toggleHowTo()" class="w-full px-6 py-4 flex items-center justify-between text-left">
-              <h2 class="font-bold text-slate-900 flex items-center gap-2 text-sm">
-                <i class="fas fa-book text-slate-400 text-sm"></i>
-                How to deploy your GAS backend
-              </h2>
-              <i id="howto-chevron" class="fas fa-chevron-down text-slate-400 text-xs transition-transform"></i>
-            </button>
-            <div id="howto-body" class="hidden px-6 pb-5 space-y-3 border-t border-slate-100 pt-4">
-              ${[
-                ['1', 'Go to <strong>script.google.com</strong> → New Project'],
-                ['2', 'Create a new Google Sheet → copy the Sheet ID from its URL'],
-                ['3', 'Paste all your <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">.gs</code> files into the Apps Script editor (one file each)'],
-                ['4', 'Set <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">MASTER_SHEET_ID</code> and <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">API_SECRET</code> in <strong>Code.gs</strong>'],
-                ['5', 'Click <strong>Deploy → New Deployment</strong>'],
-                ['6', 'Type: <strong>Web App</strong> · Execute as: <strong>Me</strong> · Access: <strong>Anyone</strong>'],
-                ['7', 'Copy the Web App URL → paste it above'],
-                ['8', 'Paste your <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">API_SECRET</code> value above → Save'],
-              ].map(([n, t]) => `
-                <div class="flex gap-3">
-                  <span class="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">${n}</span>
-                  <p class="text-sm text-slate-600 pt-0.5">${t}</p>
-                </div>
-              `).join('')}
+          <div class="px-6 py-5 space-y-4">
+            ${renderStatus(status)}
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">GAS Web App URL</label>
+              <input id="settings-gas-url" type="url" placeholder="https://script.google.com/macros/s/.../exec"
+                value="${savedUrl}" class="field font-mono text-xs">
+              <p class="text-xs text-slate-400 mt-1.5">Deploy your <code class="bg-slate-100 px-1 rounded">Code.gs</code> as a Web App and paste the URL here.</p>
             </div>
-          </div>
-
-          <!-- Danger zone -->
-          ${isConnected ? `
-          <div class="bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden">
-            <div class="px-6 py-5 flex items-center justify-between">
-              <div>
-                <h2 class="font-bold text-red-700 text-sm">Disconnect</h2>
-                <p class="text-xs text-slate-500 mt-0.5">Remove the saved URL and secret from this browser</p>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">API Secret</label>
+              <div class="relative">
+                <input id="settings-secret" type="password" placeholder="Your API_SECRET from Code.gs"
+                  value="${savedSecret}" class="field font-mono text-xs pr-10">
+                <button onclick="toggleSecretVis()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <i id="secret-eye" class="fas fa-eye text-sm"></i>
+                </button>
               </div>
-              <button onclick="settingsDisconnect()"
-                class="text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-xl transition-colors border border-red-200">
-                Disconnect
+              <p class="text-xs text-slate-400 mt-1.5">Must match <code class="bg-slate-100 px-1 rounded">API_SECRET</code> in your <code class="bg-slate-100 px-1 rounded">Code.gs</code>.</p>
+            </div>
+            <div class="flex gap-3 pt-1">
+              <button onclick="settingsTestConnection()" id="settings-test-btn" class="btn-secondary flex-1">
+                <i class="fas fa-vial text-sm"></i> Test Connection
+              </button>
+              <button onclick="settingsSave()" id="settings-save-btn" class="btn-primary flex-1">
+                <i class="fas fa-save text-sm"></i> Save
               </button>
             </div>
-          </div>` : ''}
+          </div>
+        </div>
 
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <button onclick="toggleHowTo()" class="w-full px-6 py-4 flex items-center justify-between text-left">
+            <h2 class="font-bold text-slate-900 flex items-center gap-2 text-sm">
+              <i class="fas fa-book text-slate-400 text-sm"></i>
+              How to deploy your GAS backend
+            </h2>
+            <i id="howto-chevron" class="fas fa-chevron-down text-slate-400 text-xs transition-transform"></i>
+          </button>
+          <div id="howto-body" class="hidden px-6 pb-5 space-y-3 border-t border-slate-100 pt-4">
+            ${howToSteps}
+          </div>
+        </div>
+
+        ${isConnected ? `
+        <div class="bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden">
+          <div class="px-6 py-5 flex items-center justify-between">
+            <div>
+              <h2 class="font-bold text-red-700 text-sm">Disconnect</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Remove the saved URL and secret from this browser</p>
+            </div>
+            <button onclick="settingsDisconnect()"
+              class="text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-xl transition-colors border border-red-200">
+              Disconnect
+            </button>
+          </div>
+        </div>` : ''}
+
+      </div>
+    `;
+  }
+
+
+  // ================================================================
+  //  USERS TAB
+  // ================================================================
+  function renderUsersTab() {
+    return `
+      <div>
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">Users</h2>
+            <p class="text-sm text-slate-500" id="users-count">Loading…</p>
+          </div>
+          <button onclick="usersOpenAdd()" class="btn-primary">
+            <i class="fas fa-user-plus text-sm"></i> Add User
+          </button>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div id="users-table-wrap">
+            <div class="flex items-center justify-center py-16 text-slate-400">
+              <i class="fas fa-circle-notch fa-spin text-2xl"></i>
+            </div>
+          </div>
+        </div>
+
+        <div id="user-modal-backdrop" class="hidden fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4"
+          onclick="usersBackdropClick(event)">
+          <div id="user-modal" class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-screen overflow-y-auto z-50"></div>
         </div>
       </div>
     `;
   }
 
-  // ── Actions ────────────────────────────────────────────────────
-  window.toggleSecretVis = () => {
-    const inp = document.getElementById('settings-secret');
-    const eye = document.getElementById('secret-eye');
+  function renderUsersTable(users) {
+    if (!users.length) {
+      return (
+        '<div class="flex flex-col items-center justify-center py-16 text-slate-400">' +
+          '<i class="fas fa-users text-3xl mb-3"></i>' +
+          '<p class="text-sm">No users found</p>' +
+        '</div>'
+      );
+    }
+
+    var rows = users.map(function(u) {
+      var initials = u.name ? u.name.charAt(0).toUpperCase() : (u.email ? u.email.charAt(0).toUpperCase() : '?');
+      var avatar = u.avatar_url
+        ? '<img src="' + u.avatar_url + '" class="w-8 h-8 rounded-full object-cover">'
+        : '<div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">' + initials + '</div>';
+
+      var toggleBtn = String(u.active) === 'true'
+        ? '<button onclick="usersToggleActive(\'' + u.user_id + '\',false)" title="Deactivate" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition-colors"><i class="fas fa-user-slash text-xs"></i></button>'
+        : '<button onclick="usersToggleActive(\'' + u.user_id + '\',true)" title="Reactivate" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors"><i class="fas fa-user-check text-xs"></i></button>';
+
+      return (
+        '<tr class="border-t border-slate-100 hover:bg-slate-50 transition-colors">' +
+          '<td class="px-4 py-3 min-w-0">' +
+            '<div class="flex items-center gap-3">' + avatar +
+              '<div class="min-w-0">' +
+                '<div class="text-sm font-semibold text-slate-900 truncate">' + (u.name || '—') + '</div>' +
+                '<div class="text-xs text-slate-500 truncate">' + u.email + '</div>' +
+              '</div>' +
+            '</div>' +
+          '</td>' +
+          '<td class="px-4 py-3 whitespace-nowrap">' + roleBadge(u.role) + '</td>' +
+          '<td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">' + (u.department || '—') + '</td>' +
+          '<td class="px-4 py-3 whitespace-nowrap">' + activeBadge(u.active) + '</td>' +
+          '<td class="px-4 py-3 whitespace-nowrap">' +
+            '<div class="flex items-center gap-1">' +
+              '<button onclick="usersOpenEdit(\'' + u.user_id + '\')" title="Edit" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-pencil text-xs"></i></button>' +
+              '<button onclick="usersResetPassword(\'' + u.user_id + '\',\'' + u.email + '\')" title="Reset password" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"><i class="fas fa-key text-xs"></i></button>' +
+              toggleBtn +
+              '<button onclick="usersConfirmDelete(\'' + u.user_id + '\',\'' + (u.name || u.email).replace(/'/g, '') + '\')" title="Delete" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><i class="fas fa-trash text-xs"></i></button>' +
+            '</div>' +
+          '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    return (
+      '<div class="overflow-x-auto">' +
+        '<table class="w-full text-left">' +
+          '<thead><tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">' +
+            '<th class="px-4 py-3">User</th>' +
+            '<th class="px-4 py-3">Role</th>' +
+            '<th class="px-4 py-3">Department</th>' +
+            '<th class="px-4 py-3">Status</th>' +
+            '<th class="px-4 py-3">Actions</th>' +
+          '</tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+      '</div>'
+    );
+  }
+
+  function renderUserForm(user) {
+    var isEdit    = !!user;
+    var title     = isEdit ? 'Edit User' : 'Add User';
+    var btnLabel  = isEdit ? '<i class="fas fa-save text-sm"></i> Save Changes' : '<i class="fas fa-user-plus text-sm"></i> Create User';
+    var val       = function(f) { return isEdit && user[f] ? String(user[f]).replace(/"/g, '&quot;') : ''; };
+    var roles     = ['SuperAdmin', 'Admin', 'Manager', 'Employee', 'Contractor'];
+    var payTypes  = ['', 'hourly', 'salary'];
+
+    var roleOpts = roles.map(function(r) {
+      return '<option value="' + r + '"' + (val('role') === r ? ' selected' : '') + '>' + r + '</option>';
+    }).join('');
+
+    var payOpts = payTypes.map(function(p) {
+      return '<option value="' + p + '"' + (val('pay_type') === p ? ' selected' : '') + '>' + (p || '— Select —') + '</option>';
+    }).join('');
+
+    var passwordField = !isEdit
+      ? '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Password <span class="text-red-500">*</span></label>' +
+        '<input id="uf-password" type="password" placeholder="Temporary password" class="field text-sm"></div>'
+      : '';
+
+    return (
+      '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
+        '<h3 class="font-bold text-slate-900">' + title + '</h3>' +
+        '<button onclick="usersCloseModal()" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100"><i class="fas fa-times text-sm"></i></button>' +
+      '</div>' +
+      '<div class="px-6 py-5 space-y-4">' +
+        '<div id="user-form-status"></div>' +
+        '<div class="grid grid-cols-2 gap-3">' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Full Name</label>' +
+          '<input id="uf-name" type="text" placeholder="Jane Smith" value="' + val('name') + '" class="field text-sm"></div>' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Email <span class="text-red-500">*</span></label>' +
+          '<input id="uf-email" type="email" placeholder="jane@company.com" value="' + val('email') + '" class="field text-sm"></div>' +
+        '</div>' +
+        passwordField +
+        '<div class="grid grid-cols-2 gap-3">' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Role <span class="text-red-500">*</span></label>' +
+          '<select id="uf-role" class="field text-sm"><option value="">— Select —</option>' + roleOpts + '</select></div>' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Department</label>' +
+          '<input id="uf-department" type="text" placeholder="Engineering" value="' + val('department') + '" class="field text-sm"></div>' +
+        '</div>' +
+        '<div class="grid grid-cols-2 gap-3">' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Job Title</label>' +
+          '<input id="uf-job_title" type="text" placeholder="Software Engineer" value="' + val('job_title') + '" class="field text-sm"></div>' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Phone</label>' +
+          '<input id="uf-phone" type="tel" placeholder="+1 555 000 0000" value="' + val('phone') + '" class="field text-sm"></div>' +
+        '</div>' +
+        '<div class="grid grid-cols-3 gap-3">' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Pay Type</label>' +
+          '<select id="uf-pay_type" class="field text-sm">' + payOpts + '</select></div>' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Hourly Rate</label>' +
+          '<input id="uf-hourly_rate" type="number" placeholder="0.00" value="' + val('hourly_rate') + '" class="field text-sm"></div>' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Salary</label>' +
+          '<input id="uf-salary" type="number" placeholder="0.00" value="' + val('salary') + '" class="field text-sm"></div>' +
+        '</div>' +
+        '<div class="grid grid-cols-2 gap-3">' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Start Date</label>' +
+          '<input id="uf-start_date" type="date" value="' + val('start_date') + '" class="field text-sm"></div>' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Manager ID</label>' +
+          '<input id="uf-manager_id" type="text" placeholder="UUID of manager" value="' + val('manager_id') + '" class="field text-sm"></div>' +
+        '</div>' +
+        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Avatar URL</label>' +
+        '<input id="uf-avatar_url" type="url" placeholder="https://…" value="' + val('avatar_url') + '" class="field text-sm"></div>' +
+        '<div class="flex gap-3 pt-2">' +
+          '<button onclick="usersCloseModal()" class="btn-secondary flex-1">Cancel</button>' +
+          '<button onclick="usersSubmitForm(\'' + (isEdit ? user.user_id : '') + '\')" id="user-form-btn" class="btn-primary flex-1">' + btnLabel + '</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderResetModal(userId, email) {
+    return (
+      '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
+        '<h3 class="font-bold text-slate-900">Reset Password</h3>' +
+        '<button onclick="usersCloseModal()" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100"><i class="fas fa-times text-sm"></i></button>' +
+      '</div>' +
+      '<div class="px-6 py-5 space-y-4">' +
+        '<div id="user-form-status"></div>' +
+        '<p class="text-sm text-slate-600">Set a new password for <strong>' + email + '</strong>.</p>' +
+        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">New Password <span class="text-red-500">*</span></label>' +
+        '<input id="uf-new-password" type="password" placeholder="New password" class="field text-sm"></div>' +
+        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Confirm Password <span class="text-red-500">*</span></label>' +
+        '<input id="uf-confirm-password" type="password" placeholder="Confirm password" class="field text-sm"></div>' +
+        '<div class="flex gap-3 pt-2">' +
+          '<button onclick="usersCloseModal()" class="btn-secondary flex-1">Cancel</button>' +
+          '<button onclick="usersSubmitReset(\'' + userId + '\')" id="user-form-btn" class="btn-primary flex-1"><i class="fas fa-key text-sm"></i> Set Password</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderDeleteModal(userId, displayName) {
+    return (
+      '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
+        '<h3 class="font-bold text-red-700">Delete User</h3>' +
+        '<button onclick="usersCloseModal()" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100"><i class="fas fa-times text-sm"></i></button>' +
+      '</div>' +
+      '<div class="px-6 py-5 space-y-4">' +
+        '<div class="flex items-start gap-3 p-4 bg-red-50 rounded-xl border border-red-200">' +
+          '<i class="fas fa-exclamation-triangle text-red-500 mt-0.5"></i>' +
+          '<p class="text-sm text-red-700">You are about to permanently delete <strong>' + displayName + '</strong>. This cannot be undone.</p>' +
+        '</div>' +
+        '<div id="user-form-status"></div>' +
+        '<div class="flex gap-3 pt-1">' +
+          '<button onclick="usersCloseModal()" class="btn-secondary flex-1">Cancel</button>' +
+          '<button onclick="usersSubmitDelete(\'' + userId + '\')" id="user-form-btn" ' +
+            'class="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors">' +
+            '<i class="fas fa-trash text-sm"></i> Delete Permanently' +
+          '</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+
+  // ================================================================
+  //  USER ACTIONS
+  // ================================================================
+  async function loadUsers() {
+    if (!savedUrl || !savedSecret) {
+      document.getElementById('users-table-wrap').innerHTML =
+        '<div class="flex flex-col items-center justify-center py-16 text-slate-400">' +
+          '<i class="fas fa-plug text-3xl mb-3"></i>' +
+          '<p class="text-sm font-medium">Connect your Google Sheet first</p>' +
+          '<p class="text-xs mt-1">Go to the Connection tab to set up your GAS URL and secret.</p>' +
+        '</div>';
+      var countEl = document.getElementById('users-count');
+      if (countEl) countEl.textContent = '';
+      return;
+    }
+    try {
+      var data = await api('users/list');
+      usersCache = data.rows || [];
+      var countEl = document.getElementById('users-count');
+      if (countEl) countEl.textContent = usersCache.length + ' user' + (usersCache.length !== 1 ? 's' : '');
+      document.getElementById('users-table-wrap').innerHTML = renderUsersTable(usersCache);
+    } catch(e) {
+      document.getElementById('users-table-wrap').innerHTML =
+        '<div class="flex flex-col items-center justify-center py-16 text-red-400">' +
+          '<i class="fas fa-exclamation-circle text-3xl mb-3"></i>' +
+          '<p class="text-sm">' + e.message + '</p>' +
+        '</div>';
+    }
+  }
+
+  window.usersBackdropClick = function(e) {
+    if (e.target === document.getElementById('user-modal-backdrop')) window.usersCloseModal();
+  };
+
+  window.usersOpenAdd = function() {
+    editingUser = null;
+    setModalContent(renderUserForm(null));
+  };
+
+  window.usersOpenEdit = function(userId) {
+    editingUser = usersCache.find(function(u) { return u.user_id === userId; }) || null;
+    if (!editingUser) return;
+    setModalContent(renderUserForm(editingUser));
+  };
+
+  window.usersCloseModal = function() {
+    var backdrop = document.getElementById('user-modal-backdrop');
+    var modal    = document.getElementById('user-modal');
+    if (backdrop) backdrop.classList.add('hidden');
+    if (modal)    modal.innerHTML = '';
+    editingUser = null;
+  };
+
+  window.usersSubmitForm = async function(userId) {
+    var btn    = document.getElementById('user-form-btn');
+    var isEdit = !!(userId);
+
+    var email    = (document.getElementById('uf-email')?.value || '').trim();
+    var role     = document.getElementById('uf-role')?.value || '';
+    var password = !isEdit ? (document.getElementById('uf-password')?.value || '') : null;
+
+    if (!email)              return setFormStatus('Email is required.', false);
+    if (!role)               return setFormStatus('Role is required.', false);
+    if (!isEdit && !password) return setFormStatus('Password is required.', false);
+
+    var params = {
+      email:        email,
+      role:         role,
+      name:         (document.getElementById('uf-name')?.value || '').trim(),
+      department:   (document.getElementById('uf-department')?.value || '').trim(),
+      job_title:    (document.getElementById('uf-job_title')?.value || '').trim(),
+      phone:        (document.getElementById('uf-phone')?.value || '').trim(),
+      pay_type:     document.getElementById('uf-pay_type')?.value || '',
+      hourly_rate:  document.getElementById('uf-hourly_rate')?.value || '',
+      salary:       document.getElementById('uf-salary')?.value || '',
+      start_date:   document.getElementById('uf-start_date')?.value || '',
+      manager_id:   (document.getElementById('uf-manager_id')?.value || '').trim(),
+      avatar_url:   (document.getElementById('uf-avatar_url')?.value || '').trim(),
+    };
+
+    if (!isEdit) params.password = password;
+    else         params.user_id  = userId;
+
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Saving…'; }
+
+    try {
+      await api(isEdit ? 'users/update' : 'users/create', params);
+      setFormStatus(isEdit ? 'User updated successfully.' : 'User created successfully.', true);
+      setTimeout(function() { window.usersCloseModal(); loadUsers(); }, 900);
+    } catch(e) {
+      setFormStatus(e.message, false);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = isEdit
+          ? '<i class="fas fa-save text-sm"></i> Save Changes'
+          : '<i class="fas fa-user-plus text-sm"></i> Create User';
+      }
+    }
+  };
+
+  window.usersResetPassword = function(userId, email) {
+    setModalContent(renderResetModal(userId, email));
+  };
+
+  window.usersSubmitReset = async function(userId) {
+    var btn     = document.getElementById('user-form-btn');
+    var newPass = document.getElementById('uf-new-password')?.value || '';
+    var confirm = document.getElementById('uf-confirm-password')?.value || '';
+
+    if (!newPass)            return setFormStatus('Please enter a new password.', false);
+    if (newPass !== confirm)  return setFormStatus('Passwords do not match.', false);
+
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Saving…'; }
+
+    try {
+      var user = usersCache.find(function(u) { return u.user_id === userId; });
+      if (!user) throw new Error('User not found');
+      var tokenData = await api('users/reset-token', { email: user.email });
+      await api('users/set-password', { token: tokenData.token, password: newPass });
+      setFormStatus('Password updated successfully.', true);
+      setTimeout(function() { window.usersCloseModal(); }, 900);
+    } catch(e) {
+      setFormStatus(e.message, false);
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-key text-sm"></i> Set Password'; }
+    }
+  };
+
+  window.usersToggleActive = async function(userId, active) {
+    try {
+      await api(active ? 'users/reactivate' : 'users/deactivate', { user_id: userId });
+      loadUsers();
+    } catch(e) {
+      window.WorkVolt?.toast(e.message, 'error');
+    }
+  };
+
+  window.usersConfirmDelete = function(userId, displayName) {
+    setModalContent(renderDeleteModal(userId, displayName));
+  };
+
+  window.usersSubmitDelete = async function(userId) {
+    var btn = document.getElementById('user-form-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Deleting…'; }
+    try {
+      await api('users/delete', { user_id: userId });
+      setFormStatus('User deleted.', true);
+      setTimeout(function() { window.usersCloseModal(); loadUsers(); }, 700);
+    } catch(e) {
+      setFormStatus(e.message, false);
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash text-sm"></i> Delete Permanently'; }
+    }
+  };
+
+
+  // ================================================================
+  //  CONNECTION ACTIONS
+  // ================================================================
+  window.settingsTab = function(tab) {
+    activeTab = tab;
+    render();
+  };
+
+  window.toggleSecretVis = function() {
+    var inp = document.getElementById('settings-secret');
+    var eye = document.getElementById('secret-eye');
     inp.type = inp.type === 'password' ? 'text' : 'password';
     eye.className = inp.type === 'password' ? 'fas fa-eye text-sm' : 'fas fa-eye-slash text-sm';
   };
 
-  window.toggleHowTo = () => {
-    const body = document.getElementById('howto-body');
-    const chev = document.getElementById('howto-chevron');
+  window.toggleHowTo = function() {
+    var body = document.getElementById('howto-body');
+    var chev = document.getElementById('howto-chevron');
     body.classList.toggle('hidden');
     chev.style.transform = body.classList.contains('hidden') ? '' : 'rotate(180deg)';
   };
 
-  window.settingsSave = () => {
-    const url    = document.getElementById('settings-gas-url').value.trim();
-    const secret = document.getElementById('settings-secret').value.trim();
+  window.settingsSave = function() {
+    var url    = document.getElementById('settings-gas-url').value.trim();
+    var secret = document.getElementById('settings-secret').value.trim();
     if (!url)    return window.WorkVolt?.toast('Please enter the GAS URL', 'warning');
     if (!secret) return window.WorkVolt?.toast('Please enter the API Secret', 'warning');
     localStorage.setItem('wv_gas_url',    url);
     localStorage.setItem('wv_api_secret', secret);
     savedUrl    = url;
     savedSecret = secret;
-    // Update global API_URL so apiCall() picks it up immediately
     window.API_URL = url;
     window.API_SECRET_CLIENT = secret;
     render({ ok: true, message: 'Settings saved. Testing connection…' });
-    setTimeout(() => window.settingsTestConnection(), 400);
+    setTimeout(function() { window.settingsTestConnection(); }, 400);
   };
 
-  window.settingsTestConnection = async () => {
-    const url    = document.getElementById('settings-gas-url')?.value.trim() || savedUrl;
-    const secret = document.getElementById('settings-secret')?.value.trim()  || savedSecret;
-    const btn    = document.getElementById('settings-test-btn');
+  window.settingsTestConnection = async function() {
+    var url    = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
+    var secret = (document.getElementById('settings-secret')?.value  || '').trim() || savedSecret;
+    var btn    = document.getElementById('settings-test-btn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Testing…'; }
     try {
-      // Step 1 — ping
-      const pingUrl = new URL(url);
+      var pingUrl = new URL(url);
       pingUrl.searchParams.set('path', 'ping');
-      const pingRes  = await fetch(pingUrl.toString(), { cache: 'no-cache' });
-      const pingData = await pingRes.json();
+      var pingRes  = await fetch(pingUrl.toString(), { cache: 'no-cache' });
+      var pingData = await pingRes.json();
       if (pingData.status !== 'ok') throw new Error('Unexpected response from server');
 
-      // Step 2 — provision USERS sheet (safe to call multiple times)
-      const provUrl = new URL(url);
+      var provUrl = new URL(url);
       provUrl.searchParams.set('path',  'setup/provision');
       provUrl.searchParams.set('token', secret);
-      const provRes  = await fetch(provUrl.toString(), { cache: 'no-cache' });
-      const provData = await provRes.json();
-
+      var provRes  = await fetch(provUrl.toString(), { cache: 'no-cache' });
+      var provData = await provRes.json();
       if (provData.error) throw new Error(provData.error);
 
       if (provData.provisioned) {
-        // First time — show temp password prominently
-        render({
-          ok: true,
-          message: '✓ Connected! USERS sheet created.',
-          provision: provData,
-        });
+        render({ ok: true, message: '✓ Connected! USERS sheet created.', provision: provData });
       } else {
-        // Already provisioned
         render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
       }
-
     } catch(e) {
       render({ ok: false, message: 'Connection failed: ' + e.message + '. Check the URL and try again.' });
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
     }
   };
 
-  window.settingsDisconnect = () => {
+  window.settingsDisconnect = function() {
     localStorage.removeItem('wv_gas_url');
     localStorage.removeItem('wv_api_secret');
     savedUrl    = '';
@@ -263,10 +695,10 @@ window.WorkVoltPages['settings'] = function(container) {
     render({ ok: false, message: 'Disconnected. Enter a new GAS URL to reconnect.' });
   };
 
-  // ── Boot: load saved URL into global API_URL ──────────────────
+
+  // ── Boot ──────────────────────────────────────────────────────
   if (savedUrl) {
     window.API_URL = savedUrl;
-    // Also patch the apiCall to use saved secret as token
     window.API_SECRET_CLIENT = savedSecret;
   }
 
