@@ -44,10 +44,33 @@ window.WorkVoltPages['settings'] = function(container) {
             <div class="px-6 py-5 space-y-4">
 
               ${status ? `
-              <div class="flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium
+              <div class="px-4 py-3 rounded-xl text-sm font-medium
                 ${status.ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200'}">
-                <i class="fas ${status.ok ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i>
-                ${status.message}
+                <div class="flex items-center gap-2">
+                  <i class="fas ${status.ok ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i>
+                  <span>${status.message}</span>
+                </div>
+                ${status.provision ? \`
+                <div class="mt-3 bg-white border border-amber-300 rounded-xl p-4">
+                  <div class="flex items-center gap-2 mb-2">
+                    <i class="fas fa-key text-amber-500"></i>
+                    <span class="font-bold text-amber-700 text-sm">First-time credentials — save these now!</span>
+                  </div>
+                  <div class="space-y-1.5 font-mono text-xs">
+                    <div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                      <span class="text-slate-500">Email</span>
+                      <span class="font-semibold text-slate-800">\${status.provision.admin_email}</span>
+                    </div>
+                    <div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 border border-amber-200">
+                      <span class="text-amber-600">Temp password</span>
+                      <span class="font-bold text-amber-800 tracking-wider">\${status.provision.temp_password}</span>
+                    </div>
+                  </div>
+                  <p class="text-xs text-amber-600 mt-2.5">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    This password is shown <strong>once only</strong> — it is not stored anywhere. Copy it now.
+                  </p>
+                </div>\` : ''}
               </div>` : ''}
 
               <div>
@@ -182,17 +205,37 @@ window.WorkVoltPages['settings'] = function(container) {
     const btn    = document.getElementById('settings-test-btn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Testing…'; }
     try {
-      const testUrl = new URL(url);
-      testUrl.searchParams.set('path', 'ping');
-      const res  = await fetch(testUrl.toString(), { cache: 'no-cache' });
-      const data = await res.json();
-      if (data.status === 'ok') {
-        render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
+      // Step 1 — ping
+      const pingUrl = new URL(url);
+      pingUrl.searchParams.set('path', 'ping');
+      const pingRes  = await fetch(pingUrl.toString(), { cache: 'no-cache' });
+      const pingData = await pingRes.json();
+      if (pingData.status !== 'ok') throw new Error('Unexpected response from server');
+
+      // Step 2 — provision USERS sheet (safe to call multiple times)
+      const provUrl = new URL(url);
+      provUrl.searchParams.set('path',  'setup/provision');
+      provUrl.searchParams.set('token', secret);
+      const provRes  = await fetch(provUrl.toString(), { cache: 'no-cache' });
+      const provData = await provRes.json();
+
+      if (provData.error) throw new Error(provData.error);
+
+      if (provData.provisioned) {
+        // First time — show temp password prominently
+        render({
+          ok: true,
+          message: '✓ Connected! USERS sheet created.',
+          provision: provData,
+        });
       } else {
-        render({ ok: false, message: 'Server responded but returned an unexpected result.' });
+        // Already provisioned
+        render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
       }
+
     } catch(e) {
       render({ ok: false, message: 'Connection failed: ' + e.message + '. Check the URL and try again.' });
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
     }
   };
 
