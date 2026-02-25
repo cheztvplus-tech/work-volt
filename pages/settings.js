@@ -10,6 +10,49 @@ window.WorkVoltPages['settings'] = function(container) {
   if (savedUrl)    window.API_URL = savedUrl;
   if (savedSecret) window.API_SECRET_CLIENT = savedSecret;
 
+  function renderProvision(provision) {
+    if (!provision) return '';
+    return (
+      '<div class="mt-3 bg-white border border-amber-300 rounded-xl p-4">' +
+        '<div class="flex items-center gap-2 mb-2">' +
+          '<i class="fas fa-key text-amber-500"></i>' +
+          '<span class="font-bold text-amber-700 text-sm">First-time credentials — save these now!</span>' +
+        '</div>' +
+        '<div class="space-y-1.5 font-mono text-xs">' +
+          '<div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">' +
+            '<span class="text-slate-500">Email</span>' +
+            '<span class="font-semibold text-slate-800">' + provision.admin_email + '</span>' +
+          '</div>' +
+          '<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 border border-amber-200">' +
+            '<span class="text-amber-600">Temp password</span>' +
+            '<span class="font-bold text-amber-800 tracking-wider">' + provision.temp_password + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<p class="text-xs text-amber-600 mt-2.5">' +
+          '<i class="fas fa-exclamation-triangle mr-1"></i>' +
+          'This password is shown <strong>once only</strong> — it is not stored anywhere. Copy it now.' +
+        '</p>' +
+      '</div>'
+    );
+  }
+
+  function renderStatus(status) {
+    if (!status) return '';
+    const colorClass = status.ok
+      ? 'bg-green-50 text-green-700 border border-green-200'
+      : 'bg-red-50 text-red-600 border border-red-200';
+    const iconClass = status.ok ? 'fa-check-circle' : 'fa-exclamation-circle';
+    return (
+      '<div class="px-4 py-3 rounded-xl text-sm font-medium ' + colorClass + '">' +
+        '<div class="flex items-center gap-2">' +
+          '<i class="fas ' + iconClass + '"></i>' +
+          '<span>' + status.message + '</span>' +
+        '</div>' +
+        renderProvision(status.provision) +
+      '</div>'
+    );
+  }
+
   function render(status) {
     const isConnected = !!(savedUrl && savedSecret);
     container.innerHTML = `
@@ -43,35 +86,7 @@ window.WorkVoltPages['settings'] = function(container) {
             </div>
             <div class="px-6 py-5 space-y-4">
 
-              ${status ? `
-              <div class="px-4 py-3 rounded-xl text-sm font-medium
-                ${status.ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200'}">
-                <div class="flex items-center gap-2">
-                  <i class="fas ${status.ok ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i>
-                  <span>${status.message}</span>
-                </div>
-                ${status.provision ? \`
-                <div class="mt-3 bg-white border border-amber-300 rounded-xl p-4">
-                  <div class="flex items-center gap-2 mb-2">
-                    <i class="fas fa-key text-amber-500"></i>
-                    <span class="font-bold text-amber-700 text-sm">First-time credentials — save these now!</span>
-                  </div>
-                  <div class="space-y-1.5 font-mono text-xs">
-                    <div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
-                      <span class="text-slate-500">Email</span>
-                      <span class="font-semibold text-slate-800">\${status.provision.admin_email}</span>
-                    </div>
-                    <div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 border border-amber-200">
-                      <span class="text-amber-600">Temp password</span>
-                      <span class="font-bold text-amber-800 tracking-wider">\${status.provision.temp_password}</span>
-                    </div>
-                  </div>
-                  <p class="text-xs text-amber-600 mt-2.5">
-                    <i class="fas fa-exclamation-triangle mr-1"></i>
-                    This password is shown <strong>once only</strong> — it is not stored anywhere. Copy it now.
-                  </p>
-                </div>\` : ''}
-              </div>` : ''}
+              ${renderStatus(status)}
 
               <div>
                 <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
