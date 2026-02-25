@@ -354,27 +354,9 @@
   //
   // To toggle a module on: uncomment its line below.
   // ───────────────────────────────────────────────────────────────────
-  let INSTALLED_MODULES = [
-    // ── Former core modules — now install via Module Store ──
-    // { id: 'tasks',       label: 'Tasks',                icon: 'fa-check-circle',        version: '1.0.0' },
-    // { id: 'pipeline',    label: 'Pipeline',             icon: 'fa-users',               version: '1.0.0' },
-    // { id: 'payroll',     label: 'Payroll',              icon: 'fa-money-bill-wave',      version: '1.0.0' },
-    // { id: 'timesheets',  label: 'Timesheets',           icon: 'fa-clock',               version: '1.0.0' },
-    // { id: 'financials',  label: 'Financials',           icon: 'fa-chart-line',          version: '1.0.0' },
-    // { id: 'crm',         label: 'CRM',                  icon: 'fa-address-book',        version: '1.0.0' },
-    // { id: 'projects',    label: 'Projects',             icon: 'fa-folder-open',         version: '1.0.0' },
-    // { id: 'reports',     label: 'Reports',              icon: 'fa-chart-pie',           version: '1.0.0' },
-    // { id: 'assets',      label: 'Assets',               icon: 'fa-box-open',            version: '1.0.0' },
-    // ── Add-on modules ──
-    // { id: 'attendance',  label: 'Attendance Tracker',   icon: 'fa-calendar-check',      version: '1.0.0' },
-    // { id: 'invoices',    label: 'Invoice Manager',      icon: 'fa-file-invoice-dollar', version: '1.2.0' },
-    // { id: 'inventory',   label: 'Inventory Control',    icon: 'fa-warehouse',           version: '1.1.0' },
-    // { id: 'scheduler',   label: 'Shift Scheduler',      icon: 'fa-calendar-alt',        version: '1.0.2' },
-    // { id: 'expenses',    label: 'Expense Claims',       icon: 'fa-receipt',             version: '2.0.0' },
-    // { id: 'contracts',   label: 'Contract Hub',         icon: 'fa-file-signature',      version: '1.0.0' },
-    // { id: 'helpdesk',    label: 'Help Desk',            icon: 'fa-headset',             version: '1.3.0' },
-    // { id: 'recruitment', label: 'Recruitment Pipeline', icon: 'fa-user-tie',            version: '1.0.1' },
-  ];
+  let INSTALLED_MODULES = [];
+  window.INSTALLED_MODULES = INSTALLED_MODULES;
+
 
   // Saves active modules — swap for apiCall('config/save-modules') when Sheet is ready.
   // Until then, changes are in-memory only (all users see whatever is uncommented above).
@@ -402,8 +384,7 @@
       if (data.modules) {
         INSTALLED_MODULES = data.modules;
         window.INSTALLED_MODULES = INSTALLED_MODULES;
-      }
-    } catch(e) {
+      }    } catch(e) {
       console.warn('Could not load modules from Sheet:', e.message);
     }
   }
@@ -775,6 +756,7 @@
     navigate: showModule,
   };
   window.WorkVoltPages = window.WorkVoltPages || {};
+  window.renderNav = renderNav;
   </script>
 
 </body>
