@@ -15,19 +15,29 @@ window.WorkVoltPages['dashboard'] = function(container) {
   // Installed add-on modules count
   const installedCount = (window.INSTALLED_MODULES || []).length;
 
-  // All available core modules (excluding dashboard + store)
-  const coreModules = [
-    { id: 'tasks',      label: 'Tasks',       icon: 'fa-check-circle',   color: 'bg-violet-500',  desc: 'Manage and track team tasks'          },
-    { id: 'pipeline',   label: 'Pipeline',    icon: 'fa-users',          color: 'bg-blue-500',    desc: 'Visualise your sales pipeline'         },
-    { id: 'payroll',    label: 'Payroll',     icon: 'fa-money-bill-wave',color: 'bg-emerald-500', desc: 'Run payroll and manage compensation'   },
-    { id: 'timesheets', label: 'Timesheets',  icon: 'fa-clock',          color: 'bg-amber-500',   desc: 'Log and approve work hours'            },
-    { id: 'financials', label: 'Financials',  icon: 'fa-chart-line',     color: 'bg-cyan-500',    desc: 'Track revenue, costs and P&L'          },
-    { id: 'crm',        label: 'CRM',         icon: 'fa-address-book',   color: 'bg-pink-500',    desc: 'Manage clients and relationships'      },
-    { id: 'projects',   label: 'Projects',    icon: 'fa-folder-open',    color: 'bg-orange-500',  desc: 'Plan and deliver projects on time'     },
-    { id: 'reports',    label: 'Reports',     icon: 'fa-chart-pie',      color: 'bg-indigo-500',  desc: 'Insights and analytics across modules' },
-    { id: 'assets',     label: 'Assets',      icon: 'fa-box-open',       color: 'bg-teal-500',    desc: 'Track company equipment and tools'     },
-    { id: 'settings',   label: 'Settings',    icon: 'fa-cog',            color: 'bg-slate-500',   desc: 'Configure your workspace'              },
-  ];
+  // Installed modules (add-ons from the store)
+  const coreModules = (window.INSTALLED_MODULES || []).map(m => {
+    const meta = {
+      tasks:       { color: 'bg-violet-500',  desc: 'Manage and track team tasks'           },
+      pipeline:    { color: 'bg-blue-500',    desc: 'Visualise your sales pipeline'          },
+      payroll:     { color: 'bg-emerald-500', desc: 'Run payroll and manage compensation'    },
+      timesheets:  { color: 'bg-amber-500',   desc: 'Log and approve work hours'             },
+      financials:  { color: 'bg-cyan-500',    desc: 'Track revenue, costs and P&L'           },
+      crm:         { color: 'bg-pink-500',    desc: 'Manage clients and relationships'       },
+      projects:    { color: 'bg-orange-500',  desc: 'Plan and deliver projects on time'      },
+      reports:     { color: 'bg-indigo-500',  desc: 'Insights and analytics across modules'  },
+      assets:      { color: 'bg-teal-500',    desc: 'Track company equipment and tools'      },
+      attendance:  { color: 'bg-indigo-500',  desc: 'Track check-ins, absences and hours'    },
+      invoices:    { color: 'bg-emerald-500', desc: 'Create and track client invoices'       },
+      inventory:   { color: 'bg-amber-500',   desc: 'Monitor stock levels and movements'     },
+      scheduler:   { color: 'bg-blue-500',    desc: 'Build and publish shift rosters'        },
+      expenses:    { color: 'bg-pink-500',    desc: 'Submit and approve expense claims'      },
+      contracts:   { color: 'bg-violet-500',  desc: 'Store and manage contracts'             },
+      helpdesk:    { color: 'bg-cyan-500',    desc: 'Internal support ticket system'         },
+      recruitment: { color: 'bg-orange-500',  desc: 'Track hiring pipeline and candidates'   },
+    }[m.id] || { color: 'bg-slate-500', desc: '' };
+    return { id: m.id, label: m.label, icon: m.icon, ...meta };
+  });
 
   // Steps checklist — dynamic based on state
   const steps = [
@@ -102,8 +112,8 @@ window.WorkVoltPages['dashboard'] = function(container) {
             <div class="flex items-center gap-2.5 bg-white/10 border border-white/15 backdrop-blur-sm rounded-xl px-4 py-2.5">
               <i class="fas fa-cubes text-blue-300 text-sm"></i>
               <div>
-                <p class="text-white font-bold text-lg leading-none">${coreModules.length}</p>
-                <p class="text-blue-200 text-xs mt-0.5">Core modules</p>
+                <p class="text-white font-bold text-lg leading-none">17</p>
+                <p class="text-blue-200 text-xs mt-0.5">Available modules</p>
               </div>
             </div>
             <div class="flex items-center gap-2.5 bg-white/10 border border-white/15 backdrop-blur-sm rounded-xl px-4 py-2.5">
@@ -198,8 +208,16 @@ window.WorkVoltPages['dashboard'] = function(container) {
         <div>
           <h2 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
             <i class="fas fa-cubes text-slate-400 text-sm"></i>
-            Your core modules
+            Installed modules
           </h2>
+          ${coreModules.length === 0 ? `
+            <div class="col-span-full bg-white border border-dashed border-slate-300 rounded-2xl p-8 text-center">
+              <i class="fas fa-store text-slate-300 text-3xl mb-3"></i>
+              <p class="text-slate-500 font-semibold text-sm">No modules installed yet</p>
+              <p class="text-slate-400 text-xs mt-1 mb-4">Head to the Module Store to add features to your workspace</p>
+              <button onclick="window.WorkVolt.navigate('store')" class="text-sm font-bold bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors">Browse Module Store</button>
+            </div>
+          ` : `
           <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             ${coreModules.map(m => `
               <button onclick="window.WorkVolt.navigate('${m.id}')"
@@ -212,6 +230,7 @@ window.WorkVoltPages['dashboard'] = function(container) {
               </button>
             `).join('')}
           </div>
+          `}
         </div>
 
         ${installedCount > 0 ? `
