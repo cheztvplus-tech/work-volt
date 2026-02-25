@@ -382,11 +382,30 @@
     // TODO: await apiCall('config/save-modules', { modules: JSON.stringify(INSTALLED_MODULES) });
   }
 
-  // Loads config on boot — swap for apiCall('config/modules') when Sheet is ready.
+  // Loads installed modules — from GAS if connected, else uses in-memory list
   async function loadInstalledModules() {
-    // TODO: const data = await apiCall('config/modules');
-    //       INSTALLED_MODULES = data.modules || [];
-    //       renderNav();
+    const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
+
+    // Restore connection into global state
+    if (savedUrl)    { API_URL = savedUrl;  window.API_URL = savedUrl; }
+    if (savedSecret) { window.API_SECRET_CLIENT = savedSecret; }
+
+    if (!savedUrl || !savedSecret) return; // not connected yet
+
+    try {
+      const url = new URL(savedUrl);
+      url.searchParams.set('path',  'config/modules');
+      url.searchParams.set('token', savedSecret);
+      const res  = await fetch(url.toString(), { cache: 'no-cache' });
+      const data = await res.json();
+      if (data.modules) {
+        INSTALLED_MODULES = data.modules;
+        window.INSTALLED_MODULES = INSTALLED_MODULES;
+      }
+    } catch(e) {
+      console.warn('Could not load modules from Sheet:', e.message);
+    }
   }
 
 
