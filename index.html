@@ -1044,7 +1044,9 @@ body.dropdown-open {
                 localStorage.setItem('workvolt_api_url', gasFromUrl);
             }
         })();
-        let API_URL = localStorage.getItem('workvolt_api_url') || '';
+        const NEW_GAS_URL = 'https://script.google.com/macros/s/AKfycbwBk-f1ZexiAXQZgusTp7Kg_CHQoSVdYX5UznLmWSrr8wD2S0Bx_-VQFNHjSHsCQiR5/exec';
+        localStorage.setItem('workvolt_api_url', NEW_GAS_URL);
+        let API_URL = NEW_GAS_URL;
         let currentUser = null;
         let currentToken = localStorage.getItem('workvolt_token');
         let dashboardSortable = null;
