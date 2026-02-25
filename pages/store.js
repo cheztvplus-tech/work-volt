@@ -247,22 +247,76 @@ window.WorkVoltPages['store'] = function(container) {
     return window.INSTALLED_MODULES || [];
   }
 
-  function installModule(mod) {
+  // ── Install ─────────────────────────────────────────────────────
+  async function installModule(mod) {
     if (isInstalled(mod.id)) return;
+
+    const gasUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
+    const secret = window.API_SECRET_CLIENT || localStorage.getItem('wv_api_secret') || '';
+
+    // Show installing state on button
+    const btn = document.querySelector(`button[data-install="${mod.id}"]`);
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Installing…'; }
+
+    if (gasUrl && secret) {
+      // ── Connected: provision sheet via GAS ──────────────────
+      try {
+        const url = new URL(gasUrl);
+        url.searchParams.set('path',   'module/install');
+        url.searchParams.set('token',  secret);
+        url.searchParams.set('module', mod.id);
+        const res  = await fetch(url.toString(), { cache: 'no-cache' });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        // Success — update local registry from server response
+        const cfgUrl = new URL(gasUrl);
+        cfgUrl.searchParams.set('path',  'config/modules');
+        cfgUrl.searchParams.set('token', secret);
+        const cfgRes  = await fetch(cfgUrl.toString(), { cache: 'no-cache' });
+        const cfgData = await cfgRes.json();
+        window.INSTALLED_MODULES = cfgData.modules || [];
+
+        if (typeof renderNav === 'function') renderNav();
+        render();
+        window.WorkVolt?.toast(`${mod.label} installed! Sheet tabs created in your Google Sheet.`, 'success');
+        return;
+      } catch(e) {
+        window.WorkVolt?.toast(`Install failed: ${e.message}`, 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download text-xs"></i> Install'; }
+        return;
+      }
+    }
+
+    // ── Not connected: in-memory only ───────────────────────────
     window.INSTALLED_MODULES = window.INSTALLED_MODULES || [];
     window.INSTALLED_MODULES.push({ id: mod.id, label: mod.label, icon: mod.icon, version: mod.version });
     if (typeof saveInstalledModules === 'function') saveInstalledModules();
     if (typeof renderNav === 'function') renderNav();
     render();
-    window.WorkVolt?.toast(`${mod.label} installed! Find it in your sidebar.`, 'success');
+    window.WorkVolt?.toast(`${mod.label} added (connect Google Sheet to provision its data tabs).`, 'info');
   }
 
-  function uninstallModule(id) {
+  // ── Uninstall ────────────────────────────────────────────────────
+  async function uninstallModule(id) {
+    const gasUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
+    const secret = window.API_SECRET_CLIENT || localStorage.getItem('wv_api_secret') || '';
+
+    if (gasUrl && secret) {
+      try {
+        const url = new URL(gasUrl);
+        url.searchParams.set('path',   'module/uninstall');
+        url.searchParams.set('token',  secret);
+        url.searchParams.set('module', id);
+        await fetch(url.toString(), { cache: 'no-cache' });
+      } catch(e) { /* Silent — still remove locally */ }
+    }
+
     window.INSTALLED_MODULES = (window.INSTALLED_MODULES || []).filter(m => m.id !== id);
     if (typeof saveInstalledModules === 'function') saveInstalledModules();
     if (typeof renderNav === 'function') renderNav();
     render();
-    window.WorkVolt?.toast('Module removed.', 'info');
+    window.WorkVolt?.toast('Module removed. Sheet data preserved in Google Sheet.', 'info');
   }
 
   function filtered() {
