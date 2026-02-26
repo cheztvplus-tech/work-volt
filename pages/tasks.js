@@ -1,4 +1,3 @@
-
 window.WorkVoltPages['tasks'] = function(container) {
 
   // ── State ──────────────────────────────────────────────────────
@@ -661,48 +660,81 @@ window.WorkVoltPages['tasks'] = function(container) {
       });
     });
 
-    // Assigned editing
+    // Assigned editing - searchable dropdown
     content.querySelectorAll('.editable-assigned').forEach(function(el) {
       var display = el.querySelector('.assigned-display');
-      var select = el.querySelector('.assigned-select');
+      var dropdown = el.querySelector('.assigned-dropdown');
+      var searchInput = el.querySelector('.assigned-search');
+      var listContainer = el.querySelector('.assigned-list');
+      var allOptions = Array.from(listContainer.querySelectorAll('.assign-option'));
       
       display.addEventListener('click', function(e) {
         e.stopPropagation();
-        display.classList.add('hidden');
-        select.classList.remove('hidden');
-        select.focus();
-      });
-      
-      select.addEventListener('change', function() {
-        var id = this.dataset.id;
-        var value = this.value;
-        var name = value ? userName(value) : '';
-        
-        quickUpdate(id, { assigned_to: value }, value ? 'Assigned to ' + name : 'Unassigned');
-        
-        // Update display
-        if (value) {
-          display.innerHTML = '<span class="inline-flex items-center gap-1.5 text-xs text-slate-600">' +
-            '<span class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(value) + '</span>' +
-            '<span class="truncate" style="max-width:90px">' + esc(name) + '</span>' +
-          '</span>';
-        } else {
-          display.innerHTML = '<span class="text-xs text-blue-600"><i class="fas fa-plus mr-1"></i>Assign</span>';
+        // Close other open dropdowns
+        content.querySelectorAll('.assigned-dropdown').forEach(function(d) { 
+          if (d !== dropdown) d.classList.add('hidden'); 
+        });
+        dropdown.classList.remove('hidden');
+        if (searchInput) {
+          searchInput.value = '';
+          searchInput.focus();
+          // Show all options
+          allOptions.forEach(function(opt) { opt.classList.remove('hidden'); });
         }
-        display.classList.remove('hidden');
-        this.classList.add('hidden');
       });
       
-      select.addEventListener('blur', function() {
-        display.classList.remove('hidden');
-        this.classList.add('hidden');
+      // Search filtering
+      if (searchInput) {
+        searchInput.addEventListener('input', function() {
+          var q = this.value.toLowerCase();
+          allOptions.forEach(function(opt) {
+            var name = opt.dataset.name || '';
+            var isUnassigned = opt.dataset.userId === '';
+            if (isUnassigned || name.includes(q)) {
+              opt.classList.remove('hidden');
+            } else {
+              opt.classList.add('hidden');
+            }
+          });
+        });
+        
+        // Prevent dropdown close when clicking search
+        searchInput.addEventListener('click', function(e) {
+          e.stopPropagation();
+        });
+      }
+      
+      // Option selection
+      allOptions.forEach(function(opt) {
+        opt.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var userId = this.dataset.userId;
+          var id = el.dataset.id;
+          
+          quickUpdate(id, { assigned_to: userId }, userId ? 'Assigned' : 'Unassigned');
+          
+          // Update display
+          if (userId) {
+            var name = userName(userId);
+            display.innerHTML = '<span class="inline-flex items-center gap-1.5 text-xs text-slate-600">' +
+              '<span class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(userId) + '</span>' +
+              '<span class="truncate" style="max-width:90px">' + esc(name) + '</span>' +
+            '</span>';
+          } else {
+            display.innerHTML = '<span class="text-xs text-blue-600"><i class="fas fa-plus mr-1"></i>Assign</span>';
+          }
+          dropdown.classList.add('hidden');
+          if (searchInput) searchInput.value = '';
+        });
       });
     });
-  }
 
-  // ================================================================
-  //  KANBAN VIEW
-  // ================================================================
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.editable-assigned')) {
+        content.querySelectorAll('.assigned-dropdown').forEach(function(d) { d.classList.add('hidden'); });
+      }
+    });
   // ================================================================
   //  KANBAN VIEW
   // ================================================================
