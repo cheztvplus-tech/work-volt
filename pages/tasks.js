@@ -735,7 +735,6 @@ window.WorkVoltPages['tasks'] = function(container) {
         content.querySelectorAll('.assigned-dropdown').forEach(function(d) { d.classList.add('hidden'); });
       }
     });
-  }
   // ================================================================
   //  KANBAN VIEW
   // ================================================================
