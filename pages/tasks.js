@@ -1,3 +1,4 @@
+
 window.WorkVoltPages['tasks'] = function(container) {
 
   // ── State ──────────────────────────────────────────────────────
@@ -395,7 +396,7 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   //  LIST VIEW
   // ================================================================
-    function renderList(tasks) {
+  function renderList(tasks) {
     var content = document.getElementById('tasks-content');
     if (!content) return;
 
@@ -423,101 +424,50 @@ window.WorkVoltPages['tasks'] = function(container) {
           : '<button data-action="reopen"   data-id="' + t.id + '" title="Reopen"    class="act-btn icon-btn hover:text-blue-600 hover:bg-blue-50"><i class="fas fa-undo text-xs"></i></button>') +
         '<button data-action="log-hours" data-id="' + t.id + '" title="Log Hours"  class="act-btn icon-btn hover:text-blue-600 hover:bg-blue-50"><i class="fas fa-clock text-xs"></i></button>' +
         '<button data-action="log-note"  data-id="' + t.id + '" title="Log Note"   class="act-btn icon-btn hover:text-purple-600 hover:bg-purple-50"><i class="fas fa-sticky-note text-xs"></i></button>' +
-        '<button data-action="view"      data-id="' + t.id + '" title="View Details" class="act-btn icon-btn hover:text-indigo-600 hover:bg-indigo-50"><i class="fas fa-eye text-xs"></i></button>' +
+        '<button data-action="edit"      data-id="' + t.id + '" title="Edit"        class="act-btn icon-btn hover:text-indigo-600 hover:bg-indigo-50"><i class="fas fa-pencil text-xs"></i></button>' +
         (isAdmin() ? '<button data-action="delete" data-id="' + t.id + '" data-title="' + esc(t.title) + '" title="Delete" class="act-btn icon-btn hover:text-red-600 hover:bg-red-50"><i class="fas fa-trash text-xs"></i></button>' : '');
-
-      // Inline editable title
-      var titleCell = '<div class="group/title relative">' +
-        '<div class="editable-title font-semibold text-slate-900 text-sm leading-snug truncate cursor-pointer hover:text-blue-600 hover:bg-blue-50 px-2 -mx-2 py-1 rounded transition-colors" ' +
-        'data-field="title" data-id="' + t.id + '" title="Click to edit">' + esc(t.title) + '</div>' +
-        '<div class="edit-input hidden flex items-center gap-2">' +
-          '<input type="text" class="field text-sm py-1" value="' + esc(t.title) + '" data-field="title" data-id="' + t.id + '">' +
-          '<button class="save-edit text-green-600 hover:bg-green-50 w-7 h-7 rounded flex items-center justify-center"><i class="fas fa-check text-xs"></i></button>' +
-          '<button class="cancel-edit text-slate-400 hover:bg-slate-100 w-7 h-7 rounded flex items-center justify-center"><i class="fas fa-times text-xs"></i></button>' +
-        '</div>' +
-        '<div class="text-[10px] text-slate-400 font-mono">' + esc(t.id) + '</div>' +
-        (t.tags ? '<div class="flex flex-wrap gap-1 mt-1">' +
-          t.tags.split(',').map(function(tag) { tag = tag.trim();
-            return tag ? '<span class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-px rounded font-medium">' + esc(tag) + '</span>' : '';
-          }).join('') + '</div>' : '') +
-      '</div>';
-
-      // Inline editable status dropdown
-      var statusCell = '<div class="editable-status relative" data-field="status" data-id="' + t.id + '">' +
-        '<div class="status-display cursor-pointer hover:opacity-80 transition-opacity">' + statusBadge(t.status) + '</div>' +
-        '<select class="status-select hidden field text-xs py-1" data-field="status" data-id="' + t.id + '">' +
-          STATUSES.map(function(s) {
-            return '<option value="' + s + '"' + (t.status === s ? ' selected' : '') + '>' + s + '</option>';
-          }).join('') +
-        '</select>' +
-      '</div>';
-
-      // Inline editable priority dropdown
-      var priorityCell = '<div class="editable-priority relative" data-field="priority" data-id="' + t.id + '">' +
-        '<div class="priority-display cursor-pointer hover:opacity-80 transition-opacity">' + priorityBadge(t.priority) + '</div>' +
-        '<select class="priority-select hidden field text-xs py-1" data-field="priority" data-id="' + t.id + '">' +
-          PRIORITIES.map(function(p) {
-            return '<option value="' + p + '"' + (t.priority === p ? ' selected' : '') + '>' + p + '</option>';
-          }).join('') +
-        '</select>' +
-      '</div>';
-      
-      // Inline editable assigned user - with search
-      var assignedCell = '<div class="editable-assigned relative" data-field="assigned_to" data-id="' + t.id + '">' +
-        (t.assigned_to
-          ? '<div class="assigned-display cursor-pointer hover:bg-blue-50 px-2 -mx-2 py-1 rounded transition-colors flex items-center gap-1.5 text-xs text-slate-600" title="Click to change">' +
-              '<span class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(t.assigned_to) + '</span>' +
-              '<span class="truncate" style="max-width:90px">' + esc(userName(t.assigned_to)) + '</span>' +
-            '</div>'
-          : '<div class="assigned-display cursor-pointer text-xs text-blue-600 hover:bg-blue-50 px-2 -mx-2 py-1 rounded transition-colors" title="Click to assign">' +
-              '<i class="fas fa-plus mr-1"></i>Assign' +
-            '</div>') +
-        '<div class="assigned-select hidden absolute z-50 left-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl w-64 p-2">' +
-          '<div class="relative mb-2">' +
-            '<i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>' +
-            '<input type="text" class="assign-search w-full pl-8 pr-2 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Search user…">' +
-          '</div>' +
-          '<div class="assign-list max-h-40 overflow-y-auto">' +
-            '<button type="button" class="assign-option w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 rounded-lg text-slate-500" data-user-id="">— Unassigned —</button>' +
-            usersCache.filter(function(u) { return String(u.active) !== 'false'; }).map(function(u) {
-              var uid = u.user_id || u.id || '';
-              var name = u.name || u.email || uid;
-              return '<button type="button" class="assign-option w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 rounded-lg flex items-center gap-2" data-user-id="' + esc(uid) + '" data-name="' + esc(name.toLowerCase()) + '">' +
-                '<span class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(uid) + '</span>' +
-                '<span class="truncate">' + esc(name) + '</span>' +
-              '</button>';
-            }).join('') +
-          '</div>' +
-        '</div>' +
-      '</div>';
 
       return '<tr class="border-t border-slate-100 hover:bg-slate-50/60 transition-colors group">' +
 
-        // Task name - editable
-        '<td class="px-4 py-3" style="max-width:260px">' + titleCell + '</td>' +
+        // Task name + ID + tags — clicking title opens detail
+        '<td class="px-4 py-3 cursor-pointer" style="max-width:260px" data-action="view" data-id="' + t.id + '">' +
+          '<div class="font-semibold text-slate-900 text-sm leading-snug truncate">' + esc(t.title) + '</div>' +
+          '<div class="text-[10px] text-slate-400 font-mono">' + esc(t.id) + '</div>' +
+          (t.tags ? '<div class="flex flex-wrap gap-1 mt-1">' +
+            t.tags.split(',').map(function(tag) { tag = tag.trim();
+              return tag ? '<span class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-px rounded font-medium">' + esc(tag) + '</span>' : '';
+            }).join('') + '</div>' : '') +
+        '</td>' +
 
-        // Status - editable
-        '<td class="px-4 py-3 whitespace-nowrap">' + statusCell + '</td>' +
+        // Status
+        '<td class="px-4 py-3 whitespace-nowrap">' + statusBadge(t.status) + '</td>' +
 
-        // Priority - editable
-        '<td class="px-4 py-3 whitespace-nowrap">' + priorityCell + '</td>' +
+        // Priority
+        '<td class="px-4 py-3 whitespace-nowrap">' + priorityBadge(t.priority) + '</td>' +
 
-        // Due date - not editable inline
+        // Due date
         '<td class="px-4 py-3 text-xs whitespace-nowrap ' + (overdue ? 'text-red-500 font-bold' : 'text-slate-500') + '">' +
           (t.due_date
             ? fmtDate(t.due_date) + (overdue ? ' <i class="fas fa-exclamation-circle ml-0.5"></i>' : '')
             : '<span class="text-slate-300">—</span>') +
         '</td>' +
 
-        // Assigned - editable
-        '<td class="px-4 py-3 whitespace-nowrap">' + assignedCell + '</td>' +
+        // Assigned
+        '<td class="px-4 py-3 whitespace-nowrap">' +
+          (t.assigned_to
+            ? '<span class="inline-flex items-center gap-1.5 text-xs text-slate-600">' +
+                '<span class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(t.assigned_to) + '</span>' +
+                '<span class="truncate" style="max-width:90px">' + esc(userName(t.assigned_to)) + '</span>' +
+              '</span>'
+            : '<span class="text-xs text-slate-300">—</span>') +
+        '</td>' +
 
         // Hours bar
         '<td class="px-4 py-3" style="min-width:120px">' +
           (hasHours ? hoursBar(t.actual_hours, t.estimated_hours) : '<span class="text-xs text-slate-300">—</span>') +
         '</td>' +
 
-        // Project
+        // Project (conditional column)
         (showProject
           ? '<td class="px-4 py-3 whitespace-nowrap">' +
               (t.project_id
@@ -555,184 +505,9 @@ window.WorkVoltPages['tasks'] = function(container) {
         '</div>' +
       '</div>';
 
-    // Bind inline editing events
-    bindInlineEditing();
   }
-    function bindInlineEditing() {
-    var content = document.getElementById('tasks-content');
-    if (!content) return;
 
-    // Title editing
-    content.querySelectorAll('.editable-title').forEach(function(el) {
-      el.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var parent = this.closest('.group\\/title');
-        this.classList.add('hidden');
-        parent.querySelector('.edit-input').classList.remove('hidden');
-        parent.querySelector('input').focus();
-      });
-    });
 
-    content.querySelectorAll('.save-edit').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var input = this.closest('.edit-input').querySelector('input');
-        var id = input.dataset.id;
-        var field = input.dataset.field;
-        var value = input.value.trim();
-        
-        if (!value) return;
-        
-        var updates = { id: id };
-        updates[field] = value;
-        
-        quickUpdate(id, updates, 'Updated');
-        
-        // Update display
-        var parent = this.closest('.group\\/title');
-        parent.querySelector('.editable-title').textContent = value;
-        parent.querySelector('.editable-title').classList.remove('hidden');
-        this.closest('.edit-input').classList.add('hidden');
-      });
-    });
-
-    content.querySelectorAll('.cancel-edit').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var parent = this.closest('.group\\/title');
-        parent.querySelector('.editable-title').classList.remove('hidden');
-        this.closest('.edit-input').classList.add('hidden');
-      });
-    });
-
-    // Status editing
-    content.querySelectorAll('.editable-status').forEach(function(el) {
-      var display = el.querySelector('.status-display');
-      var select = el.querySelector('.status-select');
-      
-      display.addEventListener('click', function(e) {
-        e.stopPropagation();
-        display.classList.add('hidden');
-        select.classList.remove('hidden');
-        select.focus();
-      });
-      
-      select.addEventListener('change', function() {
-        var id = this.dataset.id;
-        var value = this.value;
-        quickUpdate(id, { status: value }, 'Status updated');
-        display.innerHTML = statusBadge(value);
-        display.classList.remove('hidden');
-        this.classList.add('hidden');
-      });
-      
-      select.addEventListener('blur', function() {
-        display.classList.remove('hidden');
-        this.classList.add('hidden');
-      });
-    });
-
-    // Priority editing
-    content.querySelectorAll('.editable-priority').forEach(function(el) {
-      var display = el.querySelector('.priority-display');
-      var select = el.querySelector('.priority-select');
-      
-      display.addEventListener('click', function(e) {
-        e.stopPropagation();
-        display.classList.add('hidden');
-        select.classList.remove('hidden');
-        select.focus();
-      });
-      
-      select.addEventListener('change', function() {
-        var id = this.dataset.id;
-        var value = this.value;
-        quickUpdate(id, { priority: value }, 'Priority updated');
-        display.innerHTML = priorityBadge(value);
-        display.classList.remove('hidden');
-        this.classList.add('hidden');
-      });
-      
-      select.addEventListener('blur', function() {
-        display.classList.remove('hidden');
-        this.classList.add('hidden');
-      });
-    });
-
-    // Assigned editing
-    content.querySelectorAll('.editable-assigned').forEach(function(el) {
-      var display = el.querySelector('.assigned-display');
-      var dropdown = el.querySelector('.assigned-select');
-      var searchInput = el.querySelector('.assign-search');
-      var listContainer = el.querySelector('.assign-list');
-      var allOptions = Array.from(listContainer.querySelectorAll('.assign-option'));
-      
-      display.addEventListener('click', function(e) {
-        e.stopPropagation();
-        // Close other open dropdowns
-        content.querySelectorAll('.assigned-select').forEach(function(d) { 
-          if (d !== dropdown) d.classList.add('hidden'); 
-        });
-        dropdown.classList.remove('hidden');
-        if (searchInput) {
-          searchInput.value = '';
-          searchInput.focus();
-          // Show all options
-          allOptions.forEach(function(opt) { opt.classList.remove('hidden'); });
-        }
-      });
-      
-      // Search filtering
-      if (searchInput) {
-        searchInput.addEventListener('input', function() {
-          var q = this.value.toLowerCase();
-          allOptions.forEach(function(opt) {
-            var name = opt.dataset.name || '';
-            var isUnassigned = opt.dataset.userId === '';
-            if (isUnassigned || name.includes(q)) {
-              opt.classList.remove('hidden');
-            } else {
-              opt.classList.add('hidden');
-            }
-          });
-        });
-        
-        // Prevent dropdown close when clicking search
-        searchInput.addEventListener('click', function(e) {
-          e.stopPropagation();
-        });
-      }
-      
-      // Option selection
-      listContainer.querySelectorAll('.assign-option').forEach(function(opt) {
-        opt.addEventListener('click', function(e) {
-          e.stopPropagation();
-          var userId = this.dataset.userId;
-          var id = el.dataset.id;
-          
-          quickUpdate(id, { assigned_to: userId }, userId ? 'Assigned' : 'Unassigned');
-          
-          // Update display
-          if (userId) {
-            var name = userName(userId);
-            display.innerHTML = '<span class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(userId) + '</span>' +
-              '<span class="truncate" style="max-width:90px">' + esc(name) + '</span>';
-          } else {
-            display.innerHTML = '<i class="fas fa-plus mr-1"></i>Assign';
-          }
-          dropdown.classList.add('hidden');
-          if (searchInput) searchInput.value = '';
-        });
-      });
-    });
-
-    // Close dropdowns when clicking outside
-    document.addEventListener('click', function(e) {
-      if (!e.target.closest('.editable-assigned')) {
-        content.querySelectorAll('.assigned-select').forEach(function(d) { d.classList.add('hidden'); });
-      }
-    });
-  }
   // ================================================================
   //  KANBAN VIEW
   // ================================================================
@@ -1189,20 +964,11 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   //  QUICK STATUS UPDATE
   // ================================================================
-    function quickUpdate(id, fields, msg) {
+  function quickUpdate(id, fields, msg) {
     var params = { id: id };
     Object.keys(fields).forEach(function(k) { params[k] = fields[k]; });
     api('tasks/update', params)
-      .then(function() { 
-        if (msg) toast(msg, 'success'); 
-        // Update cache
-        if (tasksCache[id]) {
-          Object.keys(fields).forEach(function(k) {
-            if (k !== 'id') tasksCache[id][k] = fields[k];
-          });
-        }
-        renderStats(Object.values(tasksCache));
-      })
+      .then(function() { toast(msg, 'success'); loadData(); })
       .catch(function(e) { toast(e.message, 'error'); });
   }
 
