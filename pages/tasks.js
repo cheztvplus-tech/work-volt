@@ -1,4 +1,3 @@
-
 window.WorkVoltPages['tasks'] = function(container) {
 
   // ── State ──────────────────────────────────────────────────────
@@ -462,29 +461,33 @@ window.WorkVoltPages['tasks'] = function(container) {
           }).join('') +
         '</select>' +
       '</div>';
-
-      // Inline editable assigned user
+      
+      // Inline editable assigned user - with search
       var assignedCell = '<div class="editable-assigned relative" data-field="assigned_to" data-id="' + t.id + '">' +
         (t.assigned_to
           ? '<div class="assigned-display cursor-pointer hover:bg-blue-50 px-2 -mx-2 py-1 rounded transition-colors flex items-center gap-1.5 text-xs text-slate-600" title="Click to change">' +
               '<span class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(t.assigned_to) + '</span>' +
               '<span class="truncate" style="max-width:90px">' + esc(userName(t.assigned_to)) + '</span>' +
-              '<i class="fas fa-pencil text-[9px] text-slate-300 opacity-0 group-hover:opacity-100"></i>' +
             '</div>'
           : '<div class="assigned-display cursor-pointer text-xs text-blue-600 hover:bg-blue-50 px-2 -mx-2 py-1 rounded transition-colors" title="Click to assign">' +
               '<i class="fas fa-plus mr-1"></i>Assign' +
             '</div>') +
-        '<div class="assigned-select hidden absolute z-10 left-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl w-56 max-h-48 overflow-y-auto p-1">' +
-          '<div class="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase">Assign to</div>' +
-          '<button type="button" class="assign-option w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 rounded-lg" data-user-id="">— Unassigned —</button>' +
-          usersCache.filter(function(u) { return String(u.active) !== 'false'; }).map(function(u) {
-            var uid = u.user_id || u.id || '';
-            var name = u.name || u.email || uid;
-            return '<button type="button" class="assign-option w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 rounded-lg flex items-center gap-2" data-user-id="' + esc(uid) + '">' +
-              '<span class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(uid) + '</span>' +
-              '<span class="truncate">' + esc(name) + '</span>' +
-            '</button>';
-          }).join('') +
+        '<div class="assigned-select hidden absolute z-50 left-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl w-64 p-2">' +
+          '<div class="relative mb-2">' +
+            '<i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>' +
+            '<input type="text" class="assign-search w-full pl-8 pr-2 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Search user…">' +
+          '</div>' +
+          '<div class="assign-list max-h-40 overflow-y-auto">' +
+            '<button type="button" class="assign-option w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 rounded-lg text-slate-500" data-user-id="">— Unassigned —</button>' +
+            usersCache.filter(function(u) { return String(u.active) !== 'false'; }).map(function(u) {
+              var uid = u.user_id || u.id || '';
+              var name = u.name || u.email || uid;
+              return '<button type="button" class="assign-option w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 rounded-lg flex items-center gap-2" data-user-id="' + esc(uid) + '" data-name="' + esc(name.toLowerCase()) + '">' +
+                '<span class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(uid) + '</span>' +
+                '<span class="truncate">' + esc(name) + '</span>' +
+              '</button>';
+            }).join('') +
+          '</div>' +
         '</div>' +
       '</div>';
 
@@ -660,13 +663,48 @@ window.WorkVoltPages['tasks'] = function(container) {
     content.querySelectorAll('.editable-assigned').forEach(function(el) {
       var display = el.querySelector('.assigned-display');
       var dropdown = el.querySelector('.assigned-select');
+      var searchInput = el.querySelector('.assign-search');
+      var listContainer = el.querySelector('.assign-list');
+      var allOptions = Array.from(listContainer.querySelectorAll('.assign-option'));
       
       display.addEventListener('click', function(e) {
         e.stopPropagation();
+        // Close other open dropdowns
+        content.querySelectorAll('.assigned-select').forEach(function(d) { 
+          if (d !== dropdown) d.classList.add('hidden'); 
+        });
         dropdown.classList.remove('hidden');
+        if (searchInput) {
+          searchInput.value = '';
+          searchInput.focus();
+          // Show all options
+          allOptions.forEach(function(opt) { opt.classList.remove('hidden'); });
+        }
       });
       
-      dropdown.querySelectorAll('.assign-option').forEach(function(opt) {
+      // Search filtering
+      if (searchInput) {
+        searchInput.addEventListener('input', function() {
+          var q = this.value.toLowerCase();
+          allOptions.forEach(function(opt) {
+            var name = opt.dataset.name || '';
+            var isUnassigned = opt.dataset.userId === '';
+            if (isUnassigned || name.includes(q)) {
+              opt.classList.remove('hidden');
+            } else {
+              opt.classList.add('hidden');
+            }
+          });
+        });
+        
+        // Prevent dropdown close when clicking search
+        searchInput.addEventListener('click', function(e) {
+          e.stopPropagation();
+        });
+      }
+      
+      // Option selection
+      listContainer.querySelectorAll('.assign-option').forEach(function(opt) {
         opt.addEventListener('click', function(e) {
           e.stopPropagation();
           var userId = this.dataset.userId;
@@ -678,12 +716,12 @@ window.WorkVoltPages['tasks'] = function(container) {
           if (userId) {
             var name = userName(userId);
             display.innerHTML = '<span class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(userId) + '</span>' +
-              '<span class="truncate" style="max-width:90px">' + esc(name) + '</span>' +
-              '<i class="fas fa-pencil text-[9px] text-slate-300 opacity-0 group-hover:opacity-100"></i>';
+              '<span class="truncate" style="max-width:90px">' + esc(name) + '</span>';
           } else {
             display.innerHTML = '<i class="fas fa-plus mr-1"></i>Assign';
           }
           dropdown.classList.add('hidden');
+          if (searchInput) searchInput.value = '';
         });
       });
     });
