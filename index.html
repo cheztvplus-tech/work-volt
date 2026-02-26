@@ -392,7 +392,14 @@
       if (data.modules) {
         INSTALLED_MODULES = data.modules;
         window.INSTALLED_MODULES = INSTALLED_MODULES;
-      }    } catch(e) {
+        // Apply any custom allowed_roles stored per-module to the live ADDON_CATALOGUE
+        INSTALLED_MODULES.forEach(function(m) {
+          if (m.allowed_roles && ADDON_CATALOGUE[m.id]) {
+            ADDON_CATALOGUE[m.id].roles = m.allowed_roles;
+          }
+        });
+      }
+    } catch(e) {
       console.warn('Could not load modules from Sheet:', e.message);
     }
   }
@@ -519,7 +526,10 @@
     // ── Installed add-on modules (from INSTALLED_MODULES + ADDON_CATALOGUE) ──
     const addons = INSTALLED_MODULES.filter(m => {
       const def = ADDON_CATALOGUE[m.id];
-      return def && def.roles.includes(role);
+      if (!def) return false;
+      // Use per-module allowed_roles if set by admin, otherwise fall back to catalogue defaults
+      const allowedRoles = m.allowed_roles || def.roles || [];
+      return allowedRoles.includes(role);
     });
 
     const addonLinks = addons.length ? `
