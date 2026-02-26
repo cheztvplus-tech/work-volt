@@ -854,6 +854,7 @@ window.WorkVoltPages['tasks'] = function(container) {
       var cached = tasksCache[taskId];
       if (cached) {
         cached.actual_hours = (parseFloat(cached.actual_hours) || 0) + hours;
+        renderStats(Object.values(tasksCache));
       }
       modalStatus('Hours logged!', true);
       setTimeout(function() { closeModal(); loadData(); }, 700);
@@ -1198,7 +1199,7 @@ window.WorkVoltPages['tasks'] = function(container) {
     var btn = document.getElementById('tm-confirm-delete');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Deleting…'; }
 
-    api('tasks/delete', { id: taskId })
+    api('tasks/delete', { id: taskId, task_id: taskId })
       .then(function() {
         modalStatus('Task deleted.', true);
         setTimeout(function() { closeModal(); loadData(); }, 700);
