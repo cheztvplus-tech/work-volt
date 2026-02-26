@@ -90,6 +90,10 @@ window.WorkVoltPages['tasks'] = function(container) {
     if (!n) return '0h';
     return n % 1 === 0 ? n + 'h' : n.toFixed(1) + 'h';
   }
+  function fmtMoney(v) {
+    var n = parseFloat(v) || 0;
+    return '$' + n.toFixed(2);
+  }
   function userName(uid) {
     if (!uid) return '—';
     var u = usersCache.find(function(u) { return u.user_id === uid || u.id === uid; });
@@ -260,11 +264,11 @@ window.WorkVoltPages['tasks'] = function(container) {
       doSearch(this.value);
     });
 
-    // Delegated content clicks
+    // ── FIX: Delegated content clicks — actions use direct listeners, not inline onclick ──
     container.querySelector('#tasks-content').addEventListener('click', function(e) {
+      // Don't handle clicks that already had stopPropagation called on them by action buttons
       var btn = e.target.closest('[data-action]');
       if (!btn) return;
-      e.stopPropagation();
       var id    = btn.dataset.id;
       var task  = tasksCache[id];
       var title = (task && task.title) || btn.dataset.title || '';
@@ -273,6 +277,7 @@ window.WorkVoltPages['tasks'] = function(container) {
         case 'edit':      openTaskForm(task);                                             break;
         case 'delete':    openDeleteModal(id, title);                                     break;
         case 'log-hours': openLogHoursModal(task);                                        break;
+        case 'log-note':  openLogNoteModal(task);                                         break;
         case 'complete':  quickUpdate(id, { status:'Done' },        'Task completed ✓'); break;
         case 'cancel':    quickUpdate(id, { status:'Cancelled' },   'Task cancelled');   break;
         case 'reopen':    quickUpdate(id, { status:'To Do' },       'Task reopened');    break;
@@ -414,14 +419,17 @@ window.WorkVoltPages['tasks'] = function(container) {
       var done     = t.status === 'Done' || t.status === 'Cancelled';
       var hasHours = parseFloat(t.estimated_hours) > 0 || parseFloat(t.actual_hours) > 0;
 
+      // ── FIX: action buttons use stopPropagation via JS, not inline onclick string ──
+      // We attach stopPropagation via a shared CSS class listener below in the table setup
       var quickBtns =
         (!done
-          ? '<button data-action="complete" data-id="' + t.id + '" title="Mark Done" class="icon-btn hover:text-green-600 hover:bg-green-50"><i class="fas fa-check text-xs"></i></button>' +
-            '<button data-action="cancel"   data-id="' + t.id + '" title="Cancel"    class="icon-btn hover:text-orange-500 hover:bg-orange-50"><i class="fas fa-ban text-xs"></i></button>'
-          : '<button data-action="reopen"   data-id="' + t.id + '" title="Reopen"    class="icon-btn hover:text-blue-600 hover:bg-blue-50"><i class="fas fa-undo text-xs"></i></button>') +
-        '<button data-action="log-hours" data-id="' + t.id + '" title="Log Hours"  class="icon-btn hover:text-blue-600 hover:bg-blue-50"><i class="fas fa-clock text-xs"></i></button>' +
-        '<button data-action="edit"      data-id="' + t.id + '" title="Edit"        class="icon-btn hover:text-indigo-600 hover:bg-indigo-50"><i class="fas fa-pencil text-xs"></i></button>' +
-        (isAdmin() ? '<button data-action="delete" data-id="' + t.id + '" data-title="' + esc(t.title) + '" title="Delete" class="icon-btn hover:text-red-600 hover:bg-red-50"><i class="fas fa-trash text-xs"></i></button>' : '');
+          ? '<button data-action="complete" data-id="' + t.id + '" title="Mark Done" class="act-btn icon-btn hover:text-green-600 hover:bg-green-50"><i class="fas fa-check text-xs"></i></button>' +
+            '<button data-action="cancel"   data-id="' + t.id + '" title="Cancel"    class="act-btn icon-btn hover:text-orange-500 hover:bg-orange-50"><i class="fas fa-ban text-xs"></i></button>'
+          : '<button data-action="reopen"   data-id="' + t.id + '" title="Reopen"    class="act-btn icon-btn hover:text-blue-600 hover:bg-blue-50"><i class="fas fa-undo text-xs"></i></button>') +
+        '<button data-action="log-hours" data-id="' + t.id + '" title="Log Hours"  class="act-btn icon-btn hover:text-blue-600 hover:bg-blue-50"><i class="fas fa-clock text-xs"></i></button>' +
+        '<button data-action="log-note"  data-id="' + t.id + '" title="Log Note"   class="act-btn icon-btn hover:text-purple-600 hover:bg-purple-50"><i class="fas fa-sticky-note text-xs"></i></button>' +
+        '<button data-action="edit"      data-id="' + t.id + '" title="Edit"        class="act-btn icon-btn hover:text-indigo-600 hover:bg-indigo-50"><i class="fas fa-pencil text-xs"></i></button>' +
+        (isAdmin() ? '<button data-action="delete" data-id="' + t.id + '" data-title="' + esc(t.title) + '" title="Delete" class="act-btn icon-btn hover:text-red-600 hover:bg-red-50"><i class="fas fa-trash text-xs"></i></button>' : '');
 
       return '<tr class="border-t border-slate-100 hover:bg-slate-50/60 transition-colors group cursor-pointer" data-action="view" data-id="' + t.id + '">' +
 
@@ -472,9 +480,9 @@ window.WorkVoltPages['tasks'] = function(container) {
             '</td>'
           : '') +
 
-        // Actions (hidden until row hover)
+        // Actions — FIX: removed inline onclick="event.stopPropagation()" which was blocking buttons
         '<td class="px-4 py-3 whitespace-nowrap">' +
-          '<div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onclick="event.stopPropagation()">' +
+          '<div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity wv-action-cell">' +
             quickBtns +
           '</div>' +
         '</td>' +
@@ -500,6 +508,14 @@ window.WorkVoltPages['tasks'] = function(container) {
           '</table>' +
         '</div>' +
       '</div>';
+
+    // ── FIX: attach stopPropagation to action buttons so row "view" click is NOT triggered ──
+    content.querySelectorAll('.act-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        // The delegated listener on #tasks-content will still handle data-action
+      });
+    });
   }
 
 
@@ -534,7 +550,7 @@ window.WorkVoltPages['tasks'] = function(container) {
               (t.assigned_to
                 ? '<span class="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold" title="' + esc(userName(t.assigned_to)) + '">' + userInitial(t.assigned_to) + '</span>'
                 : '') +
-              '<button data-action="log-hours" data-id="' + t.id + '" class="text-[10px] bg-slate-100 hover:bg-blue-100 hover:text-blue-600 text-slate-500 px-1.5 py-px rounded-lg font-semibold transition-colors"><i class="fas fa-clock mr-0.5"></i>Log</button>' +
+              '<button data-action="log-hours" data-id="' + t.id + '" class="kanban-act text-[10px] bg-slate-100 hover:bg-blue-100 hover:text-blue-600 text-slate-500 px-1.5 py-px rounded-lg font-semibold transition-colors"><i class="fas fa-clock mr-0.5"></i>Log</button>' +
             '</div>' +
           '</div>' +
         '</div>';
@@ -553,6 +569,11 @@ window.WorkVoltPages['tasks'] = function(container) {
     }).join('');
 
     content.innerHTML = '<div class="flex gap-4 overflow-x-auto pb-4 kanban-scroll">' + cols + '</div>';
+
+    // Fix stopPropagation for kanban action buttons
+    content.querySelectorAll('.kanban-act').forEach(function(btn) {
+      btn.addEventListener('click', function(e) { e.stopPropagation(); });
+    });
   }
 
 
@@ -562,19 +583,35 @@ window.WorkVoltPages['tasks'] = function(container) {
   function openTaskDetail(task) {
     if (!task) return;
 
-    api('tasks/hours', { task_id: task.id }).then(function(data) {
-      var logs  = data.rows  || [];
-      var total = data.total || 0;
-      var over  = isOverdue(task);
+    Promise.all([
+      api('tasks/hours', { task_id: task.id }),
+      api('tasks/notes', { task_id: task.id }).catch(function() { return { rows: [] }; }),
+    ]).then(function(results) {
+      var data     = results[0];
+      var noteData = results[1];
+      var logs     = data.rows   || [];
+      var notes    = noteData.rows || [];
+      var total    = data.total  || 0;
+      var over     = isOverdue(task);
 
+      // ── Hours logs ────────────────────────────────────────────
       var logsHtml = logs.length
         ? logs.slice().reverse().map(function(l) {
+            var billableBadge = l.billable === 'true' || l.billable === true
+              ? '<span class="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-px rounded font-semibold ml-1">' +
+                  '<i class="fas fa-dollar-sign text-[9px] mr-0.5"></i>Billable' +
+                  (l.rate ? ' · ' + (l.pay_type === 'salary' ? 'Salary' : fmtMoney(l.rate) + (l.pay_type === 'per_hour' ? '/hr' : '/task')) : '') +
+                '</span>'
+              : '';
             return '<div class="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">' +
               '<div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold flex-shrink-0">' + userInitial(l.user_id) + '</div>' +
               '<div class="flex-1 min-w-0">' +
                 '<div class="flex items-center justify-between gap-2 mb-0.5">' +
                   '<span class="text-sm font-semibold text-slate-800 truncate">' + esc(userName(l.user_id)) + '</span>' +
-                  '<span class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full flex-shrink-0">' + fmtHours(l.hours) + '</span>' +
+                  '<div class="flex items-center gap-1 flex-shrink-0">' +
+                    billableBadge +
+                    '<span class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">' + fmtHours(l.hours) + '</span>' +
+                  '</div>' +
                 '</div>' +
                 (l.notes ? '<p class="text-xs text-slate-600">' + esc(l.notes) + '</p>' : '') +
                 '<p class="text-[10px] text-slate-400 mt-0.5"><i class="fas fa-calendar-alt mr-1"></i>' + fmtDate(l.date) + '</p>' +
@@ -582,6 +619,22 @@ window.WorkVoltPages['tasks'] = function(container) {
             '</div>';
           }).join('')
         : '<div class="py-8 text-center text-slate-400"><i class="fas fa-clock text-2xl mb-2 opacity-30 block"></i><p class="text-xs">No hours logged yet</p></div>';
+
+      // ── Notes logs ────────────────────────────────────────────
+      var notesHtml = notes.length
+        ? notes.slice().reverse().map(function(n) {
+            return '<div class="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">' +
+              '<div class="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-xs font-bold flex-shrink-0">' + userInitial(n.user_id) + '</div>' +
+              '<div class="flex-1 min-w-0">' +
+                '<div class="flex items-center justify-between gap-2 mb-1">' +
+                  '<span class="text-sm font-semibold text-slate-800 truncate">' + esc(userName(n.user_id)) + '</span>' +
+                  '<p class="text-[10px] text-slate-400 flex-shrink-0"><i class="fas fa-calendar-alt mr-1"></i>' + fmtDate(n.date) + '</p>' +
+                '</div>' +
+                '<p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">' + esc(n.note) + '</p>' +
+              '</div>' +
+            '</div>';
+          }).join('')
+        : '<div class="py-8 text-center text-slate-400"><i class="fas fa-sticky-note text-2xl mb-2 opacity-30 block"></i><p class="text-xs">No notes logged yet</p></div>';
 
       function meta(label, val) {
         return '<div class="flex items-start justify-between gap-2 py-2.5 border-b border-slate-100 last:border-0">' +
@@ -606,7 +659,7 @@ window.WorkVoltPages['tasks'] = function(container) {
         // Body — two columns
         '<div style="display:grid;grid-template-columns:1fr 280px">' +
 
-          // Left: description, notes, hours
+          // Left: description, hours, notes
           '<div class="px-6 py-5 border-r border-slate-100 flex flex-col gap-5">' +
 
             (task.description
@@ -633,6 +686,16 @@ window.WorkVoltPages['tasks'] = function(container) {
                 : '') +
               logsHtml +
             '</div>' +
+
+            // Notes section
+            '<div>' +
+              '<div class="flex items-center justify-between mb-3">' +
+                '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest">Activity Notes</p>' +
+                '<button id="td-note-btn" class="btn-primary text-xs py-1 px-3" style="background:#7c3aed"><i class="fas fa-plus mr-1"></i>Log Note</button>' +
+              '</div>' +
+              notesHtml +
+            '</div>' +
+
           '</div>' +
 
           // Right: metadata + actions
@@ -667,22 +730,23 @@ window.WorkVoltPages['tasks'] = function(container) {
           '</div>' +
         '</div>';
 
-      showModal(html, '880px');
+      showModal(html, '920px');
 
       document.getElementById('tm-close').addEventListener('click', closeModal);
       document.getElementById('td-log-btn').addEventListener('click', function() { closeModal(); openLogHoursModal(task); });
+      document.getElementById('td-note-btn').addEventListener('click', function() { closeModal(); openLogNoteModal(task); });
       document.getElementById('td-edit-btn').addEventListener('click', function() { closeModal(); openTaskForm(task); });
       var db = document.getElementById('td-delete-btn');
       if (db) db.addEventListener('click', function() { closeModal(); openDeleteModal(task.id, task.title); });
 
     }).catch(function() {
-      toast('Could not load hour logs', 'error');
+      toast('Could not load task details', 'error');
     });
   }
 
 
   // ================================================================
-  //  LOG HOURS MODAL
+  //  LOG HOURS MODAL  (with Billable option)
   // ================================================================
   function openLogHoursModal(task) {
     if (!task) return;
@@ -719,7 +783,38 @@ window.WorkVoltPages['tasks'] = function(container) {
         '</div>' +
 
         '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">What did you work on? <span class="text-slate-300 font-normal normal-case">(optional)</span></label>' +
-        '<textarea id="lh-notes" class="field text-sm" rows="4" style="resize:none" placeholder="Describe what you worked on, what you accomplished, or any blockers…"></textarea></div>' +
+        '<textarea id="lh-notes" class="field text-sm" rows="3" style="resize:none" placeholder="Describe what you worked on, what you accomplished, or any blockers…"></textarea></div>' +
+
+        // ── Billable toggle ───────────────────────────────────────
+        '<div class="border border-slate-200 rounded-xl p-4 bg-slate-50">' +
+          '<div class="flex items-center justify-between mb-1">' +
+            '<div>' +
+              '<p class="text-xs font-bold text-slate-700">Billable?</p>' +
+              '<p class="text-[11px] text-slate-400">Mark this time entry as billable to a client</p>' +
+            '</div>' +
+            '<label class="relative inline-flex items-center cursor-pointer">' +
+              '<input type="checkbox" id="lh-billable" class="sr-only peer">' +
+              '<div class="w-10 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-green-500 transition-colors"></div>' +
+              '<div class="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4"></div>' +
+            '</label>' +
+          '</div>' +
+          // Billable details — shown/hidden by JS
+          '<div id="lh-billable-fields" style="display:none;margin-top:.75rem;padding-top:.75rem;border-top:1px solid #e2e8f0">' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
+              '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Pay Type</label>' +
+              '<select id="lh-pay-type" class="field text-sm">' +
+                '<option value="per_hour">Pay Per Hour</option>' +
+                '<option value="salary">Salary</option>' +
+                '<option value="per_task">Pay Per Task</option>' +
+              '</select></div>' +
+              '<div id="lh-rate-wrap"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Rate / Amount</label>' +
+              '<div class="relative">' +
+                '<span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">$</span>' +
+                '<input id="lh-rate" class="field text-sm pl-7" type="number" step="0.01" min="0" placeholder="0.00">' +
+              '</div></div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
 
         '<div style="display:flex;gap:.75rem">' +
           '<button id="tm-cancel" class="btn-secondary flex-1">Cancel</button>' +
@@ -731,12 +826,26 @@ window.WorkVoltPages['tasks'] = function(container) {
     document.getElementById('tm-close').addEventListener('click', closeModal);
     document.getElementById('tm-cancel').addEventListener('click', closeModal);
     document.getElementById('lh-submit').addEventListener('click', function() { submitLogHours(task.id); });
+
+    // Toggle billable fields
+    document.getElementById('lh-billable').addEventListener('change', function() {
+      document.getElementById('lh-billable-fields').style.display = this.checked ? 'block' : 'none';
+    });
+    // Hide rate field when pay type is salary
+    document.getElementById('lh-pay-type').addEventListener('change', function() {
+      document.getElementById('lh-rate-wrap').style.display = this.value === 'salary' ? 'none' : 'block';
+    });
+
     setTimeout(function() { var el = document.getElementById('lh-hours'); if (el) el.focus(); }, 80);
   }
 
   function submitLogHours(taskId) {
     var hours = parseFloat(document.getElementById('lh-hours').value);
     if (!hours || hours <= 0) { modalStatus('Please enter a valid number of hours (e.g. 1.5)', false); return; }
+
+    var billable = document.getElementById('lh-billable').checked;
+    var payType  = document.getElementById('lh-pay-type').value;
+    var rate     = payType === 'salary' ? '' : (document.getElementById('lh-rate').value || '');
 
     var btn = document.getElementById('lh-submit');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i> Logging…'; }
@@ -747,12 +856,79 @@ window.WorkVoltPages['tasks'] = function(container) {
       date:     document.getElementById('lh-date').value,
       hours:    hours,
       notes:    document.getElementById('lh-notes').value || '',
+      billable: billable ? 'true' : 'false',
+      pay_type: billable ? payType : '',
+      rate:     billable ? rate : '',
     }).then(function() {
       modalStatus('Hours logged!', true);
       setTimeout(function() { closeModal(); loadData(); }, 700);
     }).catch(function(e) {
       modalStatus(e.message, false);
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-clock text-xs mr-1"></i>Log Hours'; }
+    });
+  }
+
+
+  // ================================================================
+  //  LOG NOTE MODAL
+  // ================================================================
+  function openLogNoteModal(task) {
+    if (!task) return;
+    var today = new Date().toISOString().split('T')[0];
+
+    var html =
+      '<div class="px-6 py-5 border-b border-slate-100 flex items-start justify-between">' +
+        '<div>' +
+          '<div class="flex items-center gap-2 mb-1">' +
+            '<i class="fas fa-sticky-note text-purple-500"></i>' +
+            '<h3 class="font-extrabold text-slate-900">Log Note</h3>' +
+          '</div>' +
+          '<p class="text-xs text-slate-400">' + esc(task.title) + ' <span class="font-mono">· ' + esc(task.id) + '</span></p>' +
+        '</div>' +
+        '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer">✕</button>' +
+      '</div>' +
+      '<div class="px-6 py-5 flex flex-col gap-4">' +
+        '<div id="tm-status"></div>' +
+
+        '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Date</label>' +
+        '<input id="ln-date" class="field" type="date" value="' + today + '"></div>' +
+
+        '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Note <span class="text-red-400">*</span></label>' +
+        '<textarea id="ln-note" class="field text-sm" rows="5" style="resize:none" placeholder="Add a progress update, decision, blocker, or any relevant information…"></textarea></div>' +
+
+        '<div style="display:flex;gap:.75rem">' +
+          '<button id="tm-cancel" class="btn-secondary flex-1">Cancel</button>' +
+          '<button id="ln-submit" class="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-white border-none cursor-pointer transition-colors" style="background:#7c3aed">' +
+            '<i class="fas fa-sticky-note text-xs"></i>Log Note' +
+          '</button>' +
+        '</div>' +
+      '</div>';
+
+    showModal(html, '520px');
+    document.getElementById('tm-close').addEventListener('click', closeModal);
+    document.getElementById('tm-cancel').addEventListener('click', closeModal);
+    document.getElementById('ln-submit').addEventListener('click', function() { submitLogNote(task.id); });
+    setTimeout(function() { var el = document.getElementById('ln-note'); if (el) el.focus(); }, 80);
+  }
+
+  function submitLogNote(taskId) {
+    var note = (document.getElementById('ln-note').value || '').trim();
+    if (!note) { modalStatus('Please enter a note.', false); return; }
+
+    var btn = document.getElementById('ln-submit');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i> Saving…'; }
+
+    api('tasks/log-note', {
+      task_id: taskId,
+      user_id: myUserId(),
+      date:    document.getElementById('ln-date').value,
+      note:    note,
+    }).then(function() {
+      modalStatus('Note saved!', true);
+      setTimeout(function() { closeModal(); loadData(); }, 700);
+    }).catch(function(e) {
+      modalStatus(e.message, false);
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sticky-note text-xs mr-1"></i>Log Note'; }
     });
   }
 
