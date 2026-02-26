@@ -162,7 +162,21 @@ window.WorkVoltPages['tasks'] = function(container) {
         (val ? fmtMoney(val) : 'Billable') +
       '</span>' +
       '<span class="text-[10px] text-slate-400">' + esc(rateTxt) + '</span>' +
+      '<span class="mt-0.5">' + approvalBadge(t) + '</span>' +
     '</div>';
+  }
+  function approvalBadge(t) {
+    if (t.billable !== 'true' && t.billable !== true) return '';
+    var st = t.approval_status || 'pending';
+    var cfg = {
+      pending:  { bg: 'bg-amber-50',  border: 'border-amber-200', text: 'text-amber-700', icon: 'fa-clock',        label: 'Pending Approval' },
+      approved: { bg: 'bg-green-50',  border: 'border-green-200', text: 'text-green-700', icon: 'fa-check-circle', label: 'Approved' },
+      rejected: { bg: 'bg-red-50',    border: 'border-red-200',   text: 'text-red-600',   icon: 'fa-times-circle', label: 'Rejected' },
+    }[st] || { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', icon: 'fa-clock', label: 'Pending Approval' };
+    return '<span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-px rounded font-semibold ' +
+      cfg.bg + ' ' + cfg.border + ' ' + cfg.text + ' border">' +
+      '<i class="fas ' + cfg.icon + ' text-[9px]"></i>' + cfg.label +
+    '</span>';
   }
   function isOverdue(t) {
     return t.due_date && new Date(t.due_date) < new Date()
@@ -580,11 +594,12 @@ window.WorkVoltPages['tasks'] = function(container) {
             : '') +
           (hasHours ? '<div class="mb-2">' + hoursBar(t.actual_hours, t.estimated_hours) + '</div>' : '') +
           ((t.billable === 'true' || t.billable === true)
-            ? '<div class="mb-2">' +
+            ? '<div class="mb-2 flex flex-col gap-1">' +
                 '<span class="inline-flex items-center gap-1 text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-px rounded font-semibold">' +
                   '<i class="fas fa-dollar-sign text-[9px]"></i>' +
                   (billableValue(t) ? fmtMoney(billableValue(t)) : 'Billable') +
                 '</span>' +
+                approvalBadge(t) +
               '</div>'
             : '') +
           '<div class="flex items-center justify-between pt-2 border-t border-slate-100">' +
@@ -756,11 +771,12 @@ window.WorkVoltPages['tasks'] = function(container) {
             meta('Est. Hours', task.estimated_hours ? fmtHours(task.estimated_hours) : '<span class="text-slate-300">—</span>') +
             meta('Actual Hours', '<span class="text-blue-600 font-bold">' + fmtHours(task.actual_hours || 0) + '</span>') +
             ((task.billable === 'true' || task.billable === true)
-              ? meta('Billable', '<span class="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-dollar-sign text-[9px]"></i>' +
+              ? meta('Billable', '<div class="flex flex-col gap-1.5">' +
+                  '<span class="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-dollar-sign text-[9px]"></i>' +
                   (task.billable_rate
                     ? fmtMoney(billableValue(task)) + ' · ' + (task.billable_pay_type === 'per_hour' ? fmtMoney(task.billable_rate) + '/hr' : task.billable_pay_type === 'per_task' ? fmtMoney(task.billable_rate) + ' flat' : 'Salary')
                     : 'Yes — rate TBD') +
-                  '</span>')
+                  '</span>' + approvalBadge(task) + '</div>')
               : '') +
             (task.tags
               ? meta('Tags', task.tags.split(',').map(function(t) {
@@ -774,6 +790,26 @@ window.WorkVoltPages['tasks'] = function(container) {
             meta('Updated',  fmtDate(task.updated_at) || '<span class="text-slate-300">—</span>') +
 
             '<div class="flex flex-col gap-2 mt-5">' +
+              // Approve/Reject for billable tasks (admin/manager only)
+              ((task.billable === 'true' || task.billable === true) && isAdmin()
+                ? '<div class="border border-amber-200 rounded-xl p-3 bg-amber-50 mb-1">' +
+                    '<p class="text-[11px] font-bold text-amber-700 mb-2"><i class="fas fa-dollar-sign mr-1"></i>Billable Approval</p>' +
+                    ((task.approval_status === 'approved')
+                      ? '<div class="flex items-center gap-2">' +
+                          '<span class="flex-1 text-xs text-green-700 font-semibold bg-green-100 rounded-lg px-3 py-1.5 text-center"><i class="fas fa-check-circle mr-1"></i>Approved</span>' +
+                          '<button id="td-reject-btn" class="text-xs text-red-600 font-semibold bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-3 py-1.5 transition-colors border-none cursor-pointer">Reject</button>' +
+                        '</div>'
+                      : (task.approval_status === 'rejected')
+                        ? '<div class="flex items-center gap-2">' +
+                            '<span class="flex-1 text-xs text-red-600 font-semibold bg-red-100 rounded-lg px-3 py-1.5 text-center"><i class="fas fa-times-circle mr-1"></i>Rejected</span>' +
+                            '<button id="td-approve-btn" class="text-xs text-green-700 font-semibold bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-3 py-1.5 transition-colors border-none cursor-pointer">Approve</button>' +
+                          '</div>'
+                        : '<div class="flex gap-2">' +
+                            '<button id="td-reject-btn"  class="flex-1 text-xs text-red-600 font-semibold bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-3 py-2 transition-colors border-none cursor-pointer"><i class="fas fa-times mr-1"></i>Reject</button>' +
+                            '<button id="td-approve-btn" class="flex-1 text-xs text-green-700 font-semibold bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-3 py-2 transition-colors border-none cursor-pointer"><i class="fas fa-check mr-1"></i>Approve</button>' +
+                          '</div>') +
+                  '</div>'
+                : '') +
               '<button id="td-edit-btn"   class="btn-primary w-full text-sm"><i class="fas fa-pencil mr-1.5 text-xs"></i>Edit Task</button>' +
               (isAdmin()
                 ? '<button id="td-delete-btn" class="btn-secondary w-full text-sm text-red-500 hover:bg-red-50 hover:text-red-600"><i class="fas fa-trash mr-1.5 text-xs"></i>Delete</button>'
@@ -790,10 +826,30 @@ window.WorkVoltPages['tasks'] = function(container) {
       document.getElementById('td-edit-btn').addEventListener('click', function() { closeModal(); openTaskForm(task); });
       var db = document.getElementById('td-delete-btn');
       if (db) db.addEventListener('click', function() { closeModal(); openDeleteModal(task.id, task.title); });
+      var appBtn = document.getElementById('td-approve-btn');
+      if (appBtn) appBtn.addEventListener('click', function() { submitApproval(task.id, 'approve'); });
+      var rejBtn = document.getElementById('td-reject-btn');
+      if (rejBtn) rejBtn.addEventListener('click', function() { submitApproval(task.id, 'reject'); });
 
     }).catch(function() {
       toast('Could not load task details', 'error');
     });
+  }
+
+
+  // ================================================================
+  //  APPROVE / REJECT BILLABLE TASK
+  // ================================================================
+  function submitApproval(taskId, action) {
+    var endpoint = action === 'approve' ? 'tasks/approve' : 'tasks/reject';
+    var params = { id: taskId, approved_by: myUserId() };
+    api(endpoint, params)
+      .then(function() {
+        toast(action === 'approve' ? 'Task approved ✓' : 'Task rejected', action === 'approve' ? 'success' : 'info');
+        closeModal();
+        loadData();
+      })
+      .catch(function(e) { toast(e.message, 'error'); });
   }
 
 
