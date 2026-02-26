@@ -133,6 +133,37 @@ window.WorkVoltPages['tasks'] = function(container) {
       '<span class="text-xs text-slate-500 whitespace-nowrap">' + fmtHours(a) + ' / ' + fmtHours(e) + '</span>' +
     '</div>';
   }
+  function billableValue(t) {
+    if (t.billable !== 'true' && t.billable !== true) return 0;
+    var rate = parseFloat(t.billable_rate) || 0;
+    if (!rate) return 0;
+    var payType = t.billable_pay_type || 'per_hour';
+    if (payType === 'per_task') return rate;
+    if (payType === 'salary')   return 0;
+    // per_hour: use actual_hours if logged, else estimated_hours
+    var hours = parseFloat(t.actual_hours) || parseFloat(t.estimated_hours) || 0;
+    return hours * rate;
+  }
+  function billableCell(t) {
+    if (t.billable !== 'true' && t.billable !== true) {
+      return '<span class="text-xs text-slate-300">—</span>';
+    }
+    var val  = billableValue(t);
+    var rate = parseFloat(t.billable_rate) || 0;
+    var payType = t.billable_pay_type || 'per_hour';
+    var rateTxt = rate
+      ? (payType === 'per_hour' ? fmtMoney(rate) + '/hr'
+       : payType === 'per_task' ? fmtMoney(rate) + ' flat'
+       : 'Salary')
+      : 'Rate TBD';
+    return '<div class="flex flex-col gap-0.5">' +
+      '<span class="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-semibold">' +
+        '<i class="fas fa-dollar-sign text-[9px]"></i>' +
+        (val ? fmtMoney(val) : 'Billable') +
+      '</span>' +
+      '<span class="text-[10px] text-slate-400">' + esc(rateTxt) + '</span>' +
+    '</div>';
+  }
   function isOverdue(t) {
     return t.due_date && new Date(t.due_date) < new Date()
       && t.status !== 'Done' && t.status !== 'Cancelled';
@@ -372,8 +403,10 @@ window.WorkVoltPages['tasks'] = function(container) {
     if (!el) return;
     var counts = {}; STATUSES.forEach(function(s) { counts[s] = 0; });
     rows.forEach(function(t) { if (counts[t.status] !== undefined) counts[t.status]++; });
-    var totalH  = rows.reduce(function(s, t) { return s + (parseFloat(t.actual_hours) || 0); }, 0);
-    var overdueN = rows.filter(isOverdue).length;
+    var totalH       = rows.reduce(function(s, t) { return s + (parseFloat(t.actual_hours) || 0); }, 0);
+    var overdueN     = rows.filter(isOverdue).length;
+    var billableRows = rows.filter(function(t) { return t.billable === 'true' || t.billable === true; });
+    var billableTotal = billableRows.reduce(function(s, t) { return s + billableValue(t); }, 0);
 
     el.innerHTML =
       STATUSES.map(function(s) {
@@ -387,6 +420,14 @@ window.WorkVoltPages['tasks'] = function(container) {
         '<i class="fas fa-clock text-blue-400"></i>' +
         '<span class="font-bold text-slate-700">' + fmtHours(totalH) + '</span> logged' +
       '</span>' +
+      (billableRows.length
+        ? '<span class="text-slate-200 mx-1">·</span>' +
+          '<span class="flex items-center gap-1 whitespace-nowrap text-green-600 font-semibold">' +
+            '<i class="fas fa-dollar-sign text-green-500 text-[10px]"></i>' +
+            '<span class="font-bold text-green-700">' + (billableTotal ? fmtMoney(billableTotal) : billableRows.length + ' billable') + '</span>' +
+            (billableTotal ? '' : '<span class="font-normal text-green-600 text-[11px]">billable</span>') +
+          '</span>'
+        : '') +
       (overdueN ? '<span class="text-slate-200 mx-1">·</span>' +
         '<span class="flex items-center gap-1 whitespace-nowrap text-red-500 font-bold">' +
           '<i class="fas fa-exclamation-circle"></i>' + overdueN + ' overdue' +
@@ -468,6 +509,11 @@ window.WorkVoltPages['tasks'] = function(container) {
           (hasHours ? hoursBar(t.actual_hours, t.estimated_hours) : '<span class="text-xs text-slate-300">—</span>') +
         '</td>' +
 
+        // Billable value
+        '<td class="px-4 py-3 whitespace-nowrap">' +
+          billableCell(t) +
+        '</td>' +
+
         // Project (conditional column)
         (showProject
           ? '<td class="px-4 py-3 whitespace-nowrap">' +
@@ -498,6 +544,7 @@ window.WorkVoltPages['tasks'] = function(container) {
               '<th class="px-4 py-3">Due</th>' +
               '<th class="px-4 py-3">Assigned</th>' +
               '<th class="px-4 py-3">Hours</th>' +
+              '<th class="px-4 py-3">Billable</th>' +
               (showProject ? '<th class="px-4 py-3">Project</th>' : '') +
               '<th class="px-4 py-3">Actions</th>' +
             '</tr></thead>' +
@@ -532,6 +579,14 @@ window.WorkVoltPages['tasks'] = function(container) {
             ? '<div class="mb-2"><span class="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-px rounded font-semibold">' + esc(projectName(t.project_id)) + '</span></div>'
             : '') +
           (hasHours ? '<div class="mb-2">' + hoursBar(t.actual_hours, t.estimated_hours) + '</div>' : '') +
+          ((t.billable === 'true' || t.billable === true)
+            ? '<div class="mb-2">' +
+                '<span class="inline-flex items-center gap-1 text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-px rounded font-semibold">' +
+                  '<i class="fas fa-dollar-sign text-[9px]"></i>' +
+                  (billableValue(t) ? fmtMoney(billableValue(t)) : 'Billable') +
+                '</span>' +
+              '</div>'
+            : '') +
           '<div class="flex items-center justify-between pt-2 border-t border-slate-100">' +
             '<span class="text-xs ' + (overdue ? 'text-red-500 font-bold' : 'text-slate-400') + '">' +
               (t.due_date ? '<i class="fas fa-calendar-alt mr-0.5 text-[10px]"></i>' + fmtDate(t.due_date) : '') +
@@ -700,6 +755,13 @@ window.WorkVoltPages['tasks'] = function(container) {
               : '<span class="text-slate-300">None</span>') +
             meta('Est. Hours', task.estimated_hours ? fmtHours(task.estimated_hours) : '<span class="text-slate-300">—</span>') +
             meta('Actual Hours', '<span class="text-blue-600 font-bold">' + fmtHours(task.actual_hours || 0) + '</span>') +
+            ((task.billable === 'true' || task.billable === true)
+              ? meta('Billable', '<span class="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-dollar-sign text-[9px]"></i>' +
+                  (task.billable_rate
+                    ? fmtMoney(billableValue(task)) + ' · ' + (task.billable_pay_type === 'per_hour' ? fmtMoney(task.billable_rate) + '/hr' : task.billable_pay_type === 'per_task' ? fmtMoney(task.billable_rate) + ' flat' : 'Salary')
+                    : 'Yes — rate TBD') +
+                  '</span>')
+              : '') +
             (task.tags
               ? meta('Tags', task.tags.split(',').map(function(t) {
                   return '<span class="text-[10px] bg-white border border-slate-200 text-slate-600 px-1.5 py-px rounded">' + esc(t.trim()) + '</span>';
@@ -736,11 +798,12 @@ window.WorkVoltPages['tasks'] = function(container) {
 
 
   // ================================================================
-  //  LOG HOURS MODAL  (with Billable option)
+  //  LOG HOURS MODAL
   // ================================================================
   function openLogHoursModal(task) {
     if (!task) return;
     var today = new Date().toISOString().split('T')[0];
+    var isBillable = task.billable === 'true' || task.billable === true;
 
     var html =
       '<div class="px-6 py-5 border-b border-slate-100 flex items-start justify-between">' +
@@ -749,7 +812,9 @@ window.WorkVoltPages['tasks'] = function(container) {
             '<i class="fas fa-clock text-blue-500"></i>' +
             '<h3 class="font-extrabold text-slate-900">Log Hours</h3>' +
           '</div>' +
-          '<p class="text-xs text-slate-400">' + esc(task.title) + ' <span class="font-mono">· ' + esc(task.id) + '</span></p>' +
+          '<p class="text-xs text-slate-400">' + esc(task.title) + ' <span class="font-mono">· ' + esc(task.id) + '</span>' +
+            (isBillable ? ' <span class="inline-flex items-center gap-0.5 text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-px rounded font-semibold ml-1"><i class="fas fa-dollar-sign text-[9px]"></i>Billable</span>' : '') +
+          '</p>' +
         '</div>' +
         '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer">✕</button>' +
       '</div>' +
@@ -775,36 +840,25 @@ window.WorkVoltPages['tasks'] = function(container) {
         '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">What did you work on? <span class="text-slate-300 font-normal normal-case">(optional)</span></label>' +
         '<textarea id="lh-notes" class="field text-sm" rows="3" style="resize:none" placeholder="Describe what you worked on, what you accomplished, or any blockers…"></textarea></div>' +
 
-        // ── Billable toggle ───────────────────────────────────────
-        '<div class="border border-slate-200 rounded-xl p-4 bg-slate-50">' +
-          '<div class="flex items-center justify-between mb-1">' +
-            '<div>' +
-              '<p class="text-xs font-bold text-slate-700">Billable?</p>' +
-              '<p class="text-[11px] text-slate-400">Mark this time entry as billable to a client</p>' +
-            '</div>' +
-            '<label class="relative inline-flex items-center cursor-pointer">' +
-              '<input type="checkbox" id="lh-billable" class="sr-only peer">' +
-              '<div class="w-10 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-green-500 transition-colors"></div>' +
-              '<div class="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4"></div>' +
-            '</label>' +
-          '</div>' +
-          // Billable details — shown/hidden by JS
-          '<div id="lh-billable-fields" style="display:none;margin-top:.75rem;padding-top:.75rem;border-top:1px solid #e2e8f0">' +
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
-              '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Pay Type</label>' +
-              '<select id="lh-pay-type" class="field text-sm">' +
-                '<option value="per_hour">Pay Per Hour</option>' +
-                '<option value="salary">Salary</option>' +
-                '<option value="per_task">Pay Per Task</option>' +
-              '</select></div>' +
-              '<div id="lh-rate-wrap"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Rate / Amount</label>' +
-              '<div class="relative">' +
-                '<span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">$</span>' +
-                '<input id="lh-rate" class="field text-sm pl-7" type="number" step="0.01" min="0" placeholder="0.00">' +
-              '</div></div>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
+        // ── Billing details (only shown for billable tasks) ───────
+        (isBillable
+          ? '<div class="border border-green-200 rounded-xl p-4 bg-green-50">' +
+              '<p class="text-xs font-bold text-green-700 mb-3"><i class="fas fa-dollar-sign mr-1 text-[10px]"></i>Billing Details for this Entry</p>' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
+                '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Pay Type</label>' +
+                '<select id="lh-pay-type" class="field text-sm">' +
+                  '<option value="per_hour"' + (task.billable_pay_type === 'per_hour' || !task.billable_pay_type ? ' selected' : '') + '>Per Hour</option>' +
+                  '<option value="per_task"' + (task.billable_pay_type === 'per_task' ? ' selected' : '') + '>Per Task (flat)</option>' +
+                  '<option value="salary"'  + (task.billable_pay_type === 'salary'   ? ' selected' : '') + '>Salary</option>' +
+                '</select></div>' +
+                '<div id="lh-rate-wrap"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Rate / Amount</label>' +
+                '<div class="relative">' +
+                  '<span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">$</span>' +
+                  '<input id="lh-rate" class="field text-sm pl-7" type="number" step="0.01" min="0" placeholder="0.00" value="' + esc(task.billable_rate || '') + '">' +
+                '</div></div>' +
+              '</div>' +
+            '</div>'
+          : '') +
 
         '<div style="display:flex;gap:.75rem">' +
           '<button id="tm-cancel" class="btn-secondary flex-1">Cancel</button>' +
@@ -815,27 +869,29 @@ window.WorkVoltPages['tasks'] = function(container) {
     showModal(html, '520px');
     document.getElementById('tm-close').addEventListener('click', closeModal);
     document.getElementById('tm-cancel').addEventListener('click', closeModal);
-    document.getElementById('lh-submit').addEventListener('click', function() { submitLogHours(task.id); });
+    document.getElementById('lh-submit').addEventListener('click', function() { submitLogHours(task.id, isBillable); });
 
-    // Toggle billable fields
-    document.getElementById('lh-billable').addEventListener('change', function() {
-      document.getElementById('lh-billable-fields').style.display = this.checked ? 'block' : 'none';
-    });
-    // Hide rate field when pay type is salary
-    document.getElementById('lh-pay-type').addEventListener('change', function() {
-      document.getElementById('lh-rate-wrap').style.display = this.value === 'salary' ? 'none' : 'block';
-    });
+    if (isBillable) {
+      // Hide rate field when pay type is salary
+      document.getElementById('lh-pay-type').addEventListener('change', function() {
+        document.getElementById('lh-rate-wrap').style.display = this.value === 'salary' ? 'none' : 'block';
+      });
+      // Set initial state based on task's default pay type
+      if (task.billable_pay_type === 'salary') {
+        document.getElementById('lh-rate-wrap').style.display = 'none';
+      }
+    }
 
     setTimeout(function() { var el = document.getElementById('lh-hours'); if (el) el.focus(); }, 80);
   }
 
-  function submitLogHours(taskId) {
+  function submitLogHours(taskId, isBillable) {
     var hours = parseFloat(document.getElementById('lh-hours').value);
     if (!hours || hours <= 0) { modalStatus('Please enter a valid number of hours (e.g. 1.5)', false); return; }
 
-    var billable = document.getElementById('lh-billable').checked;
-    var payType  = document.getElementById('lh-pay-type').value;
-    var rate     = payType === 'salary' ? '' : (document.getElementById('lh-rate').value || '');
+    var billable = !!isBillable;
+    var payType  = billable && document.getElementById('lh-pay-type') ? document.getElementById('lh-pay-type').value : '';
+    var rate     = (billable && payType !== 'salary' && document.getElementById('lh-rate')) ? (document.getElementById('lh-rate').value || '') : '';
 
     var btn = document.getElementById('lh-submit');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i> Logging…'; }
@@ -1088,6 +1144,36 @@ window.WorkVoltPages['tasks'] = function(container) {
         '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Notes</label>' +
         '<textarea id="tf-notes" class="field text-sm" rows="3" style="resize:none" placeholder="Progress updates, blockers, internal notes…">' + v('notes') + '</textarea></div>' +
 
+        // ── Billable section ─────────────────────────────────────
+        '<div class="border border-slate-200 rounded-xl p-4 bg-slate-50">' +
+          '<div class="flex items-center justify-between mb-1">' +
+            '<div>' +
+              '<p class="text-xs font-bold text-slate-700">Billable Task?</p>' +
+              '<p class="text-[11px] text-slate-400">Mark this task as billable and set a rate</p>' +
+            '</div>' +
+            '<label class="relative inline-flex items-center cursor-pointer">' +
+              '<input type="checkbox" id="tf-billable" class="sr-only peer"' + (isEdit && (task.billable === 'true' || task.billable === true) ? ' checked' : '') + '>' +
+              '<div class="w-10 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-green-500 transition-colors"></div>' +
+              '<div class="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4"></div>' +
+            '</label>' +
+          '</div>' +
+          '<div id="tf-billable-fields" style="display:' + (isEdit && (task.billable === 'true' || task.billable === true) ? 'block' : 'none') + ';margin-top:.75rem;padding-top:.75rem;border-top:1px solid #e2e8f0">' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
+              '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Pay Type</label>' +
+              '<select id="tf-pay-type" class="field text-sm">' +
+                '<option value="per_hour"' + (isEdit && task.billable_pay_type === 'per_hour' ? ' selected' : '') + '>Per Hour</option>' +
+                '<option value="per_task"' + (isEdit && task.billable_pay_type === 'per_task' ? ' selected' : '') + '>Per Task (flat)</option>' +
+                '<option value="salary"'  + (isEdit && task.billable_pay_type === 'salary'   ? ' selected' : '') + '>Salary</option>' +
+              '</select></div>' +
+              '<div id="tf-rate-wrap"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Rate / Amount</label>' +
+              '<div class="relative">' +
+                '<span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">$</span>' +
+                '<input id="tf-rate" class="field text-sm pl-7" type="number" step="0.01" min="0" placeholder="0.00" value="' + v('billable_rate') + '">' +
+              '</div></div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
         '<div style="display:flex;gap:.75rem;padding-top:.25rem">' +
           '<button id="tm-cancel" class="btn-secondary flex-1">Cancel</button>' +
           (isEdit && isAdmin()
@@ -1102,6 +1188,14 @@ window.WorkVoltPages['tasks'] = function(container) {
 
     document.getElementById('tm-close').addEventListener('click', closeModal);
     document.getElementById('tm-cancel').addEventListener('click', closeModal);
+
+    // Billable toggle
+    document.getElementById('tf-billable').addEventListener('change', function() {
+      document.getElementById('tf-billable-fields').style.display = this.checked ? 'block' : 'none';
+    });
+    document.getElementById('tf-pay-type').addEventListener('change', function() {
+      document.getElementById('tf-rate-wrap').style.display = this.value === 'salary' ? 'none' : 'block';
+    });
     if (isEdit && isAdmin()) {
       document.getElementById('tm-delete').addEventListener('click', function() { closeModal(); openDeleteModal(task.id, task.title); });
     }
@@ -1164,6 +1258,9 @@ window.WorkVoltPages['tasks'] = function(container) {
       estimated_hours: document.getElementById('tf-est').value            || '',
       tags:            document.getElementById('tf-tags').value           || '',
       notes:           document.getElementById('tf-notes').value          || '',
+      billable:        document.getElementById('tf-billable').checked ? 'true' : 'false',
+      billable_pay_type: document.getElementById('tf-billable').checked ? (document.getElementById('tf-pay-type').value || 'per_hour') : '',
+      billable_rate:   document.getElementById('tf-billable').checked ? (document.getElementById('tf-rate').value || '') : '',
     };
 
     // project_id only if Projects module installed and field exists
