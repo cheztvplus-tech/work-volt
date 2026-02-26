@@ -550,7 +550,8 @@ window.WorkVoltPages['tasks'] = function(container) {
     // Bind inline editing events
     bindInlineEditing();
   }
-          function bindInlineEditing() {
+
+  function bindInlineEditing() {
     var content = document.getElementById('tasks-content');
     if (!content) return;
 
