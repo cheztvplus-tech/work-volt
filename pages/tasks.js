@@ -1145,34 +1145,42 @@ window.WorkVoltPages['tasks'] = function(container) {
         '<textarea id="tf-notes" class="field text-sm" rows="3" style="resize:none" placeholder="Progress updates, blockers, internal notes…">' + v('notes') + '</textarea></div>' +
 
         // ── Billable section ─────────────────────────────────────
-        '<div class="border border-slate-200 rounded-xl p-4 bg-slate-50">' +
-          '<div class="flex items-center justify-between mb-1">' +
-            '<div>' +
-              '<p class="text-xs font-bold text-slate-700">Billable Task?</p>' +
-              '<p class="text-[11px] text-slate-400">Mark this task as billable and set a rate</p>' +
+        (function() {
+          var isBill = isEdit && (task.billable === 'true' || task.billable === true);
+          var payT   = (isEdit && task.billable_pay_type) || 'per_hour';
+          return '<div class="border border-slate-200 rounded-xl p-4 bg-slate-50">' +
+            '<div class="flex items-center justify-between mb-1">' +
+              '<div>' +
+                '<p class="text-xs font-bold text-slate-700">Billable Task?</p>' +
+                '<p class="text-[11px] text-slate-400">Mark this task as billable and set a rate</p>' +
+              '</div>' +
+              '<button type="button" id="tf-billable-btn" data-on="' + (isBill ? '1' : '0') + '" style="' +
+                'width:2.5rem;height:1.5rem;border-radius:9999px;border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;' +
+                'background:' + (isBill ? '#22c55e' : '#cbd5e1') + '">' +
+                '<span id="tf-billable-knob" style="' +
+                  'position:absolute;top:2px;width:1.25rem;height:1.25rem;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s;' +
+                  'left:' + (isBill ? 'calc(100% - 1.35rem)' : '2px') + '">' +
+                '</span>' +
+              '</button>' +
+              '<input type="hidden" id="tf-billable" value="' + (isBill ? 'true' : 'false') + '">' +
             '</div>' +
-            '<label class="relative inline-flex items-center cursor-pointer">' +
-              '<input type="checkbox" id="tf-billable" class="sr-only peer"' + (isEdit && (task.billable === 'true' || task.billable === true) ? ' checked' : '') + '>' +
-              '<div class="w-10 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-green-500 transition-colors"></div>' +
-              '<div class="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4"></div>' +
-            '</label>' +
-          '</div>' +
-          '<div id="tf-billable-fields" style="display:' + (isEdit && (task.billable === 'true' || task.billable === true) ? 'block' : 'none') + ';margin-top:.75rem;padding-top:.75rem;border-top:1px solid #e2e8f0">' +
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
-              '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Pay Type</label>' +
-              '<select id="tf-pay-type" class="field text-sm">' +
-                '<option value="per_hour"' + (isEdit && task.billable_pay_type === 'per_hour' ? ' selected' : '') + '>Per Hour</option>' +
-                '<option value="per_task"' + (isEdit && task.billable_pay_type === 'per_task' ? ' selected' : '') + '>Per Task (flat)</option>' +
-                '<option value="salary"'  + (isEdit && task.billable_pay_type === 'salary'   ? ' selected' : '') + '>Salary</option>' +
-              '</select></div>' +
-              '<div id="tf-rate-wrap"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Rate / Amount</label>' +
-              '<div class="relative">' +
-                '<span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">$</span>' +
-                '<input id="tf-rate" class="field text-sm pl-7" type="number" step="0.01" min="0" placeholder="0.00" value="' + v('billable_rate') + '">' +
-              '</div></div>' +
+            '<div id="tf-billable-fields" style="display:' + (isBill ? 'block' : 'none') + ';margin-top:.75rem;padding-top:.75rem;border-top:1px solid #e2e8f0">' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
+                '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Pay Type</label>' +
+                '<select id="tf-pay-type" class="field text-sm">' +
+                  '<option value="per_hour"' + (payT === 'per_hour' ? ' selected' : '') + '>Per Hour</option>' +
+                  '<option value="per_task"' + (payT === 'per_task' ? ' selected' : '') + '>Per Task (flat)</option>' +
+                  '<option value="salary"'  + (payT === 'salary'   ? ' selected' : '') + '>Salary</option>' +
+                '</select></div>' +
+                '<div id="tf-rate-wrap" style="display:' + (payT === 'salary' ? 'none' : 'block') + '"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Rate / Amount ($)</label>' +
+                '<div class="relative">' +
+                  '<span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">$</span>' +
+                  '<input id="tf-rate" class="field text-sm pl-7" type="number" step="0.01" min="0" placeholder="0.00" value="' + v('billable_rate') + '">' +
+                '</div></div>' +
+              '</div>' +
             '</div>' +
-          '</div>' +
-        '</div>' +
+          '</div>';
+        })() +
 
         '<div style="display:flex;gap:.75rem;padding-top:.25rem">' +
           '<button id="tm-cancel" class="btn-secondary flex-1">Cancel</button>' +
@@ -1190,8 +1198,14 @@ window.WorkVoltPages['tasks'] = function(container) {
     document.getElementById('tm-cancel').addEventListener('click', closeModal);
 
     // Billable toggle
-    document.getElementById('tf-billable').addEventListener('change', function() {
-      document.getElementById('tf-billable-fields').style.display = this.checked ? 'block' : 'none';
+    document.getElementById('tf-billable-btn').addEventListener('click', function() {
+      var isOn = this.dataset.on === '1';
+      isOn = !isOn;
+      this.dataset.on = isOn ? '1' : '0';
+      this.style.background = isOn ? '#22c55e' : '#cbd5e1';
+      document.getElementById('tf-billable-knob').style.left = isOn ? 'calc(100% - 1.35rem)' : '2px';
+      document.getElementById('tf-billable').value = isOn ? 'true' : 'false';
+      document.getElementById('tf-billable-fields').style.display = isOn ? 'block' : 'none';
     });
     document.getElementById('tf-pay-type').addEventListener('change', function() {
       document.getElementById('tf-rate-wrap').style.display = this.value === 'salary' ? 'none' : 'block';
@@ -1258,9 +1272,9 @@ window.WorkVoltPages['tasks'] = function(container) {
       estimated_hours: document.getElementById('tf-est').value            || '',
       tags:            document.getElementById('tf-tags').value           || '',
       notes:           document.getElementById('tf-notes').value          || '',
-      billable:        document.getElementById('tf-billable').checked ? 'true' : 'false',
-      billable_pay_type: document.getElementById('tf-billable').checked ? (document.getElementById('tf-pay-type').value || 'per_hour') : '',
-      billable_rate:   document.getElementById('tf-billable').checked ? (document.getElementById('tf-rate').value || '') : '',
+      billable:        document.getElementById('tf-billable').value === 'true' ? 'true' : 'false',
+      billable_pay_type: document.getElementById('tf-billable').value === 'true' ? (document.getElementById('tf-pay-type').value || 'per_hour') : '',
+      billable_rate:   document.getElementById('tf-billable').value === 'true' ? (document.getElementById('tf-rate').value || '') : '',
     };
 
     // project_id only if Projects module installed and field exists
