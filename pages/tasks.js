@@ -559,7 +559,7 @@ window.WorkVoltPages['tasks'] = function(container) {
     bindInlineEditing();
   }
 
-  function bindInlineEditing() {
+    function bindInlineEditing() {
     var content = document.getElementById('tasks-content');
     if (!content) return;
 
@@ -728,6 +728,7 @@ window.WorkVoltPages['tasks'] = function(container) {
         });
       });
     });
+}
 
     // Close dropdowns when clicking outside
     document.addEventListener('click', function(e) {
