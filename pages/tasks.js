@@ -1,3 +1,4 @@
+
 window.WorkVoltPages['tasks'] = function(container) {
 
   // ── State ──────────────────────────────────────────────────────
@@ -462,7 +463,7 @@ window.WorkVoltPages['tasks'] = function(container) {
         '</select>' +
       '</div>';
       
-      // Inline editable assigned user - with searchable dropdown
+      // Inline editable assigned user - with search
       var assignedCell = '<div class="editable-assigned relative" data-field="assigned_to" data-id="' + t.id + '">' +
         '<div class="assigned-display cursor-pointer hover:opacity-80 transition-opacity">' +
           (t.assigned_to
@@ -699,6 +700,9 @@ window.WorkVoltPages['tasks'] = function(container) {
     });
   }
 
+  // ================================================================
+  //  KANBAN VIEW
+  // ================================================================
   // ================================================================
   //  KANBAN VIEW
   // ================================================================
