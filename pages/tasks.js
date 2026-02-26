@@ -264,11 +264,12 @@ window.WorkVoltPages['tasks'] = function(container) {
       doSearch(this.value);
     });
 
-    // ── FIX: Delegated content clicks — actions use direct listeners, not inline onclick ──
+    // Delegated content clicks
     container.querySelector('#tasks-content').addEventListener('click', function(e) {
-      // Don't handle clicks that already had stopPropagation called on them by action buttons
       var btn = e.target.closest('[data-action]');
       if (!btn) return;
+      // If the click is on a view row but came from inside the action cell, ignore it
+      if (btn.dataset.action === 'view' && e.target.closest('.wv-action-cell')) return;
       var id    = btn.dataset.id;
       var task  = tasksCache[id];
       var title = (task && task.title) || btn.dataset.title || '';
@@ -419,8 +420,6 @@ window.WorkVoltPages['tasks'] = function(container) {
       var done     = t.status === 'Done' || t.status === 'Cancelled';
       var hasHours = parseFloat(t.estimated_hours) > 0 || parseFloat(t.actual_hours) > 0;
 
-      // ── FIX: action buttons use stopPropagation via JS, not inline onclick string ──
-      // We attach stopPropagation via a shared CSS class listener below in the table setup
       var quickBtns =
         (!done
           ? '<button data-action="complete" data-id="' + t.id + '" title="Mark Done" class="act-btn icon-btn hover:text-green-600 hover:bg-green-50"><i class="fas fa-check text-xs"></i></button>' +
@@ -480,7 +479,7 @@ window.WorkVoltPages['tasks'] = function(container) {
             '</td>'
           : '') +
 
-        // Actions — FIX: removed inline onclick="event.stopPropagation()" which was blocking buttons
+        // Actions
         '<td class="px-4 py-3 whitespace-nowrap">' +
           '<div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity wv-action-cell">' +
             quickBtns +
@@ -509,13 +508,6 @@ window.WorkVoltPages['tasks'] = function(container) {
         '</div>' +
       '</div>';
 
-    // ── FIX: attach stopPropagation to action buttons so row "view" click is NOT triggered ──
-    content.querySelectorAll('.act-btn').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        // The delegated listener on #tasks-content will still handle data-action
-      });
-    });
   }
 
 
