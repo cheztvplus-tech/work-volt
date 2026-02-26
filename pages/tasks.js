@@ -1,4 +1,3 @@
-window.WorkVoltPages = window.WorkVoltPages || {};
 
 window.WorkVoltPages['tasks'] = function(container) {
 
@@ -740,7 +739,11 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   function openLogHoursModal(task) {
     if (!task) return;
-    var today = new Date().toISOString().split('T')[0];
+    var today = new Date();
+    var yyyy = today.getFullYear();
+    var mm = String(today.getMonth() + 1).padStart(2, '0');
+    var dd = String(today.getDate()).padStart(2, '0');
+    var dateStr = yyyy + '-' + mm + '-' + dd;
 
     var html =
       '<div class="px-6 py-5 border-b border-slate-100 flex items-start justify-between">' +
@@ -868,9 +871,16 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   //  LOG NOTE MODAL
   // ================================================================
+      // Replace openLogNoteModal function with this:
   function openLogNoteModal(task) {
     if (!task) return;
-    var today = new Date().toISOString().split('T')[0];
+    
+    // Fix: Use local date format YYYY-MM-DD for input value
+    var today = new Date();
+    var yyyy = today.getFullYear();
+    var mm = String(today.getMonth() + 1).padStart(2, '0');
+    var dd = String(today.getDate()).padStart(2, '0');
+    var dateStr = yyyy + '-' + mm + '-' + dd; // "2026-02-26" format for input
 
     var html =
       '<div class="px-6 py-5 border-b border-slate-100 flex items-start justify-between">' +
@@ -887,7 +897,7 @@ window.WorkVoltPages['tasks'] = function(container) {
         '<div id="tm-status"></div>' +
 
         '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Date</label>' +
-        '<input id="ln-date" class="field" type="date" value="' + today + '"></div>' +
+        '<input id="ln-date" class="field" type="date" value="' + dateStr + '"></div>' +
 
         '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Note <span class="text-red-400">*</span></label>' +
         '<textarea id="ln-note" class="field text-sm" rows="5" style="resize:none" placeholder="Add a progress update, decision, blocker, or any relevant information…"></textarea></div>' +
