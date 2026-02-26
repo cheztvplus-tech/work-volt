@@ -395,7 +395,7 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   //  LIST VIEW
   // ================================================================
-    function renderList(tasks) {
+  function renderList(tasks) {
     var content = document.getElementById('tasks-content');
     if (!content) return;
 
@@ -426,15 +426,10 @@ window.WorkVoltPages['tasks'] = function(container) {
         '<button data-action="view"      data-id="' + t.id + '" title="View Details" class="act-btn icon-btn hover:text-indigo-600 hover:bg-indigo-50"><i class="fas fa-eye text-xs"></i></button>' +
         (isAdmin() ? '<button data-action="delete" data-id="' + t.id + '" data-title="' + esc(t.title) + '" title="Delete" class="act-btn icon-btn hover:text-red-600 hover:bg-red-50"><i class="fas fa-trash text-xs"></i></button>' : '');
 
-      // Inline editable title
+      // Title cell - clickable to view/edit, NOT inline editable
       var titleCell = '<div class="group/title relative">' +
-        '<div class="editable-title font-semibold text-slate-900 text-sm leading-snug truncate cursor-pointer hover:text-blue-600 hover:bg-blue-50 px-2 -mx-2 py-1 rounded transition-colors" ' +
-        'data-field="title" data-id="' + t.id + '" title="Click to edit">' + esc(t.title) + '</div>' +
-        '<div class="edit-input hidden flex items-center gap-2">' +
-          '<input type="text" class="field text-sm py-1" value="' + esc(t.title) + '" data-field="title" data-id="' + t.id + '">' +
-          '<button class="save-edit text-green-600 hover:bg-green-50 w-7 h-7 rounded flex items-center justify-center"><i class="fas fa-check text-xs"></i></button>' +
-          '<button class="cancel-edit text-slate-400 hover:bg-slate-100 w-7 h-7 rounded flex items-center justify-center"><i class="fas fa-times text-xs"></i></button>' +
-        '</div>' +
+        '<div class="font-semibold text-slate-900 text-sm leading-snug truncate cursor-pointer hover:text-blue-600 transition-colors" ' +
+        'data-action="view" data-id="' + t.id + '" title="Click to view/edit">' + esc(t.title) + '</div>' +
         '<div class="text-[10px] text-slate-400 font-mono">' + esc(t.id) + '</div>' +
         (t.tags ? '<div class="flex flex-wrap gap-1 mt-1">' +
           t.tags.split(',').map(function(tag) { tag = tag.trim();
@@ -493,7 +488,7 @@ window.WorkVoltPages['tasks'] = function(container) {
 
       return '<tr class="border-t border-slate-100 hover:bg-slate-50/60 transition-colors group">' +
 
-        // Task name - editable
+        // Task name - NOT editable inline, clickable
         '<td class="px-4 py-3" style="max-width:260px">' + titleCell + '</td>' +
 
         // Status - editable
@@ -559,52 +554,9 @@ window.WorkVoltPages['tasks'] = function(container) {
     bindInlineEditing();
   }
 
-    function bindInlineEditing() {
+  function bindInlineEditing() {
     var content = document.getElementById('tasks-content');
     if (!content) return;
-
-    // Title editing
-    content.querySelectorAll('.editable-title').forEach(function(el) {
-      el.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var parent = this.closest('.group\\/title');
-        this.classList.add('hidden');
-        parent.querySelector('.edit-input').classList.remove('hidden');
-        parent.querySelector('input').focus();
-      });
-    });
-
-    content.querySelectorAll('.save-edit').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var input = this.closest('.edit-input').querySelector('input');
-        var id = input.dataset.id;
-        var field = input.dataset.field;
-        var value = input.value.trim();
-        
-        if (!value) return;
-        
-        var updates = { id: id };
-        updates[field] = value;
-        
-        quickUpdate(id, updates, 'Updated');
-        
-        // Update display
-        var parent = this.closest('.group\\/title');
-        parent.querySelector('.editable-title').textContent = value;
-        parent.querySelector('.editable-title').classList.remove('hidden');
-        this.closest('.edit-input').classList.add('hidden');
-      });
-    });
-
-    content.querySelectorAll('.cancel-edit').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var parent = this.closest('.group\\/title');
-        parent.querySelector('.editable-title').classList.remove('hidden');
-        this.closest('.edit-input').classList.add('hidden');
-      });
-    });
 
     // Status editing
     content.querySelectorAll('.editable-status').forEach(function(el) {
@@ -728,15 +680,15 @@ window.WorkVoltPages['tasks'] = function(container) {
         });
       });
     });
-}
-
-    // Close dropdowns when clicking outside
-    document.addEventListener('click', function(e) {
-      if (!e.target.closest('.editable-assigned')) {
-        document.querySelectorAll('.assigned-dropdown').forEach(function(d) { d.classList.add('hidden'); });
-      }
-    });
   }
+
+  // Close dropdowns when clicking outside - SINGLE GLOBAL LISTENER
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.editable-assigned')) {
+      document.querySelectorAll('.assigned-dropdown').forEach(function(d) { d.classList.add('hidden'); });
+    }
+  });
+
   // ================================================================
   //  KANBAN VIEW
   // ================================================================
@@ -749,6 +701,16 @@ window.WorkVoltPages['tasks'] = function(container) {
       var cards = colTasks.map(function(t) {
         var overdue  = isOverdue(t);
         var hasHours = parseFloat(t.estimated_hours) > 0 || parseFloat(t.actual_hours) > 0;
+        
+        // Payment info display
+        var payDisplay = '';
+        if (t.pay_per_task > 0 || t.amount_paid > 0) {
+          payDisplay = '<div class="flex items-center gap-1 mt-1">' +
+            (t.pay_per_task > 0 ? '<span class="text-[10px] bg-green-50 text-green-600 px-1.5 py-px rounded font-medium">$' + t.pay_per_task + '</span>' : '') +
+            (t.amount_paid > 0 ? '<span class="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-px rounded font-medium">Paid: $' + t.amount_paid + '</span>' : '') +
+          '</div>';
+        }
+        
         return '<div data-action="view" data-id="' + t.id + '" class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm hover:shadow-md hover:-translate-y-0.5 cursor-pointer transition-all">' +
           '<div class="flex items-start gap-2 mb-1.5">' +
             '<p class="text-sm font-semibold text-slate-900 leading-snug flex-1 line-clamp-2">' + esc(t.title) + '</p>' +
@@ -756,6 +718,7 @@ window.WorkVoltPages['tasks'] = function(container) {
           '</div>' +
           '<p class="text-[10px] text-slate-400 font-mono mb-2">' + esc(t.id) + '</p>' +
           (t.description ? '<p class="text-xs text-slate-400 mb-2 line-clamp-2">' + esc(t.description) + '</p>' : '') +
+          payDisplay +
           (projectsInstalled() && t.project_id
             ? '<div class="mb-2"><span class="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-px rounded font-semibold">' + esc(projectName(t.project_id)) + '</span></div>'
             : '') +
@@ -928,6 +891,12 @@ window.WorkVoltPages['tasks'] = function(container) {
               : '<span class="text-slate-300">None</span>') +
             meta('Est. Hours', task.estimated_hours ? fmtHours(task.estimated_hours) : '<span class="text-slate-300">—</span>') +
             meta('Actual Hours', '<span class="text-blue-600 font-bold">' + fmtHours(task.actual_hours || 0) + '</span>') +
+            
+            // Payment info in detail view
+            (task.pay_per_task > 0 ? meta('Pay Per Task', '<span class="text-green-600 font-bold">' + fmtMoney(task.pay_per_task) + '</span>') : '') +
+            (task.amount_paid > 0 ? meta('Amount Paid', '<span class="text-blue-600 font-bold">' + fmtMoney(task.amount_paid) + '</span>') : '') +
+            (task.pay_type ? meta('Pay Type', '<span class="text-slate-600">' + esc(task.pay_type) + '</span>') : '') +
+            
             (task.tags
               ? meta('Tags', task.tags.split(',').map(function(t) {
                   return '<span class="text-[10px] bg-white border border-slate-200 text-slate-600 px-1.5 py-px rounded">' + esc(t.trim()) + '</span>';
@@ -998,7 +967,7 @@ window.WorkVoltPages['tasks'] = function(container) {
 
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
           '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Date</label>' +
-          '<input id="lh-date" class="field" type="date" value="' + today + '"></div>' +
+          '<input id="lh-date" class="field" type="date" value="' + dateStr + '"></div>' +
 
           '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Hours Worked <span class="text-red-400">*</span></label>' +
           '<input id="lh-hours" class="field" type="number" step="0.25" min="0.25" max="24" placeholder="e.g. 2.5"></div>' +
@@ -1100,16 +1069,14 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   //  LOG NOTE MODAL
   // ================================================================
-      // Replace openLogNoteModal function with this:
   function openLogNoteModal(task) {
     if (!task) return;
     
-    // Fix: Use local date format YYYY-MM-DD for input value
     var today = new Date();
     var yyyy = today.getFullYear();
     var mm = String(today.getMonth() + 1).padStart(2, '0');
     var dd = String(today.getDate()).padStart(2, '0');
-    var dateStr = yyyy + '-' + mm + '-' + dd; // "2026-02-26" format for input
+    var dateStr = yyyy + '-' + mm + '-' + dd;
 
     var html =
       '<div class="px-6 py-5 border-b border-slate-100 flex items-start justify-between">' +
@@ -1193,7 +1160,7 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   //  QUICK STATUS UPDATE
   // ================================================================
-    function quickUpdate(id, fields, msg) {
+  function quickUpdate(id, fields, msg) {
     var params = { id: id };
     Object.keys(fields).forEach(function(k) { params[k] = fields[k]; });
     api('tasks/update', params)
@@ -1209,7 +1176,6 @@ window.WorkVoltPages['tasks'] = function(container) {
       })
       .catch(function(e) { toast(e.message, 'error'); });
   }
-
 
   // ================================================================
   //  USER SEARCH FIELD
