@@ -733,7 +733,7 @@ window.WorkVoltPages['tasks'] = function(container) {
     // Close dropdowns when clicking outside
     document.addEventListener('click', function(e) {
       if (!e.target.closest('.editable-assigned')) {
-        content.querySelectorAll('.assigned-dropdown').forEach(function(d) { d.classList.add('hidden'); });
+        document.querySelectorAll('.assigned-dropdown').forEach(function(d) { d.classList.add('hidden'); });
       }
     });
   }
