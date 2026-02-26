@@ -801,23 +801,32 @@ window.WorkVoltPages['settings'] = function(container) {
     } else {
       installedEl.innerHTML = modulesCache.map(function(m) {
         var def = ADDON_CATALOGUE[m.id] || {};
+        var roles = m.allowed_roles || def.roles || ['SuperAdmin','Admin','Manager','Employee','Contractor'];
+        var roleChips = ['SuperAdmin','Admin','Manager','Employee','Contractor'].map(function(r) {
+          var on = roles.includes(r);
+          return '<span class="text-[10px] px-1.5 py-0.5 rounded font-semibold ' +
+            (on ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400') + '">' + r + '</span>';
+        }).join('');
         return (
-          '<div class="flex items-center gap-4 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm">' +
-            '<div class="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">' +
-              '<i class="fas ' + (def.icon || m.icon || 'fa-layer-group') + ' text-blue-600 text-sm"></i>' +
-            '</div>' +
-            '<div class="flex-1 min-w-0">' +
-              '<div class="font-semibold text-slate-900 text-sm">' + (def.label || m.label) + '</div>' +
-              '<div class="text-xs text-slate-400 truncate">' + (def.description || '') + '</div>' +
-            '</div>' +
-            '<div class="flex items-center gap-2 flex-shrink-0">' +
-              '<span class="text-xs text-green-600 font-semibold bg-green-50 px-2 py-1 rounded-lg border border-green-200">' +
-                '<i class="fas fa-check mr-1"></i>Installed' +
-              '</span>' +
-              '<button onclick="modulesUninstall(\'' + m.id + '\')" ' +
-                'class="text-xs text-red-500 hover:text-red-700 font-semibold bg-red-50 hover:bg-red-100 px-2 py-1 rounded-lg border border-red-200 transition-colors">' +
-                'Uninstall' +
-              '</button>' +
+          '<div class="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm">' +
+            '<div class="flex items-center gap-4">' +
+              '<div class="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">' +
+                '<i class="fas ' + (def.icon || m.icon || 'fa-layer-group') + ' text-blue-600 text-sm"></i>' +
+              '</div>' +
+              '<div class="flex-1 min-w-0">' +
+                '<div class="font-semibold text-slate-900 text-sm">' + (def.label || m.label) + '</div>' +
+                '<div class="flex items-center gap-1 mt-1 flex-wrap">' + roleChips + '</div>' +
+              '</div>' +
+              '<div class="flex items-center gap-2 flex-shrink-0">' +
+                '<button onclick="modulesEditRoles(\'' + m.id + '\')" ' +
+                  'class="text-xs text-blue-600 font-semibold bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg border border-blue-200 transition-colors">' +
+                  '<i class="fas fa-users-cog mr-1"></i>Roles' +
+                '</button>' +
+                '<button onclick="modulesUninstall(\'' + m.id + '\')" ' +
+                  'class="text-xs text-red-500 hover:text-red-700 font-semibold bg-red-50 hover:bg-red-100 px-2 py-1 rounded-lg border border-red-200 transition-colors">' +
+                  'Uninstall' +
+                '</button>' +
+              '</div>' +
             '</div>' +
           '</div>'
         );
@@ -873,6 +882,79 @@ window.WorkVoltPages['settings'] = function(container) {
       setModuleStatus('Install failed: ' + e.message, false);
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download text-xs"></i> Install'; }
     }
+  };
+
+  window.modulesEditRoles = function(moduleId) {
+    var m   = modulesCache.find(function(x) { return x.id === moduleId; });
+    var def = ADDON_CATALOGUE[moduleId] || {};
+    if (!m) return;
+    var currentRoles = m.allowed_roles || def.roles || ['SuperAdmin','Admin','Manager','Employee','Contractor'];
+    var ALL_ROLES = ['SuperAdmin','Admin','Manager','Employee','Contractor'];
+
+    // Build modal HTML
+    var checks = ALL_ROLES.map(function(r) {
+      var checked = currentRoles.includes(r) ? ' checked' : '';
+      var disabled = r === 'SuperAdmin' ? ' disabled' : ''; // SuperAdmin always has access
+      return '<label class="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">' +
+        '<input type="checkbox" class="role-check w-4 h-4 accent-blue-600" value="' + r + '"' + checked + disabled + '>' +
+        '<span class="text-sm font-medium text-slate-700">' + r + '</span>' +
+        (r === 'SuperAdmin' ? '<span class="text-[10px] text-slate-400 ml-auto">Always enabled</span>' : '') +
+      '</label>';
+    }).join('');
+
+    var modal = document.createElement('div');
+    modal.id = 'role-modal-backdrop';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:1rem';
+    modal.innerHTML =
+      '<div style="background:#fff;border-radius:1.25rem;box-shadow:0 30px 70px rgba(0,0,0,0.25);width:100%;max-width:380px;overflow:hidden">' +
+        '<div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">' +
+          '<div>' +
+            '<h3 class="font-extrabold text-slate-900 text-base">Module Access</h3>' +
+            '<p class="text-xs text-slate-400 mt-0.5">Who can see <strong>' + (def.label || m.label) + '</strong> in the sidebar?</p>' +
+          '</div>' +
+          '<button id="role-modal-close" style="width:2rem;height:2rem;border-radius:.75rem;border:none;background:transparent;cursor:pointer;font-size:1rem;color:#94a3b8">✕</button>' +
+        '</div>' +
+        '<div class="px-4 py-3">' + checks + '</div>' +
+        '<div class="px-5 py-4 border-t border-slate-100 flex gap-3">' +
+          '<button id="role-modal-cancel" class="btn-secondary flex-1 text-sm">Cancel</button>' +
+          '<button id="role-modal-save"   class="btn-primary flex-1 text-sm"><i class="fas fa-save text-xs mr-1"></i>Save</button>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(modal);
+    document.getElementById('role-modal-close').onclick  = function() { modal.remove(); };
+    document.getElementById('role-modal-cancel').onclick = function() { modal.remove(); };
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+
+    document.getElementById('role-modal-save').onclick = async function() {
+      var selected = Array.from(modal.querySelectorAll('.role-check:checked')).map(function(c) { return c.value; });
+      if (!selected.includes('SuperAdmin')) selected.unshift('SuperAdmin');
+      if (!selected.length) return;
+
+      // Save to modulesCache and persist to GAS
+      m.allowed_roles = selected;
+      try {
+        await api('config/save-modules', { modules: JSON.stringify(modulesCache) });
+        // Update ADDON_CATALOGUE in memory so nav re-renders correctly
+        if (window.ADDON_CATALOGUE && window.ADDON_CATALOGUE[moduleId]) {
+          window.ADDON_CATALOGUE[moduleId].roles = selected;
+        }
+        // Also update the index.html ADDON_CATALOGUE if accessible
+        try {
+          var topCat = window.parent ? window.parent.ADDON_CATALOGUE : null;
+          if (topCat && topCat[moduleId]) topCat[moduleId].roles = selected;
+        } catch(e) {}
+        if (window.INSTALLED_MODULES !== undefined) {
+          window.INSTALLED_MODULES = modulesCache;
+          if (typeof renderNav === 'function') renderNav();
+        }
+        modal.remove();
+        renderModuleLists();
+        setModuleStatus('Access roles updated for ' + (def.label || m.label), true);
+      } catch(e) {
+        setModuleStatus('Failed to save roles: ' + e.message, false);
+      }
+    };
   };
 
   window.modulesUninstall = async function(moduleId) {
