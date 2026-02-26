@@ -1029,7 +1029,7 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   //  TASK FORM MODAL  (create & edit)
   // ================================================================
-  function openTaskForm(task) {
+    function openTaskForm(task) {
     var isEdit   = !!task;
     var btnLabel = isEdit ? '<i class="fas fa-save text-xs mr-1"></i>Save Changes' : '<i class="fas fa-plus text-xs mr-1"></i>Create Task';
     function v(f) { return isEdit && task[f] != null ? esc(String(task[f])) : ''; }
@@ -1043,7 +1043,7 @@ window.WorkVoltPages['tasks'] = function(container) {
       return '<option value="' + p + '"' + sel + '>' + p + '</option>';
     }).join('');
 
-    // Project field — only rendered if Projects module is installed
+    // Project field
     var projectField = '';
     if (projectsInstalled()) {
       if (projectsCache.length) {
@@ -1095,6 +1095,21 @@ window.WorkVoltPages['tasks'] = function(container) {
 
         projectField +
 
+        // Billable toggle for new tasks
+        '<div class="border border-slate-200 rounded-xl p-4 bg-slate-50">' +
+          '<div class="flex items-center justify-between">' +
+            '<div>' +
+              '<p class="text-xs font-bold text-slate-700">Billable by default?</p>' +
+              '<p class="text-[11px] text-slate-400">New time entries will be marked as billable</p>' +
+            '</div>' +
+            '<label class="relative inline-flex items-center cursor-pointer">' +
+              '<input type="checkbox" id="tf-billable" class="sr-only peer" ' + (isEdit && task.billable === 'true' ? 'checked' : '') + '>' +
+              '<div class="w-10 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-green-500 transition-colors"></div>' +
+              '<div class="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4"></div>' +
+            '</label>' +
+          '</div>' +
+        '</div>' +
+
         '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Notes</label>' +
         '<textarea id="tf-notes" class="field text-sm" rows="3" style="resize:none" placeholder="Progress updates, blockers, internal notes…">' + v('notes') + '</textarea></div>' +
 
@@ -1118,7 +1133,6 @@ window.WorkVoltPages['tasks'] = function(container) {
     document.getElementById('tm-submit').addEventListener('click', function() { submitForm(isEdit ? task.id : null); });
     setTimeout(function() { var el = document.getElementById('tf-title'); if (el) el.focus(); }, 80);
   }
-
 
   // ================================================================
   //  DELETE MODAL
@@ -1156,7 +1170,7 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ================================================================
   //  FORM SUBMIT
   // ================================================================
-  function submitForm(taskId) {
+    function submitForm(taskId) {
     var isEdit = !!taskId;
     var title  = (document.getElementById('tf-title').value || '').trim();
     if (!title) { modalStatus('Title is required.', false); return; }
@@ -1174,9 +1188,9 @@ window.WorkVoltPages['tasks'] = function(container) {
       estimated_hours: document.getElementById('tf-est').value            || '',
       tags:            document.getElementById('tf-tags').value           || '',
       notes:           document.getElementById('tf-notes').value          || '',
+      billable:        document.getElementById('tf-billable').checked     ? 'true' : 'false',
     };
 
-    // project_id only if Projects module installed and field exists
     var projEl = document.getElementById('tf-project_id');
     if (projEl) params.project_id = projEl.value || '';
 
