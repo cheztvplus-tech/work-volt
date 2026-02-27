@@ -1366,55 +1366,29 @@ window.WorkVoltPages['tasks'] = function(container) {
       });
 
       // ── Wire progress checklist ───────────────────────────────
-      var checklistWrap = document.getElementById('td-progress-checklist');
-      if (checklistWrap) {
-        checklistWrap.addEventListener('click', function(e) {
-          var item = e.target.closest('.td-checklist-item');
-          if (!item) return;
-          var step    = parseInt(item.dataset.step, 10); // 0-based index clicked
-          var current = checkedCount(task);
-          var newChecked;
-          // Toggle: clicking a checked item unchecks it (and all after); clicking unchecked checks up to it
-          if (step < current) {
-            newChecked = step;          // uncheck from this step forward
-          } else {
-            newChecked = step + 1;      // check up to and including this step
-          }
-          var newPct = Math.round((newChecked / CHECKLIST_STAGES.length) * 100);
-          // Optimistic UI update
-          task.progress_pct = newPct;
-          checklistWrap.innerHTML = renderProgressChecklist(task);
-          // Re-wire (since innerHTML replaced the nodes)
-          wireChecklist();
-          // Save to API
-          api('tasks/update', { id: task.id, progress_pct: newPct })
-            .then(function() {
-              if (tasksCache[task.id]) tasksCache[task.id].progress_pct = newPct;
-              rerender();
-            })
-            .catch(function(err) { toast(err.message, 'error'); });
-        });
-      }
-      function wireChecklist() {
+      // Use delegated click on the modal portal so it survives innerHTML re-renders
+      function handleChecklistClick(e) {
+        var item = e.target.closest('.td-checklist-item');
+        if (!item) return;
+        var step    = parseInt(item.dataset.step, 10);
+        var current = checkedCount(task);
+        var newChecked = (step < current) ? step : step + 1;
+        var newPct = Math.round((newChecked / CHECKLIST_STAGES.length) * 100);
+        task.progress_pct = newPct;
+        // Re-render just the checklist div
         var wrap = document.getElementById('td-progress-checklist');
-        if (!wrap) return;
-        wrap.addEventListener('click', function(e) {
-          var item = e.target.closest('.td-checklist-item');
-          if (!item) return;
-          var step    = parseInt(item.dataset.step, 10);
-          var current = checkedCount(task);
-          var newChecked = (step < current) ? step : step + 1;
-          var newPct = Math.round((newChecked / CHECKLIST_STAGES.length) * 100);
-          task.progress_pct = newPct;
-          wrap.innerHTML = renderProgressChecklist(task);
-          api('tasks/update', { id: task.id, progress_pct: newPct })
-            .then(function() {
-              if (tasksCache[task.id]) tasksCache[task.id].progress_pct = newPct;
-              rerender();
-            })
-            .catch(function(err) { toast(err.message, 'error'); });
-        });
+        if (wrap) wrap.innerHTML = renderProgressChecklist(task);
+        // Save
+        api('tasks/update', { id: task.id, progress_pct: newPct })
+          .then(function() {
+            if (tasksCache[task.id]) tasksCache[task.id].progress_pct = newPct;
+            rerender();
+          })
+          .catch(function(err) { toast(err.message, 'error'); });
       }
+      // Attach to the stable modal container (not the re-rendered inner div)
+      var modalEl = document.getElementById('tm-backdrop');
+      if (modalEl) modalEl.addEventListener('click', handleChecklistClick);
 
 
 
