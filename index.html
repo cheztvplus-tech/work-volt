@@ -192,7 +192,7 @@
           </button>
 
           <!-- Notification Dropdown -->
-          <div id="notification-dropdown" class="hidden bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col" style="max-height:80vh;">
+          <div id="notification-dropdown" class="hidden bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col" style="position:absolute;right:0;top:calc(100% + .5rem);width:380px;max-height:80vh;z-index:100">
             <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50 flex-shrink-0">
               <h3 class="font-semibold text-slate-900 text-sm">Notifications</h3>
               <div class="flex gap-3 items-center">
@@ -336,6 +336,7 @@
   // Add-on modules available in the Store
   // These are registered here so the app knows how to render them once installed
   const ADDON_CATALOGUE = {
+    notifications: { label: 'Notifications', icon: 'fa-bell',     roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
     tasks:       { label: 'Tasks',                icon: 'fa-check-circle',      roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
     pipeline:    { label: 'Pipeline',             icon: 'fa-users',             roles: ['SuperAdmin','Admin','Manager'] },
     payroll:     { label: 'Payroll',              icon: 'fa-money-bill-wave',   roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
@@ -392,14 +393,7 @@
       if (data.modules) {
         INSTALLED_MODULES = data.modules;
         window.INSTALLED_MODULES = INSTALLED_MODULES;
-        // Apply any custom allowed_roles stored per-module to the live ADDON_CATALOGUE
-        INSTALLED_MODULES.forEach(function(m) {
-          if (m.allowed_roles && ADDON_CATALOGUE[m.id]) {
-            ADDON_CATALOGUE[m.id].roles = m.allowed_roles;
-          }
-        });
-      }
-    } catch(e) {
+      }    } catch(e) {
       console.warn('Could not load modules from Sheet:', e.message);
     }
   }
@@ -526,10 +520,7 @@
     // ── Installed add-on modules (from INSTALLED_MODULES + ADDON_CATALOGUE) ──
     const addons = INSTALLED_MODULES.filter(m => {
       const def = ADDON_CATALOGUE[m.id];
-      if (!def) return false;
-      // Use per-module allowed_roles if set by admin, otherwise fall back to catalogue defaults
-      const allowedRoles = m.allowed_roles || def.roles || [];
-      return allowedRoles.includes(role);
+      return def && def.roles.includes(role);
     });
 
     const addonLinks = addons.length ? `
@@ -661,9 +652,207 @@
   }
 
 
-  // ─────────────────────────────────────────────
-  //  NOTIFICATION SYSTEM (stub — connect to backend later)
-  // ─────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════
+  //  NOTIFICATION SYSTEM — Full implementation
+  // ═══════════════════════════════════════════════════════
+
+  // Priority → display behavior
+  const NOTIF_PRIORITY_BEHAVIOR = {
+    critical: { popup: true,  sound: true,  bell: true  },
+    high:     { popup: true,  sound: false, bell: true  },
+    normal:   { popup: false, sound: false, bell: true  },
+    low:      { popup: false, sound: false, bell: false },
+    silent:   { popup: false, sound: false, bell: false },
+  };
+  const NOTIF_TYPE_CONFIG = {
+    task_assigned:   { icon:'fa-user-check',      color:'#3b82f6', label:'Task Assigned'   },
+    status_change:   { icon:'fa-exchange-alt',     color:'#8b5cf6', label:'Status Change'   },
+    comment:         { icon:'fa-comment',          color:'#7c3aed', label:'Comment'         },
+    approval_needed: { icon:'fa-dollar-sign',      color:'#f59e0b', label:'Approval Needed' },
+    mention:         { icon:'fa-at',              color:'#6366f1', label:'Mention'         },
+    deadline_soon:   { icon:'fa-clock',            color:'#f97316', label:'Deadline'        },
+    payment_failed:  { icon:'fa-exclamation-circle', color:'#ef4444', label:'Critical'      },
+    system:          { icon:'fa-bell',             color:'#64748b', label:'System'          },
+  };
+
+  // ─── Quiet-hours check ─────────────────────────────────────────
+  function isQuietHours() {
+    try {
+      const uid   = currentUser?.user_id;
+      const prefs = JSON.parse(localStorage.getItem('wv_notif_prefs_' + uid) || 'null');
+      if (!prefs || !prefs.quiet_hours_start || !prefs.quiet_hours_end) return false;
+      const now    = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      const [sh, sm] = prefs.quiet_hours_start.split(':').map(Number);
+      const [eh, em] = prefs.quiet_hours_end.split(':').map(Number);
+      const start = sh * 60 + sm;
+      const end   = eh * 60 + em;
+      return start <= end ? (nowMin >= start && nowMin < end) : (nowMin >= start || nowMin < end);
+    } catch(e) { return false; }
+  }
+
+  // ─── Show a notification popup (rich toast) ───────────────────
+  function showNotifPopup(notif) {
+    if (isQuietHours()) return;
+    const uid   = currentUser?.user_id;
+    const prefs = JSON.parse(localStorage.getItem('wv_notif_prefs_' + uid) || '{}');
+    if (prefs.popup_enabled === 'false') return;
+
+    const tc  = NOTIF_TYPE_CONFIG[notif.type] || NOTIF_TYPE_CONFIG.system;
+    const isCritical = notif.priority === 'critical';
+    const isHigh     = notif.priority === 'high';
+
+    // Play sound for critical (if enabled)
+    if (isCritical && prefs.sound_enabled === 'true') {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = isCritical ? 880 : 660;
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.start(); osc.stop(ctx.currentTime + 0.4);
+      } catch(e) {}
+    }
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;top:1rem;right:1rem;z-index:99999;max-width:360px;width:100%;pointer-events:auto;animation:notifSlideIn .3s ease';
+    wrap.innerHTML = `
+      <div style="background:#fff;border-radius:1rem;box-shadow:0 12px 40px rgba(0,0,0,.18);border:1.5px solid #e2e8f0;overflow:hidden">
+        ${isCritical ? `<div style="background:#ef4444;padding:.35rem .75rem;display:flex;align-items:center;gap:.5rem">
+          <i class="fas fa-exclamation-triangle" style="color:#fff;font-size:.7rem"></i>
+          <span style="color:#fff;font-size:.7rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase">Critical Alert</span>
+        </div>` : ''}
+        <div style="padding:.875rem 1rem;display:flex;align-items:flex-start;gap:.75rem">
+          <div style="width:2.25rem;height:2.25rem;border-radius:.625rem;background:${tc.color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="fas ${tc.icon}" style="color:${tc.color};font-size:.9rem"></i>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.2rem">
+              <span style="font-size:.65rem;font-weight:700;background:${tc.color}18;color:${tc.color};padding:.1rem .5rem;border-radius:.25rem">${tc.label}</span>
+            </div>
+            <p style="font-size:.8rem;font-weight:700;color:#0f172a;line-height:1.3;margin:0">${notif.title || ''}</p>
+            ${notif.body ? `<p style="font-size:.72rem;color:#64748b;margin:.2rem 0 0;line-height:1.4">${notif.body}</p>` : ''}
+          </div>
+          <button onclick="this.closest('[style]').remove()" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:.8rem;padding:.25rem;flex-shrink:0;line-height:1">✕</button>
+        </div>
+        ${notif.ref_type ? `
+        <div style="padding:.5rem 1rem .75rem;display:flex;gap:.5rem">
+          <button onclick="window.WorkVolt&&window.WorkVolt.navigate('${notif.ref_type}');this.closest('[style]').remove()" style="flex:1;padding:.4rem .75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.5rem;font-size:.72rem;font-weight:600;color:#475569;cursor:pointer">
+            View ${notif.ref_type} →
+          </button>
+          <button onclick="this.closest('[style]').remove();closeNotificationDropdown&&closeNotificationDropdown()" style="padding:.4rem .75rem;background:transparent;border:none;font-size:.72rem;color:#94a3b8;cursor:pointer">Dismiss</button>
+        </div>` : ''}
+      </div>`;
+
+    // Add keyframe if not exists
+    if (!document.getElementById('notif-anim-style')) {
+      const st = document.createElement('style');
+      st.id = 'notif-anim-style';
+      st.textContent = '@keyframes notifSlideIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}@keyframes notifSlideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(110%);opacity:0}}';
+      document.head.appendChild(st);
+    }
+
+    document.body.appendChild(wrap);
+    const dur = isCritical ? 8000 : isHigh ? 5000 : 4000;
+    setTimeout(() => {
+      wrap.style.animation = 'notifSlideOut .3s ease forwards';
+      setTimeout(() => wrap.remove(), 300);
+    }, dur);
+  }
+
+  // ─── Render bell dropdown items ───────────────────────────────
+  function renderNotifDropdownItems(rows, unread) {
+    const list = document.getElementById('notification-list');
+    if (!list) return;
+
+    if (!rows.length) {
+      list.innerHTML = `
+        <div class="p-8 text-center text-slate-400">
+          <i class="fas fa-bell-slash text-2xl mb-3 opacity-40 block"></i>
+          <p class="text-sm font-semibold">All caught up!</p>
+          <p class="text-xs mt-1">No new notifications</p>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = rows.slice(0, 8).map(r => {
+      const tc   = NOTIF_TYPE_CONFIG[r.type] || NOTIF_TYPE_CONFIG.system;
+      const isUnread = r.read !== 'true';
+      const cnt  = parseInt(r.group_count) || 1;
+      const ago  = (() => {
+        const diff = Math.floor((Date.now() - new Date(r.created_at)) / 1000);
+        if (diff < 60) return 'just now';
+        if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+        return Math.floor(diff/86400) + 'd ago';
+      })();
+      return `<div class="flex items-start gap-3 px-4 py-3 ${isUnread?'bg-blue-50/40':''} hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100 last:border-0"
+        onclick="handleDropdownNotifClick('${r.id}', '${r.ref_type||''}', '${r.ref_id||''}')">
+        <div style="width:2rem;height:2rem;border-radius:.5rem;background:${tc.color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">
+          <i class="fas ${tc.icon}" style="color:${tc.color};font-size:.75rem"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-start justify-between gap-1">
+            <p class="text-xs font-${isUnread?'bold':'semibold'} text-slate-900 leading-snug line-clamp-2">${r.title||''}${cnt>1?' <span style="font-size:.65rem;background:#e2e8f0;padding:.05rem .4rem;border-radius:.25rem;font-weight:700">×'+cnt+'</span>':''}</p>
+            ${isUnread?'<span style="width:.5rem;height:.5rem;background:#3b82f6;border-radius:50%;flex-shrink:0;margin-top:.2rem"></span>':''}
+          </div>
+          ${r.body?`<p class="text-[11px] text-slate-500 mt-0.5 line-clamp-1">${r.body}</p>`:''}
+          <p class="text-[10px] text-slate-400 mt-0.5">${ago}</p>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function handleDropdownNotifClick(id, refType, refId) {
+    // Mark as read
+    const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
+    if (savedUrl && savedSecret) {
+      const url = new URL(savedUrl);
+      url.searchParams.set('path',  'notifications/read');
+      url.searchParams.set('token', savedSecret);
+      url.searchParams.set('id', id);
+      fetch(url.toString(), { cache: 'no-cache' }).catch(() => {});
+    }
+    closeNotificationDropdown();
+    if (refType && window.WorkVolt) window.WorkVolt.navigate(refType);
+  }
+
+  // ─── Bell badge ───────────────────────────────────────────────
+  function updateNotifBadge(count) {
+    const badge = document.getElementById('notif-badge');
+    if (!badge) return;
+    if (count > 0) {
+      badge.textContent = count > 99 ? '99+' : String(count);
+      badge.classList.remove('hidden');
+      badge.style.animation = 'none';
+      void badge.offsetWidth;
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+
+  // ─── Persistent critical banner ───────────────────────────────
+  function showCriticalBanner(notif) {
+    const existing = document.getElementById('wv-critical-banner');
+    if (existing) existing.remove();
+    const banner = document.createElement('div');
+    banner.id = 'wv-critical-banner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99998;background:#dc2626;color:#fff;padding:.5rem 1rem;display:flex;align-items:center;justify-between;gap:.75rem;font-size:.8rem;font-weight:600;box-shadow:0 2px 8px rgba(220,38,38,.4)';
+    banner.innerHTML = `
+      <div style="display:flex;align-items:center;gap:.5rem;flex:1">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span>${notif.title || 'Critical Alert'}</span>
+        ${notif.body ? `<span style="font-weight:400;opacity:.9">— ${notif.body}</span>` : ''}
+      </div>
+      ${notif.ref_type ? `<button onclick="window.WorkVolt&&window.WorkVolt.navigate('${notif.ref_type}');document.getElementById('wv-critical-banner').remove()" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:.25rem .75rem;border-radius:.375rem;font-size:.72rem;font-weight:700;cursor:pointer">View →</button>` : ''}
+      <button onclick="document.getElementById('wv-critical-banner').remove()" style="background:none;border:none;color:#fff;cursor:pointer;opacity:.8;font-size:.9rem">✕</button>`;
+    document.body.insertBefore(banner, document.body.firstChild);
+  }
+
+  // ─── Dropdown toggle ─────────────────────────────────────────
   function toggleNotificationDropdown() {
     const dd = document.getElementById('notification-dropdown');
     dd.classList.toggle('hidden');
@@ -671,35 +860,143 @@
   }
 
   function closeNotificationDropdown() {
-    document.getElementById('notification-dropdown').classList.add('hidden');
+    const dd = document.getElementById('notification-dropdown');
+    if (dd) dd.classList.add('hidden');
   }
 
+  // ─── Load into dropdown ──────────────────────────────────────
   function loadNotifications() {
-    // Stub — replace with apiCall('notifications/list') when backend ready
+    const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
     const list = document.getElementById('notification-list');
-    list.innerHTML = `
-      <div class="p-8 text-center text-slate-400">
-        <i class="fas fa-bell-slash text-2xl mb-3 opacity-40"></i>
-        <p class="text-sm">No notifications yet</p>
-      </div>`;
+    if (!savedUrl || !savedSecret) {
+      if (list) list.innerHTML = '<div class="p-6 text-center text-slate-400 text-sm">Connect your Google Sheet first</div>';
+      return;
+    }
+    const uid = currentUser?.user_id;
+    if (!uid) return;
+
+    const url = new URL(savedUrl);
+    url.searchParams.set('path',  'notifications/list');
+    url.searchParams.set('token', savedSecret);
+    url.searchParams.set('user_id', uid);
+    url.searchParams.set('filter', 'unread');
+    url.searchParams.set('limit', '20');
+
+    fetch(url.toString(), { cache:'no-cache' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) throw new Error(data.error);
+        renderNotifDropdownItems(data.rows || [], data.unread || 0);
+        updateNotifBadge(data.unread || 0);
+      })
+      .catch(() => {
+        if (list) list.innerHTML = '<div class="p-6 text-center text-slate-400 text-sm">Could not load notifications</div>';
+      });
   }
 
   function markAllNotificationsRead() {
-    document.getElementById('notif-badge').classList.add('hidden');
-    showToast('All notifications marked as read', 'success');
-    closeNotificationDropdown();
+    const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
+    const uid = currentUser?.user_id;
+    if (!savedUrl || !savedSecret || !uid) { closeNotificationDropdown(); return; }
+
+    const url = new URL(savedUrl);
+    url.searchParams.set('path',  'notifications/read-all');
+    url.searchParams.set('token', savedSecret);
+    url.searchParams.set('user_id', uid);
+    fetch(url.toString(), { cache:'no-cache' })
+      .then(() => { updateNotifBadge(0); showToast('All notifications marked as read', 'success'); closeNotificationDropdown(); })
+      .catch(() => closeNotificationDropdown());
+  }
+
+  // ─── Polling ─────────────────────────────────────────────────
+  let _lastUnreadCount  = 0;
+  let _lastSeenIds      = new Set();
+  let _pollVisible      = true;
+
+  function _pollNotifications() {
+    const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
+    const uid = currentUser?.user_id;
+    if (!savedUrl || !savedSecret || !uid || !_pollVisible) return;
+
+    const url = new URL(savedUrl);
+    url.searchParams.set('path',  'notifications/list');
+    url.searchParams.set('token', savedSecret);
+    url.searchParams.set('user_id', uid);
+    url.searchParams.set('filter', 'unread');
+    url.searchParams.set('limit', '20');
+
+    fetch(url.toString(), { cache:'no-cache' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) return;
+        const rows   = data.rows || [];
+        const unread = data.unread || 0;
+        updateNotifBadge(unread);
+
+        // Show popups/banners for newly arrived notifications
+        rows.forEach(r => {
+          if (_lastSeenIds.has(r.id)) return;
+          _lastSeenIds.add(r.id);
+          if (_lastSeenIds.size > 200) { // trim old IDs
+            const arr = Array.from(_lastSeenIds);
+            _lastSeenIds = new Set(arr.slice(-100));
+          }
+
+          const behavior = NOTIF_PRIORITY_BEHAVIOR[r.priority] || NOTIF_PRIORITY_BEHAVIOR.normal;
+          if (r.priority === 'critical') showCriticalBanner(r);
+          if (behavior.popup) showNotifPopup(r);
+        });
+
+        _lastUnreadCount = unread;
+      })
+      .catch(() => {});
   }
 
   function startNotificationPolling() {
-    // Poll every 60s — replace with actual apiCall when backend ready
-    _notifPollTimer = setInterval(() => {
-      // apiCall('notifications/list').then(data => renderNotifBadge(data))
-    }, 60000);
+    _pollNotifications(); // immediate first poll
+    _notifPollTimer = setInterval(_pollNotifications, 30000); // every 30s
+
+    // Pause polling when tab is hidden, resume when visible
+    document.addEventListener('visibilitychange', () => {
+      _pollVisible = !document.hidden;
+      if (_pollVisible) _pollNotifications(); // catch up immediately
+    });
   }
 
   function stopNotificationPolling() {
     if (_notifPollTimer) { clearInterval(_notifPollTimer); _notifPollTimer = null; }
   }
+
+  // ─── Global notify() callable from any module ────────────────
+  window.WVNotifications = {
+    // Create a notification (fire-and-forget)
+    create: function(params) {
+      const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
+      const savedSecret = localStorage.getItem('wv_api_secret') || '';
+      if (!savedUrl || !savedSecret || !params.to_user_id) return;
+      const url = new URL(savedUrl);
+      url.searchParams.set('path',  'notifications/create');
+      url.searchParams.set('token', savedSecret);
+      Object.keys(params).forEach(k => { if (params[k]) url.searchParams.set(k, params[k]); });
+      fetch(url.toString(), { cache:'no-cache' }).catch(() => {});
+    },
+    // Refresh badge count (called after marking read)
+    refreshBadge: function() {
+      const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
+      const savedSecret = localStorage.getItem('wv_api_secret') || '';
+      const uid = currentUser?.user_id;
+      if (!savedUrl || !savedSecret || !uid) return;
+      const url = new URL(savedUrl);
+      url.searchParams.set('path',  'notifications/unread');
+      url.searchParams.set('token', savedSecret);
+      url.searchParams.set('user_id', uid);
+      fetch(url.toString(), { cache:'no-cache' }).then(r => r.json()).then(d => { if (!d.error) updateNotifBadge(d.unread || 0); }).catch(() => {});
+    },
+    showPopup: showNotifPopup,
+  };
 
 
   // ─────────────────────────────────────────────
