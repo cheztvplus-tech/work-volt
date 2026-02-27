@@ -151,6 +151,11 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ── Progress ──────────────────────────────────────────────────
   function calcProgress(t) {
     if (t.status === 'Done' || t.status === 'Cancelled') return 100;
+    // Manual override takes priority
+    if (t.progress_pct !== undefined && t.progress_pct !== '' && t.progress_pct !== null) {
+      var manual = parseInt(t.progress_pct, 10);
+      if (!isNaN(manual)) return Math.min(Math.max(manual, 0), 100);
+    }
     var a = parseFloat(t.actual_hours) || 0;
     var e = parseFloat(t.estimated_hours) || 0;
     if (!e) return 0;
@@ -1246,7 +1251,18 @@ window.WorkVoltPages['tasks'] = function(container) {
                 (over ? ' <i class="fas fa-exclamation-circle"></i>' : '') +
                 '<br><span class="text-slate-400 font-normal">' + (countdown(task)||'') + '</span></span>'
               : '<span class="text-slate-300">None</span>') +
-            meta('Progress', progressRing(pct, 32, 3) + '<span class="ml-1 text-sm font-bold ' + (pct>=100?'text-green-600':pct>0?'text-blue-600':'text-slate-400') + '">' + pct + '%</span>') +
+            meta('Progress',
+              (task.status === 'Done' || task.status === 'Cancelled')
+                ? progressRing(100, 32, 3) + '<span class="ml-1 text-sm font-bold text-green-600">100%</span>'
+                : '<div class="flex flex-col gap-1.5 w-full">' +
+                    '<div class="flex items-center gap-2">' +
+                      progressRing(pct, 32, 3) +
+                      '<span id="td-pct-label" class="text-sm font-bold ' + (pct>=100?'text-green-600':pct>0?'text-blue-600':'text-slate-400') + '">' + pct + '%</span>' +
+                    '</div>' +
+                    '<input id="td-progress-slider" type="range" min="0" max="100" step="5" value="' + pct + '" ' +
+                      'class="w-full cursor-pointer" style="accent-color:#3b82f6;height:4px">' +
+                    '<button id="td-save-progress" class="text-[11px] font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-2 py-1 transition-colors border-none cursor-pointer self-end hidden">Save</button>' +
+                  '</div>') +
             meta('Est. Hours', task.estimated_hours ? fmtHours(task.estimated_hours) : '<span class="text-slate-300">—</span>') +
             meta('Actual Hours', '<span class="text-blue-600 font-bold">' + fmtHours(task.actual_hours || 0) + '</span>') +
             ((task.billable === 'true' || task.billable === true)
@@ -1266,14 +1282,13 @@ window.WorkVoltPages['tasks'] = function(container) {
             meta('Created', fmtDate(task.created_at) || '<span class="text-slate-300">—</span>') +
 
             '<div class="flex flex-col gap-2 mt-4">' +
-              // Billable approval panel
-              ((task.billable === 'true' || task.billable === true) && isAdmin()
+              // Billable approval panel — only visible when task is Done and admin/manager
+              ((task.billable === 'true' || task.billable === true) && isAdmin() && task.status === 'Done'
                 ? '<div class="border border-amber-200 rounded-xl p-3 bg-amber-50">' +
                     '<p class="text-[11px] font-bold text-amber-700 mb-2"><i class="fas fa-dollar-sign mr-1"></i>Billable Approval</p>' +
                     (task.approval_status === 'approved'
                       ? '<div class="flex items-center gap-2">' +
                           '<span class="flex-1 text-xs text-green-700 font-semibold bg-green-100 rounded-lg px-3 py-1.5 text-center"><i class="fas fa-check-circle mr-1"></i>Approved</span>' +
-                          '<button id="td-reject-btn" class="text-xs text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-3 py-1.5 font-semibold border-none cursor-pointer">Reject</button>' +
                         '</div>'
                       : task.approval_status === 'rejected'
                         ? '<div class="flex items-center gap-2">' +
@@ -1285,6 +1300,10 @@ window.WorkVoltPages['tasks'] = function(container) {
                             '<button id="td-approve-btn" class="flex-1 text-xs text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-3 py-2 font-semibold border-none cursor-pointer"><i class="fas fa-check mr-1"></i>Approve</button>' +
                           '</div>') +
                   '</div>'
+                : '') +
+              // Re-open button — only admin/manager can re-open an approved task
+              (task.status === 'Done' && task.approval_status === 'approved' && isAdmin()
+                ? '<button id="td-reopen-btn" class="btn-secondary w-full text-sm text-amber-600 hover:bg-amber-50"><i class="fas fa-undo mr-1.5 text-xs"></i>Re-open Task</button>'
                 : '') +
               '<button id="td-edit-btn" class="btn-primary w-full text-sm"><i class="fas fa-pencil mr-1.5 text-xs"></i>Edit Task</button>' +
               (isAdmin() ? '<button id="td-delete-btn" class="btn-secondary w-full text-sm text-red-500 hover:bg-red-50"><i class="fas fa-trash mr-1.5 text-xs"></i>Delete</button>' : '') +
@@ -1305,8 +1324,42 @@ window.WorkVoltPages['tasks'] = function(container) {
       if (ab) ab.addEventListener('click', function() { submitApproval(task.id, 'approve'); });
       var rb = document.getElementById('td-reject-btn');
       if (rb) rb.addEventListener('click', function() { submitApproval(task.id, 'reject'); });
+      var reob = document.getElementById('td-reopen-btn');
+      if (reob) reob.addEventListener('click', function() {
+        api('tasks/update', { id: task.id, status: 'In Progress', approval_status: 'pending' })
+          .then(function() { toast('Task re-opened', 'info'); closeModal(); loadData(); })
+          .catch(function(e) { toast(e.message, 'error'); });
+      });
 
-      // ── @mention picker wiring ───────────────────────────────
+      // Wire progress slider
+      var progressSlider = document.getElementById('td-progress-slider');
+      var progressLabel  = document.getElementById('td-pct-label');
+      var saveProgressBtn = document.getElementById('td-save-progress');
+      if (progressSlider) {
+        progressSlider.addEventListener('input', function() {
+          var v = parseInt(this.value, 10);
+          if (progressLabel) { progressLabel.textContent = v + '%'; progressLabel.className = 'text-sm font-bold ' + (v>=100?'text-green-600':v>0?'text-blue-600':'text-slate-400'); }
+          if (saveProgressBtn) saveProgressBtn.classList.remove('hidden');
+        });
+        if (saveProgressBtn) {
+          saveProgressBtn.addEventListener('click', function() {
+            var v = parseInt(progressSlider.value, 10);
+            this.disabled = true; this.textContent = 'Saving…';
+            api('tasks/update', { id: task.id, progress_pct: v })
+              .then(function() {
+                task.progress_pct = v;
+                toast('Progress updated to ' + v + '%', 'success');
+                saveProgressBtn.textContent = 'Saved ✓';
+                saveProgressBtn.disabled = false;
+                setTimeout(function() { saveProgressBtn.classList.add('hidden'); saveProgressBtn.textContent = 'Save'; }, 1500);
+                loadData();
+              })
+              .catch(function(e) { toast(e.message, 'error'); saveProgressBtn.disabled = false; saveProgressBtn.textContent = 'Save'; });
+          });
+        }
+      }
+
+
       var _mentionedUsers = []; // [{uid, name}] resolved mentions
       var _mentionStart   = -1; // cursor pos where @ was typed
 
@@ -1970,4 +2023,21 @@ window.WorkVoltPages['tasks'] = function(container) {
   if (old) old.innerHTML = '';
   _kbBound = false;
   render();
+
+  // ── Expose cross-module API ───────────────────────────────────
+  window.WVTasks = {
+    openById: function(taskId) {
+      // If task is cached, open immediately; otherwise fetch it
+      if (tasksCache[taskId]) {
+        openTaskDetail(tasksCache[taskId]);
+      } else {
+        api('tasks/get', { id: taskId })
+          .then(function(d) {
+            var t = d.task || d;
+            if (t && t.id) { tasksCache[t.id] = t; openTaskDetail(t); }
+          })
+          .catch(function(e) { toast('Could not open task: ' + e.message, 'error'); });
+      }
+    },
+  };
 };
