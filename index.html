@@ -823,17 +823,18 @@
     }
     closeNotificationDropdown();
     if (refType && window.WorkVolt) {
-      window.WorkVolt.navigate(refType);
-      // Open the specific task if possible
+      // If tasks is already loaded and visible, open directly
       if (refType === 'tasks' && refId) {
-        var attempts = 0;
-        var tryOpen = setInterval(function() {
-          attempts++;
-          if (window.WVTasks && window.WVTasks.openById) {
-            clearInterval(tryOpen);
-            window.WVTasks.openById(refId);
-          } else if (attempts > 30) clearInterval(tryOpen);
-        }, 150);
+        if (window.WVTasks && window.WVTasks.openById) {
+          window.WorkVolt.navigate(refType);
+          setTimeout(function() { window.WVTasks.openById(refId); }, 100);
+        } else {
+          // Set a pending flag BEFORE navigating — tasks boot will pick it up
+          window._pendingOpenTaskId = refId;
+          window.WorkVolt.navigate(refType);
+        }
+      } else {
+        window.WorkVolt.navigate(refType);
       }
     }
   }
