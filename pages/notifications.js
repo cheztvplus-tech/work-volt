@@ -205,12 +205,26 @@ window.WorkVoltPages['notifications'] = function(container) {
           if (act === 'delete')  doDelete(id);
           return;
         }
-        // Click row → mark read + navigate
+        // Click row → mark read + navigate to the related item
         var refType = this.dataset.refType;
         var refId   = this.dataset.refId;
         if (this.dataset.read !== 'true') doMarkRead(id, this);
         if (refType && refId && window.WorkVolt && window.WorkVolt.navigate) {
           window.WorkVolt.navigate(refType);
+          // After navigating, ask the page to open the specific item
+          if (refType === 'tasks') {
+            // Give the tasks page a moment to boot, then open the task detail
+            var attempts = 0;
+            var tryOpen = setInterval(function() {
+              attempts++;
+              if (window.WVTasks && window.WVTasks.openById) {
+                clearInterval(tryOpen);
+                window.WVTasks.openById(refId);
+              } else if (attempts > 30) {
+                clearInterval(tryOpen);
+              }
+            }, 150);
+          }
         }
       });
     });
