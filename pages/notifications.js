@@ -1,4 +1,5 @@
 window.WorkVoltPages = window.WorkVoltPages || {};
+delete window.WorkVoltPages['notifications'];
 
 window.WorkVoltPages['notifications'] = function(container) {
 
