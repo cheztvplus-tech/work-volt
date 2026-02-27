@@ -668,6 +668,16 @@ window.WorkVoltPages['tasks'] = function(container) {
       if (sub) sub.textContent = rows.length + ' task' + (rows.length !== 1 ? 's' : '');
 
       rerender();
+
+      // ── Check for a pending task open from notification click ──
+      if (window._pendingOpenTaskId) {
+        var pendingId = window._pendingOpenTaskId;
+        window._pendingOpenTaskId = null;
+        // Small delay to let the list render first
+        setTimeout(function() {
+          if (window.WVTasks) window.WVTasks.openById(pendingId);
+        }, 150);
+      }
     }).catch(function(e) {
       if (content) content.innerHTML =
         '<div class="flex flex-col items-center justify-center py-20 text-red-400">' +
@@ -2027,12 +2037,10 @@ window.WorkVoltPages['tasks'] = function(container) {
   var old = document.getElementById(MODAL_ID);
   if (old) old.innerHTML = '';
   _kbBound = false;
-  render();
 
-  // ── Expose cross-module API ───────────────────────────────────
+  // ── Expose cross-module API FIRST (before async data loads) ──
   window.WVTasks = {
     openById: function(taskId) {
-      // If task is cached, open immediately; otherwise fetch it
       if (tasksCache[taskId]) {
         openTaskDetail(tasksCache[taskId]);
       } else {
@@ -2045,6 +2053,8 @@ window.WorkVoltPages['tasks'] = function(container) {
       }
     },
   };
+
+  render();
 
   } catch(err) {
     // Fallback — show error instead of infinite spinner
