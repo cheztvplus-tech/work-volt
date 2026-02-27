@@ -1,6 +1,11 @@
 window.WorkVoltPages = window.WorkVoltPages || {};
+// Clear stale cached version so re-navigation always gets a fresh instance
+delete window.WorkVoltPages['tasks'];
 
 window.WorkVoltPages['tasks'] = function(container) {
+
+  // Safety net — catch any crash so the spinner never gets stuck
+  try {
 
   // ── State ──────────────────────────────────────────────────────
   var savedUrl      = localStorage.getItem('wv_gas_url')    || '';
@@ -2040,4 +2045,16 @@ window.WorkVoltPages['tasks'] = function(container) {
       }
     },
   };
+
+  } catch(err) {
+    // Fallback — show error instead of infinite spinner
+    container.innerHTML =
+      '<div class="flex flex-col items-center justify-center h-64 text-red-400">' +
+        '<i class="fas fa-exclamation-circle text-4xl mb-3"></i>' +
+        '<p class="font-semibold text-slate-700">Tasks failed to load</p>' +
+        '<p class="text-sm text-slate-500 mt-1">' + (err && err.message ? err.message : String(err)) + '</p>' +
+        '<button onclick="location.reload()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">Reload Page</button>' +
+      '</div>';
+    console.error('[Tasks] Module crashed:', err);
+  }
 };
