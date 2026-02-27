@@ -154,55 +154,45 @@ window.WorkVoltPages['tasks'] = function(container) {
   }
 
   // ── Progress ──────────────────────────────────────────────────
-  // Stage order that maps to % complete
-  var PROGRESS_STAGES = ['To Do', 'In Progress', 'In Review', 'Done'];
-  var PROGRESS_STAGE_PCT = { 'To Do': 0, 'In Progress': 33, 'In Review': 66, 'Done': 100, 'Cancelled': 100 };
+  // Checklist stages — each one = 25%. Stored as progress_pct (0,25,50,75,100)
+  var CHECKLIST_STAGES = ['Draft', 'In Progress', 'Review', 'Testing'];
 
   function calcProgress(t) {
-    return PROGRESS_STAGE_PCT[t.status] !== undefined ? PROGRESS_STAGE_PCT[t.status] : 0;
+    if (t.status === 'Done' || t.status === 'Cancelled') return 100;
+    var v = parseInt(t.progress_pct, 10);
+    if (!isNaN(v) && v >= 0 && v <= 100) return v;
+    return 0;
   }
 
-  // Render a horizontal checklist progress bar with stages
-  function stageProgressBar(currentStatus) {
-    var stages = PROGRESS_STAGES;
-    var currentIdx = stages.indexOf(currentStatus);
-    if (currentStatus === 'Cancelled') currentIdx = stages.length - 1;
-    var pct = PROGRESS_STAGE_PCT[currentStatus] || 0;
+  // How many checklist items are checked based on progress_pct
+  function checkedCount(task) {
+    if (task.status === 'Done' || task.status === 'Cancelled') return CHECKLIST_STAGES.length;
+    var pct = parseInt(task.progress_pct, 10) || 0;
+    return Math.round((pct / 100) * CHECKLIST_STAGES.length);
+  }
 
-    var stageHtml = stages.map(function(stage, i) {
-      var done    = i < currentIdx || currentStatus === 'Done' || currentStatus === 'Cancelled';
-      var active  = i === currentIdx && currentStatus !== 'Done' && currentStatus !== 'Cancelled';
-      var pending = !done && !active;
+  // Render the interactive checklist — clicking items saves progress
+  function renderProgressChecklist(task) {
+    var isDone = task.status === 'Done' || task.status === 'Cancelled';
+    var checked = checkedCount(task);
+    var pct = calcProgress(task);
 
-      var dotColor  = done ? '#22c55e' : active ? '#3b82f6' : '#e2e8f0';
-      var textColor = done ? '#15803d' : active ? '#1d4ed8' : '#94a3b8';
-      var lineColor = i < stages.length - 1 ? (done || active ? '#22c55e' : '#e2e8f0') : '';
-      // For the connecting line — it should be green if the NEXT stage starts
-      var lineGreen = i < currentIdx;
+    var ringHtml = progressRing(pct, 44, 3.5);
 
-      return '<div class="flex flex-col items-center" style="flex:1;min-width:0">' +
-        '<div class="flex items-center w-full">' +
-          // Left line (except for first)
-          (i > 0 ? '<div style="flex:1;height:2px;background:' + (done ? '#22c55e' : '#e2e8f0') + ';transition:background .3s"></div>' : '<div style="flex:1"></div>') +
-          // Dot
-          '<div style="width:1.4rem;height:1.4rem;border-radius:50%;background:' + dotColor + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;border:2px solid ' + (done ? '#16a34a' : active ? '#2563eb' : '#d1d5db') + ';transition:all .3s">' +
-            (done ? '<i class="fas fa-check" style="color:#fff;font-size:.55rem"></i>' :
-             active ? '<div style="width:.45rem;height:.45rem;border-radius:50%;background:#fff"></div>' : '') +
-          '</div>' +
-          // Right line (except for last)
-          (i < stages.length - 1 ? '<div style="flex:1;height:2px;background:' + (i < currentIdx ? '#22c55e' : '#e2e8f0') + ';transition:background .3s"></div>' : '<div style="flex:1"></div>') +
+    var stepsHtml = CHECKLIST_STAGES.map(function(stage, i) {
+      var isChecked = i < checked || isDone;
+      return '<div class="flex items-center gap-2.5 py-1.5 ' + (isDone ? '' : 'cursor-pointer td-checklist-item') + '" data-step="' + i + '">' +
+        '<div class="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border transition-all ' +
+          (isChecked ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300') + '">' +
+          (isChecked ? '<i class="fas fa-check text-white" style="font-size:.5rem"></i>' : '') +
         '</div>' +
-        '<p style="font-size:.6rem;font-weight:' + (active ? '700' : '500') + ';color:' + textColor + ';margin-top:.3rem;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:3.5rem">' +
-          (stage === 'To Do' ? 'To Do' : stage === 'In Progress' ? 'In Progress' : stage === 'In Review' ? 'Review' : 'Done') +
-        '</p>' +
+        '<span class="text-xs ' + (isChecked ? 'line-through text-slate-400' : 'text-slate-700 font-medium') + '">' + stage + '</span>' +
       '</div>';
     }).join('');
 
-    var isCancelled = currentStatus === 'Cancelled';
-    return '<div class="w-full">' +
-      (isCancelled
-        ? '<div class="flex items-center justify-center py-2"><span class="text-xs font-semibold text-red-500 bg-red-50 border border-red-200 px-3 py-1 rounded-full"><i class="fas fa-ban mr-1"></i>Cancelled</span></div>'
-        : '<div class="flex items-center w-full px-1 mt-1">' + stageHtml + '</div>') +
+    return '<div id="td-checklist-wrap" class="flex items-start gap-3 w-full">' +
+      '<div id="td-progress-ring-wrap" class="flex-shrink-0">' + ringHtml + '</div>' +
+      '<div class="flex-1">' + stepsHtml + '</div>' +
     '</div>';
   }
   function progressRing(pct, size, stroke) {
@@ -1245,7 +1235,7 @@ window.WorkVoltPages['tasks'] = function(container) {
               (over ? '<span class="text-[10px] text-red-500 font-bold bg-red-50 px-2 py-px rounded border border-red-200"><i class="fas fa-fire mr-0.5"></i>Overdue</span>' : '') +
             '</div>' +
             '<h2 class="text-lg font-extrabold text-slate-900 leading-snug">' + esc(task.title) + '</h2>' +
-            (pct > 0 ? '<div class="mt-2">' + stageProgressBar(task.status) + '</div>' : '') +
+            (pct > 0 ? '<div class="mt-2 flex items-center gap-2">' + progressRing(pct, 28, 2.5) + hoursBar(task.actual_hours, task.estimated_hours) + '</div>' : '') +
           '</div>' +
           '<button id="tm-close" class="flex-shrink-0 w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer">✕</button>' +
         '</div>' +
@@ -1306,7 +1296,7 @@ window.WorkVoltPages['tasks'] = function(container) {
                 '<br><span class="text-slate-400 font-normal">' + (countdown(task)||'') + '</span></span>'
               : '<span class="text-slate-300">None</span>') +
             meta('Progress',
-              '<div class="w-full">' + stageProgressBar(task.status) + '</div>') +
+              '<div class="w-full" id="td-progress-checklist">' + renderProgressChecklist(task) + '</div>') +
             meta('Est. Hours', task.estimated_hours ? fmtHours(task.estimated_hours) : '<span class="text-slate-300">—</span>') +
             meta('Actual Hours', '<span class="text-blue-600 font-bold">' + fmtHours(task.actual_hours || 0) + '</span>') +
             ((task.billable === 'true' || task.billable === true)
@@ -1374,6 +1364,57 @@ window.WorkVoltPages['tasks'] = function(container) {
           .then(function() { toast('Task re-opened', 'info'); closeModal(); loadData(); })
           .catch(function(e) { toast(e.message, 'error'); });
       });
+
+      // ── Wire progress checklist ───────────────────────────────
+      var checklistWrap = document.getElementById('td-progress-checklist');
+      if (checklistWrap) {
+        checklistWrap.addEventListener('click', function(e) {
+          var item = e.target.closest('.td-checklist-item');
+          if (!item) return;
+          var step    = parseInt(item.dataset.step, 10); // 0-based index clicked
+          var current = checkedCount(task);
+          var newChecked;
+          // Toggle: clicking a checked item unchecks it (and all after); clicking unchecked checks up to it
+          if (step < current) {
+            newChecked = step;          // uncheck from this step forward
+          } else {
+            newChecked = step + 1;      // check up to and including this step
+          }
+          var newPct = Math.round((newChecked / CHECKLIST_STAGES.length) * 100);
+          // Optimistic UI update
+          task.progress_pct = newPct;
+          checklistWrap.innerHTML = renderProgressChecklist(task);
+          // Re-wire (since innerHTML replaced the nodes)
+          wireChecklist();
+          // Save to API
+          api('tasks/update', { id: task.id, progress_pct: newPct })
+            .then(function() {
+              if (tasksCache[task.id]) tasksCache[task.id].progress_pct = newPct;
+              rerender();
+            })
+            .catch(function(err) { toast(err.message, 'error'); });
+        });
+      }
+      function wireChecklist() {
+        var wrap = document.getElementById('td-progress-checklist');
+        if (!wrap) return;
+        wrap.addEventListener('click', function(e) {
+          var item = e.target.closest('.td-checklist-item');
+          if (!item) return;
+          var step    = parseInt(item.dataset.step, 10);
+          var current = checkedCount(task);
+          var newChecked = (step < current) ? step : step + 1;
+          var newPct = Math.round((newChecked / CHECKLIST_STAGES.length) * 100);
+          task.progress_pct = newPct;
+          wrap.innerHTML = renderProgressChecklist(task);
+          api('tasks/update', { id: task.id, progress_pct: newPct })
+            .then(function() {
+              if (tasksCache[task.id]) tasksCache[task.id].progress_pct = newPct;
+              rerender();
+            })
+            .catch(function(err) { toast(err.message, 'error'); });
+        });
+      }
 
 
 
