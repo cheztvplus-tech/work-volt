@@ -1,11 +1,6 @@
 window.WorkVoltPages = window.WorkVoltPages || {};
-// Clear stale cached version so re-navigation always gets a fresh instance
-delete window.WorkVoltPages['tasks'];
 
 window.WorkVoltPages['tasks'] = function(container) {
-
-  // Safety net — catch any crash so the spinner never gets stuck
-  try {
 
   // ── State ──────────────────────────────────────────────────────
   var savedUrl      = localStorage.getItem('wv_gas_url')    || '';
@@ -154,46 +149,12 @@ window.WorkVoltPages['tasks'] = function(container) {
   }
 
   // ── Progress ──────────────────────────────────────────────────
-  // Checklist stages — each one = 25%. Stored as progress_pct (0,25,50,75,100)
-  var CHECKLIST_STAGES = ['Draft', 'In Progress', 'Review', 'Testing'];
-
   function calcProgress(t) {
     if (t.status === 'Done' || t.status === 'Cancelled') return 100;
-    var v = parseInt(t.progress_pct, 10);
-    if (!isNaN(v) && v >= 0 && v <= 100) return v;
-    return 0;
-  }
-
-  // How many checklist items are checked based on progress_pct
-  function checkedCount(task) {
-    if (task.status === 'Done' || task.status === 'Cancelled') return CHECKLIST_STAGES.length;
-    var pct = parseInt(task.progress_pct, 10) || 0;
-    return Math.round((pct / 100) * CHECKLIST_STAGES.length);
-  }
-
-  // Render the interactive checklist — clicking items saves progress
-  function renderProgressChecklist(task) {
-    var isDone = task.status === 'Done' || task.status === 'Cancelled';
-    var checked = checkedCount(task);
-    var pct = calcProgress(task);
-
-    var ringHtml = progressRing(pct, 44, 3.5);
-
-    var stepsHtml = CHECKLIST_STAGES.map(function(stage, i) {
-      var isChecked = i < checked || isDone;
-      return '<div class="flex items-center gap-2.5 py-1.5 ' + (isDone ? '' : 'cursor-pointer td-checklist-item') + '" data-step="' + i + '">' +
-        '<div class="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border transition-all ' +
-          (isChecked ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300') + '">' +
-          (isChecked ? '<i class="fas fa-check text-white" style="font-size:.5rem"></i>' : '') +
-        '</div>' +
-        '<span class="text-xs ' + (isChecked ? 'line-through text-slate-400' : 'text-slate-700 font-medium') + '">' + stage + '</span>' +
-      '</div>';
-    }).join('');
-
-    return '<div id="td-checklist-wrap" class="flex items-start gap-3 w-full">' +
-      '<div id="td-progress-ring-wrap" class="flex-shrink-0">' + ringHtml + '</div>' +
-      '<div class="flex-1">' + stepsHtml + '</div>' +
-    '</div>';
+    var a = parseFloat(t.actual_hours) || 0;
+    var e = parseFloat(t.estimated_hours) || 0;
+    if (!e) return 0;
+    return Math.min(Math.round((a / e) * 100), 100);
   }
   function progressRing(pct, size, stroke) {
     size   = size   || 36;
@@ -697,15 +658,9 @@ window.WorkVoltPages['tasks'] = function(container) {
       if (sub) sub.textContent = rows.length + ' task' + (rows.length !== 1 ? 's' : '');
 
       rerender();
-
-      // ── Check for a pending task open from notification click ──
-      if (window._pendingOpenTaskId) {
-        var pendingId = window._pendingOpenTaskId;
-        window._pendingOpenTaskId = null;
-        // Small delay to let the list render first
-        setTimeout(function() {
-          if (window.WVTasks) window.WVTasks.openById(pendingId);
-        }, 150);
+      // After tasks are in cache, check if a notification deep-link is waiting
+      if (window._wvDeepLink && window._wvDeepLink.module === 'tasks') {
+        setTimeout(checkDeepLink, 100);
       }
     }).catch(function(e) {
       if (content) content.innerHTML =
@@ -1295,8 +1250,7 @@ window.WorkVoltPages['tasks'] = function(container) {
                 (over ? ' <i class="fas fa-exclamation-circle"></i>' : '') +
                 '<br><span class="text-slate-400 font-normal">' + (countdown(task)||'') + '</span></span>'
               : '<span class="text-slate-300">None</span>') +
-            meta('Progress',
-              '<div class="w-full" id="td-progress-checklist">' + renderProgressChecklist(task) + '</div>') +
+            meta('Progress', progressRing(pct, 32, 3) + '<span class="ml-1 text-sm font-bold ' + (pct>=100?'text-green-600':pct>0?'text-blue-600':'text-slate-400') + '">' + pct + '%</span>') +
             meta('Est. Hours', task.estimated_hours ? fmtHours(task.estimated_hours) : '<span class="text-slate-300">—</span>') +
             meta('Actual Hours', '<span class="text-blue-600 font-bold">' + fmtHours(task.actual_hours || 0) + '</span>') +
             ((task.billable === 'true' || task.billable === true)
@@ -1316,13 +1270,14 @@ window.WorkVoltPages['tasks'] = function(container) {
             meta('Created', fmtDate(task.created_at) || '<span class="text-slate-300">—</span>') +
 
             '<div class="flex flex-col gap-2 mt-4">' +
-              // Billable approval panel — only visible when task is Done and admin/manager
-              ((task.billable === 'true' || task.billable === true) && isAdmin() && task.status === 'Done'
+              // Billable approval panel
+              ((task.billable === 'true' || task.billable === true) && isAdmin()
                 ? '<div class="border border-amber-200 rounded-xl p-3 bg-amber-50">' +
                     '<p class="text-[11px] font-bold text-amber-700 mb-2"><i class="fas fa-dollar-sign mr-1"></i>Billable Approval</p>' +
                     (task.approval_status === 'approved'
                       ? '<div class="flex items-center gap-2">' +
                           '<span class="flex-1 text-xs text-green-700 font-semibold bg-green-100 rounded-lg px-3 py-1.5 text-center"><i class="fas fa-check-circle mr-1"></i>Approved</span>' +
+                          '<button id="td-reject-btn" class="text-xs text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-3 py-1.5 font-semibold border-none cursor-pointer">Reject</button>' +
                         '</div>'
                       : task.approval_status === 'rejected'
                         ? '<div class="flex items-center gap-2">' +
@@ -1334,10 +1289,6 @@ window.WorkVoltPages['tasks'] = function(container) {
                             '<button id="td-approve-btn" class="flex-1 text-xs text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-3 py-2 font-semibold border-none cursor-pointer"><i class="fas fa-check mr-1"></i>Approve</button>' +
                           '</div>') +
                   '</div>'
-                : '') +
-              // Re-open button — only admin/manager can re-open an approved task
-              (task.status === 'Done' && task.approval_status === 'approved' && isAdmin()
-                ? '<button id="td-reopen-btn" class="btn-secondary w-full text-sm text-amber-600 hover:bg-amber-50"><i class="fas fa-undo mr-1.5 text-xs"></i>Re-open Task</button>'
                 : '') +
               '<button id="td-edit-btn" class="btn-primary w-full text-sm"><i class="fas fa-pencil mr-1.5 text-xs"></i>Edit Task</button>' +
               (isAdmin() ? '<button id="td-delete-btn" class="btn-secondary w-full text-sm text-red-500 hover:bg-red-50"><i class="fas fa-trash mr-1.5 text-xs"></i>Delete</button>' : '') +
@@ -1358,40 +1309,8 @@ window.WorkVoltPages['tasks'] = function(container) {
       if (ab) ab.addEventListener('click', function() { submitApproval(task.id, 'approve'); });
       var rb = document.getElementById('td-reject-btn');
       if (rb) rb.addEventListener('click', function() { submitApproval(task.id, 'reject'); });
-      var reob = document.getElementById('td-reopen-btn');
-      if (reob) reob.addEventListener('click', function() {
-        api('tasks/update', { id: task.id, status: 'In Progress', approval_status: 'pending' })
-          .then(function() { toast('Task re-opened', 'info'); closeModal(); loadData(); })
-          .catch(function(e) { toast(e.message, 'error'); });
-      });
 
-      // ── Wire progress checklist ───────────────────────────────
-      // Use delegated click on the modal portal so it survives innerHTML re-renders
-      function handleChecklistClick(e) {
-        var item = e.target.closest('.td-checklist-item');
-        if (!item) return;
-        var step    = parseInt(item.dataset.step, 10);
-        var current = checkedCount(task);
-        var newChecked = (step < current) ? step : step + 1;
-        var newPct = Math.round((newChecked / CHECKLIST_STAGES.length) * 100);
-        task.progress_pct = newPct;
-        // Re-render just the checklist div
-        var wrap = document.getElementById('td-progress-checklist');
-        if (wrap) wrap.innerHTML = renderProgressChecklist(task);
-        // Save
-        api('tasks/update', { id: task.id, progress_pct: newPct })
-          .then(function() {
-            if (tasksCache[task.id]) tasksCache[task.id].progress_pct = newPct;
-            rerender();
-          })
-          .catch(function(err) { toast(err.message, 'error'); });
-      }
-      // Attach to the stable modal container (not the re-rendered inner div)
-      var modalEl = document.getElementById('tm-backdrop');
-      if (modalEl) modalEl.addEventListener('click', handleChecklistClick);
-
-
-
+      // ── @mention picker wiring ───────────────────────────────
       var _mentionedUsers = []; // [{uid, name}] resolved mentions
       var _mentionStart   = -1; // cursor pos where @ was typed
 
@@ -1911,32 +1830,13 @@ window.WorkVoltPages['tasks'] = function(container) {
     if (!inp || !dd) return;
 
     function showUserList(q) {
-      // If cache is empty, try fetching users first
-      if (!usersCache.length) {
-        api('users/list')
-          .then(function(res) {
-            usersCache = res.users || res.rows || [];
-            showUserList(q);
-          })
-          .catch(function() {});
-        return;
-      }
       var matches = (q
         ? usersCache.filter(function(u) { return (u.name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q); })
         : usersCache.slice()
-      ).slice(0, 10);
-      if (!matches.length) {
-        dd.innerHTML = '<div class="px-3 py-2.5 text-xs text-slate-400">No users found</div>';
-        dd.classList.remove('hidden');
-        return;
-      }
+      ).slice(0, 8);
+      if (!matches.length) { dd.classList.add('hidden'); return; }
       dd.innerHTML =
         '<div style="max-height:200px;overflow-y:auto">' +
-        // Clear option
-        '<button type="button" data-uid="" data-name="" ' +
-          'class="w-full text-left px-3 py-2 text-xs text-slate-400 hover:bg-slate-50 flex items-center gap-2 border-none bg-transparent cursor-pointer transition-colors">' +
-          '<i class="fas fa-times-circle text-slate-300 w-7 text-center"></i>Unassigned' +
-        '</button>' +
         matches.map(function(u) {
           var uid = u.user_id || u.id;
           return '<button type="button" data-uid="' + esc(uid) + '" data-name="' + esc(u.name||u.email) + '" ' +
@@ -1952,18 +1852,15 @@ window.WorkVoltPages['tasks'] = function(container) {
         // mousedown fires before blur — prevents the dropdown closing before click registers
         btn.addEventListener('mousedown', function(e) {
           e.preventDefault();
-          inp.value       = this.dataset.name;
+          inp.value      = this.dataset.name;
           inp.dataset.uid = this.dataset.uid;
           dd.classList.add('hidden');
         });
       });
     }
 
-    // Show all users on focus or click (shows everyone when field is empty)
+    // Show all users on focus (shows everyone when field is empty)
     inp.addEventListener('focus', function() {
-      showUserList(this.value.trim().toLowerCase());
-    });
-    inp.addEventListener('click', function() {
       showUserList(this.value.trim().toLowerCase());
     });
     // Filter as user types; clear uid if field emptied
@@ -2076,34 +1973,42 @@ window.WorkVoltPages['tasks'] = function(container) {
   var old = document.getElementById(MODAL_ID);
   if (old) old.innerHTML = '';
   _kbBound = false;
-
-  // ── Expose cross-module API FIRST (before async data loads) ──
-  window.WVTasks = {
-    openById: function(taskId) {
-      if (tasksCache[taskId]) {
-        openTaskDetail(tasksCache[taskId]);
-      } else {
-        api('tasks/get', { id: taskId })
-          .then(function(d) {
-            var t = d.task || d;
-            if (t && t.id) { tasksCache[t.id] = t; openTaskDetail(t); }
-          })
-          .catch(function(e) { toast('Could not open task: ' + e.message, 'error'); });
-      }
-    },
-  };
-
   render();
 
-  } catch(err) {
-    // Fallback — show error instead of infinite spinner
-    container.innerHTML =
-      '<div class="flex flex-col items-center justify-center h-64 text-red-400">' +
-        '<i class="fas fa-exclamation-circle text-4xl mb-3"></i>' +
-        '<p class="font-semibold text-slate-700">Tasks failed to load</p>' +
-        '<p class="text-sm text-slate-500 mt-1">' + (err && err.message ? err.message : String(err)) + '</p>' +
-        '<button onclick="location.reload()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">Reload Page</button>' +
-      '</div>';
-    console.error('[Tasks] Module crashed:', err);
+  // ── Deep-link handler ──────────────────────────────────────────
+  // When a notification is clicked, index.html sets window._wvDeepLink
+  // before navigating here. We pick it up after data loads.
+  // loadData() calls rerender() on success — we hook in there.
+  function checkDeepLink() {
+    var link = window._wvDeepLink;
+    if (!link || link.module !== 'tasks' || !link.id) return;
+    window._wvDeepLink = null; // consume it so it doesn't fire again
+
+    var id = link.id;
+    // Try to find the task in cache first
+    var task = tasksCache[id];
+    if (task) {
+      openTaskDetail(task);
+      return;
+    }
+    // Not in cache yet — fetch directly
+    api('tasks/get', { id: id })
+      .then(function(data) {
+        var t = data.task || data;
+        if (t && t.id) {
+          tasksCache[t.id] = t;
+          openTaskDetail(t);
+        }
+      })
+      .catch(function() {
+        toast('Could not open task', 'error');
+      });
   }
+
+  // Expose deep-link check globally so index.html can also call it
+  // after navigation completes (belt + suspenders approach)
+  window._wvTasksDeepLinkCheck = checkDeepLink;
+
+  // Check immediately in case deep-link was already set before this module loaded
+  setTimeout(checkDeepLink, 400);
 };
