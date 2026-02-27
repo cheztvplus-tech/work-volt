@@ -80,6 +80,9 @@ window.WorkVoltPages['notifications'] = function(container) {
           '<button id="btn-mark-all-read" class="text-xs font-semibold text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors border border-blue-200">' +
             '<i class="fas fa-check-double mr-1"></i>Mark all read' +
           '</button>' +
+          '<button id="btn-delete-all" class="text-xs font-semibold text-red-500 hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors border border-red-200">' +
+            '<i class="fas fa-trash mr-1"></i>Delete all' +
+          '</button>' +
           '<button id="btn-notif-prefs" class="text-xs font-semibold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors border border-slate-200">' +
             '<i class="fas fa-sliders-h mr-1"></i>Preferences' +
           '</button>' +
@@ -117,6 +120,7 @@ window.WorkVoltPages['notifications'] = function(container) {
     });
     container.querySelector('#notif-type-filter').addEventListener('change', function() { typeFilter = this.value; renderList(); });
     container.querySelector('#btn-mark-all-read').addEventListener('click', doMarkAllRead);
+    container.querySelector('#btn-delete-all').addEventListener('click', doDeleteAll);
     container.querySelector('#btn-notif-prefs').addEventListener('click', openPrefsModal);
 
     loadData();
@@ -201,20 +205,17 @@ window.WorkVoltPages['notifications'] = function(container) {
         if (action) {
           e.stopPropagation();
           var act = action.dataset.notifAction;
-          if (act === 'read')    doMarkRead(id, this);
-          if (act === 'archive') doArchive(id);
-          if (act === 'delete')  doDelete(id);
+          if (act === 'read')   doMarkRead(id, this);  // also archives
+          if (act === 'delete') doDelete(id);
           return;
         }
-        // Click row → mark read + navigate to the related item
+        // Click row → mark read (auto-archives) + navigate to the related item
         var refType = this.dataset.refType;
         var refId   = this.dataset.refId;
         if (this.dataset.read !== 'true') doMarkRead(id, this);
         if (refType && refId && window.WorkVolt && window.WorkVolt.navigate) {
           window.WorkVolt.navigate(refType);
-          // After navigating, ask the page to open the specific item
           if (refType === 'tasks') {
-            // Give the tasks page a moment to boot, then open the task detail
             var attempts = 0;
             var tryOpen = setInterval(function() {
               attempts++;
@@ -238,7 +239,7 @@ window.WorkVoltPages['notifications'] = function(container) {
     var unread = r.read !== 'true';
 
     return '<div data-notif-id="' + esc(r.id) + '" data-read="' + esc(r.read) + '" data-ref-type="' + esc(r.ref_type) + '" data-ref-id="' + esc(r.ref_id) + '" ' +
-      'class="flex items-start gap-4 px-4 py-3.5 cursor-pointer transition-all hover:bg-slate-50/80 ' + (unread ? 'bg-blue-50/30' : '') + '">' +
+      'class="group flex items-start gap-4 px-4 py-3.5 cursor-pointer transition-all hover:bg-slate-50/80 ' + (unread ? 'bg-blue-50/30' : '') + '">' +
 
       // Priority dot + type icon
       '<div class="flex flex-col items-center gap-1.5 flex-shrink-0 pt-0.5">' +
@@ -264,10 +265,9 @@ window.WorkVoltPages['notifications'] = function(container) {
           '</div>' +
           '<div class="flex flex-col items-end gap-1.5 flex-shrink-0 ml-2">' +
             '<span class="text-[10px] text-slate-400 whitespace-nowrap">' + timeAgo(r.created_at) + '</span>' +
-            '<div class="flex gap-1 opacity-0 group-hover:opacity-100 notif-actions">' +
-              (unread ? '<button data-notif-action="read" title="Mark read" class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-blue-100 hover:text-blue-600 text-slate-400 flex items-center justify-center text-[10px] transition-colors"><i class="fas fa-check"></i></button>' : '') +
-              '<button data-notif-action="archive" title="Archive" class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-amber-100 hover:text-amber-600 text-slate-400 flex items-center justify-center text-[10px] transition-colors"><i class="fas fa-archive"></i></button>' +
-              '<button data-notif-action="delete" title="Delete" class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-red-100 hover:text-red-500 text-slate-400 flex items-center justify-center text-[10px] transition-colors"><i class="fas fa-trash"></i></button>' +
+            '<div class="flex gap-1">' +
+              (unread ? '<button data-notif-action="read" title="Mark read (archives)" class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-blue-100 hover:text-blue-600 text-slate-400 flex items-center justify-center text-[10px] transition-colors opacity-0 group-hover:opacity-100"><i class="fas fa-check"></i></button>' : '') +
+              '<button data-notif-action="delete" title="Delete" class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-red-100 hover:text-red-500 text-slate-400 flex items-center justify-center text-[10px] transition-colors opacity-0 group-hover:opacity-100"><i class="fas fa-trash"></i></button>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -277,13 +277,20 @@ window.WorkVoltPages['notifications'] = function(container) {
 
   // ── Actions ────────────────────────────────────────────────────
   function doMarkRead(id, rowEl) {
+    // Mark read AND archive in one go — read notifications move to Archived tab
     api('notifications/read', { id: id })
       .then(function() {
-        var r = allRows.find(function(r) { return r.id === id; });
-        if (r) r.read = 'true';
-        if (rowEl) {
-          rowEl.classList.remove('bg-blue-50/30');
-          rowEl.dataset.read = 'true';
+        return api('notifications/archive', { id: id });
+      })
+      .then(function() {
+        // Remove from current list (unless we're viewing Archived tab, where it should stay)
+        if (activeTab !== 'archived') {
+          allRows = allRows.filter(function(r) { return r.id !== id; });
+          renderList();
+        } else {
+          var r = allRows.find(function(r) { return r.id === id; });
+          if (r) r.read = 'true';
+          if (rowEl) { rowEl.classList.remove('bg-blue-50/30'); rowEl.dataset.read = 'true'; }
         }
         window.WVNotifications && window.WVNotifications.refreshBadge();
       })
@@ -298,10 +305,17 @@ window.WorkVoltPages['notifications'] = function(container) {
       })
       .catch(function(e) { toast(e.message, 'error'); });
   }
-  function doArchive(id) {
-    api('notifications/archive', { id: id })
-      .then(function() { allRows = allRows.filter(function(r) { return r.id !== id; }); renderList(); toast('Archived', 'info'); })
-      .catch(function(e) { toast(e.message, 'error'); });
+  function doDeleteAll() {
+    if (!allRows.length) { toast('Nothing to delete', 'info'); return; }
+    // Delete each visible notification
+    var ids = allRows.map(function(r) { return r.id; });
+    var promises = ids.map(function(id) { return api('notifications/delete', { id: id }).catch(function() {}); });
+    Promise.all(promises).then(function() {
+      allRows = [];
+      renderList();
+      window.WVNotifications && window.WVNotifications.refreshBadge();
+      toast('All notifications deleted', 'info');
+    });
   }
   function doDelete(id) {
     api('notifications/delete', { id: id })
