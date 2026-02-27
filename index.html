@@ -197,7 +197,6 @@
               <h3 class="font-semibold text-slate-900 text-sm">Notifications</h3>
               <div class="flex gap-3 items-center">
                 <button onclick="markAllNotificationsRead()" class="text-xs text-blue-600 hover:text-blue-800 font-semibold">Mark all read</button>
-                <button onclick="clearAllNotifications()" class="text-xs text-red-500 hover:text-red-700 font-semibold">Clear all</button>
                 <button onclick="toggleNotificationDropdown()" class="text-slate-400 hover:text-slate-600">
                   <i class="fas fa-times text-sm"></i>
                 </button>
@@ -768,7 +767,7 @@
 
     list.innerHTML = rows.slice(0, 8).map(r => {
       const tc   = NOTIF_TYPE_CONFIG[r.type] || NOTIF_TYPE_CONFIG.system;
-      const isUnread = r.read !== 'true';
+      const isUnread = r.read !== 'true' && r.read !== true;
       const cnt  = parseInt(r.group_count) || 1;
       const ago  = (() => {
         const diff = Math.floor((Date.now() - new Date(r.created_at)) / 1000);
@@ -777,110 +776,56 @@
         if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
         return Math.floor(diff/86400) + 'd ago';
       })();
-      return `<div class="group flex items-start gap-3 px-4 py-3 ${isUnread?'bg-blue-50/40':''} hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0" data-notif-row="${r.id}">
-        <div class="flex-1 flex items-start gap-3 cursor-pointer min-w-0"
-          onclick="handleDropdownNotifClick('${r.id}', '${r.ref_type||''}', '${r.ref_id||''}', this.closest('[data-notif-row]'))">
-          <div style="width:2rem;height:2rem;border-radius:.5rem;background:${tc.color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">
-            <i class="fas ${tc.icon}" style="color:${tc.color};font-size:.75rem"></i>
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-start justify-between gap-1">
-              <p class="text-xs font-${isUnread?'bold':'semibold'} text-slate-900 leading-snug line-clamp-2">${r.title||''}${cnt>1?' <span style="font-size:.65rem;background:#e2e8f0;padding:.05rem .4rem;border-radius:.25rem;font-weight:700">×'+cnt+'</span>':''}</p>
-              ${isUnread?'<span style="width:.5rem;height:.5rem;background:#3b82f6;border-radius:50%;flex-shrink:0;margin-top:.2rem"></span>':''}
-            </div>
-            ${r.body?`<p class="text-[11px] text-slate-500 mt-0.5 line-clamp-1">${r.body}</p>`:''}
-            <p class="text-[10px] text-slate-400 mt-0.5">${ago}</p>
-          </div>
+      return `<div class="flex items-start gap-3 px-4 py-3 ${isUnread?'bg-blue-50/40':''} hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100 last:border-0"
+        data-dropdown-notif-id="${r.id}"
+        onclick="handleDropdownNotifClick('${r.id}', '${r.ref_type||''}', '${r.ref_id||''}')">
+        <div style="width:2rem;height:2rem;border-radius:.5rem;background:${tc.color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">
+          <i class="fas ${tc.icon}" style="color:${tc.color};font-size:.75rem"></i>
         </div>
-        <button onclick="deleteDropdownNotif('${r.id}', this.closest('[data-notif-row]'))" title="Delete"
-          class="opacity-0 group-hover:opacity-100 flex-shrink-0 w-6 h-6 rounded-lg hover:bg-red-100 text-slate-300 hover:text-red-500 flex items-center justify-center transition-all mt-1 border-none bg-transparent cursor-pointer">
-          <i class="fas fa-trash text-[10px]"></i>
-        </button>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-start justify-between gap-1">
+            <p class="text-xs font-${isUnread?'bold':'semibold'} text-slate-900 leading-snug line-clamp-2">${r.title||''}${cnt>1?' <span style="font-size:.65rem;background:#e2e8f0;padding:.05rem .4rem;border-radius:.25rem;font-weight:700">×'+cnt+'</span>':''}</p>
+            ${isUnread?'<span style="width:.5rem;height:.5rem;background:#3b82f6;border-radius:50%;flex-shrink:0;margin-top:.2rem"></span>':''}
+          </div>
+          ${r.body?`<p class="text-[11px] text-slate-500 mt-0.5 line-clamp-1">${r.body}</p>`:''}
+          <p class="text-[10px] text-slate-400 mt-0.5">${ago}</p>
+        </div>
       </div>`;
     }).join('');
   }
 
-  function handleDropdownNotifClick(id, refType, refId, rowEl) {
+  function handleDropdownNotifClick(id, refType, refId) {
     const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
     const savedSecret = localStorage.getItem('wv_api_secret') || '';
-    if (savedUrl && savedSecret) {
-      // Mark read
-      const readUrl = new URL(savedUrl);
-      readUrl.searchParams.set('path',  'notifications/read');
-      readUrl.searchParams.set('token', savedSecret);
-      readUrl.searchParams.set('id', id);
-      fetch(readUrl.toString(), { cache: 'no-cache' }).catch(() => {});
-      // Auto-archive — moves it out of the unread list
-      const archUrl = new URL(savedUrl);
-      archUrl.searchParams.set('path',  'notifications/archive');
-      archUrl.searchParams.set('token', savedSecret);
-      archUrl.searchParams.set('id', id);
-      fetch(archUrl.toString(), { cache: 'no-cache' }).then(() => {
-        // Remove from dropdown UI immediately
-        if (rowEl) rowEl.remove();
-        window.WVNotifications && window.WVNotifications.refreshBadge();
-      }).catch(() => {});
+
+    // 1. Mark as read in backend
+    if (savedUrl && savedSecret && id) {
+      const u = new URL(savedUrl);
+      u.searchParams.set('path',  'notifications/read');
+      u.searchParams.set('token', savedSecret);
+      u.searchParams.set('id', id);
+      fetch(u.toString(), { cache: 'no-cache' })
+        .then(() => {
+          // 2. After confirmed read → remove from dropdown list immediately
+          const el = document.querySelector(`[data-dropdown-notif-id="${id}"]`);
+          if (el) el.remove();
+          // 3. Refresh badge count from server
+          if (window.WVNotifications) window.WVNotifications.refreshBadge();
+          // 4. Also mark it as "seen" in the poll tracker so it won't popup again
+          _lastSeenIds.add(id);
+        })
+        .catch(() => {});
     }
+
+    // 5. Deep-link: navigate to the module, then open the specific item
     closeNotificationDropdown();
     if (refType && window.WorkVolt) {
-      // If tasks is already loaded and visible, open directly
-      if (refType === 'tasks' && refId) {
-        if (window.WVTasks && window.WVTasks.openById) {
-          window.WorkVolt.navigate(refType);
-          setTimeout(function() { window.WVTasks.openById(refId); }, 100);
-        } else {
-          // Set a pending flag BEFORE navigating — tasks boot will pick it up
-          window._pendingOpenTaskId = refId;
-          window.WorkVolt.navigate(refType);
-        }
-      } else {
-        window.WorkVolt.navigate(refType);
+      window.WorkVolt.navigate(refType);
+      if (refId) {
+        // Store pending deep-link — the module's init will pick this up
+        window._wvDeepLink = { module: refType, id: refId, action: 'detail' };
       }
     }
-  }
-
-  function deleteDropdownNotif(id, rowEl) {
-    const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
-    if (!savedUrl || !savedSecret) return;
-    const url = new URL(savedUrl);
-    url.searchParams.set('path',  'notifications/delete');
-    url.searchParams.set('token', savedSecret);
-    url.searchParams.set('id', id);
-    fetch(url.toString(), { cache: 'no-cache' }).catch(() => {});
-    if (rowEl) {
-      rowEl.style.transition = 'all .2s ease';
-      rowEl.style.opacity = '0';
-      rowEl.style.height = rowEl.offsetHeight + 'px';
-      setTimeout(() => { rowEl.style.height = '0'; rowEl.style.padding = '0'; }, 50);
-      setTimeout(() => rowEl.remove(), 250);
-    }
-    window.WVNotifications && window.WVNotifications.refreshBadge();
-  }
-
-  function clearAllNotifications() {
-    const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
-    const uid = currentUser?.user_id;
-    if (!savedUrl || !savedSecret || !uid) return;
-    // Mark all read first, then archive all for this user
-    const readUrl = new URL(savedUrl);
-    readUrl.searchParams.set('path',  'notifications/read-all');
-    readUrl.searchParams.set('token', savedSecret);
-    readUrl.searchParams.set('user_id', uid);
-    fetch(readUrl.toString(), { cache: 'no-cache' })
-      .then(() => {
-        updateNotifBadge(0);
-        const list = document.getElementById('notification-list');
-        if (list) list.innerHTML = `
-          <div class="p-8 text-center text-slate-400">
-            <i class="fas fa-bell-slash text-2xl mb-3 opacity-40 block"></i>
-            <p class="text-sm font-semibold">All caught up!</p>
-            <p class="text-xs mt-1">No new notifications</p>
-          </div>`;
-        showToast('Notifications cleared', 'success');
-      })
-      .catch(() => {});
   }
 
   // ─── Bell badge ───────────────────────────────────────────────
@@ -974,9 +919,19 @@
   }
 
   // ─── Polling ─────────────────────────────────────────────────
-  let _lastUnreadCount  = 0;
-  let _lastSeenIds      = new Set();
-  let _pollVisible      = true;
+  let _lastUnreadCount = 0;
+  let _pollVisible     = true;
+
+  // Persist seen IDs in sessionStorage so page reload doesn't re-popup everything
+  function _loadSeenIds() {
+    try { return new Set(JSON.parse(sessionStorage.getItem('wv_notif_seen') || '[]')); }
+    catch(e) { return new Set(); }
+  }
+  function _saveSeenIds(s) {
+    try { sessionStorage.setItem('wv_notif_seen', JSON.stringify(Array.from(s).slice(-200))); }
+    catch(e) {}
+  }
+  let _lastSeenIds = _loadSeenIds();
 
   function _pollNotifications() {
     const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
@@ -1003,10 +958,7 @@
         rows.forEach(r => {
           if (_lastSeenIds.has(r.id)) return;
           _lastSeenIds.add(r.id);
-          if (_lastSeenIds.size > 200) { // trim old IDs
-            const arr = Array.from(_lastSeenIds);
-            _lastSeenIds = new Set(arr.slice(-100));
-          }
+          _saveSeenIds(_lastSeenIds);
 
           const behavior = NOTIF_PRIORITY_BEHAVIOR[r.priority] || NOTIF_PRIORITY_BEHAVIOR.normal;
           if (r.priority === 'critical') showCriticalBanner(r);
