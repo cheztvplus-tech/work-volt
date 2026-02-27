@@ -238,10 +238,27 @@ window.WorkVoltPages['tasks'] = function(container) {
   function toast(msg, type) {
     if (window.WorkVolt && window.WorkVolt.toast) window.WorkVolt.toast(msg, type || 'info');
   }
-  function sendNotification(toUserId, message, taskId) {
+  function sendNotification(toUserId, title, taskId, opts) {
+    // Don't notify yourself — correct by design
     if (!toUserId || toUserId === myUserId()) return;
-    api('notifications/create', { to_user_id: toUserId, message: message, ref_type: 'task', ref_id: taskId })
-      .catch(function() {}); // silently fail — notification system may not be installed
+    opts = opts || {};
+    var params = {
+      to_user_id:   toUserId,
+      from_user_id: myUserId(),
+      title:        title,
+      body:         opts.body    || '',
+      type:         opts.type    || 'task_assigned',
+      priority:     opts.priority || 'high',
+      ref_type:     'tasks',
+      ref_id:       taskId || '',
+      group_key:    opts.group_key || (opts.type + ':' + (taskId||'') + ':' + myUserId()),
+    };
+    // Use WVNotifications global if available (cleaner), else direct API
+    if (window.WVNotifications) {
+      window.WVNotifications.create(params);
+    } else {
+      api('notifications/create', params).catch(function() {});
+    }
   }
 
   // ── Filtering & Sorting ────────────────────────────────────────
@@ -1185,16 +1202,19 @@ window.WorkVoltPages['tasks'] = function(container) {
                 '<p class="text-sm text-slate-700 leading-relaxed">' + esc(task.description) + '</p></div>'
               : '') +
 
-            // Comment composer
+            // Comment composer with @mention picker
             '<div class="border border-slate-200 rounded-xl overflow-hidden">' +
-              '<div class="bg-slate-50 px-3 py-2 border-b border-slate-200">' +
+              '<div class="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between">' +
                 '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Leave a comment</p>' +
+                '<span class="text-[10px] text-slate-400">Type @ to mention someone</span>' +
               '</div>' +
-              '<div class="p-3">' +
-                '<textarea id="td-comment-input" rows="2" placeholder="Write a comment… use @name to mention someone" ' +
-                  'class="w-full text-sm text-slate-700 border-none outline-none bg-transparent resize-none placeholder-slate-300" style="font-family:inherit"></textarea>' +
-                '<div class="flex justify-end mt-2">' +
-                  '<button id="td-comment-submit" class="btn-primary text-xs py-1.5 px-3"><i class="fas fa-paper-plane mr-1 text-[10px]"></i>Comment</button>' +
+              '<div class="p-3 relative">' +
+                '<div id="td-mention-picker" class="hidden absolute z-50 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden" style="bottom:calc(100% - 2rem);left:.75rem;min-width:220px;max-height:200px;overflow-y:auto"></div>' +
+                '<textarea id="td-comment-input" rows="3" placeholder="Write a comment… type @name to mention someone" ' +
+                  'class="w-full text-sm text-slate-700 border-none outline-none bg-transparent resize-none placeholder-slate-300 leading-relaxed" style="font-family:inherit"></textarea>' +
+                '<div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">' +
+                  '<div id="td-mention-chips" class="flex flex-wrap gap-1"></div>' +
+                  '<button id="td-comment-submit" class="btn-primary text-xs py-1.5 px-3 flex-shrink-0"><i class="fas fa-paper-plane mr-1 text-[10px]"></i>Comment</button>' +
                 '</div>' +
               '</div>' +
             '</div>' +
@@ -1286,24 +1306,122 @@ window.WorkVoltPages['tasks'] = function(container) {
       var rb = document.getElementById('td-reject-btn');
       if (rb) rb.addEventListener('click', function() { submitApproval(task.id, 'reject'); });
 
+      // ── @mention picker wiring ───────────────────────────────
+      var _mentionedUsers = []; // [{uid, name}] resolved mentions
+      var _mentionStart   = -1; // cursor pos where @ was typed
+
+      var commentInp = document.getElementById('td-comment-input');
+      var mentionDd  = document.getElementById('td-mention-picker');
+      var mentionChips = document.getElementById('td-mention-chips');
+
+      function closeMentionPicker() {
+        if (mentionDd) mentionDd.classList.add('hidden');
+        _mentionStart = -1;
+      }
+      function renderMentionChips() {
+        if (!mentionChips) return;
+        mentionChips.innerHTML = _mentionedUsers.map(function(u) {
+          return '<span class="inline-flex items-center gap-1 text-[11px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-px rounded font-semibold">' +
+            '@' + esc(u.name) +
+            '<button type="button" data-uid="' + esc(u.uid) + '" class="remove-mention ml-0.5 text-blue-400 hover:text-blue-700 border-none bg-transparent cursor-pointer p-0 leading-none">✕</button>' +
+          '</span>';
+        }).join('');
+        mentionChips.querySelectorAll('.remove-mention').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var uid = this.dataset.uid;
+            _mentionedUsers = _mentionedUsers.filter(function(u) { return u.uid !== uid; });
+            renderMentionChips();
+          });
+        });
+      }
+
+      if (commentInp) {
+        commentInp.addEventListener('keyup', function(e) {
+          var val   = this.value;
+          var pos   = this.selectionStart;
+          // Find if cursor is right after an @word
+          var before = val.slice(0, pos);
+          var match  = before.match(/@(\w*)$/);
+          if (!match) { closeMentionPicker(); return; }
+          var query = match[1].toLowerCase();
+          _mentionStart = pos - match[0].length;
+          var hits = usersCache.filter(function(u) {
+            return !query || (u.name||'').toLowerCase().includes(query) || (u.email||'').toLowerCase().includes(query);
+          }).slice(0, 6);
+          if (!hits.length) { closeMentionPicker(); return; }
+          mentionDd.innerHTML = hits.map(function(u) {
+            var uid = u.user_id || u.id;
+            return '<button type="button" data-uid="' + esc(uid) + '" data-name="' + esc(u.name||u.email) + '" ' +
+              'class="w-full text-left px-3 py-2.5 flex items-center gap-2 hover:bg-blue-50 border-none bg-transparent cursor-pointer transition-colors">' +
+              userAvatar(uid, 'w-7 h-7 text-xs flex-shrink-0') +
+              '<div class="text-left"><div class="text-sm font-semibold text-slate-800">' + esc(u.name||u.email) + '</div>' +
+              (u.job_title ? '<div class="text-[11px] text-slate-400">' + esc(u.job_title) + '</div>' : '') +
+              '</div></button>';
+          }).join('');
+          mentionDd.classList.remove('hidden');
+          // Wire pick
+          mentionDd.querySelectorAll('button').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var uid  = this.dataset.uid;
+              var name = this.dataset.name;
+              // Replace @query with @Name in the textarea
+              var txt  = commentInp.value;
+              var pre  = txt.slice(0, _mentionStart);
+              var post = txt.slice(commentInp.selectionStart);
+              commentInp.value = pre + '@' + name + ' ' + post;
+              commentInp.focus();
+              // Track mentioned user (avoid duplicates)
+              if (!_mentionedUsers.find(function(u) { return u.uid === uid; })) {
+                _mentionedUsers.push({ uid: uid, name: name });
+                renderMentionChips();
+              }
+              closeMentionPicker();
+            });
+          });
+        });
+        commentInp.addEventListener('blur', function() { setTimeout(closeMentionPicker, 200); });
+      }
+
       // Comment submit
       document.getElementById('td-comment-submit').addEventListener('click', function() {
         var txt = (document.getElementById('td-comment-input').value || '').trim();
-        if (!txt) return;
+        if (!txt) { toast('Write a comment first', 'info'); return; }
+
+        var btn = this; btn.disabled = true;
         api('tasks/log-comment', { task_id: task.id, user_id: myUserId(), comment: txt })
           .then(function() {
-            // Notify @mentioned users
-            var mentions = txt.match(/@(\w+)/g) || [];
-            mentions.forEach(function(m) {
-              var uname = m.slice(1);
-              var u = usersCache.find(function(u) { return (u.name||'').toLowerCase().startsWith(uname.toLowerCase()); });
-              if (u) sendNotification(u.user_id || u.id, myUserId() + ' mentioned you in a task comment', task.id);
+            // Notify all resolved @mentioned users
+            _mentionedUsers.forEach(function(u) {
+              var mentioner = userName(myUserId()) || 'Someone';
+              sendNotification(
+                u.uid,
+                mentioner + ' mentioned you in a comment',
+                task.id,
+                {
+                  type:      'mention',
+                  priority:  'high',
+                  body:      '"' + txt.slice(0, 80) + (txt.length > 80 ? '…' : '') + '" on task: ' + (task.title||task.id),
+                  group_key: 'mention:' + task.id + ':' + myUserId(),
+                }
+              );
             });
-            toast('Comment posted', 'success');
+            // Also notify task assignee if they're not the commenter and not already mentioned
+            if (task.assigned_to && task.assigned_to !== myUserId()) {
+              var alreadyMentioned = _mentionedUsers.some(function(u) { return u.uid === task.assigned_to; });
+              if (!alreadyMentioned) {
+                sendNotification(
+                  task.assigned_to,
+                  (userName(myUserId())||'Someone') + ' commented on your task',
+                  task.id,
+                  { type:'comment', priority:'normal', body:txt.slice(0,80), group_key:'comment:' + task.id }
+                );
+              }
+            }
+            toast('Comment posted ✓', 'success');
             closeModal();
             openTaskDetail(tasksCache[task.id] || task);
           })
-          .catch(function(e) { toast(e.message, 'error'); });
+          .catch(function(e) { toast(e.message, 'error'); btn.disabled = false; });
       });
 
     }).catch(function() { toast('Could not load task details', 'error'); });
@@ -1320,7 +1438,7 @@ window.WorkVoltPages['tasks'] = function(container) {
         if (action === 'approve') {
           // Notify the task assignee
           var task = tasksCache[taskId];
-          if (task && task.assigned_to) sendNotification(task.assigned_to, 'Your billable task "' + (task.title||taskId) + '" was approved', taskId);
+          if (task && task.assigned_to) sendNotification(task.assigned_to, 'Billable task approved ✓', taskId, { type:'status_change', priority:'normal', body: '"' + (task.title||taskId) + '" has been approved for billing.' });
         }
         closeModal(); loadData();
       })
@@ -1340,11 +1458,11 @@ window.WorkVoltPages['tasks'] = function(container) {
         toast(msg || 'Updated', 'success');
         // If assigned_to changed, notify the new assignee
         if (fields.assigned_to && fields.assigned_to !== task.assigned_to) {
-          sendNotification(fields.assigned_to, 'You were assigned to: ' + (task.title || id), id);
+          sendNotification(fields.assigned_to, 'You\'ve been assigned: ' + (task.title || id), id, { type:'task_assigned', priority:'high', body:'Assigned by ' + (userName(myUserId()) || 'someone') });
           // Also notify admins if it's billable and pending approval
           if (task.billable === 'true' && (!task.approval_status || task.approval_status === 'pending')) {
             usersCache.filter(function(u) { return ['Admin','SuperAdmin','Manager'].includes(u.role); })
-              .forEach(function(u) { sendNotification(u.user_id || u.id, 'Billable task needs approval: ' + (task.title||id), id); });
+              .forEach(function(u) { sendNotification(u.user_id||u.id, 'Approval needed: ' + (task.title||id), id, { type:'approval_needed', priority:'critical' }); });
           }
         }
         rerender();
@@ -1515,7 +1633,7 @@ window.WorkVoltPages['tasks'] = function(container) {
         // Auto-notify admin if billable task and pending approval
         if (isBillable && (!task.approval_status || task.approval_status === 'pending')) {
           usersCache.filter(function(u) { return ['Admin','SuperAdmin','Manager'].includes(u.role); })
-            .forEach(function(u) { sendNotification(u.user_id||u.id, 'Hours logged on billable task: ' + (task.title||task.id), task.id); });
+            .forEach(function(u) { sendNotification(u.user_id||u.id, 'Hours logged on billable task', task.id, { type:'approval_needed', priority:'high', body:fmtHours(hours) + ' logged on: ' + (task.title||task.id) }); });
         }
         closeModal(); loadData();
       })
@@ -1706,30 +1824,50 @@ window.WorkVoltPages['tasks'] = function(container) {
     var inp = document.getElementById(fieldId);
     var dd  = document.getElementById(fieldId + '-dd');
     if (!inp || !dd) return;
-    inp.addEventListener('input', function() {
-      var q = this.value.toLowerCase();
-      if (!q) { dd.classList.add('hidden'); return; }
-      var matches = usersCache.filter(function(u) {
-        return (u.name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q);
-      }).slice(0, 6);
+
+    function showUserList(q) {
+      var matches = (q
+        ? usersCache.filter(function(u) { return (u.name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q); })
+        : usersCache.slice()
+      ).slice(0, 8);
       if (!matches.length) { dd.classList.add('hidden'); return; }
-      dd.innerHTML = matches.map(function(u) {
-        var uid = u.user_id || u.id;
-        return '<button type="button" data-uid="' + esc(uid) + '" data-name="' + esc(u.name||u.email) + '" ' +
-          'class="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex items-center gap-2 border-none bg-transparent cursor-pointer">' +
-          userAvatar(uid, 'w-6 h-6 text-[10px] flex-shrink-0') +
-          '<span>' + esc(u.name || u.email) + '</span></button>';
-      }).join('');
+      dd.innerHTML =
+        '<div style="max-height:200px;overflow-y:auto">' +
+        matches.map(function(u) {
+          var uid = u.user_id || u.id;
+          return '<button type="button" data-uid="' + esc(uid) + '" data-name="' + esc(u.name||u.email) + '" ' +
+            'class="w-full text-left px-3 py-2.5 text-sm hover:bg-blue-50 flex items-center gap-2.5 border-none bg-transparent cursor-pointer transition-colors">' +
+            userAvatar(uid, 'w-7 h-7 text-xs flex-shrink-0') +
+            '<div><div class="font-semibold text-slate-800">' + esc(u.name || u.email) + '</div>' +
+            (u.job_title ? '<div class="text-[11px] text-slate-400">' + esc(u.job_title) + '</div>' : '') +
+            '</div></button>';
+        }).join('') +
+        '</div>';
       dd.classList.remove('hidden');
       dd.querySelectorAll('button').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          inp.value = this.dataset.name;
+        // mousedown fires before blur — prevents the dropdown closing before click registers
+        btn.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          inp.value      = this.dataset.name;
           inp.dataset.uid = this.dataset.uid;
           dd.classList.add('hidden');
         });
       });
+    }
+
+    // Show all users on focus (shows everyone when field is empty)
+    inp.addEventListener('focus', function() {
+      showUserList(this.value.trim().toLowerCase());
     });
-    inp.addEventListener('blur', function() { setTimeout(function() { dd.classList.add('hidden'); }, 150); });
+    // Filter as user types; clear uid if field emptied
+    inp.addEventListener('input', function() {
+      if (!this.value.trim()) this.dataset.uid = '';
+      showUserList(this.value.trim().toLowerCase());
+    });
+    inp.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') { dd.classList.add('hidden'); this.blur(); }
+    });
+    inp.addEventListener('blur', function() { setTimeout(function() { dd.classList.add('hidden'); }, 200); });
   }
 
   // ================================================================
@@ -1778,12 +1916,12 @@ window.WorkVoltPages['tasks'] = function(container) {
         modalStatus(isEdit ? 'Saved!' : 'Task created!', true);
         // Notify if assigned_to changed
         if (params.assigned_to && (!prevTask || prevTask.assigned_to !== params.assigned_to)) {
-          sendNotification(params.assigned_to, 'You were assigned to: ' + title, isEdit ? taskId : (res.id || ''));
+          sendNotification(params.assigned_to, 'You\'ve been assigned: ' + title, isEdit ? taskId : (res.id || ''), { type:'task_assigned', priority:'high', body: 'Assigned by ' + (userName(myUserId()) || 'someone') });
         }
         // Notify admins if billable
         if (billable === 'true') {
           usersCache.filter(function(u) { return ['Admin','SuperAdmin','Manager'].includes(u.role) && u.user_id !== myUserId(); })
-            .forEach(function(u) { sendNotification(u.user_id||u.id, 'Billable task needs approval: ' + title, isEdit ? taskId : (res.id||'')); });
+            .forEach(function(u) { sendNotification(u.user_id||u.id, 'Approval needed: ' + title, isEdit ? taskId : (res.id||''), { type:'approval_needed', priority:'critical', body:'A billable task requires your approval.' }); });
         }
         setTimeout(function() { closeModal(); loadData(); }, 700);
       })
