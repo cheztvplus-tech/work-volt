@@ -5,13 +5,19 @@ window.WorkVoltPages['tasks'] = function(container) {
   // ── State ──────────────────────────────────────────────────────
   var savedUrl      = localStorage.getItem('wv_gas_url')    || '';
   var savedSecret   = localStorage.getItem('wv_api_secret') || '';
-  var tasksCache    = {};   // keyed by `id`
+  var tasksCache    = {};          // keyed by id
   var usersCache    = [];
   var projectsCache = [];
   var activeView    = sessionStorage.getItem('tasks_view') || 'list';
-  var filters       = { status: '', priority: '', assigned_to: '' };
+  var filters       = { status: '', priority: '', assigned_to: '', project_id: '', quick: '' };
+  var sortState     = { col: '', dir: 'asc' };
+  var collapseDone  = false;
+  var savedViews    = JSON.parse(localStorage.getItem('wv_task_views') || '[]');
+  var _searchTimer  = null;
+  var _searchVal    = '';
+  var _dragId       = null;
 
-  // ── GAS-matching constants ─────────────────────────────────────
+  // ── Constants ──────────────────────────────────────────────────
   var STATUSES   = ['To Do', 'In Progress', 'In Review', 'Done', 'Cancelled'];
   var PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
 
@@ -29,6 +35,13 @@ window.WorkVoltPages['tasks'] = function(container) {
     'Done':        'fa-check-circle',
     'Cancelled':   'fa-ban',
   };
+  var STATUS_BORDER = {
+    'To Do':       'border-slate-300',
+    'In Progress': 'border-blue-400',
+    'In Review':   'border-purple-400',
+    'Done':        'border-green-400',
+    'Cancelled':   'border-red-300',
+  };
   var PRIORITY_COLORS = {
     'Low':    'bg-slate-100 text-slate-500',
     'Medium': 'bg-amber-100 text-amber-700',
@@ -36,12 +49,14 @@ window.WorkVoltPages['tasks'] = function(container) {
     'Urgent': 'bg-red-100 text-red-600',
   };
   var PRIORITY_DOT = {
-    'Low': 'bg-slate-400', 'Medium': 'bg-amber-400',
-    'High': 'bg-orange-500', 'Urgent': 'bg-red-500',
+    'Low': '#94a3b8', 'Medium': '#f59e0b', 'High': '#f97316', 'Urgent': '#ef4444',
   };
-  var KANBAN_DOT = {
-    'To Do':'bg-slate-400','In Progress':'bg-blue-500',
-    'In Review':'bg-purple-500','Done':'bg-green-500','Cancelled':'bg-red-400',
+  var KANBAN_COLORS = {
+    'To Do':       { dot:'bg-slate-400',   ring:'#94a3b8', bar:'bg-slate-200',   head:'bg-slate-50',  border:'border-slate-200' },
+    'In Progress': { dot:'bg-blue-500',    ring:'#3b82f6', bar:'bg-blue-100',    head:'bg-blue-50',   border:'border-blue-200'  },
+    'In Review':   { dot:'bg-purple-500',  ring:'#8b5cf6', bar:'bg-purple-100',  head:'bg-purple-50', border:'border-purple-200'},
+    'Done':        { dot:'bg-green-500',   ring:'#22c55e', bar:'bg-green-100',   head:'bg-green-50',  border:'border-green-200' },
+    'Cancelled':   { dot:'bg-red-400',     ring:'#f87171', bar:'bg-red-100',     head:'bg-red-50',    border:'border-red-200'   },
   };
 
   // ── Role helpers ───────────────────────────────────────────────
@@ -50,16 +65,12 @@ window.WorkVoltPages['tasks'] = function(container) {
   }
   function isAdmin()  { return ['SuperAdmin','Admin','Manager'].includes(getRole()); }
   function myUserId() { try { return window.WorkVolt.user().user_id || ''; } catch(e) { return ''; } }
-
-  // Projects module installed?
   function projectsInstalled() {
     try { return (window.INSTALLED_MODULES || []).some(function(m) { return m.id === 'projects'; }); }
     catch(e) { return false; }
   }
 
-  // ================================================================
-  //  API
-  // ================================================================
+  // ── API ────────────────────────────────────────────────────────
   function api(path, params) {
     if (!savedUrl || !savedSecret) return Promise.reject(new Error('Google Sheet not connected'));
     var url = new URL(savedUrl);
@@ -74,9 +85,7 @@ window.WorkVoltPages['tasks'] = function(container) {
       .then(function(d) { if (d.error) throw new Error(d.error); return d; });
   }
 
-  // ================================================================
-  //  HELPERS
-  // ================================================================
+  // ── Utility helpers ────────────────────────────────────────────
   function esc(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
@@ -91,22 +100,27 @@ window.WorkVoltPages['tasks'] = function(container) {
     return n % 1 === 0 ? n + 'h' : n.toFixed(1) + 'h';
   }
   function fmtMoney(v) {
-    var n = parseFloat(v) || 0;
-    return '$' + n.toFixed(2);
+    return '$' + (parseFloat(v) || 0).toFixed(2);
   }
   function userName(uid) {
     if (!uid) return '—';
     var u = usersCache.find(function(u) { return u.user_id === uid || u.id === uid; });
     return u ? (u.name || u.email || uid) : uid;
   }
-  function userInitial(uid) {
-    return userName(uid).charAt(0).toUpperCase() || '?';
+  function userInitial(uid) { return userName(uid).charAt(0).toUpperCase() || '?'; }
+  function userAvatar(uid, size) {
+    size = size || 'w-6 h-6 text-[10px]';
+    var colors = ['bg-blue-100 text-blue-600','bg-violet-100 text-violet-600','bg-emerald-100 text-emerald-600','bg-amber-100 text-amber-600','bg-rose-100 text-rose-600'];
+    var idx = uid ? (uid.charCodeAt(0) % colors.length) : 0;
+    return '<span class="' + size + ' ' + colors[idx] + ' rounded-full flex items-center justify-center font-bold flex-shrink-0" title="' + esc(userName(uid)) + '">' + userInitial(uid) + '</span>';
   }
   function projectName(pid) {
     if (!pid) return pid;
     var p = projectsCache.find(function(p) { return (p.id || p.project_id) === pid; });
     return p ? (p.name || pid) : pid;
   }
+
+  // ── Badges ────────────────────────────────────────────────────
   function statusBadge(s) {
     var c = STATUS_COLORS[s] || 'bg-slate-100 text-slate-600';
     var i = STATUS_ICON[s]   || 'fa-circle';
@@ -115,9 +129,9 @@ window.WorkVoltPages['tasks'] = function(container) {
   }
   function priorityBadge(p) {
     var c = PRIORITY_COLORS[p] || 'bg-slate-100 text-slate-500';
-    var d = PRIORITY_DOT[p]   || 'bg-slate-400';
+    var d = PRIORITY_DOT[p]   || '#94a3b8';
     return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ' + c + '">' +
-      '<span class="w-1.5 h-1.5 rounded-full ' + d + '"></span>' + esc(p || '—') + '</span>';
+      '<span style="width:6px;height:6px;border-radius:50%;background:' + d + ';flex-shrink:0"></span>' + esc(p || '—') + '</span>';
   }
   function hoursBar(actual, estimated) {
     var a = parseFloat(actual)    || 0;
@@ -125,70 +139,191 @@ window.WorkVoltPages['tasks'] = function(container) {
     if (!e && !a) return '';
     if (!e) return '<span class="text-xs text-slate-500">' + fmtHours(a) + ' logged</span>';
     var pct      = Math.min(Math.round((a / e) * 100), 100);
-    var barColor = pct >= 100 ? 'bg-red-400' : pct >= 75 ? 'bg-amber-400' : 'bg-blue-400';
+    var barColor = pct >= 100 ? '#ef4444' : pct >= 75 ? '#f59e0b' : '#3b82f6';
     return '<div class="flex items-center gap-1.5">' +
-      '<div class="bg-slate-100 rounded-full h-1.5 flex-1" style="min-width:40px">' +
-        '<div class="' + barColor + ' h-1.5 rounded-full" style="width:' + pct + '%"></div>' +
+      '<div style="background:#e2e8f0;border-radius:9999px;height:5px;flex:1;min-width:32px">' +
+        '<div style="width:' + pct + '%;height:5px;border-radius:9999px;background:' + barColor + ';transition:width .3s"></div>' +
       '</div>' +
-      '<span class="text-xs text-slate-500 whitespace-nowrap">' + fmtHours(a) + ' / ' + fmtHours(e) + '</span>' +
+      '<span class="text-xs text-slate-500 whitespace-nowrap font-medium">' + pct + '%</span>' +
     '</div>';
   }
+
+  // ── Progress ──────────────────────────────────────────────────
+  function calcProgress(t) {
+    if (t.status === 'Done' || t.status === 'Cancelled') return 100;
+    var a = parseFloat(t.actual_hours) || 0;
+    var e = parseFloat(t.estimated_hours) || 0;
+    if (!e) return 0;
+    return Math.min(Math.round((a / e) * 100), 100);
+  }
+  function progressRing(pct, size, stroke) {
+    size   = size   || 36;
+    stroke = stroke || 3;
+    var r    = (size / 2) - stroke - 1;
+    var circ = 2 * Math.PI * r;
+    var dash = (pct / 100) * circ;
+    var color = pct >= 100 ? '#ef4444' : pct >= 75 ? '#f59e0b' : pct > 0 ? '#3b82f6' : '#e2e8f0';
+    var fs = Math.round(size * 0.26);
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" style="transform:rotate(-90deg)">' +
+      '<circle cx="' + (size/2) + '" cy="' + (size/2) + '" r="' + r + '" fill="none" stroke="#e2e8f0" stroke-width="' + stroke + '"/>' +
+      '<circle cx="' + (size/2) + '" cy="' + (size/2) + '" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="' + stroke + '" ' +
+        'stroke-dasharray="' + dash.toFixed(1) + ' ' + circ.toFixed(1) + '" stroke-linecap="round"/>' +
+      '<text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" ' +
+        'style="transform:rotate(90deg);transform-origin:center;font-size:' + fs + 'px;font-weight:700;fill:#475569;font-family:inherit">' +
+        pct + '</text>' +
+    '</svg>';
+  }
+  function columnProgressRing(tasks, status) {
+    var total  = tasks.length;
+    if (!total) return '';
+    var done   = tasks.filter(function(t) { return t.status === 'Done' || t.status === 'Cancelled'; }).length;
+    var pct    = Math.round((done / total) * 100);
+    var k      = KANBAN_COLORS[status] || KANBAN_COLORS['To Do'];
+    return progressRing(pct, 28, 3);
+  }
+
+  // ── Countdown ─────────────────────────────────────────────────
+  function countdown(t) {
+    if (!t.due_date || t.status === 'Done' || t.status === 'Cancelled') return '';
+    var now  = new Date(); now.setHours(0,0,0,0);
+    var due  = new Date(t.due_date);
+    var diff = Math.round((due - now) / 86400000);
+    if (diff < 0)  return '<span class="text-[10px] font-bold text-red-500 flex items-center gap-0.5"><i class="fas fa-fire text-[9px]"></i>' + Math.abs(diff) + 'd overdue</span>';
+    if (diff === 0) return '<span class="text-[10px] font-bold text-orange-500 flex items-center gap-0.5"><i class="fas fa-exclamation text-[9px]"></i>Due today</span>';
+    if (diff <= 3)  return '<span class="text-[10px] font-semibold text-amber-600">' + diff + 'd left</span>';
+    return '<span class="text-[10px] text-slate-400">' + diff + 'd left</span>';
+  }
+
+  // ── Billable helpers ──────────────────────────────────────────
   function billableValue(t) {
     if (t.billable !== 'true' && t.billable !== true) return 0;
     var rate = parseFloat(t.billable_rate) || 0;
     if (!rate) return 0;
-    var payType = t.billable_pay_type || 'per_hour';
-    if (payType === 'per_task') return rate;
-    if (payType === 'salary')   return 0;
-    // per_hour: use actual_hours if logged, else estimated_hours
-    var hours = parseFloat(t.actual_hours) || parseFloat(t.estimated_hours) || 0;
-    return hours * rate;
+    var pt = t.billable_pay_type || 'per_hour';
+    if (pt === 'per_task') return rate;
+    if (pt === 'salary')   return 0;
+    var h = parseFloat(t.actual_hours) || parseFloat(t.estimated_hours) || 0;
+    return h * rate;
   }
   function billableCell(t) {
-    if (t.billable !== 'true' && t.billable !== true) {
+    if (t.billable !== 'true' && t.billable !== true)
       return '<span class="text-xs text-slate-300">—</span>';
-    }
     var val  = billableValue(t);
     var rate = parseFloat(t.billable_rate) || 0;
-    var payType = t.billable_pay_type || 'per_hour';
-    var rateTxt = rate
-      ? (payType === 'per_hour' ? fmtMoney(rate) + '/hr'
-       : payType === 'per_task' ? fmtMoney(rate) + ' flat'
-       : 'Salary')
-      : 'Rate TBD';
+    var pt   = t.billable_pay_type || 'per_hour';
+    var lbl  = rate ? (pt==='per_hour' ? fmtMoney(rate)+'/hr' : pt==='per_task' ? fmtMoney(rate)+' flat' : 'Salary') : 'Rate TBD';
     return '<div class="flex flex-col gap-0.5">' +
       '<span class="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-semibold">' +
-        '<i class="fas fa-dollar-sign text-[9px]"></i>' +
-        (val ? fmtMoney(val) : 'Billable') +
+        '<i class="fas fa-dollar-sign text-[9px]"></i>' + (val ? fmtMoney(val) : 'Billable') +
       '</span>' +
-      '<span class="text-[10px] text-slate-400">' + esc(rateTxt) + '</span>' +
+      '<span class="text-[10px] text-slate-400">' + esc(lbl) + '</span>' +
       '<span class="mt-0.5">' + approvalBadge(t) + '</span>' +
     '</div>';
   }
   function approvalBadge(t) {
     if (t.billable !== 'true' && t.billable !== true) return '';
     var st = t.approval_status || 'pending';
-    var cfg = {
-      pending:  { bg: 'bg-amber-50',  border: 'border-amber-200', text: 'text-amber-700', icon: 'fa-clock',        label: 'Pending Approval' },
-      approved: { bg: 'bg-green-50',  border: 'border-green-200', text: 'text-green-700', icon: 'fa-check-circle', label: 'Approved' },
-      rejected: { bg: 'bg-red-50',    border: 'border-red-200',   text: 'text-red-600',   icon: 'fa-times-circle', label: 'Rejected' },
-    }[st] || { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', icon: 'fa-clock', label: 'Pending Approval' };
-    return '<span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-px rounded font-semibold ' +
-      cfg.bg + ' ' + cfg.border + ' ' + cfg.text + ' border">' +
-      '<i class="fas ' + cfg.icon + ' text-[9px]"></i>' + cfg.label +
-    '</span>';
+    var map = {
+      pending:  { cls:'bg-amber-50 border-amber-200 text-amber-700',  icon:'fa-clock',        lbl:'Pending' },
+      approved: { cls:'bg-green-50 border-green-200 text-green-700',  icon:'fa-check-circle', lbl:'Approved' },
+      rejected: { cls:'bg-red-50 border-red-200 text-red-600',        icon:'fa-times-circle', lbl:'Rejected' },
+    }[st] || { cls:'bg-amber-50 border-amber-200 text-amber-700', icon:'fa-clock', lbl:'Pending' };
+    return '<span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-px rounded font-semibold border ' + map.cls + '">' +
+      '<i class="fas ' + map.icon + ' text-[9px]"></i>' + map.lbl + '</span>';
   }
+
   function isOverdue(t) {
-    return t.due_date && new Date(t.due_date) < new Date()
-      && t.status !== 'Done' && t.status !== 'Cancelled';
+    return t.due_date && new Date(t.due_date) < new Date() && t.status !== 'Done' && t.status !== 'Cancelled';
   }
   function toast(msg, type) {
     if (window.WorkVolt && window.WorkVolt.toast) window.WorkVolt.toast(msg, type || 'info');
   }
+  function sendNotification(toUserId, message, taskId) {
+    if (!toUserId || toUserId === myUserId()) return;
+    api('notifications/create', { to_user_id: toUserId, message: message, ref_type: 'task', ref_id: taskId })
+      .catch(function() {}); // silently fail — notification system may not be installed
+  }
 
-  // ================================================================
-  //  MODAL PORTAL
-  // ================================================================
+  // ── Filtering & Sorting ────────────────────────────────────────
+  function applyFilters(rows) {
+    var me = myUserId();
+    return rows.filter(function(t) {
+      if (collapseDone && (t.status === 'Done' || t.status === 'Cancelled')) return false;
+      if (filters.status     && t.status     !== filters.status)     return false;
+      if (filters.priority   && t.priority   !== filters.priority)   return false;
+      if (filters.project_id && t.project_id !== filters.project_id) return false;
+      if (filters.assigned_to === '__me__' && t.assigned_to !== me)  return false;
+      else if (filters.assigned_to && filters.assigned_to !== '__me__' && t.assigned_to !== filters.assigned_to) return false;
+      if (filters.quick === 'me'      && t.assigned_to !== me) return false;
+      if (filters.quick === 'today') {
+        if (!t.due_date) return false;
+        var d = new Date(t.due_date); d.setHours(0,0,0,0);
+        var n = new Date(); n.setHours(0,0,0,0);
+        if (d.getTime() !== n.getTime()) return false;
+      }
+      if (filters.quick === 'overdue' && !isOverdue(t)) return false;
+      if (filters.quick === 'urgent'  && t.priority !== 'Urgent') return false;
+      if (_searchVal) {
+        var q = _searchVal.toLowerCase();
+        var hay = (t.title||'') + ' ' + (t.description||'') + ' ' + (t.tags||'') + ' ' + (t.id||'');
+        if (!hay.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }
+  function applySort(rows) {
+    if (!sortState.col) {
+      // Default: urgent first, then overdue, then by due date
+      return rows.slice().sort(function(a, b) {
+        var po = { 'Urgent':0,'High':1,'Medium':2,'Low':3 };
+        var oa = isOverdue(a) ? 0 : 1, ob = isOverdue(b) ? 0 : 1;
+        if (oa !== ob) return oa - ob;
+        var pa = po[a.priority] !== undefined ? po[a.priority] : 4;
+        var pb = po[b.priority] !== undefined ? po[b.priority] : 4;
+        if (a.priority === 'Urgent' && b.priority !== 'Urgent') return -1;
+        if (b.priority === 'Urgent' && a.priority !== 'Urgent') return  1;
+        if (!a.due_date && b.due_date) return  1;
+        if (a.due_date && !b.due_date) return -1;
+        if (a.due_date && b.due_date) return new Date(a.due_date) - new Date(b.due_date);
+        return pa - pb;
+      });
+    }
+    return rows.slice().sort(function(a, b) {
+      var va = a[sortState.col] || '', vb = b[sortState.col] || '';
+      if (sortState.col === 'priority') {
+        var o = {'Urgent':0,'High':1,'Medium':2,'Low':3};
+        va = o[va] !== undefined ? o[va] : 4;
+        vb = o[vb] !== undefined ? o[vb] : 4;
+      } else if (sortState.col === 'status') {
+        var so = {'To Do':0,'In Progress':1,'In Review':2,'Done':3,'Cancelled':4};
+        va = so[va] !== undefined ? so[va] : 5;
+        vb = so[vb] !== undefined ? so[vb] : 5;
+      } else if (sortState.col === 'due_date') {
+        va = va ? new Date(va).getTime() : Infinity;
+        vb = vb ? new Date(vb).getTime() : Infinity;
+      } else if (sortState.col === 'progress') {
+        va = calcProgress(a); vb = calcProgress(b);
+      } else {
+        va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+      }
+      var cmp = va < vb ? -1 : va > vb ? 1 : 0;
+      return sortState.dir === 'desc' ? -cmp : cmp;
+    });
+  }
+  function setSort(col) {
+    if (sortState.col === col) sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+    else { sortState.col = col; sortState.dir = 'asc'; }
+    rerender();
+  }
+  function rerender() {
+    var all   = Object.values(tasksCache);
+    var tasks = applySort(applyFilters(all));
+    renderStats(all);
+    if (activeView === 'kanban') renderKanban(tasks);
+    else renderList(tasks);
+  }
+
+  // ── Modal portal ──────────────────────────────────────────────
   var MODAL_ID = 'wv-tasks-modal-portal';
   function getPortal() {
     var el = document.getElementById(MODAL_ID);
@@ -198,10 +333,8 @@ window.WorkVoltPages['tasks'] = function(container) {
   function showModal(html, maxWidth) {
     maxWidth = maxWidth || '640px';
     getPortal().innerHTML =
-      '<div id="tm-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998;' +
-        'display:flex;align-items:center;justify-content:center;padding:1rem;">' +
-        '<div style="background:#fff;border-radius:1.25rem;box-shadow:0 30px 70px rgba(0,0,0,0.25);' +
-          'width:100%;max-width:' + maxWidth + ';max-height:92vh;overflow-y:auto;z-index:9999;">' +
+      '<div id="tm-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9998;display:flex;align-items:center;justify-content:center;padding:1rem">' +
+        '<div style="background:#fff;border-radius:1.25rem;box-shadow:0 30px 70px rgba(0,0,0,.25);width:100%;max-width:' + maxWidth + ';max-height:92vh;overflow-y:auto;z-index:9999">' +
           html +
         '</div>' +
       '</div>';
@@ -209,105 +342,208 @@ window.WorkVoltPages['tasks'] = function(container) {
       if (e.target.id === 'tm-backdrop') closeModal();
     });
   }
-  function closeModal() {
-    var p = document.getElementById(MODAL_ID);
-    if (p) p.innerHTML = '';
-  }
+  function closeModal() { var p = document.getElementById(MODAL_ID); if (p) p.innerHTML = ''; }
   function modalStatus(msg, ok) {
     var el = document.getElementById('tm-status');
     if (!el) return;
     if (!msg) { el.innerHTML = ''; return; }
     el.innerHTML = '<div class="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium mb-1 ' +
       (ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200') + '">' +
-      '<i class="fas ' + (ok ? 'fa-check-circle' : 'fa-exclamation-circle') + '"></i>' +
-      '<span>' + esc(msg) + '</span></div>';
+      '<i class="fas ' + (ok ? 'fa-check-circle' : 'fa-exclamation-circle') + '"></i><span>' + esc(msg) + '</span></div>';
   }
 
   // ================================================================
   //  MAIN SHELL
   // ================================================================
   function render() {
+    var projectOpts = '<option value="">All Projects</option>' +
+      projectsCache.map(function(p) {
+        var pid = p.id || p.project_id;
+        return '<option value="' + esc(pid) + '"' + (filters.project_id === pid ? ' selected' : '') + '>' + esc(p.name || pid) + '</option>';
+      }).join('');
+
+    var savedViewBtns = savedViews.map(function(v, i) {
+      return '<button data-saved-view="' + i + '" title="' + esc(v.name) + '" class="flex-shrink-0 text-[10px] font-semibold px-2 py-1 rounded-full ' +
+        'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 whitespace-nowrap transition-colors flex items-center gap-1">' +
+        '<i class="fas fa-bookmark text-[9px]"></i>' + esc(v.name) +
+        '<i data-del-view="' + i + '" class="fas fa-times text-[9px] ml-1 hover:text-red-500"></i></button>';
+    }).join('');
+
+    var quickChips = [
+      { k:'',        icon:'fa-th-large', lbl:'All' },
+      { k:'me',      icon:'fa-user',     lbl:'Mine' },
+      { k:'today',   icon:'fa-calendar-day', lbl:'Due Today' },
+      { k:'overdue', icon:'fa-fire',     lbl:'Overdue' },
+      { k:'urgent',  icon:'fa-bolt',     lbl:'Urgent' },
+    ].map(function(q) {
+      var on = filters.quick === q.k;
+      return '<button data-quick="' + q.k + '" class="quick-chip flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer border ' +
+        (on ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50') + '">' +
+        '<i class="fas ' + q.icon + ' text-[10px]"></i>' + q.lbl + '</button>';
+    }).join('');
+
     container.innerHTML =
       '<div class="min-h-full bg-slate-50">' +
 
-        // ── Header ────────────────────────────────────────────────
-        '<div class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between gap-3 flex-wrap">' +
-          '<div>' +
-            '<h1 class="text-xl font-extrabold text-slate-900 tracking-tight">Tasks</h1>' +
-            '<p class="text-slate-400 text-xs mt-0.5" id="tasks-subtitle">Loading…</p>' +
-          '</div>' +
-          '<div class="flex items-center gap-2">' +
-            '<div class="flex items-center bg-slate-100 rounded-lg p-0.5">' +
-              '<button id="btn-view-list" class="px-3 py-1.5 rounded-md text-xs font-bold transition-all ' +
-                (activeView==='list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600') + '">' +
-                '<i class="fas fa-list mr-1"></i>List</button>' +
-              '<button id="btn-view-kanban" class="px-3 py-1.5 rounded-md text-xs font-bold transition-all ' +
-                (activeView==='kanban' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600') + '">' +
-                '<i class="fas fa-columns mr-1"></i>Kanban</button>' +
-            '</div>' +
-            '<button id="btn-new-task" class="btn-primary text-sm">' +
-              '<i class="fas fa-plus"></i> New Task</button>' +
-          '</div>' +
+      // ── Header ──────────────────────────────────────────────────
+      '<div class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between gap-3 flex-wrap">' +
+        '<div>' +
+          '<h1 class="text-xl font-extrabold text-slate-900 tracking-tight">Tasks</h1>' +
+          '<p class="text-slate-400 text-xs mt-0.5" id="tasks-subtitle">Loading…</p>' +
         '</div>' +
-
-        // ── Stats strip ───────────────────────────────────────────
-        '<div id="tasks-stats" class="bg-white border-b border-slate-100 px-6 py-2 flex gap-5 text-xs text-slate-400 overflow-x-auto items-center"></div>' +
-
-        // ── Filters ───────────────────────────────────────────────
-        '<div class="bg-white border-b border-slate-200 px-6 py-3 flex flex-wrap items-center gap-2">' +
-          '<select id="filter-status" class="field text-xs py-1.5 w-34" style="width:8.5rem">' +
-            '<option value="">All Statuses</option>' +
-            STATUSES.map(function(s) {
-              return '<option value="' + s + '"' + (filters.status===s?' selected':'') + '>' + s + '</option>';
-            }).join('') +
-          '</select>' +
-          '<select id="filter-priority" class="field text-xs py-1.5" style="width:7.5rem">' +
-            '<option value="">All Priorities</option>' +
-            PRIORITIES.map(function(p) {
-              return '<option value="' + p + '"' + (filters.priority===p?' selected':'') + '>' + p + '</option>';
-            }).join('') +
-          '</select>' +
-          '<select id="filter-assigned" class="field text-xs py-1.5" style="width:8.5rem">' +
-            '<option value="">All Assignees</option>' +
-            '<option value="__me__">Assigned to Me</option>' +
-          '</select>' +
-          '<button id="btn-clear-filters" class="text-xs text-slate-400 hover:text-slate-600 font-semibold px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">' +
-            '<i class="fas fa-times mr-1"></i>Clear</button>' +
-          '<div class="ml-auto">' +
-            '<div class="relative">' +
-              '<i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>' +
-              '<input id="task-search" type="text" placeholder="Search…" class="field text-xs py-1.5 pl-7" style="width:13rem">' +
-            '</div>' +
+        '<div class="flex items-center gap-2 flex-wrap">' +
+          '<div class="flex items-center bg-slate-100 rounded-lg p-0.5">' +
+            '<button id="btn-view-list" class="px-3 py-1.5 rounded-md text-xs font-bold transition-all ' +
+              (activeView==='list'   ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700') + '">' +
+              '<i class="fas fa-list mr-1"></i>List</button>' +
+            '<button id="btn-view-kanban" class="px-3 py-1.5 rounded-md text-xs font-bold transition-all ' +
+              (activeView==='kanban' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700') + '">' +
+              '<i class="fas fa-columns mr-1"></i>Kanban</button>' +
           '</div>' +
+          '<button id="btn-collapse-done" title="Toggle Done/Cancelled visibility" class="px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ' +
+            (collapseDone ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400') + '">' +
+            '<i class="fas ' + (collapseDone ? 'fa-eye' : 'fa-eye-slash') + ' mr-1"></i>' + (collapseDone ? 'Show Done' : 'Hide Done') +
+          '</button>' +
+          '<button id="btn-new-task" class="btn-primary text-sm">' +
+            '<i class="fas fa-plus text-xs"></i> New Task' +
+            '<kbd class="ml-1.5 text-blue-300 text-[10px] font-normal bg-transparent border-none">N</kbd>' +
+          '</button>' +
         '</div>' +
+      '</div>' +
 
-        // ── Content ───────────────────────────────────────────────
-        '<div id="tasks-content" class="p-6">' +
-          '<div class="flex items-center justify-center py-20 text-slate-300">' +
-            '<i class="fas fa-circle-notch fa-spin text-3xl"></i>' +
-          '</div>' +
+      // ── Stats strip ─────────────────────────────────────────────
+      '<div id="tasks-stats" class="bg-white border-b border-slate-100 px-6 py-2 flex gap-4 text-xs text-slate-400 overflow-x-auto items-center"></div>' +
+
+      // ── Quick filter chips ──────────────────────────────────────
+      '<div class="bg-white border-b border-slate-100 px-6 py-2.5 flex items-center gap-2 overflow-x-auto">' +
+        quickChips +
+        (savedViewBtns ? '<span class="w-px h-4 bg-slate-200 mx-1 flex-shrink-0"></span>' + savedViewBtns : '') +
+        '<div class="ml-auto flex items-center gap-2 flex-shrink-0">' +
+          '<button id="btn-save-view" class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-50 text-slate-400 hover:text-slate-700 border border-slate-200 whitespace-nowrap transition-colors">' +
+            '<i class="fas fa-bookmark mr-1 text-[10px]"></i>Save View' +
+          '</button>' +
         '</div>' +
+      '</div>' +
+
+      // ── Filter row ─────────────────────────────────────────────
+      '<div class="bg-white border-b border-slate-200 px-6 py-2.5 flex flex-wrap items-center gap-2">' +
+        '<select id="filter-status" class="field text-xs py-1.5" style="width:8.5rem">' +
+          '<option value="">All Statuses</option>' +
+          STATUSES.map(function(s) {
+            return '<option value="' + s + '"' + (filters.status===s?' selected':'') + '>' + s + '</option>';
+          }).join('') +
+        '</select>' +
+        '<select id="filter-priority" class="field text-xs py-1.5" style="width:7.5rem">' +
+          '<option value="">All Priorities</option>' +
+          PRIORITIES.map(function(p) {
+            return '<option value="' + p + '"' + (filters.priority===p?' selected':'') + '>' + p + '</option>';
+          }).join('') +
+        '</select>' +
+        '<select id="filter-assigned" class="field text-xs py-1.5" style="width:8.5rem">' +
+          '<option value="">All Assignees</option>' +
+          '<option value="__me__">Assigned to Me</option>' +
+        '</select>' +
+        (projectsInstalled()
+          ? '<select id="filter-project" class="field text-xs py-1.5" style="width:8.5rem">' + projectOpts + '</select>'
+          : '') +
+        '<button id="btn-clear-filters" class="text-xs text-slate-400 hover:text-red-500 font-semibold px-2 py-1.5 rounded-lg hover:bg-red-50 transition-colors">' +
+          '<i class="fas fa-times mr-1"></i>Clear</button>' +
+        '<div class="ml-auto relative">' +
+          '<i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>' +
+          '<input id="task-search" type="text" placeholder="Search… (/)" value="' + esc(_searchVal) + '" class="field text-xs py-1.5 pl-7" style="width:13rem">' +
+        '</div>' +
+      '</div>' +
+
+      // ── Quick add bar ───────────────────────────────────────────
+      '<div class="bg-white border-b border-slate-100 px-6 py-2 flex items-center gap-3">' +
+        '<i class="fas fa-plus text-slate-300 text-xs flex-shrink-0"></i>' +
+        '<input id="quick-add-input" type="text" placeholder="Quick add — type a task title and press Enter…" ' +
+          'class="flex-1 text-sm text-slate-700 outline-none bg-transparent placeholder-slate-300" autocomplete="off">' +
+        '<select id="qa-priority" class="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-500 bg-slate-50 flex-shrink-0" style="font-family:inherit">' +
+          PRIORITIES.map(function(p) { return '<option' + (p==='Medium'?' selected':'') + '>' + p + '</option>'; }).join('') +
+        '</select>' +
+        '<input id="qa-due" type="date" class="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-500 bg-slate-50 flex-shrink-0">' +
+      '</div>' +
+
+      // ── Content ────────────────────────────────────────────────
+      '<div id="tasks-content" class="p-6">' +
+        '<div class="flex items-center justify-center py-20 text-slate-300">' +
+          '<i class="fas fa-circle-notch fa-spin text-3xl"></i></div>' +
+      '</div>' +
+
+      // ── Keyboard shortcuts hint ─────────────────────────────────
+      '<div class="fixed bottom-4 right-4 z-10">' +
+        '<button id="btn-shortcuts" title="Keyboard shortcuts" class="w-8 h-8 rounded-full bg-slate-700 text-white text-xs flex items-center justify-center shadow-lg hover:bg-slate-800 transition-colors border-none cursor-pointer">?</button>' +
+      '</div>' +
+
       '</div>';
 
-    // ── Wire up controls ──────────────────────────────────────────
+    // Wire controls
     container.querySelector('#btn-view-list').addEventListener('click', function() { setView('list'); });
     container.querySelector('#btn-view-kanban').addEventListener('click', function() { setView('kanban'); });
     container.querySelector('#btn-new-task').addEventListener('click', function() { openTaskForm(null); });
+    container.querySelector('#btn-collapse-done').addEventListener('click', function() { collapseDone = !collapseDone; render(); rerender(); });
     container.querySelector('#btn-clear-filters').addEventListener('click', function() {
-      filters = { status:'', priority:'', assigned_to:'' }; render();
+      filters = { status:'', priority:'', assigned_to:'', project_id:'', quick:'' };
+      sortState = { col:'', dir:'asc' };
+      _searchVal = '';
+      render(); loadData();
     });
-    container.querySelector('#filter-status').addEventListener('change', function() {
-      filters.status = this.value; loadData();
-    });
-    container.querySelector('#filter-priority').addEventListener('change', function() {
-      filters.priority = this.value; loadData();
-    });
-    container.querySelector('#filter-assigned').addEventListener('change', function() {
-      filters.assigned_to = this.value; loadData();
-    });
+    container.querySelector('#filter-status').addEventListener('change', function() { filters.status = this.value; rerender(); });
+    container.querySelector('#filter-priority').addEventListener('change', function() { filters.priority = this.value; rerender(); });
+    container.querySelector('#filter-assigned').addEventListener('change', function() { filters.assigned_to = this.value; rerender(); });
+    var projSel = container.querySelector('#filter-project');
+    if (projSel) projSel.addEventListener('change', function() { filters.project_id = this.value; rerender(); });
+
     container.querySelector('#task-search').addEventListener('input', function() {
-      doSearch(this.value);
+      _searchVal = this.value;
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(rerender, 200);
     });
+    container.querySelector('#task-search').addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') { this.value = ''; _searchVal = ''; rerender(); }
+    });
+
+    // Quick chips
+    container.querySelectorAll('.quick-chip').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        filters.quick = this.dataset.quick;
+        render(); rerender();
+      });
+    });
+
+    // Quick add
+    container.querySelector('#quick-add-input').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && this.value.trim()) {
+        var title    = this.value.trim();
+        var priority = container.querySelector('#qa-priority').value;
+        var due      = container.querySelector('#qa-due').value;
+        this.value = '';
+        quickCreate({ title: title, priority: priority, due_date: due });
+      }
+      if (e.key === 'Escape') { this.value = ''; this.blur(); }
+    });
+
+    // Save view
+    container.querySelector('#btn-save-view').addEventListener('click', openSaveViewModal);
+
+    // Saved view buttons
+    container.querySelectorAll('[data-saved-view]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        if (e.target.dataset.delView !== undefined) {
+          var idx = parseInt(e.target.dataset.delView);
+          savedViews.splice(idx, 1);
+          localStorage.setItem('wv_task_views', JSON.stringify(savedViews));
+          render(); rerender();
+          return;
+        }
+        var v = savedViews[parseInt(this.dataset.savedView)];
+        if (v) { filters = Object.assign({}, v.filters); _searchVal = v.search || ''; sortState = v.sort || { col:'', dir:'asc' }; render(); rerender(); }
+      });
+    });
+
+    // Shortcuts button
+    container.querySelector('#btn-shortcuts').addEventListener('click', openShortcutsModal);
 
     // Delegated content clicks
     container.querySelector('#tasks-content').addEventListener('click', function(e) {
@@ -323,10 +559,14 @@ window.WorkVoltPages['tasks'] = function(container) {
       if (action === 'delete')    openDeleteModal(id, title);
       if (action === 'log-hours') openLogHoursModal(task);
       if (action === 'log-note')  openLogNoteModal(task);
-      if (action === 'complete')  quickUpdate(id, { status:'Done' },       'Task completed ✓');
-      if (action === 'cancel')    quickUpdate(id, { status:'Cancelled' },  'Task cancelled');
-      if (action === 'reopen')    quickUpdate(id, { status:'To Do' },      'Task reopened');
+      if (action === 'complete')  quickUpdate(id, { status:'Done' },      'Task completed ✓');
+      if (action === 'cancel')    quickUpdate(id, { status:'Cancelled' }, 'Task cancelled');
+      if (action === 'reopen')    quickUpdate(id, { status:'To Do' },     'Task reopened');
+      if (action === 'sort')      setSort(btn.dataset.col);
     });
+
+    // Keyboard shortcuts (global)
+    bindKeyboardShortcuts();
 
     loadData();
   }
@@ -337,36 +577,42 @@ window.WorkVoltPages['tasks'] = function(container) {
     render();
   }
 
+  var _kbBound = false;
+  function bindKeyboardShortcuts() {
+    if (_kbBound) return;
+    _kbBound = true;
+    document.addEventListener('keydown', function(e) {
+      // Only when NOT focused in an input/textarea/select
+      var tag = (document.activeElement || {}).tagName || '';
+      if (['INPUT','TEXTAREA','SELECT'].includes(tag)) return;
+      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openTaskForm(null); }
+      if (e.key === '/') { e.preventDefault(); var s = document.getElementById('task-search'); if (s) { s.focus(); s.select(); } }
+      if (e.key === 'k' || e.key === 'K') setView('kanban');
+      if (e.key === 'l' || e.key === 'L') setView('list');
+      if (e.key === 'Escape') closeModal();
+    });
+  }
 
   // ================================================================
   //  DATA LOADING
   // ================================================================
   function loadData() {
     var content = document.getElementById('tasks-content');
-
     if (!savedUrl || !savedSecret) {
       if (content) content.innerHTML =
         '<div class="flex flex-col items-center justify-center py-24 text-slate-400">' +
           '<i class="fas fa-plug text-5xl mb-4 opacity-30"></i>' +
           '<p class="font-semibold text-slate-500">Google Sheet not connected</p>' +
-          '<p class="text-sm mt-1">Go to <strong>Settings → Connection</strong> to connect your sheet.</p>' +
+          '<p class="text-sm mt-1">Go to <strong>Settings → Connection</strong> to connect.</p>' +
         '</div>';
       return;
     }
 
-    var p = {};
-    if (filters.status)   p.status   = filters.status;
-    if (filters.priority) p.priority = filters.priority;
-    if (filters.assigned_to === '__me__') p.assigned_to = myUserId();
-    else if (filters.assigned_to) p.assigned_to = filters.assigned_to;
-
     var calls = [
-      api('tasks/list', p),
+      api('tasks/list', {}),
       api('users/list').catch(function() { return {}; }),
     ];
-    if (projectsInstalled()) {
-      calls.push(api('projects/list').catch(function() { return {}; }));
-    }
+    if (projectsInstalled()) calls.push(api('projects/list').catch(function() { return {}; }));
 
     Promise.all(calls).then(function(res) {
       var rows = res[0].rows || [];
@@ -376,7 +622,7 @@ window.WorkVoltPages['tasks'] = function(container) {
       tasksCache = {};
       rows.forEach(function(t) { if (t.id) tasksCache[t.id] = t; });
 
-      // Populate assignee filter options dynamically
+      // Populate assignee filter
       var sel = document.getElementById('filter-assigned');
       if (sel) {
         var existing = Array.from(sel.options).map(function(o) { return o.value; });
@@ -391,14 +637,10 @@ window.WorkVoltPages['tasks'] = function(container) {
         });
       }
 
-      renderStats(rows);
-
       var sub = document.getElementById('tasks-subtitle');
       if (sub) sub.textContent = rows.length + ' task' + (rows.length !== 1 ? 's' : '');
 
-      if (activeView === 'kanban') renderKanban(rows);
-      else renderList(rows);
-
+      rerender();
     }).catch(function(e) {
       if (content) content.innerHTML =
         '<div class="flex flex-col items-center justify-center py-20 text-red-400">' +
@@ -408,7 +650,6 @@ window.WorkVoltPages['tasks'] = function(container) {
     });
   }
 
-
   // ================================================================
   //  STATS STRIP
   // ================================================================
@@ -417,37 +658,53 @@ window.WorkVoltPages['tasks'] = function(container) {
     if (!el) return;
     var counts = {}; STATUSES.forEach(function(s) { counts[s] = 0; });
     rows.forEach(function(t) { if (counts[t.status] !== undefined) counts[t.status]++; });
-    var totalH       = rows.reduce(function(s, t) { return s + (parseFloat(t.actual_hours) || 0); }, 0);
-    var overdueN     = rows.filter(isOverdue).length;
-    var billableRows = rows.filter(function(t) { return t.billable === 'true' || t.billable === true; });
-    var billableTotal = billableRows.reduce(function(s, t) { return s + billableValue(t); }, 0);
+    var totalH   = rows.reduce(function(s, t) { return s + (parseFloat(t.actual_hours)||0); }, 0);
+    var overdueN = rows.filter(isOverdue).length;
+    var billRows = rows.filter(function(t) { return t.billable==='true'||t.billable===true; });
+    var billTot  = billRows.reduce(function(s, t) { return s + billableValue(t); }, 0);
+    var doneN    = rows.filter(function(t) { return t.status==='Done'; }).length;
+    var total    = rows.length;
+    var donePct  = total ? Math.round((doneN / total) * 100) : 0;
 
     el.innerHTML =
       STATUSES.map(function(s) {
-        return '<span class="flex items-center gap-1.5 whitespace-nowrap">' +
-          '<span class="w-2 h-2 rounded-full ' + (KANBAN_DOT[s] || 'bg-slate-400') + '"></span>' +
+        var k = KANBAN_COLORS[s] || {};
+        return '<button data-quick="' + (s==='To Do'?'':s) + '" class="quick-chip flex-shrink-0 flex items-center gap-1.5 whitespace-nowrap hover:bg-slate-50 px-1 py-0.5 rounded-lg transition-colors cursor-pointer">' +
+          '<span class="w-2 h-2 rounded-full ' + (k.dot||'bg-slate-400') + '"></span>' +
           '<span class="font-bold text-slate-700">' + counts[s] + '</span>' +
-          '<span>' + s + '</span></span>';
-      }).join('<span class="text-slate-200 mx-0.5">|</span>') +
-      '<span class="text-slate-200 mx-1">·</span>' +
+          '<span>' + s + '</span></button>';
+      }).join('<span class="text-slate-200">|</span>') +
+      '<span class="text-slate-200">·</span>' +
       '<span class="flex items-center gap-1 whitespace-nowrap">' +
         '<i class="fas fa-clock text-blue-400"></i>' +
-        '<span class="font-bold text-slate-700">' + fmtHours(totalH) + '</span> logged' +
+        '<span class="font-bold text-slate-700">' + fmtHours(totalH) + '</span>' +
       '</span>' +
-      (billableRows.length
-        ? '<span class="text-slate-200 mx-1">·</span>' +
+      (billRows.length
+        ? '<span class="text-slate-200">·</span>' +
           '<span class="flex items-center gap-1 whitespace-nowrap text-green-600 font-semibold">' +
             '<i class="fas fa-dollar-sign text-green-500 text-[10px]"></i>' +
-            '<span class="font-bold text-green-700">' + (billableTotal ? fmtMoney(billableTotal) : billableRows.length + ' billable') + '</span>' +
-            (billableTotal ? '' : '<span class="font-normal text-green-600 text-[11px]">billable</span>') +
+            '<span class="font-bold">' + (billTot ? fmtMoney(billTot) : billRows.length + ' billable') + '</span>' +
           '</span>'
         : '') +
-      (overdueN ? '<span class="text-slate-200 mx-1">·</span>' +
-        '<span class="flex items-center gap-1 whitespace-nowrap text-red-500 font-bold">' +
-          '<i class="fas fa-exclamation-circle"></i>' + overdueN + ' overdue' +
-        '</span>' : '');
-  }
+      (overdueN
+        ? '<span class="text-slate-200">·</span>' +
+          '<span class="flex items-center gap-1 whitespace-nowrap text-red-500 font-bold">' +
+            '<i class="fas fa-fire"></i>' + overdueN + ' overdue' +
+          '</span>'
+        : '') +
+      '<span class="text-slate-200">·</span>' +
+      '<span class="flex items-center gap-1.5 whitespace-nowrap ml-auto">' +
+        progressRing(donePct, 22, 2.5) +
+        '<span class="text-[11px] text-slate-500">' + donePct + '% done</span>' +
+      '</span>';
 
+    // Wire stats chips
+    el.querySelectorAll('.quick-chip').forEach(function(b) {
+      b.addEventListener('click', function() {
+        if (this.dataset.quick !== undefined) { filters.quick = this.dataset.quick; render(); rerender(); }
+      });
+    });
+  }
 
   // ================================================================
   //  LIST VIEW
@@ -458,20 +715,34 @@ window.WorkVoltPages['tasks'] = function(container) {
 
     if (!tasks.length) {
       content.innerHTML =
-        '<div class="flex flex-col items-center justify-center py-24 text-slate-400">' +
+        '<div class="flex flex-col items-center justify-center py-20 text-slate-300">' +
           '<i class="fas fa-clipboard-list text-5xl mb-4 opacity-25"></i>' +
-          '<p class="font-semibold text-slate-500">No tasks found</p>' +
-          '<p class="text-sm mt-1">Click <strong>New Task</strong> to create one.</p>' +
+          '<p class="font-semibold text-slate-500">No tasks match your filters</p>' +
+          '<p class="text-sm mt-1">Try clearing filters or create a new task.</p>' +
         '</div>';
       return;
     }
 
     var showProject = projectsInstalled();
 
+    function sortTh(col, label) {
+      var active = sortState.col === col;
+      var icon   = active ? (sortState.dir === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort';
+      return '<th class="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 transition-colors whitespace-nowrap" data-action="sort" data-col="' + col + '">' +
+        '<span class="flex items-center gap-1">' + label +
+          '<i class="fas ' + icon + ' text-[9px] ' + (active ? 'text-blue-500' : 'text-slate-300') + '"></i>' +
+        '</span></th>';
+    }
+
     var rows = tasks.map(function(t) {
       var overdue  = isOverdue(t);
       var done     = t.status === 'Done' || t.status === 'Cancelled';
+      var pct      = calcProgress(t);
       var hasHours = parseFloat(t.estimated_hours) > 0 || parseFloat(t.actual_hours) > 0;
+
+      var rowClass = 'border-t border-slate-100 hover:bg-blue-50/30 transition-colors group cursor-pointer' +
+        (overdue && !done ? ' bg-red-50/30' : '') +
+        (t.priority === 'Urgent' && !done ? ' border-l-2 border-l-red-400' : '');
 
       var quickBtns =
         (!done
@@ -479,32 +750,51 @@ window.WorkVoltPages['tasks'] = function(container) {
             '<button data-action="cancel"   data-id="' + t.id + '" title="Cancel"    class="act-btn icon-btn hover:text-orange-500 hover:bg-orange-50"><i class="fas fa-ban text-xs"></i></button>'
           : '<button data-action="reopen"   data-id="' + t.id + '" title="Reopen"    class="act-btn icon-btn hover:text-blue-600 hover:bg-blue-50"><i class="fas fa-undo text-xs"></i></button>') +
         '<button data-action="log-hours" data-id="' + t.id + '" title="Log Hours"  class="act-btn icon-btn hover:text-blue-600 hover:bg-blue-50"><i class="fas fa-clock text-xs"></i></button>' +
-        '<button data-action="log-note"  data-id="' + t.id + '" title="Log Note"   class="act-btn icon-btn hover:text-purple-600 hover:bg-purple-50"><i class="fas fa-sticky-note text-xs"></i></button>' +
+        '<button data-action="log-note"  data-id="' + t.id + '" title="Comment"    class="act-btn icon-btn hover:text-purple-600 hover:bg-purple-50"><i class="fas fa-comment text-xs"></i></button>' +
         '<button data-action="edit"      data-id="' + t.id + '" title="Edit"        class="act-btn icon-btn hover:text-indigo-600 hover:bg-indigo-50"><i class="fas fa-pencil text-xs"></i></button>' +
         (isAdmin() ? '<button data-action="delete" data-id="' + t.id + '" data-title="' + esc(t.title) + '" title="Delete" class="act-btn icon-btn hover:text-red-600 hover:bg-red-50"><i class="fas fa-trash text-xs"></i></button>' : '');
 
-      return '<tr class="border-t border-slate-100 hover:bg-slate-50/60 transition-colors group">' +
+      return '<tr class="' + rowClass + '" data-action="view" data-id="' + t.id + '">' +
 
-        // Task name + ID + tags — clicking title opens detail
-        '<td class="px-4 py-3 cursor-pointer" style="max-width:260px" data-action="view" data-id="' + t.id + '">' +
-          '<div class="font-semibold text-slate-900 text-sm leading-snug truncate">' + esc(t.title) + '</div>' +
-          '<div class="text-[10px] text-slate-400 font-mono">' + esc(t.id) + '</div>' +
+        // Task title + ID + tags + countdown
+        '<td class="px-4 py-3" style="max-width:280px">' +
+          '<div class="font-semibold text-slate-900 text-sm leading-snug ' + (done ? 'line-through text-slate-400' : '') + '">' + esc(t.title) + '</div>' +
+          '<div class="flex items-center gap-2 mt-0.5">' +
+            '<span class="text-[10px] text-slate-400 font-mono">' + esc(t.id) + '</span>' +
+            countdown(t) +
+          '</div>' +
           (t.tags ? '<div class="flex flex-wrap gap-1 mt-1">' +
             t.tags.split(',').map(function(tag) { tag = tag.trim();
               return tag ? '<span class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-px rounded font-medium">' + esc(tag) + '</span>' : '';
             }).join('') + '</div>' : '') +
         '</td>' +
 
-        // Status
-        '<td class="px-4 py-3 whitespace-nowrap">' + statusBadge(t.status) + '</td>' +
+        // Status (inline-editable click → dropdown)
+        '<td class="px-4 py-3 whitespace-nowrap" data-action="" data-id="">' +
+          '<div class="inline-status-wrap" data-id="' + t.id + '">' + statusBadge(t.status) + '</div>' +
+        '</td>' +
 
-        // Priority
-        '<td class="px-4 py-3 whitespace-nowrap">' + priorityBadge(t.priority) + '</td>' +
+        // Priority (inline-editable)
+        '<td class="px-4 py-3 whitespace-nowrap" data-action="" data-id="">' +
+          '<div class="inline-priority-wrap" data-id="' + t.id + '">' + priorityBadge(t.priority) + '</div>' +
+        '</td>' +
+
+        // Progress ring + bar
+        '<td class="px-4 py-3 whitespace-nowrap" style="min-width:90px">' +
+          (hasHours
+            ? '<div class="flex items-center gap-2">' +
+                progressRing(pct, 30, 2.5) +
+                '<div style="width:50px">' + hoursBar(t.actual_hours, t.estimated_hours) + '</div>' +
+              '</div>'
+            : '<span class="text-xs text-slate-300">—</span>') +
+        '</td>' +
 
         // Due date
-        '<td class="px-4 py-3 text-xs whitespace-nowrap ' + (overdue ? 'text-red-500 font-bold' : 'text-slate-500') + '">' +
+        '<td class="px-4 py-3 text-xs whitespace-nowrap ' + (overdue && !done ? 'text-red-500 font-bold' : 'text-slate-500') + '">' +
           (t.due_date
-            ? fmtDate(t.due_date) + (overdue ? ' <i class="fas fa-exclamation-circle ml-0.5"></i>' : '')
+            ? '<div class="flex flex-col">' +
+                '<span>' + fmtDate(t.due_date) + (overdue && !done ? ' <i class="fas fa-exclamation-circle text-[10px]"></i>' : '') + '</span>' +
+              '</div>'
             : '<span class="text-slate-300">—</span>') +
         '</td>' +
 
@@ -512,23 +802,16 @@ window.WorkVoltPages['tasks'] = function(container) {
         '<td class="px-4 py-3 whitespace-nowrap">' +
           (t.assigned_to
             ? '<span class="inline-flex items-center gap-1.5 text-xs text-slate-600">' +
-                '<span class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(t.assigned_to) + '</span>' +
-                '<span class="truncate" style="max-width:90px">' + esc(userName(t.assigned_to)) + '</span>' +
+                userAvatar(t.assigned_to, 'w-6 h-6 text-[10px]') +
+                '<span class="truncate" style="max-width:80px">' + esc(userName(t.assigned_to)) + '</span>' +
               '</span>'
             : '<span class="text-xs text-slate-300">—</span>') +
         '</td>' +
 
-        // Hours bar
-        '<td class="px-4 py-3" style="min-width:120px">' +
-          (hasHours ? hoursBar(t.actual_hours, t.estimated_hours) : '<span class="text-xs text-slate-300">—</span>') +
-        '</td>' +
+        // Billable
+        '<td class="px-4 py-3 whitespace-nowrap">' + billableCell(t) + '</td>' +
 
-        // Billable value
-        '<td class="px-4 py-3 whitespace-nowrap">' +
-          billableCell(t) +
-        '</td>' +
-
-        // Project (conditional column)
+        // Project
         (showProject
           ? '<td class="px-4 py-3 whitespace-nowrap">' +
               (t.project_id
@@ -538,26 +821,30 @@ window.WorkVoltPages['tasks'] = function(container) {
           : '') +
 
         // Actions
-        '<td class="px-4 py-3 whitespace-nowrap">' +
-          '<div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity wv-action-cell">' +
-            quickBtns +
-          '</div>' +
+        '<td class="px-4 py-3 whitespace-nowrap" data-action="" data-id="">' +
+          '<div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">' + quickBtns + '</div>' +
         '</td>' +
+
       '</tr>';
     }).join('');
 
     content.innerHTML =
-      '<style>.icon-btn{width:1.75rem;height:1.75rem;border-radius:.5rem;display:inline-flex;align-items:center;justify-content:center;color:#94a3b8;transition:all .15s;border:none;background:transparent;cursor:pointer;}</style>' +
+      '<style>' +
+        '.icon-btn{width:1.75rem;height:1.75rem;border-radius:.5rem;display:inline-flex;align-items:center;justify-content:center;color:#94a3b8;transition:all .15s;border:none;background:transparent;cursor:pointer;}' +
+        '.inline-status-wrap:hover{opacity:.8;cursor:pointer;}' +
+        '.inline-priority-wrap:hover{opacity:.8;cursor:pointer;}' +
+        'tr[data-action="view"]:hover td:first-child .font-semibold{text-decoration:underline;text-decoration-color:#94a3b8}' +
+      '</style>' +
       '<div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">' +
         '<div class="overflow-x-auto">' +
           '<table class="w-full text-left">' +
             '<thead><tr class="bg-slate-50 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">' +
-              '<th class="px-4 py-3">Task</th>' +
-              '<th class="px-4 py-3">Status</th>' +
-              '<th class="px-4 py-3">Priority</th>' +
-              '<th class="px-4 py-3">Due</th>' +
-              '<th class="px-4 py-3">Assigned</th>' +
-              '<th class="px-4 py-3">Hours</th>' +
+              sortTh('title',    'Task') +
+              sortTh('status',   'Status') +
+              sortTh('priority', 'Priority') +
+              sortTh('progress', 'Progress') +
+              sortTh('due_date', 'Due') +
+              sortTh('assigned_to', 'Assigned') +
               '<th class="px-4 py-3">Billable</th>' +
               (showProject ? '<th class="px-4 py-3">Project</th>' : '') +
               '<th class="px-4 py-3">Actions</th>' +
@@ -567,11 +854,56 @@ window.WorkVoltPages['tasks'] = function(container) {
         '</div>' +
       '</div>';
 
+    // Inline status editing
+    content.querySelectorAll('.inline-status-wrap').forEach(function(wrap) {
+      wrap.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var id   = this.dataset.id;
+        var task = tasksCache[id];
+        if (!task) return;
+        openInlineSelect(this, STATUSES, task.status, function(val) {
+          quickUpdate(id, { status: val }, 'Status updated');
+        });
+      });
+    });
+    // Inline priority editing
+    content.querySelectorAll('.inline-priority-wrap').forEach(function(wrap) {
+      wrap.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var id   = this.dataset.id;
+        var task = tasksCache[id];
+        if (!task) return;
+        openInlineSelect(this, PRIORITIES, task.priority, function(val) {
+          quickUpdate(id, { priority: val }, 'Priority updated');
+        });
+      });
+    });
+  }
+
+  function openInlineSelect(anchor, options, current, onChange) {
+    // Remove any existing inline pickers
+    document.querySelectorAll('.wv-inline-picker').forEach(function(el) { el.remove(); });
+    var rect = anchor.getBoundingClientRect();
+    var picker = document.createElement('div');
+    picker.className = 'wv-inline-picker';
+    picker.style.cssText = 'position:fixed;z-index:9997;background:#fff;border:1.5px solid #e2e8f0;border-radius:.75rem;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:.25rem;min-width:140px;top:' + (rect.bottom + 4) + 'px;left:' + rect.left + 'px';
+    picker.innerHTML = options.map(function(opt) {
+      return '<button data-val="' + esc(opt) + '" style="display:block;width:100%;text-align:left;padding:.45rem .75rem;border:none;background:' +
+        (opt === current ? '#eff6ff' : 'transparent') + ';border-radius:.5rem;font-size:.75rem;font-weight:600;cursor:pointer;color:' +
+        (opt === current ? '#1d4ed8' : '#374151') + ';font-family:inherit">' + opt + '</button>';
+    }).join('');
+    document.body.appendChild(picker);
+    picker.querySelectorAll('button').forEach(function(btn) {
+      btn.addEventListener('click', function() { picker.remove(); onChange(this.dataset.val); });
+    });
+    setTimeout(function() {
+      document.addEventListener('click', function rm() { picker.remove(); document.removeEventListener('click', rm); });
+    }, 10);
   }
 
 
   // ================================================================
-  //  KANBAN VIEW
+  //  KANBAN VIEW — with drag-drop and stage progress rings
   // ================================================================
   function renderKanban(tasks) {
     var content = document.getElementById('tasks-content');
@@ -579,22 +911,47 @@ window.WorkVoltPages['tasks'] = function(container) {
 
     var cols = STATUSES.map(function(status) {
       var colTasks = tasks.filter(function(t) { return t.status === status; });
+      var k        = KANBAN_COLORS[status] || {};
+      var totalH   = colTasks.reduce(function(s,t) { return s + (parseFloat(t.actual_hours)||0); }, 0);
+      var billTot  = colTasks.reduce(function(s,t) { return s + billableValue(t); }, 0);
+      var allPcts  = colTasks.map(calcProgress);
+      var avgPct   = allPcts.length ? Math.round(allPcts.reduce(function(s,v){return s+v;},0)/allPcts.length) : 0;
+
       var cards = colTasks.map(function(t) {
         var overdue  = isOverdue(t);
         var hasHours = parseFloat(t.estimated_hours) > 0 || parseFloat(t.actual_hours) > 0;
-        return '<div data-action="view" data-id="' + t.id + '" class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm hover:shadow-md hover:-translate-y-0.5 cursor-pointer transition-all">' +
+        var pct      = calcProgress(t);
+        var border   = STATUS_BORDER[t.status] || 'border-slate-200';
+
+        return '<div draggable="true" data-drag-id="' + t.id + '" data-action="view" data-id="' + t.id + '" ' +
+          'class="kanban-card bg-white rounded-xl border-l-4 ' + border + ' border border-slate-200 p-3 shadow-sm hover:shadow-md cursor-pointer transition-all select-none" ' +
+          'style="margin-bottom:.5rem">' +
+
+          // Title row + priority badge
           '<div class="flex items-start gap-2 mb-1.5">' +
             '<p class="text-sm font-semibold text-slate-900 leading-snug flex-1 line-clamp-2">' + esc(t.title) + '</p>' +
             priorityBadge(t.priority) +
           '</div>' +
-          '<p class="text-[10px] text-slate-400 font-mono mb-2">' + esc(t.id) + '</p>' +
-          (t.description ? '<p class="text-xs text-slate-400 mb-2 line-clamp-2">' + esc(t.description) + '</p>' : '') +
+
+          // Progress ring + countdown
+          (hasHours
+            ? '<div class="flex items-center gap-2 mb-2">' +
+                progressRing(pct, 28, 2.5) +
+                '<div class="flex-1">' + hoursBar(t.actual_hours, t.estimated_hours) + '</div>' +
+              '</div>'
+            : '') +
+
+          // Countdown badge
+          (countdown(t) ? '<div class="mb-2">' + countdown(t) + '</div>' : '') +
+
+          // Project tag
           (projectsInstalled() && t.project_id
             ? '<div class="mb-2"><span class="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-px rounded font-semibold">' + esc(projectName(t.project_id)) + '</span></div>'
             : '') +
-          (hasHours ? '<div class="mb-2">' + hoursBar(t.actual_hours, t.estimated_hours) + '</div>' : '') +
+
+          // Billable badge
           ((t.billable === 'true' || t.billable === true)
-            ? '<div class="mb-2 flex flex-col gap-1">' +
+            ? '<div class="mb-2 flex flex-col gap-0.5">' +
                 '<span class="inline-flex items-center gap-1 text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-px rounded font-semibold">' +
                   '<i class="fas fa-dollar-sign text-[9px]"></i>' +
                   (billableValue(t) ? fmtMoney(billableValue(t)) : 'Billable') +
@@ -602,43 +959,130 @@ window.WorkVoltPages['tasks'] = function(container) {
                 approvalBadge(t) +
               '</div>'
             : '') +
-          '<div class="flex items-center justify-between pt-2 border-t border-slate-100">' +
+
+          // Tags
+          (t.tags
+            ? '<div class="flex flex-wrap gap-1 mb-2">' +
+                t.tags.split(',').slice(0,3).map(function(tag) { tag=tag.trim(); return tag ? '<span class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-px rounded">' + esc(tag) + '</span>' : ''; }).join('') +
+              '</div>'
+            : '') +
+
+          // Footer: due + assignee + log button
+          '<div class="flex items-center justify-between pt-2 border-t border-slate-100 mt-auto">' +
             '<span class="text-xs ' + (overdue ? 'text-red-500 font-bold' : 'text-slate-400') + '">' +
               (t.due_date ? '<i class="fas fa-calendar-alt mr-0.5 text-[10px]"></i>' + fmtDate(t.due_date) : '') +
             '</span>' +
             '<div class="flex items-center gap-1.5">' +
-              (t.assigned_to
-                ? '<span class="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold" title="' + esc(userName(t.assigned_to)) + '">' + userInitial(t.assigned_to) + '</span>'
-                : '') +
+              (t.assigned_to ? userAvatar(t.assigned_to, 'w-6 h-6 text-[10px]') : '') +
               '<button data-action="log-hours" data-id="' + t.id + '" class="kanban-act text-[10px] bg-slate-100 hover:bg-blue-100 hover:text-blue-600 text-slate-500 px-1.5 py-px rounded-lg font-semibold transition-colors"><i class="fas fa-clock mr-0.5"></i>Log</button>' +
             '</div>' +
           '</div>' +
         '</div>';
       }).join('');
 
-      return '<div class="flex-shrink-0 w-72">' +
-        '<div class="flex items-center gap-2 mb-3">' +
-          '<span class="w-2.5 h-2.5 rounded-full ' + (KANBAN_DOT[status] || 'bg-slate-400') + '"></span>' +
-          '<span class="text-sm font-extrabold text-slate-700">' + status + '</span>' +
-          '<span class="ml-auto text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">' + colTasks.length + '</span>' +
+      // Column header with progress ring
+      return '<div class="flex-shrink-0 w-72 flex flex-col" data-drop-col="' + esc(status) + '">' +
+
+        // Column header
+        '<div class="' + (k.head||'bg-slate-50') + ' rounded-xl px-3 py-2 mb-3 border ' + (k.border||'border-slate-200') + '">' +
+          '<div class="flex items-center justify-between">' +
+            '<div class="flex items-center gap-2">' +
+              '<span class="w-2.5 h-2.5 rounded-full ' + (k.dot||'bg-slate-400') + '"></span>' +
+              '<span class="text-sm font-extrabold text-slate-700">' + status + '</span>' +
+              '<span class="text-xs font-bold text-slate-400 bg-white/60 px-2 py-0.5 rounded-full border">' + colTasks.length + '</span>' +
+            '</div>' +
+            columnProgressRing(colTasks, status) +
+          '</div>' +
+          (colTasks.length
+            ? '<div class="flex items-center gap-3 mt-2 text-[10px] text-slate-500">' +
+                (totalH ? '<span><i class="fas fa-clock mr-0.5 text-blue-400"></i>' + fmtHours(totalH) + '</span>' : '') +
+                (billTot ? '<span><i class="fas fa-dollar-sign mr-0.5 text-green-500"></i>' + fmtMoney(billTot) + '</span>' : '') +
+                '<span class="ml-auto">' + avgPct + '% avg progress</span>' +
+              '</div>'
+            : '') +
         '</div>' +
-        '<div class="space-y-2 min-h-12">' +
-          (cards || '<div class="text-xs text-slate-300 text-center py-8 border-2 border-dashed border-slate-200 rounded-xl">No tasks</div>') +
+
+        // Drop zone
+        '<div class="kanban-col-cards flex flex-col min-h-24" data-drop-col="' + esc(status) + '" style="flex:1">' +
+          (cards || '<div class="text-xs text-slate-300 text-center py-8 border-2 border-dashed border-slate-200 rounded-xl kanban-empty-drop" data-drop-col="' + esc(status) + '">Drop here</div>') +
         '</div>' +
+
+        // Add card button
+        '<button data-action="new-in-col" data-status="' + esc(status) + '" ' +
+          'class="mt-2 w-full text-xs text-slate-400 hover:text-slate-700 hover:bg-white border border-dashed border-slate-200 hover:border-slate-400 rounded-xl py-2 transition-all font-semibold">' +
+          '<i class="fas fa-plus mr-1"></i>Add task' +
+        '</button>' +
+
       '</div>';
     }).join('');
 
-    content.innerHTML = '<div class="flex gap-4 overflow-x-auto pb-4 kanban-scroll">' + cols + '</div>';
+    content.innerHTML = '<style>' +
+      '.kanban-card{transition:box-shadow .15s,transform .1s;}.kanban-card:active{transform:scale(.98);}' +
+      '.kanban-card.drag-over-indicator{border-top:2px solid #3b82f6;}' +
+      '.kanban-col-cards.drag-over{background:rgba(59,130,246,.05);border-radius:.75rem;}' +
+    '</style>' +
+    '<div class="flex gap-4 overflow-x-auto pb-6 kanban-scroll" style="align-items:flex-start;min-height:400px">' + cols + '</div>';
 
-    // Fix stopPropagation for kanban action buttons
+    // Wire kanban action buttons (stop propagation)
     content.querySelectorAll('.kanban-act').forEach(function(btn) {
       btn.addEventListener('click', function(e) { e.stopPropagation(); });
+    });
+
+    // Wire "add task in column" buttons
+    content.querySelectorAll('[data-action="new-in-col"]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openTaskForm(null, { status: this.dataset.status });
+      });
+    });
+
+    // Drag and drop
+    bindKanbanDragDrop(content);
+  }
+
+  function bindKanbanDragDrop(content) {
+    var dragId = null;
+
+    content.querySelectorAll('.kanban-card').forEach(function(card) {
+      card.addEventListener('dragstart', function(e) {
+        dragId = this.dataset.dragId;
+        this.style.opacity = '0.5';
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      card.addEventListener('dragend', function() {
+        this.style.opacity = '1';
+        content.querySelectorAll('.kanban-col-cards').forEach(function(c) { c.classList.remove('drag-over'); });
+      });
+    });
+
+    content.querySelectorAll('.kanban-col-cards, .kanban-empty-drop').forEach(function(zone) {
+      zone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        content.querySelectorAll('.kanban-col-cards').forEach(function(c) { c.classList.remove('drag-over'); });
+        var col = this.closest('[data-drop-col]');
+        if (col) {
+          var cards = col.querySelector('.kanban-col-cards');
+          if (cards) cards.classList.add('drag-over');
+        }
+      });
+      zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        content.querySelectorAll('.kanban-col-cards').forEach(function(c) { c.classList.remove('drag-over'); });
+        var col = this.closest('[data-drop-col]');
+        var newStatus = col ? col.dataset.dropCol : null;
+        if (!newStatus || !dragId) return;
+        var task = tasksCache[dragId];
+        if (!task || task.status === newStatus) return;
+        quickUpdate(dragId, { status: newStatus }, 'Moved to ' + newStatus);
+        dragId = null;
+      });
     });
   }
 
 
   // ================================================================
-  //  TASK DETAIL MODAL
+  //  TASK DETAIL MODAL — with activity timeline & comments
   // ================================================================
   function openTaskDetail(task) {
     if (!task) return;
@@ -646,55 +1090,67 @@ window.WorkVoltPages['tasks'] = function(container) {
     Promise.all([
       api('tasks/hours', { task_id: task.id }),
       api('tasks/notes', { task_id: task.id }).catch(function() { return { rows: [] }; }),
+      api('tasks/comments', { task_id: task.id }).catch(function() { return { rows: [] }; }),
     ]).then(function(results) {
-      var data     = results[0];
-      var noteData = results[1];
-      var logs     = data.rows   || [];
-      var notes    = noteData.rows || [];
-      var total    = data.total  || 0;
+      var logs     = results[0].rows || [];
+      var total    = results[0].total || 0;
+      var notes    = results[1].rows || [];
+      var comments = results[2].rows || [];
       var over     = isOverdue(task);
+      var pct      = calcProgress(task);
 
-      // ── Hours logs ────────────────────────────────────────────
-      var logsHtml = logs.length
-        ? logs.slice().reverse().map(function(l) {
-            var billableBadge = l.billable === 'true' || l.billable === true
-              ? '<span class="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-px rounded font-semibold ml-1">' +
-                  '<i class="fas fa-dollar-sign text-[9px] mr-0.5"></i>Billable' +
-                  (l.rate ? ' · ' + (l.pay_type === 'salary' ? 'Salary' : fmtMoney(l.rate) + (l.pay_type === 'per_hour' ? '/hr' : '/task')) : '') +
-                '</span>'
-              : '';
-            return '<div class="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">' +
-              '<div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold flex-shrink-0">' + userInitial(l.user_id) + '</div>' +
-              '<div class="flex-1 min-w-0">' +
-                '<div class="flex items-center justify-between gap-2 mb-0.5">' +
-                  '<span class="text-sm font-semibold text-slate-800 truncate">' + esc(userName(l.user_id)) + '</span>' +
-                  '<div class="flex items-center gap-1 flex-shrink-0">' +
-                    billableBadge +
-                    '<span class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">' + fmtHours(l.hours) + '</span>' +
+      // Build unified activity timeline (comments + notes + hours, sorted by date)
+      var timeline = [];
+      comments.forEach(function(c) { timeline.push({ type:'comment', date: c.created_at || c.date, data: c }); });
+      notes.forEach(function(n)    { timeline.push({ type:'note',    date: n.created_at || n.date, data: n }); });
+      logs.forEach(function(l)     { timeline.push({ type:'hours',   date: l.created_at || l.date, data: l }); });
+      timeline.sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
+
+      var timelineHtml = timeline.length
+        ? timeline.map(function(item) {
+            var d = item.data;
+            if (item.type === 'comment') {
+              var txt = d.comment || '';
+              // Parse @mentions
+              txt = esc(txt).replace(/@(\w+)/g, '<span class="text-blue-600 font-semibold">@$1</span>');
+              return '<div class="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">' +
+                '<div class="w-7 h-7 rounded-full bg-violet-100 text-violet-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(d.user_id) + '</div>' +
+                '<div class="flex-1 min-w-0">' +
+                  '<div class="flex items-center gap-2 mb-0.5">' +
+                    '<span class="text-xs font-semibold text-slate-800">' + esc(userName(d.user_id)) + '</span>' +
+                    '<span class="text-[9px] bg-violet-50 text-violet-600 border border-violet-200 px-1.5 py-px rounded font-semibold">Comment</span>' +
+                    '<span class="text-[10px] text-slate-400 ml-auto">' + fmtDate(item.date) + '</span>' +
                   '</div>' +
-                '</div>' +
-                (l.notes ? '<p class="text-xs text-slate-600">' + esc(l.notes) + '</p>' : '') +
-                '<p class="text-[10px] text-slate-400 mt-0.5"><i class="fas fa-calendar-alt mr-1"></i>' + fmtDate(l.date) + '</p>' +
-              '</div>' +
-            '</div>';
+                  '<p class="text-xs text-slate-700 leading-relaxed">' + txt + '</p>' +
+                '</div></div>';
+            }
+            if (item.type === 'note') {
+              return '<div class="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">' +
+                '<div class="w-7 h-7 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(d.user_id) + '</div>' +
+                '<div class="flex-1 min-w-0">' +
+                  '<div class="flex items-center gap-2 mb-0.5">' +
+                    '<span class="text-xs font-semibold text-slate-800">' + esc(userName(d.user_id)) + '</span>' +
+                    '<span class="text-[9px] bg-purple-50 text-purple-600 border border-purple-200 px-1.5 py-px rounded font-semibold">Note</span>' +
+                    '<span class="text-[10px] text-slate-400 ml-auto">' + fmtDate(item.date) + '</span>' +
+                  '</div>' +
+                  '<p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">' + esc(d.note || '') + '</p>' +
+                '</div></div>';
+            }
+            if (item.type === 'hours') {
+              return '<div class="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">' +
+                '<div class="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + userInitial(d.user_id) + '</div>' +
+                '<div class="flex-1 min-w-0">' +
+                  '<div class="flex items-center gap-2 mb-0.5">' +
+                    '<span class="text-xs font-semibold text-slate-800">' + esc(userName(d.user_id)) + '</span>' +
+                    '<span class="text-[9px] bg-blue-50 text-blue-600 border border-blue-200 px-1.5 py-px rounded font-semibold">Logged ' + fmtHours(d.hours) + '</span>' +
+                    '<span class="text-[10px] text-slate-400 ml-auto">' + fmtDate(item.date) + '</span>' +
+                  '</div>' +
+                  (d.notes ? '<p class="text-xs text-slate-500">' + esc(d.notes) + '</p>' : '') +
+                '</div></div>';
+            }
+            return '';
           }).join('')
-        : '<div class="py-8 text-center text-slate-400"><i class="fas fa-clock text-2xl mb-2 opacity-30 block"></i><p class="text-xs">No hours logged yet</p></div>';
-
-      // ── Notes logs ────────────────────────────────────────────
-      var notesHtml = notes.length
-        ? notes.slice().reverse().map(function(n) {
-            return '<div class="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">' +
-              '<div class="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-xs font-bold flex-shrink-0">' + userInitial(n.user_id) + '</div>' +
-              '<div class="flex-1 min-w-0">' +
-                '<div class="flex items-center justify-between gap-2 mb-1">' +
-                  '<span class="text-sm font-semibold text-slate-800 truncate">' + esc(userName(n.user_id)) + '</span>' +
-                  '<p class="text-[10px] text-slate-400 flex-shrink-0"><i class="fas fa-calendar-alt mr-1"></i>' + fmtDate(n.date) + '</p>' +
-                '</div>' +
-                '<p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">' + esc(n.note) + '</p>' +
-              '</div>' +
-            '</div>';
-          }).join('')
-        : '<div class="py-8 text-center text-slate-400"><i class="fas fa-sticky-note text-2xl mb-2 opacity-30 block"></i><p class="text-xs">No notes logged yet</p></div>';
+        : '<div class="py-6 text-center text-slate-300"><i class="fas fa-stream text-2xl mb-2 block opacity-40"></i><p class="text-xs">No activity yet</p></div>';
 
       function meta(label, val) {
         return '<div class="flex items-start justify-between gap-2 py-2.5 border-b border-slate-100 last:border-0">' +
@@ -710,73 +1166,74 @@ window.WorkVoltPages['tasks'] = function(container) {
             '<div class="flex flex-wrap items-center gap-1.5 mb-2">' +
               statusBadge(task.status) + priorityBadge(task.priority) +
               '<span class="text-[10px] text-slate-400 font-mono bg-slate-50 px-2 py-px rounded">' + esc(task.id) + '</span>' +
+              (over ? '<span class="text-[10px] text-red-500 font-bold bg-red-50 px-2 py-px rounded border border-red-200"><i class="fas fa-fire mr-0.5"></i>Overdue</span>' : '') +
             '</div>' +
             '<h2 class="text-lg font-extrabold text-slate-900 leading-snug">' + esc(task.title) + '</h2>' +
+            (pct > 0 ? '<div class="mt-2 flex items-center gap-2">' + progressRing(pct, 28, 2.5) + hoursBar(task.actual_hours, task.estimated_hours) + '</div>' : '') +
           '</div>' +
-          '<button id="tm-close" class="flex-shrink-0 w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer text-base">✕</button>' +
+          '<button id="tm-close" class="flex-shrink-0 w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer">✕</button>' +
         '</div>' +
 
         // Body — two columns
-        '<div style="display:grid;grid-template-columns:1fr 280px">' +
+        '<div style="display:grid;grid-template-columns:1fr 280px;min-height:400px">' +
 
-          // Left: description, hours, notes
-          '<div class="px-6 py-5 border-r border-slate-100 flex flex-col gap-5">' +
+          // Left: description, comment box, timeline
+          '<div class="px-6 py-5 border-r border-slate-100 flex flex-col gap-4" style="overflow-y:auto;max-height:70vh">' +
 
             (task.description
               ? '<div><p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2">Description</p>' +
                 '<p class="text-sm text-slate-700 leading-relaxed">' + esc(task.description) + '</p></div>'
               : '') +
 
-            (task.notes
-              ? '<div><p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2">Notes</p>' +
-                '<p class="text-sm text-slate-700 leading-relaxed whitespace-pre-line">' + esc(task.notes) + '</p></div>'
-              : '') +
-
-            // Hours section
-            '<div>' +
-              '<div class="flex items-center justify-between mb-3">' +
-                '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest">Hours Logged</p>' +
-                '<div class="flex items-center gap-2">' +
-                  (total ? '<span class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">' + fmtHours(total) + ' total</span>' : '') +
-                  '<button id="td-log-btn" class="btn-primary text-xs py-1 px-3"><i class="fas fa-plus mr-1"></i>Log Hours</button>' +
+            // Comment composer
+            '<div class="border border-slate-200 rounded-xl overflow-hidden">' +
+              '<div class="bg-slate-50 px-3 py-2 border-b border-slate-200">' +
+                '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Leave a comment</p>' +
+              '</div>' +
+              '<div class="p-3">' +
+                '<textarea id="td-comment-input" rows="2" placeholder="Write a comment… use @name to mention someone" ' +
+                  'class="w-full text-sm text-slate-700 border-none outline-none bg-transparent resize-none placeholder-slate-300" style="font-family:inherit"></textarea>' +
+                '<div class="flex justify-end mt-2">' +
+                  '<button id="td-comment-submit" class="btn-primary text-xs py-1.5 px-3"><i class="fas fa-paper-plane mr-1 text-[10px]"></i>Comment</button>' +
                 '</div>' +
               '</div>' +
-              (parseFloat(task.estimated_hours) > 0
-                ? '<div class="mb-3">' + hoursBar(task.actual_hours, task.estimated_hours) + '</div>'
-                : '') +
-              logsHtml +
             '</div>' +
 
-            // Notes section
+            // Activity timeline
             '<div>' +
               '<div class="flex items-center justify-between mb-3">' +
-                '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest">Activity Notes</p>' +
-                '<button id="td-note-btn" class="btn-primary text-xs py-1 px-3" style="background:#7c3aed"><i class="fas fa-plus mr-1"></i>Log Note</button>' +
+                '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest">Activity</p>' +
+                '<div class="flex gap-2">' +
+                  '<button id="td-log-btn"  class="btn-primary text-xs py-1 px-2.5"><i class="fas fa-clock mr-1 text-[10px]"></i>Log Hours</button>' +
+                  '<button id="td-note-btn" class="text-xs py-1 px-2.5 rounded-lg font-semibold border-none cursor-pointer" style="background:#7c3aed;color:#fff"><i class="fas fa-sticky-note mr-1 text-[10px]"></i>Note</button>' +
+                '</div>' +
               '</div>' +
-              notesHtml +
+              timelineHtml +
             '</div>' +
-
           '</div>' +
 
           // Right: metadata + actions
-          '<div class="px-5 py-5 bg-slate-50/50">' +
+          '<div class="px-5 py-5 bg-slate-50/50 flex flex-col" style="overflow-y:auto;max-height:70vh">' +
             '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-3">Details</p>' +
 
+            meta('Status', statusBadge(task.status)) +
+            meta('Priority', priorityBadge(task.priority)) +
             meta('Assigned To', task.assigned_to
-              ? '<span class="flex items-center gap-1.5"><span class="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">' + userInitial(task.assigned_to) + '</span>' + esc(userName(task.assigned_to)) + '</span>'
+              ? '<span class="flex items-center gap-1.5">' + userAvatar(task.assigned_to,'w-5 h-5 text-[10px]') + esc(userName(task.assigned_to)) + '</span>'
               : '<span class="text-slate-300">Unassigned</span>') +
             meta('Due Date', task.due_date
-              ? '<span class="' + (over ? 'text-red-500 font-bold' : '') + '">' + fmtDate(task.due_date) + (over ? ' <i class="fas fa-exclamation-circle ml-0.5"></i>' : '') + '</span>'
+              ? '<span class="' + (over ? 'text-red-500 font-bold' : '') + '">' + fmtDate(task.due_date) +
+                (over ? ' <i class="fas fa-exclamation-circle"></i>' : '') +
+                '<br><span class="text-slate-400 font-normal">' + (countdown(task)||'') + '</span></span>'
               : '<span class="text-slate-300">None</span>') +
+            meta('Progress', progressRing(pct, 32, 3) + '<span class="ml-1 text-sm font-bold ' + (pct>=100?'text-green-600':pct>0?'text-blue-600':'text-slate-400') + '">' + pct + '%</span>') +
             meta('Est. Hours', task.estimated_hours ? fmtHours(task.estimated_hours) : '<span class="text-slate-300">—</span>') +
             meta('Actual Hours', '<span class="text-blue-600 font-bold">' + fmtHours(task.actual_hours || 0) + '</span>') +
             ((task.billable === 'true' || task.billable === true)
-              ? meta('Billable', '<div class="flex flex-col gap-1.5">' +
-                  '<span class="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-dollar-sign text-[9px]"></i>' +
-                  (task.billable_rate
-                    ? fmtMoney(billableValue(task)) + ' · ' + (task.billable_pay_type === 'per_hour' ? fmtMoney(task.billable_rate) + '/hr' : task.billable_pay_type === 'per_task' ? fmtMoney(task.billable_rate) + ' flat' : 'Salary')
-                    : 'Yes — rate TBD') +
-                  '</span>' + approvalBadge(task) + '</div>')
+              ? meta('Billable', '<div class="flex flex-col gap-1">' +
+                  '<span class="text-green-700 font-bold">' + (task.billable_rate ? fmtMoney(billableValue(task)) : 'Yes — rate TBD') + '</span>' +
+                  (task.billable_rate ? '<span class="text-[10px] text-slate-400">' + (task.billable_pay_type==='per_hour'?fmtMoney(task.billable_rate)+'/hr':task.billable_pay_type==='per_task'?fmtMoney(task.billable_rate)+' flat':'Salary') + '</span>' : '') +
+                  approvalBadge(task) + '</div>')
               : '') +
             (task.tags
               ? meta('Tags', task.tags.split(',').map(function(t) {
@@ -786,373 +1243,353 @@ window.WorkVoltPages['tasks'] = function(container) {
             (projectsInstalled() && task.project_id
               ? meta('Project', '<span class="bg-purple-50 text-purple-700 px-1.5 py-px rounded font-semibold text-xs">' + esc(projectName(task.project_id)) + '</span>')
               : '') +
-            meta('Created',  fmtDate(task.created_at) || '<span class="text-slate-300">—</span>') +
-            meta('Updated',  fmtDate(task.updated_at) || '<span class="text-slate-300">—</span>') +
+            meta('Created', fmtDate(task.created_at) || '<span class="text-slate-300">—</span>') +
 
-            '<div class="flex flex-col gap-2 mt-5">' +
-              // Approve/Reject for billable tasks (admin/manager only)
+            '<div class="flex flex-col gap-2 mt-4">' +
+              // Billable approval panel
               ((task.billable === 'true' || task.billable === true) && isAdmin()
-                ? '<div class="border border-amber-200 rounded-xl p-3 bg-amber-50 mb-1">' +
+                ? '<div class="border border-amber-200 rounded-xl p-3 bg-amber-50">' +
                     '<p class="text-[11px] font-bold text-amber-700 mb-2"><i class="fas fa-dollar-sign mr-1"></i>Billable Approval</p>' +
-                    ((task.approval_status === 'approved')
+                    (task.approval_status === 'approved'
                       ? '<div class="flex items-center gap-2">' +
                           '<span class="flex-1 text-xs text-green-700 font-semibold bg-green-100 rounded-lg px-3 py-1.5 text-center"><i class="fas fa-check-circle mr-1"></i>Approved</span>' +
-                          '<button id="td-reject-btn" class="text-xs text-red-600 font-semibold bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-3 py-1.5 transition-colors border-none cursor-pointer">Reject</button>' +
+                          '<button id="td-reject-btn" class="text-xs text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-3 py-1.5 font-semibold border-none cursor-pointer">Reject</button>' +
                         '</div>'
-                      : (task.approval_status === 'rejected')
+                      : task.approval_status === 'rejected'
                         ? '<div class="flex items-center gap-2">' +
                             '<span class="flex-1 text-xs text-red-600 font-semibold bg-red-100 rounded-lg px-3 py-1.5 text-center"><i class="fas fa-times-circle mr-1"></i>Rejected</span>' +
-                            '<button id="td-approve-btn" class="text-xs text-green-700 font-semibold bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-3 py-1.5 transition-colors border-none cursor-pointer">Approve</button>' +
+                            '<button id="td-approve-btn" class="text-xs text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-3 py-1.5 font-semibold border-none cursor-pointer">Approve</button>' +
                           '</div>'
                         : '<div class="flex gap-2">' +
-                            '<button id="td-reject-btn"  class="flex-1 text-xs text-red-600 font-semibold bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-3 py-2 transition-colors border-none cursor-pointer"><i class="fas fa-times mr-1"></i>Reject</button>' +
-                            '<button id="td-approve-btn" class="flex-1 text-xs text-green-700 font-semibold bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-3 py-2 transition-colors border-none cursor-pointer"><i class="fas fa-check mr-1"></i>Approve</button>' +
+                            '<button id="td-reject-btn"  class="flex-1 text-xs text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-3 py-2 font-semibold border-none cursor-pointer"><i class="fas fa-times mr-1"></i>Reject</button>' +
+                            '<button id="td-approve-btn" class="flex-1 text-xs text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-3 py-2 font-semibold border-none cursor-pointer"><i class="fas fa-check mr-1"></i>Approve</button>' +
                           '</div>') +
                   '</div>'
                 : '') +
-              '<button id="td-edit-btn"   class="btn-primary w-full text-sm"><i class="fas fa-pencil mr-1.5 text-xs"></i>Edit Task</button>' +
-              (isAdmin()
-                ? '<button id="td-delete-btn" class="btn-secondary w-full text-sm text-red-500 hover:bg-red-50 hover:text-red-600"><i class="fas fa-trash mr-1.5 text-xs"></i>Delete</button>'
-                : '') +
+              '<button id="td-edit-btn" class="btn-primary w-full text-sm"><i class="fas fa-pencil mr-1.5 text-xs"></i>Edit Task</button>' +
+              (isAdmin() ? '<button id="td-delete-btn" class="btn-secondary w-full text-sm text-red-500 hover:bg-red-50"><i class="fas fa-trash mr-1.5 text-xs"></i>Delete</button>' : '') +
             '</div>' +
           '</div>' +
         '</div>';
 
-      showModal(html, '920px');
+      showModal(html, '960px');
 
+      // Wire buttons
       document.getElementById('tm-close').addEventListener('click', closeModal);
       document.getElementById('td-log-btn').addEventListener('click', function() { closeModal(); openLogHoursModal(task); });
       document.getElementById('td-note-btn').addEventListener('click', function() { closeModal(); openLogNoteModal(task); });
       document.getElementById('td-edit-btn').addEventListener('click', function() { closeModal(); openTaskForm(task); });
       var db = document.getElementById('td-delete-btn');
       if (db) db.addEventListener('click', function() { closeModal(); openDeleteModal(task.id, task.title); });
-      var appBtn = document.getElementById('td-approve-btn');
-      if (appBtn) appBtn.addEventListener('click', function() { submitApproval(task.id, 'approve'); });
-      var rejBtn = document.getElementById('td-reject-btn');
-      if (rejBtn) rejBtn.addEventListener('click', function() { submitApproval(task.id, 'reject'); });
+      var ab = document.getElementById('td-approve-btn');
+      if (ab) ab.addEventListener('click', function() { submitApproval(task.id, 'approve'); });
+      var rb = document.getElementById('td-reject-btn');
+      if (rb) rb.addEventListener('click', function() { submitApproval(task.id, 'reject'); });
 
-    }).catch(function() {
-      toast('Could not load task details', 'error');
-    });
+      // Comment submit
+      document.getElementById('td-comment-submit').addEventListener('click', function() {
+        var txt = (document.getElementById('td-comment-input').value || '').trim();
+        if (!txt) return;
+        api('tasks/log-comment', { task_id: task.id, user_id: myUserId(), comment: txt })
+          .then(function() {
+            // Notify @mentioned users
+            var mentions = txt.match(/@(\w+)/g) || [];
+            mentions.forEach(function(m) {
+              var uname = m.slice(1);
+              var u = usersCache.find(function(u) { return (u.name||'').toLowerCase().startsWith(uname.toLowerCase()); });
+              if (u) sendNotification(u.user_id || u.id, myUserId() + ' mentioned you in a task comment', task.id);
+            });
+            toast('Comment posted', 'success');
+            closeModal();
+            openTaskDetail(tasksCache[task.id] || task);
+          })
+          .catch(function(e) { toast(e.message, 'error'); });
+      });
+
+    }).catch(function() { toast('Could not load task details', 'error'); });
   }
 
 
   // ================================================================
-  //  APPROVE / REJECT BILLABLE TASK
+  //  APPROVE / REJECT
   // ================================================================
   function submitApproval(taskId, action) {
-    var endpoint = action === 'approve' ? 'tasks/approve' : 'tasks/reject';
-    var params = { id: taskId, approved_by: myUserId() };
-    api(endpoint, params)
+    api(action === 'approve' ? 'tasks/approve' : 'tasks/reject', { id: taskId, approved_by: myUserId() })
       .then(function() {
         toast(action === 'approve' ? 'Task approved ✓' : 'Task rejected', action === 'approve' ? 'success' : 'info');
-        closeModal();
+        if (action === 'approve') {
+          // Notify the task assignee
+          var task = tasksCache[taskId];
+          if (task && task.assigned_to) sendNotification(task.assigned_to, 'Your billable task "' + (task.title||taskId) + '" was approved', taskId);
+        }
+        closeModal(); loadData();
+      })
+      .catch(function(e) { toast(e.message, 'error'); });
+  }
+
+  // ================================================================
+  //  QUICK ACTIONS
+  // ================================================================
+  function quickUpdate(id, fields, msg) {
+    var task = tasksCache[id];
+    if (!task) return;
+    var params = Object.assign({ id: id }, fields);
+    api('tasks/update', params)
+      .then(function() {
+        Object.assign(task, fields);
+        toast(msg || 'Updated', 'success');
+        // If assigned_to changed, notify the new assignee
+        if (fields.assigned_to && fields.assigned_to !== task.assigned_to) {
+          sendNotification(fields.assigned_to, 'You were assigned to: ' + (task.title || id), id);
+          // Also notify admins if it's billable and pending approval
+          if (task.billable === 'true' && (!task.approval_status || task.approval_status === 'pending')) {
+            usersCache.filter(function(u) { return ['Admin','SuperAdmin','Manager'].includes(u.role); })
+              .forEach(function(u) { sendNotification(u.user_id || u.id, 'Billable task needs approval: ' + (task.title||id), id); });
+          }
+        }
+        rerender();
+      })
+      .catch(function(e) { toast(e.message, 'error'); });
+  }
+
+  function quickCreate(data) {
+    var params = Object.assign({ status: 'To Do', priority: 'Medium' }, data);
+    try { params.created_by = myUserId(); } catch(e) {}
+    api('tasks/create', params)
+      .then(function(res) {
+        toast('Task created ✓', 'success');
         loadData();
       })
       .catch(function(e) { toast(e.message, 'error'); });
   }
 
+  // ================================================================
+  //  SAVE VIEW MODAL
+  // ================================================================
+  function openSaveViewModal() {
+    var html =
+      '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
+        '<h3 class="font-extrabold text-slate-900">Save Current View</h3>' +
+        '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>' +
+      '</div>' +
+      '<div class="px-6 py-5 flex flex-col gap-4">' +
+        '<p class="text-sm text-slate-500">Save your current filters and sort as a named view for quick access.</p>' +
+        '<div>' +
+          '<label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">View Name</label>' +
+          '<input id="sv-name" class="field" type="text" placeholder="e.g. My Urgent Tasks, This Week…" autofocus>' +
+        '</div>' +
+        '<div class="flex gap-3">' +
+          '<button id="sv-cancel" class="btn-secondary flex-1">Cancel</button>' +
+          '<button id="sv-save"   class="btn-primary flex-1"><i class="fas fa-bookmark mr-1 text-xs"></i>Save View</button>' +
+        '</div>' +
+      '</div>';
+    showModal(html, '400px');
+    document.getElementById('tm-close').addEventListener('click', closeModal);
+    document.getElementById('sv-cancel').addEventListener('click', closeModal);
+    document.getElementById('sv-save').addEventListener('click', function() {
+      var name = (document.getElementById('sv-name').value || '').trim();
+      if (!name) return;
+      savedViews.push({ name: name, filters: Object.assign({}, filters), search: _searchVal, sort: Object.assign({}, sortState) });
+      localStorage.setItem('wv_task_views', JSON.stringify(savedViews));
+      toast('View "' + name + '" saved', 'success');
+      closeModal();
+      render(); rerender();
+    });
+    setTimeout(function() { var el = document.getElementById('sv-name'); if (el) el.focus(); }, 80);
+  }
+
+  // ================================================================
+  //  KEYBOARD SHORTCUTS MODAL
+  // ================================================================
+  function openShortcutsModal() {
+    var shortcuts = [
+      ['N', 'New task'],
+      ['/', 'Focus search'],
+      ['K', 'Kanban view'],
+      ['L', 'List view'],
+      ['Esc', 'Close modal / clear search'],
+      ['Enter', 'Quick-add (in quick add bar)'],
+    ];
+    var html =
+      '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
+        '<h3 class="font-extrabold text-slate-900">Keyboard Shortcuts</h3>' +
+        '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>' +
+      '</div>' +
+      '<div class="px-6 py-4">' +
+        '<div class="space-y-1">' +
+        shortcuts.map(function(s) {
+          return '<div class="flex items-center justify-between py-2 border-b border-slate-50">' +
+            '<span class="text-sm text-slate-600">' + s[1] + '</span>' +
+            '<kbd class="px-2 py-0.5 text-xs font-bold bg-slate-100 text-slate-700 rounded-lg border border-slate-200">' + s[0] + '</kbd>' +
+          '</div>';
+        }).join('') +
+        '</div>' +
+      '</div>';
+    showModal(html, '360px');
+    document.getElementById('tm-close').addEventListener('click', closeModal);
+  }
 
   // ================================================================
   //  LOG HOURS MODAL
   // ================================================================
   function openLogHoursModal(task) {
     if (!task) return;
-    var today = new Date().toISOString().split('T')[0];
+    var today      = new Date().toISOString().split('T')[0];
     var isBillable = task.billable === 'true' || task.billable === true;
 
     var html =
       '<div class="px-6 py-5 border-b border-slate-100 flex items-start justify-between">' +
         '<div>' +
-          '<div class="flex items-center gap-2 mb-1">' +
-            '<i class="fas fa-clock text-blue-500"></i>' +
-            '<h3 class="font-extrabold text-slate-900">Log Hours</h3>' +
-          '</div>' +
-          '<p class="text-xs text-slate-400">' + esc(task.title) + ' <span class="font-mono">· ' + esc(task.id) + '</span>' +
+          '<div class="flex items-center gap-2 mb-1"><i class="fas fa-clock text-blue-500"></i><h3 class="font-extrabold text-slate-900">Log Hours</h3></div>' +
+          '<p class="text-xs text-slate-400">' + esc(task.title) +
             (isBillable ? ' <span class="inline-flex items-center gap-0.5 text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-px rounded font-semibold ml-1"><i class="fas fa-dollar-sign text-[9px]"></i>Billable</span>' : '') +
           '</p>' +
         '</div>' +
-        '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer">✕</button>' +
+        '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>' +
       '</div>' +
       '<div class="px-6 py-5 flex flex-col gap-4">' +
         '<div id="tm-status"></div>' +
-
-        // Hours progress if estimated exists
         (parseFloat(task.estimated_hours) > 0
           ? '<div class="bg-blue-50 rounded-xl p-3 border border-blue-100">' +
               '<p class="text-xs text-blue-500 font-semibold mb-2">Current Progress</p>' +
               hoursBar(task.actual_hours, task.estimated_hours) +
             '</div>'
           : '') +
-
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
           '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Date</label>' +
           '<input id="lh-date" class="field" type="date" value="' + today + '"></div>' +
-
-          '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Hours Worked <span class="text-red-400">*</span></label>' +
+          '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Hours <span class="text-red-400">*</span></label>' +
           '<input id="lh-hours" class="field" type="number" step="0.25" min="0.25" max="24" placeholder="e.g. 2.5"></div>' +
         '</div>' +
-
-        '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">What did you work on? <span class="text-slate-300 font-normal normal-case">(optional)</span></label>' +
-        '<textarea id="lh-notes" class="field text-sm" rows="3" style="resize:none" placeholder="Describe what you worked on, what you accomplished, or any blockers…"></textarea></div>' +
-
-        // ── Billing details (only shown for billable tasks) ───────
+        '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Notes</label>' +
+        '<textarea id="lh-notes" class="field text-sm" rows="3" style="resize:none" placeholder="What did you work on?"></textarea></div>' +
         (isBillable
-          ? '<div class="border border-green-200 rounded-xl p-4 bg-green-50">' +
-              '<p class="text-xs font-bold text-green-700 mb-3"><i class="fas fa-dollar-sign mr-1 text-[10px]"></i>Billing Details for this Entry</p>' +
+          ? '<div class="bg-green-50 border border-green-200 rounded-xl p-3">' +
+              '<p class="text-xs font-bold text-green-700 mb-2"><i class="fas fa-dollar-sign mr-1"></i>Billing</p>' +
               '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
                 '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Pay Type</label>' +
                 '<select id="lh-pay-type" class="field text-sm">' +
-                  '<option value="per_hour"' + (task.billable_pay_type === 'per_hour' || !task.billable_pay_type ? ' selected' : '') + '>Per Hour</option>' +
-                  '<option value="per_task"' + (task.billable_pay_type === 'per_task' ? ' selected' : '') + '>Per Task (flat)</option>' +
-                  '<option value="salary"'  + (task.billable_pay_type === 'salary'   ? ' selected' : '') + '>Salary</option>' +
+                  '<option value="per_hour"' + (task.billable_pay_type==='per_hour'?' selected':'') + '>Per Hour</option>' +
+                  '<option value="per_task"' + (task.billable_pay_type==='per_task'?' selected':'') + '>Per Task</option>' +
+                  '<option value="salary"'   + (task.billable_pay_type==='salary'?' selected':'')   + '>Salary</option>' +
                 '</select></div>' +
-                '<div id="lh-rate-wrap"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Rate / Amount</label>' +
-                '<div class="relative">' +
-                  '<span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">$</span>' +
-                  '<input id="lh-rate" class="field text-sm pl-7" type="number" step="0.01" min="0" placeholder="0.00" value="' + esc(task.billable_rate || '') + '">' +
-                '</div></div>' +
+                '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Rate ($)</label>' +
+                '<div class="relative"><span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>' +
+                '<input id="lh-rate" class="field text-sm pl-7" type="number" step="0.01" min="0" value="' + esc(task.billable_rate||'') + '"></div></div>' +
               '</div>' +
             '</div>'
           : '') +
-
-        '<div style="display:flex;gap:.75rem">' +
-          '<button id="tm-cancel" class="btn-secondary flex-1">Cancel</button>' +
-          '<button id="lh-submit" class="btn-primary flex-1"><i class="fas fa-clock text-xs mr-1"></i>Log Hours</button>' +
+        '<div class="flex gap-3">' +
+          '<button id="lh-cancel" class="btn-secondary flex-1">Cancel</button>' +
+          '<button id="lh-submit" class="btn-primary flex-1"><i class="fas fa-check text-xs mr-1"></i>Log Hours</button>' +
         '</div>' +
       '</div>';
 
     showModal(html, '520px');
     document.getElementById('tm-close').addEventListener('click', closeModal);
-    document.getElementById('tm-cancel').addEventListener('click', closeModal);
-    document.getElementById('lh-submit').addEventListener('click', function() { submitLogHours(task.id, isBillable); });
-
-    if (isBillable) {
-      // Hide rate field when pay type is salary
-      document.getElementById('lh-pay-type').addEventListener('change', function() {
-        document.getElementById('lh-rate-wrap').style.display = this.value === 'salary' ? 'none' : 'block';
-      });
-      // Set initial state based on task's default pay type
-      if (task.billable_pay_type === 'salary') {
-        document.getElementById('lh-rate-wrap').style.display = 'none';
-      }
-    }
-
+    document.getElementById('lh-cancel').addEventListener('click', closeModal);
+    document.getElementById('lh-submit').addEventListener('click', function() { submitLogHours(task, isBillable); });
     setTimeout(function() { var el = document.getElementById('lh-hours'); if (el) el.focus(); }, 80);
   }
 
-  function submitLogHours(taskId, isBillable) {
+  function submitLogHours(task, isBillable) {
     var hours = parseFloat(document.getElementById('lh-hours').value);
-    if (!hours || hours <= 0) { modalStatus('Please enter a valid number of hours (e.g. 1.5)', false); return; }
-
-    var billable = !!isBillable;
-    var payType  = billable && document.getElementById('lh-pay-type') ? document.getElementById('lh-pay-type').value : '';
-    var rate     = (billable && payType !== 'salary' && document.getElementById('lh-rate')) ? (document.getElementById('lh-rate').value || '') : '';
-
+    if (!hours || hours <= 0) { modalStatus('Enter a valid number of hours.', false); return; }
     var btn = document.getElementById('lh-submit');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i> Logging…'; }
-
-    api('tasks/log-hours', {
-      task_id:  taskId,
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i>Logging…'; }
+    var params = {
+      task_id:  task.id,
       user_id:  myUserId(),
       date:     document.getElementById('lh-date').value,
       hours:    hours,
       notes:    document.getElementById('lh-notes').value || '',
-      billable: billable ? 'true' : 'false',
-      pay_type: billable ? payType : '',
-      rate:     billable ? rate : '',
-    }).then(function() {
-      // Update actual_hours in local cache immediately so stats bar updates right away
-      var cached = tasksCache[taskId];
-      if (cached) {
-        cached.actual_hours = (parseFloat(cached.actual_hours) || 0) + hours;
-        renderStats(Object.values(tasksCache));
-      }
-      modalStatus('Hours logged!', true);
-      setTimeout(function() { closeModal(); loadData(); }, 700);
-    }).catch(function(e) {
-      modalStatus(e.message, false);
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-clock text-xs mr-1"></i>Log Hours'; }
-    });
+      billable: isBillable ? 'true' : 'false',
+    };
+    if (isBillable) {
+      params.pay_type = document.getElementById('lh-pay-type').value;
+      params.rate     = document.getElementById('lh-rate').value || '';
+    }
+    api('tasks/log-hours', params)
+      .then(function() {
+        toast(fmtHours(hours) + ' logged ✓', 'success');
+        // Auto-notify admin if billable task and pending approval
+        if (isBillable && (!task.approval_status || task.approval_status === 'pending')) {
+          usersCache.filter(function(u) { return ['Admin','SuperAdmin','Manager'].includes(u.role); })
+            .forEach(function(u) { sendNotification(u.user_id||u.id, 'Hours logged on billable task: ' + (task.title||task.id), task.id); });
+        }
+        closeModal(); loadData();
+      })
+      .catch(function(e) {
+        modalStatus(e.message, false);
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check text-xs mr-1"></i>Log Hours'; }
+      });
   }
-
 
   // ================================================================
   //  LOG NOTE MODAL
   // ================================================================
   function openLogNoteModal(task) {
     if (!task) return;
-    var today = new Date().toISOString().split('T')[0];
-
     var html =
-      '<div class="px-6 py-5 border-b border-slate-100 flex items-start justify-between">' +
-        '<div>' +
-          '<div class="flex items-center gap-2 mb-1">' +
-            '<i class="fas fa-sticky-note text-purple-500"></i>' +
-            '<h3 class="font-extrabold text-slate-900">Log Note</h3>' +
-          '</div>' +
-          '<p class="text-xs text-slate-400">' + esc(task.title) + ' <span class="font-mono">· ' + esc(task.id) + '</span></p>' +
-        '</div>' +
-        '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer">✕</button>' +
+      '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
+        '<div class="flex items-center gap-2"><i class="fas fa-sticky-note text-purple-500"></i><h3 class="font-extrabold text-slate-900">Log Note</h3></div>' +
+        '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>' +
       '</div>' +
       '<div class="px-6 py-5 flex flex-col gap-4">' +
         '<div id="tm-status"></div>' +
-
-        '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Date</label>' +
-        '<input id="ln-date" class="field" type="date" value="' + today + '"></div>' +
-
+        '<p class="text-xs text-slate-400">' + esc(task.title) + '</p>' +
         '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Note <span class="text-red-400">*</span></label>' +
-        '<textarea id="ln-note" class="field text-sm" rows="5" style="resize:none" placeholder="Add a progress update, decision, blocker, or any relevant information…"></textarea></div>' +
-
-        '<div style="display:flex;gap:.75rem">' +
-          '<button id="tm-cancel" class="btn-secondary flex-1">Cancel</button>' +
-          '<button id="ln-submit" class="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-white border-none cursor-pointer transition-colors" style="background:#7c3aed">' +
-            '<i class="fas fa-sticky-note text-xs"></i>Log Note' +
-          '</button>' +
+        '<textarea id="ln-note" class="field text-sm" rows="4" style="resize:none" placeholder="Progress update, blocker, or observation… (@mention a user)"></textarea></div>' +
+        '<div class="flex gap-3">' +
+          '<button id="ln-cancel" class="btn-secondary flex-1">Cancel</button>' +
+          '<button id="ln-submit" class="btn-primary flex-1" style="background:#7c3aed"><i class="fas fa-sticky-note text-xs mr-1"></i>Save Note</button>' +
         '</div>' +
       '</div>';
-
-    showModal(html, '520px');
+    showModal(html, '480px');
     document.getElementById('tm-close').addEventListener('click', closeModal);
-    document.getElementById('tm-cancel').addEventListener('click', closeModal);
-    document.getElementById('ln-submit').addEventListener('click', function() { submitLogNote(task.id); });
+    document.getElementById('ln-cancel').addEventListener('click', closeModal);
+    document.getElementById('ln-submit').addEventListener('click', function() {
+      var note = (document.getElementById('ln-note').value || '').trim();
+      if (!note) { modalStatus('Note is required.', false); return; }
+      var btn = this; btn.disabled = true;
+      api('tasks/log-note', { task_id: task.id, user_id: myUserId(), note: note,
+        date: new Date().toISOString().split('T')[0] })
+        .then(function() { toast('Note saved ✓', 'success'); closeModal(); loadData(); })
+        .catch(function(e) { modalStatus(e.message, false); btn.disabled = false; });
+    });
     setTimeout(function() { var el = document.getElementById('ln-note'); if (el) el.focus(); }, 80);
   }
 
-  function submitLogNote(taskId) {
-    var note = (document.getElementById('ln-note').value || '').trim();
-    if (!note) { modalStatus('Please enter a note.', false); return; }
-
-    var btn = document.getElementById('ln-submit');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i> Saving…'; }
-
-    api('tasks/log-note', {
-      task_id: taskId,
-      user_id: myUserId(),
-      date:    document.getElementById('ln-date').value,
-      note:    note,
-    }).then(function() {
-      modalStatus('Note saved!', true);
-      setTimeout(function() { closeModal(); loadData(); }, 700);
-    }).catch(function(e) {
-      modalStatus(e.message, false);
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sticky-note text-xs mr-1"></i>Log Note'; }
-    });
-  }
-
-
   // ================================================================
-  //  SEARCH
+  //  TASK FORM (Create / Edit)
   // ================================================================
-  function doSearch(q) {
-    q = q.toLowerCase().trim();
-    var all      = Object.values(tasksCache);
-    var filtered = q ? all.filter(function(t) {
-      return (t.id          || '').toLowerCase().includes(q) ||
-             (t.title       || '').toLowerCase().includes(q) ||
-             (t.description || '').toLowerCase().includes(q) ||
-             (t.tags        || '').toLowerCase().includes(q) ||
-             (t.notes       || '').toLowerCase().includes(q) ||
-             userName(t.assigned_to).toLowerCase().includes(q);
-    }) : all;
-    renderStats(filtered);
-    if (activeView === 'kanban') renderKanban(filtered);
-    else renderList(filtered);
-    var sub = document.getElementById('tasks-subtitle');
-    if (sub) sub.textContent = filtered.length + (q ? ' of ' + all.length : '') + ' task' + (filtered.length !== 1 ? 's' : '');
-  }
-
-
-  // ================================================================
-  //  QUICK STATUS UPDATE
-  // ================================================================
-  function quickUpdate(id, fields, msg) {
-    var params = { id: id };
-    Object.keys(fields).forEach(function(k) { params[k] = fields[k]; });
-    api('tasks/update', params)
-      .then(function() { toast(msg, 'success'); loadData(); })
-      .catch(function(e) { toast(e.message, 'error'); });
-  }
-
-
-  // ================================================================
-  //  USER SEARCH FIELD
-  // ================================================================
-  function userSearchField(fieldId, label, currentId) {
-    var currentName = '';
-    if (currentId) {
-      var found = usersCache.find(function(u) { return u.user_id === currentId || u.id === currentId; });
-      currentName = found ? (found.name || found.email || '') : currentId;
-    }
-    return '<div>' +
-      '<label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">' + label + '</label>' +
-      '<div class="relative">' +
-        '<input id="' + fieldId + '-search" type="text" placeholder="Search name or email…" autocomplete="off" value="' + esc(currentName) + '" class="field text-sm">' +
-        '<input type="hidden" id="' + fieldId + '" value="' + esc(currentId || '') + '">' +
-        '<div id="' + fieldId + '-dd" class="hidden absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto" style="z-index:10001"></div>' +
-      '</div>' +
-    '</div>';
-  }
-
-  function bindUserSearch(fieldId) {
-    var input = document.getElementById(fieldId + '-search');
-    var dd    = document.getElementById(fieldId + '-dd');
-    if (!input || !dd) return;
-    function show() {
-      var q = input.value.toLowerCase().trim();
-      var m = usersCache.filter(function(u) {
-        return String(u.active) !== 'false' &&
-          ((u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q));
-      }).slice(0, 8);
-      dd.innerHTML = m.length
-        ? m.map(function(u) {
-            var n = u.name || u.email || '';
-            return '<button type="button" class="wv-pick w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 text-left" data-uid="' + esc(u.user_id || u.id || '') + '" data-name="' + esc(n) + '">' +
-              '<div class="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs flex-shrink-0">' + n.charAt(0).toUpperCase() + '</div>' +
-              '<div><div class="text-sm font-semibold text-slate-900">' + esc(n) + '</div>' +
-              (u.email ? '<div class="text-xs text-slate-400">' + esc(u.email) + '</div>' : '') + '</div></button>';
-          }).join('')
-        : '<div class="px-4 py-3 text-xs text-slate-400">No users found</div>';
-      dd.classList.remove('hidden');
-      dd.querySelectorAll('.wv-pick').forEach(function(b) {
-        b.addEventListener('click', function() {
-          input.value = this.dataset.name;
-          document.getElementById(fieldId).value = this.dataset.uid;
-          dd.classList.add('hidden');
-        });
-      });
-    }
-    input.addEventListener('input',  show);
-    input.addEventListener('focus',  show);
-    input.addEventListener('blur',   function() { setTimeout(function() { dd.classList.add('hidden'); }, 180); });
-  }
-
-
-  // ================================================================
-  //  TASK FORM MODAL  (create & edit)
-  // ================================================================
-  function openTaskForm(task) {
+  function openTaskForm(task, defaults) {
+    defaults = defaults || {};
     var isEdit   = !!task;
     var btnLabel = isEdit ? '<i class="fas fa-save text-xs mr-1"></i>Save Changes' : '<i class="fas fa-plus text-xs mr-1"></i>Create Task';
-    function v(f) { return isEdit && task[f] != null ? esc(String(task[f])) : ''; }
 
-    var statusOpts = STATUSES.map(function(s) {
-      var sel = isEdit ? (task.status === s ? ' selected' : '') : (s === 'To Do' ? ' selected' : '');
+    var statusOpts   = STATUSES.map(function(s) {
+      var sel = s === (task ? task.status : (defaults.status || 'To Do')) ? ' selected' : '';
       return '<option value="' + s + '"' + sel + '>' + s + '</option>';
     }).join('');
     var priorityOpts = PRIORITIES.map(function(p) {
-      var sel = isEdit ? (task.priority === p ? ' selected' : '') : (p === 'Medium' ? ' selected' : '');
+      var sel = p === (task ? task.priority : (defaults.priority || 'Medium')) ? ' selected' : '';
       return '<option value="' + p + '"' + sel + '>' + p + '</option>';
     }).join('');
 
-    // Project field — only rendered if Projects module is installed
+    function v(k) { return task ? esc(task[k] || '') : ''; }
+
+    var isBill  = isEdit && (task.billable === 'true' || task.billable === true);
+    var payT    = (isEdit && task.billable_pay_type) || 'per_hour';
+
     var projectField = '';
     if (projectsInstalled()) {
       if (projectsCache.length) {
-        var opts = '<option value="">No Project</option>' + projectsCache.map(function(p) {
-          var pid = p.id || p.project_id;
-          return '<option value="' + esc(pid) + '"' + (isEdit && task.project_id === pid ? ' selected' : '') + '>' + esc(p.name || pid) + '</option>';
-        }).join('');
+        var opts = '<option value="">— No project —</option>' +
+          projectsCache.map(function(p) {
+            var pid = p.id || p.project_id;
+            return '<option value="' + esc(pid) + '"' + (task && task.project_id === pid ? ' selected' : '') + '>' + esc(p.name || pid) + '</option>';
+          }).join('');
         projectField = '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Project</label>' +
           '<select id="tf-project_id" class="field text-sm">' + opts + '</select></div>';
       } else {
@@ -1161,10 +1598,18 @@ window.WorkVoltPages['tasks'] = function(container) {
       }
     }
 
+    var userSearchField = function(id, label, val) {
+      return '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">' + label + '</label>' +
+        '<div class="relative">' +
+          '<input id="' + id + '" class="field text-sm" type="text" placeholder="Search users…" value="' + esc(val ? userName(val) : '') + '" data-uid="' + esc(val||'') + '" autocomplete="off">' +
+          '<div id="' + id + '-dd" class="absolute top-full left-0 right-0 z-50 bg-white border border-slate-200 rounded-xl shadow-lg hidden" style="max-height:160px;overflow-y:auto"></div>' +
+        '</div></div>';
+    };
+
     var html =
       '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
         '<h3 class="font-extrabold text-slate-900">' + (isEdit ? 'Edit Task' : 'New Task') + '</h3>' +
-        '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer">✕</button>' +
+        '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>' +
       '</div>' +
       '<div class="px-6 py-5 flex flex-col gap-4">' +
         '<div id="tm-status"></div>' +
@@ -1173,7 +1618,7 @@ window.WorkVoltPages['tasks'] = function(container) {
         '<input id="tf-title" class="field" type="text" placeholder="Task title…" value="' + v('title') + '"></div>' +
 
         '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Description</label>' +
-        '<textarea id="tf-description" class="field text-sm" rows="2" style="resize:none" placeholder="Brief description…">' + v('description') + '</textarea></div>' +
+        '<textarea id="tf-description" class="field text-sm" rows="2" style="resize:none">' + v('description') + '</textarea></div>' +
 
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
           '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Status</label>' +
@@ -1198,41 +1643,30 @@ window.WorkVoltPages['tasks'] = function(container) {
         projectField +
 
         '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Notes</label>' +
-        '<textarea id="tf-notes" class="field text-sm" rows="3" style="resize:none" placeholder="Progress updates, blockers, internal notes…">' + v('notes') + '</textarea></div>' +
+        '<textarea id="tf-notes" class="field text-sm" rows="2" style="resize:none" placeholder="Internal notes, blockers…">' + v('notes') + '</textarea></div>' +
 
-        // ── Billable section ─────────────────────────────────────
+        // Billable section
         (function() {
-          var isBill = isEdit && (task.billable === 'true' || task.billable === true);
-          var payT   = (isEdit && task.billable_pay_type) || 'per_hour';
           return '<div class="border border-slate-200 rounded-xl p-4 bg-slate-50">' +
             '<div class="flex items-center justify-between mb-1">' +
-              '<div>' +
-                '<p class="text-xs font-bold text-slate-700">Billable Task?</p>' +
-                '<p class="text-[11px] text-slate-400">Mark this task as billable and set a rate</p>' +
-              '</div>' +
-              '<button type="button" id="tf-billable-btn" data-on="' + (isBill ? '1' : '0') + '" style="' +
-                'width:2.5rem;height:1.5rem;border-radius:9999px;border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;' +
-                'background:' + (isBill ? '#22c55e' : '#cbd5e1') + '">' +
-                '<span id="tf-billable-knob" style="' +
-                  'position:absolute;top:2px;width:1.25rem;height:1.25rem;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s;' +
-                  'left:' + (isBill ? 'calc(100% - 1.35rem)' : '2px') + '">' +
-                '</span>' +
+              '<div><p class="text-xs font-bold text-slate-700">Billable Task?</p>' +
+              '<p class="text-[11px] text-slate-400">Mark as billable and set a rate</p></div>' +
+              '<button type="button" id="tf-billable-btn" data-on="' + (isBill?'1':'0') + '" style="width:2.5rem;height:1.5rem;border-radius:9999px;border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;background:' + (isBill?'#22c55e':'#cbd5e1') + '">' +
+                '<span id="tf-billable-knob" style="position:absolute;top:2px;width:1.25rem;height:1.25rem;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s;left:' + (isBill?'calc(100% - 1.35rem)':'2px') + '"></span>' +
               '</button>' +
-              '<input type="hidden" id="tf-billable" value="' + (isBill ? 'true' : 'false') + '">' +
+              '<input type="hidden" id="tf-billable" value="' + (isBill?'true':'false') + '">' +
             '</div>' +
-            '<div id="tf-billable-fields" style="display:' + (isBill ? 'block' : 'none') + ';margin-top:.75rem;padding-top:.75rem;border-top:1px solid #e2e8f0">' +
+            '<div id="tf-billable-fields" style="display:' + (isBill?'block':'none') + ';margin-top:.75rem;padding-top:.75rem;border-top:1px solid #e2e8f0">' +
               '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
                 '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Pay Type</label>' +
                 '<select id="tf-pay-type" class="field text-sm">' +
-                  '<option value="per_hour"' + (payT === 'per_hour' ? ' selected' : '') + '>Per Hour</option>' +
-                  '<option value="per_task"' + (payT === 'per_task' ? ' selected' : '') + '>Per Task (flat)</option>' +
-                  '<option value="salary"'  + (payT === 'salary'   ? ' selected' : '') + '>Salary</option>' +
+                  '<option value="per_hour"' + (payT==='per_hour'?' selected':'') + '>Per Hour</option>' +
+                  '<option value="per_task"' + (payT==='per_task'?' selected':'') + '>Per Task (flat)</option>' +
+                  '<option value="salary"'   + (payT==='salary'?' selected':'') + '>Salary</option>' +
                 '</select></div>' +
-                '<div id="tf-rate-wrap" style="display:' + (payT === 'salary' ? 'none' : 'block') + '"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Rate / Amount ($)</label>' +
-                '<div class="relative">' +
-                  '<span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">$</span>' +
-                  '<input id="tf-rate" class="field text-sm pl-7" type="number" step="0.01" min="0" placeholder="0.00" value="' + v('billable_rate') + '">' +
-                '</div></div>' +
+                '<div id="tf-rate-wrap" style="display:' + (payT==='salary'?'none':'block') + '"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Rate ($)</label>' +
+                '<div class="relative"><span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">$</span>' +
+                '<input id="tf-rate" class="field text-sm pl-7" type="number" step="0.01" min="0" value="' + v('billable_rate') + '"></div></div>' +
               '</div>' +
             '</div>' +
           '</div>';
@@ -1240,9 +1674,7 @@ window.WorkVoltPages['tasks'] = function(container) {
 
         '<div style="display:flex;gap:.75rem;padding-top:.25rem">' +
           '<button id="tm-cancel" class="btn-secondary flex-1">Cancel</button>' +
-          (isEdit && isAdmin()
-            ? '<button id="tm-delete" class="px-4 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-500 text-sm font-bold border border-red-200 transition-colors border-none cursor-pointer"><i class="fas fa-trash text-xs"></i></button>'
-            : '') +
+          (isEdit && isAdmin() ? '<button id="tm-delete" class="px-4 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-500 text-sm font-bold border border-red-200 cursor-pointer border-none"><i class="fas fa-trash text-xs"></i></button>' : '') +
           '<button id="tm-submit" class="btn-primary flex-1">' + btnLabel + '</button>' +
         '</div>' +
       '</div>';
@@ -1252,16 +1684,13 @@ window.WorkVoltPages['tasks'] = function(container) {
 
     document.getElementById('tm-close').addEventListener('click', closeModal);
     document.getElementById('tm-cancel').addEventListener('click', closeModal);
-
-    // Billable toggle
     document.getElementById('tf-billable-btn').addEventListener('click', function() {
-      var isOn = this.dataset.on === '1';
-      isOn = !isOn;
-      this.dataset.on = isOn ? '1' : '0';
-      this.style.background = isOn ? '#22c55e' : '#cbd5e1';
-      document.getElementById('tf-billable-knob').style.left = isOn ? 'calc(100% - 1.35rem)' : '2px';
-      document.getElementById('tf-billable').value = isOn ? 'true' : 'false';
-      document.getElementById('tf-billable-fields').style.display = isOn ? 'block' : 'none';
+      var on = this.dataset.on === '1'; on = !on;
+      this.dataset.on = on ? '1' : '0';
+      this.style.background = on ? '#22c55e' : '#cbd5e1';
+      document.getElementById('tf-billable-knob').style.left = on ? 'calc(100% - 1.35rem)' : '2px';
+      document.getElementById('tf-billable').value = on ? 'true' : 'false';
+      document.getElementById('tf-billable-fields').style.display = on ? 'block' : 'none';
     });
     document.getElementById('tf-pay-type').addEventListener('change', function() {
       document.getElementById('tf-rate-wrap').style.display = this.value === 'salary' ? 'none' : 'block';
@@ -1273,39 +1702,35 @@ window.WorkVoltPages['tasks'] = function(container) {
     setTimeout(function() { var el = document.getElementById('tf-title'); if (el) el.focus(); }, 80);
   }
 
-
-  // ================================================================
-  //  DELETE MODAL
-  // ================================================================
-  function openDeleteModal(taskId, taskTitle) {
-    var html =
-      '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
-        '<h3 class="font-extrabold text-red-600">Delete Task</h3>' +
-        '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer">✕</button>' +
-      '</div>' +
-      '<div class="px-6 py-5 flex flex-col gap-4">' +
-        '<div class="flex gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">' +
-          '<i class="fas fa-exclamation-triangle text-red-400 mt-0.5 flex-shrink-0"></i>' +
-          '<div>' +
-            '<p class="text-sm font-bold text-red-700">This cannot be undone</p>' +
-            '<p class="text-sm text-red-600 mt-0.5"><strong>' + esc(taskTitle) + '</strong> and all its hour logs will be permanently deleted.</p>' +
-          '</div>' +
-        '</div>' +
-        '<div id="tm-status"></div>' +
-        '<div style="display:flex;gap:.75rem">' +
-          '<button id="tm-cancel" class="btn-secondary flex-1">Cancel</button>' +
-          '<button id="tm-confirm-delete" style="flex:1;display:flex;align-items:center;justify-content:center;gap:.5rem;padding:.65rem 1.25rem;background:#dc2626;color:#fff;border:none;border-radius:.75rem;font-size:.875rem;font-weight:700;cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'#b91c1c\'" onmouseout="this.style.background=\'#dc2626\'">' +
-            '<i class="fas fa-trash text-xs"></i> Delete Permanently' +
-          '</button>' +
-        '</div>' +
-      '</div>';
-
-    showModal(html, '480px');
-    document.getElementById('tm-close').addEventListener('click', closeModal);
-    document.getElementById('tm-cancel').addEventListener('click', closeModal);
-    document.getElementById('tm-confirm-delete').addEventListener('click', function() { submitDelete(taskId); });
+  function bindUserSearch(fieldId) {
+    var inp = document.getElementById(fieldId);
+    var dd  = document.getElementById(fieldId + '-dd');
+    if (!inp || !dd) return;
+    inp.addEventListener('input', function() {
+      var q = this.value.toLowerCase();
+      if (!q) { dd.classList.add('hidden'); return; }
+      var matches = usersCache.filter(function(u) {
+        return (u.name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q);
+      }).slice(0, 6);
+      if (!matches.length) { dd.classList.add('hidden'); return; }
+      dd.innerHTML = matches.map(function(u) {
+        var uid = u.user_id || u.id;
+        return '<button type="button" data-uid="' + esc(uid) + '" data-name="' + esc(u.name||u.email) + '" ' +
+          'class="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex items-center gap-2 border-none bg-transparent cursor-pointer">' +
+          userAvatar(uid, 'w-6 h-6 text-[10px] flex-shrink-0') +
+          '<span>' + esc(u.name || u.email) + '</span></button>';
+      }).join('');
+      dd.classList.remove('hidden');
+      dd.querySelectorAll('button').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          inp.value = this.dataset.name;
+          inp.dataset.uid = this.dataset.uid;
+          dd.classList.add('hidden');
+        });
+      });
+    });
+    inp.addEventListener('blur', function() { setTimeout(function() { dd.classList.add('hidden'); }, 150); });
   }
-
 
   // ================================================================
   //  FORM SUBMIT
@@ -1314,72 +1739,97 @@ window.WorkVoltPages['tasks'] = function(container) {
     var isEdit = !!taskId;
     var title  = (document.getElementById('tf-title').value || '').trim();
     if (!title) { modalStatus('Title is required.', false); return; }
-
     var btn = document.getElementById('tm-submit');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i>Saving…'; }
 
+    var assignedInp = document.getElementById('tf-assigned');
+    var assignedUid = (assignedInp && assignedInp.dataset.uid) ? assignedInp.dataset.uid : '';
+    // If typed manually (not from dropdown), try to match
+    if (!assignedUid && assignedInp && assignedInp.value) {
+      var q = assignedInp.value.toLowerCase();
+      var match = usersCache.find(function(u) { return (u.name||'').toLowerCase() === q || (u.email||'').toLowerCase() === q; });
+      if (match) assignedUid = match.user_id || match.id;
+    }
+
+    var billable = document.getElementById('tf-billable').value === 'true' ? 'true' : 'false';
     var params = {
       title:           title,
       description:     document.getElementById('tf-description').value    || '',
       status:          document.getElementById('tf-status').value         || 'To Do',
       priority:        document.getElementById('tf-priority').value       || 'Medium',
-      assigned_to:     document.getElementById('tf-assigned').value       || '',
+      assigned_to:     assignedUid,
       due_date:        document.getElementById('tf-due_date').value       || '',
       estimated_hours: document.getElementById('tf-est').value            || '',
       tags:            document.getElementById('tf-tags').value           || '',
       notes:           document.getElementById('tf-notes').value          || '',
-      billable:        document.getElementById('tf-billable').value === 'true' ? 'true' : 'false',
-      billable_pay_type: document.getElementById('tf-billable').value === 'true' ? (document.getElementById('tf-pay-type').value || 'per_hour') : '',
-      billable_rate:   document.getElementById('tf-billable').value === 'true' ? (document.getElementById('tf-rate').value || '') : '',
+      billable:        billable,
+      billable_pay_type: billable === 'true' ? (document.getElementById('tf-pay-type').value || 'per_hour') : '',
+      billable_rate:     billable === 'true' ? (document.getElementById('tf-rate').value || '') : '',
     };
-
-    // project_id only if Projects module installed and field exists
     var projEl = document.getElementById('tf-project_id');
     if (projEl) params.project_id = projEl.value || '';
+    if (isEdit) { params.id = taskId; }
+    else { try { params.created_by = myUserId(); } catch(e) {} }
 
-    if (isEdit) {
-      params.id = taskId;
-    } else {
-      try { params.created_by = window.WorkVolt.user().user_id || ''; } catch(e) {}
-    }
+    var prevTask = isEdit ? tasksCache[taskId] : null;
 
     api(isEdit ? 'tasks/update' : 'tasks/create', params)
-      .then(function() {
-        modalStatus(isEdit ? 'Task updated!' : 'Task created!', true);
-        setTimeout(function() { closeModal(); loadData(); }, 700);
-      })
-      .catch(function(e) {
-        modalStatus(e.message, false);
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = isEdit ? '<i class="fas fa-save text-xs mr-1"></i>Save Changes' : '<i class="fas fa-plus text-xs mr-1"></i>Create Task';
+      .then(function(res) {
+        modalStatus(isEdit ? 'Saved!' : 'Task created!', true);
+        // Notify if assigned_to changed
+        if (params.assigned_to && (!prevTask || prevTask.assigned_to !== params.assigned_to)) {
+          sendNotification(params.assigned_to, 'You were assigned to: ' + title, isEdit ? taskId : (res.id || ''));
         }
-      });
-  }
-
-
-  // ================================================================
-  //  DELETE SUBMIT
-  // ================================================================
-  function submitDelete(taskId) {
-    if (!taskId) { modalStatus('Task ID missing.', false); return; }
-    var btn = document.getElementById('tm-confirm-delete');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Deleting…'; }
-
-    api('tasks/delete', { id: taskId, task_id: taskId })
-      .then(function() {
-        modalStatus('Task deleted.', true);
+        // Notify admins if billable
+        if (billable === 'true') {
+          usersCache.filter(function(u) { return ['Admin','SuperAdmin','Manager'].includes(u.role) && u.user_id !== myUserId(); })
+            .forEach(function(u) { sendNotification(u.user_id||u.id, 'Billable task needs approval: ' + title, isEdit ? taskId : (res.id||'')); });
+        }
         setTimeout(function() { closeModal(); loadData(); }, 700);
       })
       .catch(function(e) {
         modalStatus(e.message, false);
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash text-xs"></i> Delete Permanently'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = isEdit ? '<i class="fas fa-save text-xs mr-1"></i>Save Changes' : '<i class="fas fa-plus text-xs mr-1"></i>Create Task'; }
       });
   }
 
+  // ================================================================
+  //  DELETE MODAL
+  // ================================================================
+  function openDeleteModal(taskId, taskTitle) {
+    var html =
+      '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
+        '<h3 class="font-extrabold text-red-600">Delete Task</h3>' +
+        '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>' +
+      '</div>' +
+      '<div class="px-6 py-5 flex flex-col gap-4">' +
+        '<div class="flex gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">' +
+          '<i class="fas fa-exclamation-triangle text-red-400 mt-0.5 flex-shrink-0"></i>' +
+          '<div><p class="text-sm font-bold text-red-700">This cannot be undone</p>' +
+          '<p class="text-sm text-red-600 mt-0.5"><strong>' + esc(taskTitle) + '</strong> and all logs will be permanently deleted.</p></div>' +
+        '</div>' +
+        '<div id="tm-status"></div>' +
+        '<div style="display:flex;gap:.75rem">' +
+          '<button id="tm-cancel" class="btn-secondary flex-1">Cancel</button>' +
+          '<button id="tm-confirm-delete" style="flex:1;display:flex;align-items:center;justify-content:center;gap:.5rem;padding:.65rem 1.25rem;background:#dc2626;color:#fff;border:none;border-radius:.75rem;font-size:.875rem;font-weight:700;cursor:pointer">' +
+            '<i class="fas fa-trash text-xs"></i> Delete Permanently' +
+          '</button>' +
+        '</div>' +
+      '</div>';
+    showModal(html, '480px');
+    document.getElementById('tm-close').addEventListener('click', closeModal);
+    document.getElementById('tm-cancel').addEventListener('click', closeModal);
+    document.getElementById('tm-confirm-delete').addEventListener('click', function() {
+      var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Deleting…';
+      api('tasks/delete', { id: taskId, task_id: taskId })
+        .then(function() { toast('Task deleted', 'info'); closeModal(); loadData(); })
+        .catch(function(e) { modalStatus(e.message, false); btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash text-xs"></i> Delete Permanently'; });
+    });
+  }
 
-  // ── Boot ──────────────────────────────────────────────────────
+  // ── Boot ─────────────────────────────────────────────────────
   var old = document.getElementById(MODAL_ID);
   if (old) old.innerHTML = '';
+  _kbBound = false;
   render();
 };
