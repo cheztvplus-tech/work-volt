@@ -8,6 +8,19 @@ window.WorkVoltPages['store'] = function(container) {
   const CATALOGUE = [
     // ── Core modules (previously hardcoded in nav) ──────────────────
     {
+      id: 'notifications',
+      label: 'Notifications',
+      icon: 'fa-bell',
+      category: 'Productivity',
+      version: '1.0.0',
+      author: 'Work Volt',
+      description: 'Full notification center with smart grouping, priority levels, bell alerts, popup toasts, persistent banners, and quiet hours. Wires directly into Tasks, approvals, and mentions.',
+      tags: ['notifications', 'alerts', 'productivity'],
+      color: '#3b82f6',
+      gradient: 'from-blue-500 to-indigo-600',
+      featured: true,
+    },
+    {
       id: 'tasks',
       label: 'Tasks',
       icon: 'fa-check-circle',
