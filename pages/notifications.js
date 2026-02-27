@@ -214,18 +214,16 @@ window.WorkVoltPages['notifications'] = function(container) {
         var refId   = this.dataset.refId;
         if (this.dataset.read !== 'true') doMarkRead(id, this);
         if (refType && refId && window.WorkVolt && window.WorkVolt.navigate) {
-          window.WorkVolt.navigate(refType);
-          if (refType === 'tasks') {
-            var attempts = 0;
-            var tryOpen = setInterval(function() {
-              attempts++;
-              if (window.WVTasks && window.WVTasks.openById) {
-                clearInterval(tryOpen);
-                window.WVTasks.openById(refId);
-              } else if (attempts > 30) {
-                clearInterval(tryOpen);
-              }
-            }, 150);
+          if (refType === 'tasks' && refId) {
+            if (window.WVTasks && window.WVTasks.openById) {
+              window.WorkVolt.navigate(refType);
+              setTimeout(function() { window.WVTasks.openById(refId); }, 100);
+            } else {
+              window._pendingOpenTaskId = refId;
+              window.WorkVolt.navigate(refType);
+            }
+          } else {
+            window.WorkVolt.navigate(refType);
           }
         }
       });
