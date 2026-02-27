@@ -154,17 +154,56 @@ window.WorkVoltPages['tasks'] = function(container) {
   }
 
   // ── Progress ──────────────────────────────────────────────────
+  // Stage order that maps to % complete
+  var PROGRESS_STAGES = ['To Do', 'In Progress', 'In Review', 'Done'];
+  var PROGRESS_STAGE_PCT = { 'To Do': 0, 'In Progress': 33, 'In Review': 66, 'Done': 100, 'Cancelled': 100 };
+
   function calcProgress(t) {
-    if (t.status === 'Done' || t.status === 'Cancelled') return 100;
-    // Manual override takes priority
-    if (t.progress_pct !== undefined && t.progress_pct !== '' && t.progress_pct !== null) {
-      var manual = parseInt(t.progress_pct, 10);
-      if (!isNaN(manual)) return Math.min(Math.max(manual, 0), 100);
-    }
-    var a = parseFloat(t.actual_hours) || 0;
-    var e = parseFloat(t.estimated_hours) || 0;
-    if (!e) return 0;
-    return Math.min(Math.round((a / e) * 100), 100);
+    return PROGRESS_STAGE_PCT[t.status] !== undefined ? PROGRESS_STAGE_PCT[t.status] : 0;
+  }
+
+  // Render a horizontal checklist progress bar with stages
+  function stageProgressBar(currentStatus) {
+    var stages = PROGRESS_STAGES;
+    var currentIdx = stages.indexOf(currentStatus);
+    if (currentStatus === 'Cancelled') currentIdx = stages.length - 1;
+    var pct = PROGRESS_STAGE_PCT[currentStatus] || 0;
+
+    var stageHtml = stages.map(function(stage, i) {
+      var done    = i < currentIdx || currentStatus === 'Done' || currentStatus === 'Cancelled';
+      var active  = i === currentIdx && currentStatus !== 'Done' && currentStatus !== 'Cancelled';
+      var pending = !done && !active;
+
+      var dotColor  = done ? '#22c55e' : active ? '#3b82f6' : '#e2e8f0';
+      var textColor = done ? '#15803d' : active ? '#1d4ed8' : '#94a3b8';
+      var lineColor = i < stages.length - 1 ? (done || active ? '#22c55e' : '#e2e8f0') : '';
+      // For the connecting line — it should be green if the NEXT stage starts
+      var lineGreen = i < currentIdx;
+
+      return '<div class="flex flex-col items-center" style="flex:1;min-width:0">' +
+        '<div class="flex items-center w-full">' +
+          // Left line (except for first)
+          (i > 0 ? '<div style="flex:1;height:2px;background:' + (done ? '#22c55e' : '#e2e8f0') + ';transition:background .3s"></div>' : '<div style="flex:1"></div>') +
+          // Dot
+          '<div style="width:1.4rem;height:1.4rem;border-radius:50%;background:' + dotColor + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;border:2px solid ' + (done ? '#16a34a' : active ? '#2563eb' : '#d1d5db') + ';transition:all .3s">' +
+            (done ? '<i class="fas fa-check" style="color:#fff;font-size:.55rem"></i>' :
+             active ? '<div style="width:.45rem;height:.45rem;border-radius:50%;background:#fff"></div>' : '') +
+          '</div>' +
+          // Right line (except for last)
+          (i < stages.length - 1 ? '<div style="flex:1;height:2px;background:' + (i < currentIdx ? '#22c55e' : '#e2e8f0') + ';transition:background .3s"></div>' : '<div style="flex:1"></div>') +
+        '</div>' +
+        '<p style="font-size:.6rem;font-weight:' + (active ? '700' : '500') + ';color:' + textColor + ';margin-top:.3rem;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:3.5rem">' +
+          (stage === 'To Do' ? 'To Do' : stage === 'In Progress' ? 'In Progress' : stage === 'In Review' ? 'Review' : 'Done') +
+        '</p>' +
+      '</div>';
+    }).join('');
+
+    var isCancelled = currentStatus === 'Cancelled';
+    return '<div class="w-full">' +
+      (isCancelled
+        ? '<div class="flex items-center justify-center py-2"><span class="text-xs font-semibold text-red-500 bg-red-50 border border-red-200 px-3 py-1 rounded-full"><i class="fas fa-ban mr-1"></i>Cancelled</span></div>'
+        : '<div class="flex items-center w-full px-1 mt-1">' + stageHtml + '</div>') +
+    '</div>';
   }
   function progressRing(pct, size, stroke) {
     size   = size   || 36;
@@ -1206,7 +1245,7 @@ window.WorkVoltPages['tasks'] = function(container) {
               (over ? '<span class="text-[10px] text-red-500 font-bold bg-red-50 px-2 py-px rounded border border-red-200"><i class="fas fa-fire mr-0.5"></i>Overdue</span>' : '') +
             '</div>' +
             '<h2 class="text-lg font-extrabold text-slate-900 leading-snug">' + esc(task.title) + '</h2>' +
-            (pct > 0 ? '<div class="mt-2 flex items-center gap-2">' + progressRing(pct, 28, 2.5) + hoursBar(task.actual_hours, task.estimated_hours) + '</div>' : '') +
+            (pct > 0 ? '<div class="mt-2">' + stageProgressBar(task.status) + '</div>' : '') +
           '</div>' +
           '<button id="tm-close" class="flex-shrink-0 w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer">✕</button>' +
         '</div>' +
@@ -1267,17 +1306,7 @@ window.WorkVoltPages['tasks'] = function(container) {
                 '<br><span class="text-slate-400 font-normal">' + (countdown(task)||'') + '</span></span>'
               : '<span class="text-slate-300">None</span>') +
             meta('Progress',
-              (task.status === 'Done' || task.status === 'Cancelled')
-                ? progressRing(100, 32, 3) + '<span class="ml-1 text-sm font-bold text-green-600">100%</span>'
-                : '<div class="flex flex-col gap-1.5 w-full">' +
-                    '<div class="flex items-center gap-2">' +
-                      progressRing(pct, 32, 3) +
-                      '<span id="td-pct-label" class="text-sm font-bold ' + (pct>=100?'text-green-600':pct>0?'text-blue-600':'text-slate-400') + '">' + pct + '%</span>' +
-                    '</div>' +
-                    '<input id="td-progress-slider" type="range" min="0" max="100" step="5" value="' + pct + '" ' +
-                      'class="w-full cursor-pointer" style="accent-color:#3b82f6;height:4px">' +
-                    '<button id="td-save-progress" class="text-[11px] font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-2 py-1 transition-colors border-none cursor-pointer self-end hidden">Save</button>' +
-                  '</div>') +
+              '<div class="w-full">' + stageProgressBar(task.status) + '</div>') +
             meta('Est. Hours', task.estimated_hours ? fmtHours(task.estimated_hours) : '<span class="text-slate-300">—</span>') +
             meta('Actual Hours', '<span class="text-blue-600 font-bold">' + fmtHours(task.actual_hours || 0) + '</span>') +
             ((task.billable === 'true' || task.billable === true)
@@ -1346,33 +1375,6 @@ window.WorkVoltPages['tasks'] = function(container) {
           .catch(function(e) { toast(e.message, 'error'); });
       });
 
-      // Wire progress slider
-      var progressSlider = document.getElementById('td-progress-slider');
-      var progressLabel  = document.getElementById('td-pct-label');
-      var saveProgressBtn = document.getElementById('td-save-progress');
-      if (progressSlider) {
-        progressSlider.addEventListener('input', function() {
-          var v = parseInt(this.value, 10);
-          if (progressLabel) { progressLabel.textContent = v + '%'; progressLabel.className = 'text-sm font-bold ' + (v>=100?'text-green-600':v>0?'text-blue-600':'text-slate-400'); }
-          if (saveProgressBtn) saveProgressBtn.classList.remove('hidden');
-        });
-        if (saveProgressBtn) {
-          saveProgressBtn.addEventListener('click', function() {
-            var v = parseInt(progressSlider.value, 10);
-            this.disabled = true; this.textContent = 'Saving…';
-            api('tasks/update', { id: task.id, progress_pct: v })
-              .then(function() {
-                task.progress_pct = v;
-                toast('Progress updated to ' + v + '%', 'success');
-                saveProgressBtn.textContent = 'Saved ✓';
-                saveProgressBtn.disabled = false;
-                setTimeout(function() { saveProgressBtn.classList.add('hidden'); saveProgressBtn.textContent = 'Save'; }, 1500);
-                loadData();
-              })
-              .catch(function(e) { toast(e.message, 'error'); saveProgressBtn.disabled = false; saveProgressBtn.textContent = 'Save'; });
-          });
-        }
-      }
 
 
       var _mentionedUsers = []; // [{uid, name}] resolved mentions
@@ -1894,13 +1896,32 @@ window.WorkVoltPages['tasks'] = function(container) {
     if (!inp || !dd) return;
 
     function showUserList(q) {
+      // If cache is empty, try fetching users first
+      if (!usersCache.length) {
+        api('users/list')
+          .then(function(res) {
+            usersCache = res.users || res.rows || [];
+            showUserList(q);
+          })
+          .catch(function() {});
+        return;
+      }
       var matches = (q
         ? usersCache.filter(function(u) { return (u.name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q); })
         : usersCache.slice()
-      ).slice(0, 8);
-      if (!matches.length) { dd.classList.add('hidden'); return; }
+      ).slice(0, 10);
+      if (!matches.length) {
+        dd.innerHTML = '<div class="px-3 py-2.5 text-xs text-slate-400">No users found</div>';
+        dd.classList.remove('hidden');
+        return;
+      }
       dd.innerHTML =
         '<div style="max-height:200px;overflow-y:auto">' +
+        // Clear option
+        '<button type="button" data-uid="" data-name="" ' +
+          'class="w-full text-left px-3 py-2 text-xs text-slate-400 hover:bg-slate-50 flex items-center gap-2 border-none bg-transparent cursor-pointer transition-colors">' +
+          '<i class="fas fa-times-circle text-slate-300 w-7 text-center"></i>Unassigned' +
+        '</button>' +
         matches.map(function(u) {
           var uid = u.user_id || u.id;
           return '<button type="button" data-uid="' + esc(uid) + '" data-name="' + esc(u.name||u.email) + '" ' +
@@ -1916,15 +1937,18 @@ window.WorkVoltPages['tasks'] = function(container) {
         // mousedown fires before blur — prevents the dropdown closing before click registers
         btn.addEventListener('mousedown', function(e) {
           e.preventDefault();
-          inp.value      = this.dataset.name;
+          inp.value       = this.dataset.name;
           inp.dataset.uid = this.dataset.uid;
           dd.classList.add('hidden');
         });
       });
     }
 
-    // Show all users on focus (shows everyone when field is empty)
+    // Show all users on focus or click (shows everyone when field is empty)
     inp.addEventListener('focus', function() {
+      showUserList(this.value.trim().toLowerCase());
+    });
+    inp.addEventListener('click', function() {
       showUserList(this.value.trim().toLowerCase());
     });
     // Filter as user types; clear uid if field emptied
