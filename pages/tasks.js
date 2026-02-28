@@ -51,6 +51,26 @@ window.WorkVoltPages['tasks'] = function(container) {
   var PRIORITY_DOT = {
     'Low': '#94a3b8', 'Medium': '#f59e0b', 'High': '#f97316', 'Urgent': '#ef4444',
   };
+  // ── Checklist Stages (5 × 20% = 100%) ─────────────────────────
+  var CHECKLIST_STAGES = ['Draft', 'Ready', 'In Progress', 'Review', 'Done'];
+
+  function getChecklistKey(taskId) { return 'wv_task_checklist_' + taskId; }
+  function getChecklist(taskId) {
+    try {
+      var raw = localStorage.getItem(getChecklistKey(taskId));
+      if (raw) return JSON.parse(raw);
+    } catch(e) {}
+    return {};
+  }
+  function saveChecklist(taskId, state) {
+    try { localStorage.setItem(getChecklistKey(taskId), JSON.stringify(state)); } catch(e) {}
+  }
+  function calcChecklistPct(taskId) {
+    var state = getChecklist(taskId);
+    var checked = CHECKLIST_STAGES.filter(function(s) { return state[s]; }).length;
+    return Math.round((checked / CHECKLIST_STAGES.length) * 100);
+  }
+
   var KANBAN_COLORS = {
     'To Do':       { dot:'bg-slate-400',   ring:'#94a3b8', bar:'bg-slate-200',   head:'bg-slate-50',  border:'border-slate-200' },
     'In Progress': { dot:'bg-blue-500',    ring:'#3b82f6', bar:'bg-blue-100',    head:'bg-blue-50',   border:'border-blue-200'  },
@@ -150,11 +170,11 @@ window.WorkVoltPages['tasks'] = function(container) {
 
   // ── Progress ──────────────────────────────────────────────────
   function calcProgress(t) {
-    if (t.status === 'Done' || t.status === 'Cancelled') return 100;
-    var a = parseFloat(t.actual_hours) || 0;
-    var e = parseFloat(t.estimated_hours) || 0;
-    if (!e) return 0;
-    return Math.min(Math.round((a / e) * 100), 100);
+    if (!t || !t.id) return 0;
+    var pct = calcChecklistPct(t.id);
+    // If no checklist items checked yet but task is Done/Cancelled, show 100
+    if (pct === 0 && (t.status === 'Done' || t.status === 'Cancelled')) return 100;
+    return pct;
   }
   function progressRing(pct, size, stroke) {
     size   = size   || 36;
@@ -1206,6 +1226,35 @@ window.WorkVoltPages['tasks'] = function(container) {
                 '<p class="text-sm text-slate-700 leading-relaxed">' + esc(task.description) + '</p></div>'
               : '') +
 
+            // ── Checklist Progress ──────────────────────────────────
+            (function() {
+              var cState = getChecklist(task.id);
+              var stagesHtml = CHECKLIST_STAGES.map(function(stage, i) {
+                var checked = !!cState[stage];
+                return '<label style="display:flex;align-items:center;gap:.625rem;padding:.55rem .75rem;border-radius:.625rem;cursor:pointer;' +
+                  (checked ? 'background:#f0fdf4' : 'background:transparent') + '">' +
+                  '<input type="checkbox" data-checklist-stage="' + stage + '" data-task-id="' + task.id + '" ' +
+                    (checked ? 'checked ' : '') +
+                    'style="width:1rem;height:1rem;accent-color:#16a34a;cursor:pointer;flex-shrink:0">' +
+                  '<span style="flex:1;font-size:.8125rem;font-weight:600;color:' + (checked ? '#16a34a' : '#475569') + ';' +
+                    (checked ? 'text-decoration:line-through;opacity:.7' : '') + '">' + stage + '</span>' +
+                  '<span style="font-size:.6875rem;font-weight:700;color:' + (checked ? '#16a34a' : '#94a3b8') + '">+20%</span>' +
+                '</label>';
+              }).join('');
+              var curPct = calcChecklistPct(task.id);
+              var barColor = curPct >= 100 ? '#16a34a' : curPct >= 60 ? '#3b82f6' : curPct >= 40 ? '#f59e0b' : '#94a3b8';
+              return '<div id="td-checklist-wrap" class="border border-slate-200 rounded-xl overflow-hidden">' +
+                '<div class="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between">' +
+                  '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Task Progress Checklist</p>' +
+                  '<span id="td-checklist-pct-lbl" style="font-size:.75rem;font-weight:700;color:' + barColor + '">' + curPct + '%</span>' +
+                '</div>' +
+                '<div style="height:4px;background:#e2e8f0">' +
+                  '<div id="td-checklist-bar" style="height:4px;background:' + barColor + ';width:' + curPct + '%;transition:width .3s,background .3s"></div>' +
+                '</div>' +
+                '<div class="py-1">' + stagesHtml + '</div>' +
+              '</div>';
+            })() +
+
             // Comment composer with @mention picker
             '<div class="border border-slate-200 rounded-xl overflow-hidden">' +
               '<div class="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between">' +
@@ -1297,6 +1346,46 @@ window.WorkVoltPages['tasks'] = function(container) {
         '</div>';
 
       showModal(html, '960px');
+
+      // Wire checklist checkboxes
+      var checkboxes = document.querySelectorAll('[data-checklist-stage]');
+      checkboxes.forEach(function(cb) {
+        cb.addEventListener('change', function() {
+          var stage  = this.dataset.checklistStage;
+          var tid    = this.dataset.taskId;
+          var cState = getChecklist(tid);
+          cState[stage] = this.checked;
+          saveChecklist(tid, cState);
+
+          // Update row styling
+          var lbl = this.closest('label');
+          if (lbl) {
+            var txt = lbl.querySelector('span:not([style*="+20%"])');
+            var pct = lbl.querySelector('span[style*="+20%"]');
+            if (this.checked) {
+              lbl.style.background = '#f0fdf4';
+              if (txt) { txt.style.color = '#16a34a'; txt.style.textDecoration = 'line-through'; txt.style.opacity = '0.7'; }
+              if (pct) pct.style.color = '#16a34a';
+            } else {
+              lbl.style.background = 'transparent';
+              if (txt) { txt.style.color = '#475569'; txt.style.textDecoration = 'none'; txt.style.opacity = '1'; }
+              if (pct) pct.style.color = '#94a3b8';
+            }
+          }
+
+          // Update progress bar + label
+          var newPct   = calcChecklistPct(tid);
+          var barColor = newPct >= 100 ? '#16a34a' : newPct >= 60 ? '#3b82f6' : newPct >= 40 ? '#f59e0b' : '#94a3b8';
+          var bar      = document.getElementById('td-checklist-bar');
+          var lbl2     = document.getElementById('td-checklist-pct-lbl');
+          if (bar)  { bar.style.width = newPct + '%'; bar.style.background = barColor; }
+          if (lbl2) { lbl2.textContent = newPct + '%'; lbl2.style.color = barColor; }
+
+          // Update task in cache so list/kanban rings refresh on close
+          if (tasksCache[tid]) { /* calcProgress reads localStorage live */ }
+          rerender();
+        });
+      });
 
       // Wire buttons
       document.getElementById('tm-close').addEventListener('click', closeModal);
