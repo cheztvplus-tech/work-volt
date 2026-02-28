@@ -133,6 +133,10 @@ window.WorkVoltPages['settings'] = function(container) {
         'class="flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ' +
         (activeTab === 'users' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700') + '">' +
         '<i class="fas fa-users text-xs"></i>User Management</button>' +
+      '<button onclick="settingsTab(\'admin-config\')" ' +
+        'class="flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ' +
+        (activeTab === 'admin-config' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700') + '">' +
+        '<i class="fas fa-sliders-h text-xs"></i>Admin Config</button>' +
       '<button onclick="settingsTab(\'modules\')" ' +
         'class="flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ' +
         (activeTab === 'modules' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700') + '">' +
@@ -152,14 +156,15 @@ window.WorkVoltPages['settings'] = function(container) {
         </div>
 
         <div id="settings-tab-content" class="max-w-4xl mx-auto px-6 md:px-10 py-8">
-          ${activeTab === 'connection' ? renderConnectionTab(connStatus, isConnected) : activeTab === 'users' ? renderUsersTab() : renderModulesTab()}
+          ${activeTab === 'connection' ? renderConnectionTab(connStatus, isConnected) : activeTab === 'users' ? renderUsersTab() : activeTab === 'admin-config' ? renderAdminConfigTab() : renderModulesTab()}
         </div>
 
       </div>
     `;
 
-    if (activeTab === 'users')   loadUsers();
-    if (activeTab === 'modules') loadModules();
+    if (activeTab === 'users')        loadUsers();
+    if (activeTab === 'modules')      loadModules();
+    if (activeTab === 'admin-config') loadAdminConfig();
   }
 
 
@@ -692,6 +697,91 @@ window.WorkVoltPages['settings'] = function(container) {
       setFormStatus(e.message, false);
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash text-sm"></i> Delete Permanently'; }
     }
+  };
+
+
+  // ================================================================
+  //  ADMIN CONFIG TAB
+  // ================================================================
+  var adminConfigCache = {};
+
+  function renderAdminConfigTab() {
+    return `
+      <div class="max-w-2xl space-y-6">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
+            <div class="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center">
+              <i class="fas fa-id-card text-white text-sm"></i>
+            </div>
+            <div>
+              <h2 class="font-bold text-slate-900">User ID Format</h2>
+              <p class="text-xs text-slate-500">Choose how new User IDs are generated</p>
+            </div>
+          </div>
+          <div class="px-6 py-5 space-y-4">
+            <div id="admin-config-status"></div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">ID Format</label>
+              <div class="space-y-3" id="uid-format-options">
+                <label class="flex items-start gap-3 p-3 border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors">
+                  <input type="radio" name="uid_format" value="wv6" class="mt-0.5 accent-indigo-600">
+                  <div>
+                    <div class="font-semibold text-slate-800 text-sm">WV + 6 digits <span class="ml-2 text-xs text-indigo-600 font-mono bg-indigo-50 px-2 py-0.5 rounded">WV482931</span></div>
+                    <div class="text-xs text-slate-400 mt-0.5">Short, readable ID — default format</div>
+                  </div>
+                </label>
+                <label class="flex items-start gap-3 p-3 border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-300 transition-colors">
+                  <input type="radio" name="uid_format" value="uuid" class="mt-0.5 accent-indigo-600">
+                  <div>
+                    <div class="font-semibold text-slate-800 text-sm">UUID <span class="ml-2 text-xs text-slate-500 font-mono bg-slate-50 px-2 py-0.5 rounded">cf49fbed-2be7-4e55-95c0</span></div>
+                    <div class="text-xs text-slate-400 mt-0.5">Legacy universally unique identifier</div>
+                  </div>
+                </label>
+              </div>
+              <p class="text-xs text-slate-400 mt-2.5"><i class="fas fa-info-circle mr-1"></i>This setting only affects <strong>new</strong> users created after saving. Existing IDs are not changed.</p>
+            </div>
+            <div class="pt-1">
+              <button onclick="saveAdminConfig()" id="admin-config-save-btn" class="btn-primary w-full">
+                <i class="fas fa-save text-sm"></i> Save Configuration
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function loadAdminConfig() {
+    try {
+      var res = await api('config/get-all', {});
+      adminConfigCache = res.settings || {};
+    } catch(e) {
+      adminConfigCache = {};
+    }
+    // Set radio button to current value
+    var fmt = adminConfigCache['user_id_format'] || 'wv6';
+    document.querySelectorAll('input[name="uid_format"]').forEach(function(r) {
+      r.checked = (r.value === fmt);
+    });
+  }
+
+  window.saveAdminConfig = async function() {
+    var btn = document.getElementById('admin-config-save-btn');
+    var statusEl = document.getElementById('admin-config-status');
+    var fmt = document.querySelector('input[name="uid_format"]:checked');
+    if (!fmt) return;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Saving…';
+    statusEl.innerHTML = '';
+    try {
+      await api('config/set', { key: 'user_id_format', value: fmt.value });
+      adminConfigCache['user_id_format'] = fmt.value;
+      statusEl.innerHTML = '<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium mb-3 bg-green-50 text-green-700 border border-green-200"><i class="fas fa-check-circle"></i><span>Configuration saved!</span></div>';
+    } catch(e) {
+      statusEl.innerHTML = '<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium mb-3 bg-red-50 text-red-600 border border-red-200"><i class="fas fa-exclamation-circle"></i><span>' + e.message + '</span></div>';
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-save text-sm"></i> Save Configuration';
   };
 
 
