@@ -448,7 +448,11 @@ window.WorkVoltPages['projects'] = function(container) {
         renderDetailFull();
       });
     }).catch(function(e) {
-      toast(e.message, 'error');
+      toast(e.message || 'Failed to load project', 'error');
+      // Go back to list so user is not stuck on spinner
+      view = 'list';
+      activeProject = null;
+      renderListView();
     });
   }
 
