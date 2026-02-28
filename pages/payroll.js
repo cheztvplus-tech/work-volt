@@ -26,6 +26,7 @@ window.WorkVoltPages['payroll'] = function(container) {
     'Pending':  { bg:'bg-amber-100',   text:'text-amber-700',  icon:'fa-hourglass-half',border:'border-amber-300',  dot:'#f59e0b' },
     'Approved': { bg:'bg-green-100',   text:'text-green-700',  icon:'fa-check-circle',  border:'border-green-300',  dot:'#16a34a' },
     'Paid':     { bg:'bg-blue-100',    text:'text-blue-700',   icon:'fa-dollar-sign',   border:'border-blue-300',   dot:'#2563eb' },
+    'Rejected': { bg:'#fef2f2',        text:'#991b1b',         icon:'fa-times-circle',  border:'#fca5a5',           dot:'#ef4444' },
     'Void':     { bg:'bg-red-100',     text:'text-red-600',    icon:'fa-ban',           border:'border-red-300',    dot:'#dc2626' },
   };
 
