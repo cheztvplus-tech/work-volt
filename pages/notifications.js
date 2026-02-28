@@ -101,8 +101,8 @@ window.WorkVoltPages['notifications'] = function(container) {
 
       // Tabs + type filter
       '<div class="bg-white border-b border-slate-200 px-6 flex items-center gap-6 overflow-x-auto">' +
-        ['all','unread','archived'].map(function(tab) {
-          var labels = { all: 'All', unread: 'Unread', archived: 'Archived' };
+        ['all','unread','read'].map(function(tab) {
+          var labels = { all: 'All', unread: 'Unread', read: 'Read' };
           var active = activeTab === tab;
           return '<button data-tab="' + tab + '" class="notif-tab flex-shrink-0 py-3 text-sm font-semibold border-b-2 transition-all ' +
             (active ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700') + '">' +
@@ -139,7 +139,10 @@ window.WorkVoltPages['notifications'] = function(container) {
       typeFilter = this.value;
       renderList();
     });
-    container.querySelector('#btn-mark-all-read').addEventListener('click', doMarkAllRead);
+    var markAllBtn = container.querySelector('#btn-mark-all-read');
+    markAllBtn.addEventListener('click', doMarkAllRead);
+    // Hide 'mark all read' on Read tab — everything there is already read
+    if (activeTab === 'read') markAllBtn.style.display = 'none';
     container.querySelector('#btn-notif-prefs').addEventListener('click', openPrefsModal);
 
     loadData();
@@ -148,8 +151,8 @@ window.WorkVoltPages['notifications'] = function(container) {
   // ── Load data ──────────────────────────────────────────────────
   function loadData() {
     var params = { user_id: myId, limit: 100 };
-    if (activeTab === 'unread')   params.filter = 'unread';
-    if (activeTab === 'archived') params.filter = 'archived';
+    if (activeTab === 'unread') params.filter = 'unread';
+    if (activeTab === 'read')   params.filter = 'read';
 
     api('notifications/list', params)
       .then(function(data) {
@@ -182,7 +185,7 @@ window.WorkVoltPages['notifications'] = function(container) {
           '<i class="fas fa-bell-slash text-5xl mb-4 opacity-30"></i>' +
           '<p class="font-semibold text-slate-500">No notifications</p>' +
           '<p class="text-sm mt-1">' +
-            (activeTab === 'unread' ? 'You\'re all caught up! 🎉' : 'Nothing here yet.') +
+            (activeTab === 'unread' ? 'You\'re all caught up! 🎉' : activeTab === 'read' ? 'No read notifications yet.' : 'Nothing here yet.') +
           '</p>' +
         '</div>';
       return;
@@ -218,9 +221,8 @@ window.WorkVoltPages['notifications'] = function(container) {
         if (action) {
           e.stopPropagation();
           var act = action.dataset.notifAction;
-          if (act === 'read')    doMarkReadById(id);
-          if (act === 'archive') doArchive(id);
-          if (act === 'delete')  doDelete(id);
+          if (act === 'read')   doMarkReadById(id);
+          if (act === 'delete') doDelete(id);
           return;
         }
 
@@ -293,10 +295,7 @@ window.WorkVoltPages['notifications'] = function(container) {
                   'flex items-center justify-center text-[10px] transition-colors border-none cursor-pointer">' +
                   '<i class="fas fa-check"></i></button>'
                 : '') +
-              '<button data-notif-action="archive" title="Archive" ' +
-                'class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-amber-100 hover:text-amber-600 text-slate-400 ' +
-                'flex items-center justify-center text-[10px] transition-colors border-none cursor-pointer">' +
-                '<i class="fas fa-archive"></i></button>' +
+
               '<button data-notif-action="delete" title="Delete" ' +
                 'class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-red-100 hover:text-red-500 text-slate-400 ' +
                 'flex items-center justify-center text-[10px] transition-colors border-none cursor-pointer">' +
@@ -324,7 +323,9 @@ window.WorkVoltPages['notifications'] = function(container) {
     // Optimistic update — update state immediately
     if (r) r.read = 'true';
 
-    // Remove from unread tab immediately
+    // On unread tab: remove item since it no longer belongs there
+    // On read tab: item will now appear here — keep it in allRows, renderList will show it
+    // On all tab: item stays — just loses its unread styling
     if (activeTab === 'unread') {
       allRows = allRows.filter(function(x) { return x.id !== id; });
     }
@@ -358,36 +359,13 @@ window.WorkVoltPages['notifications'] = function(container) {
     api('notifications/read-all', { user_id: myId })
       .then(function() {
         toast('All notifications marked as read ✓', 'success');
-        // Reload so unread tab empties properly
-        if (activeTab === 'unread') loadData();
+        // Reload to reflect new state in current tab
+        loadData();
       })
       .catch(function(e) { toast(e.message, 'error'); loadData(); });
   }
 
-  function doArchive(id) {
-    // Optimistic: mark as archived in state so bell + badge update immediately
-    var r = allRows.find(function(x) { return x.id === id; });
-    if (r) {
-      r.archived = 'true';
-      r.read     = 'true';
-    }
-    // Remove from current visible list (non-archived tabs) OR
-    // add to archived list (archived tab) — handled by renderList filtering
-    if (activeTab !== 'archived') {
-      allRows = allRows.filter(function(x) { return x.id !== id; });
-    }
-    updateSubtitle();
-    renderList();
-    // Always refresh badge — archived item is no longer unread
-    if (window.WVNotifications) window.WVNotifications.refreshBadge();
-
-    api('notifications/archive', { id: id })
-      .then(function() {
-        // If viewing archived tab, reload so the item actually appears there
-        if (activeTab === 'archived') loadData();
-      })
-      .catch(function(e) { toast(e.message, 'error'); loadData(); });
-  }
+  // doArchive removed — no archive tab
 
   function doDelete(id) {
     allRows = allRows.filter(function(r) { return r.id !== id; });
