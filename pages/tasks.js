@@ -1140,6 +1140,34 @@ window.WorkVoltPages['tasks'] = function(container) {
       var over     = isOverdue(task);
       var pct      = calcProgress(task);
 
+      // ── Build checklist HTML ────────────────────────────────────
+      var _cState = getChecklist(task.id);
+      var _checklistStagesHtml = CHECKLIST_STAGES.map(function(stage) {
+        var checked = !!_cState[stage];
+        return '<label style="display:flex;align-items:center;gap:.625rem;padding:.55rem .75rem;border-radius:.625rem;cursor:pointer;' +
+          (checked ? 'background:#f0fdf4' : 'background:transparent') + '">' +
+          '<input type="checkbox" data-checklist-stage="' + stage + '" data-task-id="' + task.id + '" ' +
+            (checked ? 'checked ' : '') +
+            'style="width:1rem;height:1rem;accent-color:#16a34a;cursor:pointer;flex-shrink:0">' +
+          '<span style="flex:1;font-size:.8125rem;font-weight:600;color:' + (checked ? '#16a34a' : '#475569') + ';' +
+            (checked ? 'text-decoration:line-through;opacity:.7' : '') + '">' + stage + '</span>' +
+          '<span style="font-size:.6875rem;font-weight:700;color:' + (checked ? '#16a34a' : '#94a3b8') + '">+20%</span>' +
+        '</label>';
+      }).join('');
+      var _checklistPct = calcChecklistPct(task.id);
+      var _checklistBarColor = _checklistPct >= 100 ? '#16a34a' : _checklistPct >= 60 ? '#3b82f6' : _checklistPct >= 40 ? '#f59e0b' : '#94a3b8';
+      var checklistHtml =
+        '<div id="td-checklist-wrap" class="border border-slate-200 rounded-xl overflow-hidden">' +
+          '<div class="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between">' +
+            '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Task Progress Checklist</p>' +
+            '<span id="td-checklist-pct-lbl" style="font-size:.75rem;font-weight:700;color:' + _checklistBarColor + '">' + _checklistPct + '%</span>' +
+          '</div>' +
+          '<div style="height:4px;background:#e2e8f0">' +
+            '<div id="td-checklist-bar" style="height:4px;background:' + _checklistBarColor + ';width:' + _checklistPct + '%;transition:width .3s,background .3s"></div>' +
+          '</div>' +
+          '<div class="py-1">' + _checklistStagesHtml + '</div>' +
+        '</div>';
+
       // Build unified activity timeline (comments + notes + hours, sorted by date)
       var timeline = [];
       comments.forEach(function(c) { timeline.push({ type:'comment', date: c.created_at || c.date, data: c }); });
@@ -1227,33 +1255,7 @@ window.WorkVoltPages['tasks'] = function(container) {
               : '') +
 
             // ── Checklist Progress ──────────────────────────────────
-            (function() {
-              var cState = getChecklist(task.id);
-              var stagesHtml = CHECKLIST_STAGES.map(function(stage, i) {
-                var checked = !!cState[stage];
-                return '<label style="display:flex;align-items:center;gap:.625rem;padding:.55rem .75rem;border-radius:.625rem;cursor:pointer;' +
-                  (checked ? 'background:#f0fdf4' : 'background:transparent') + '">' +
-                  '<input type="checkbox" data-checklist-stage="' + stage + '" data-task-id="' + task.id + '" ' +
-                    (checked ? 'checked ' : '') +
-                    'style="width:1rem;height:1rem;accent-color:#16a34a;cursor:pointer;flex-shrink:0">' +
-                  '<span style="flex:1;font-size:.8125rem;font-weight:600;color:' + (checked ? '#16a34a' : '#475569') + ';' +
-                    (checked ? 'text-decoration:line-through;opacity:.7' : '') + '">' + stage + '</span>' +
-                  '<span style="font-size:.6875rem;font-weight:700;color:' + (checked ? '#16a34a' : '#94a3b8') + '">+20%</span>' +
-                '</label>';
-              }).join('');
-              var curPct = calcChecklistPct(task.id);
-              var barColor = curPct >= 100 ? '#16a34a' : curPct >= 60 ? '#3b82f6' : curPct >= 40 ? '#f59e0b' : '#94a3b8';
-              return '<div id="td-checklist-wrap" class="border border-slate-200 rounded-xl overflow-hidden">' +
-                '<div class="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between">' +
-                  '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Task Progress Checklist</p>' +
-                  '<span id="td-checklist-pct-lbl" style="font-size:.75rem;font-weight:700;color:' + barColor + '">' + curPct + '%</span>' +
-                '</div>' +
-                '<div style="height:4px;background:#e2e8f0">' +
-                  '<div id="td-checklist-bar" style="height:4px;background:' + barColor + ';width:' + curPct + '%;transition:width .3s,background .3s"></div>' +
-                '</div>' +
-                '<div class="py-1">' + stagesHtml + '</div>' +
-              '</div>';
-            })() +
+            checklistHtml +
 
             // Comment composer with @mention picker
             '<div class="border border-slate-200 rounded-xl overflow-hidden">' +
