@@ -97,6 +97,8 @@ window.WorkVoltPages['tasks'] = function(container) {
     url.searchParams.set('path',  path);
     url.searchParams.set('token', savedSecret);
     if (params) Object.keys(params).forEach(function(k) {
+      // Always include project_id (even empty string) to allow clearing it
+      if (k === 'project_id') { url.searchParams.set(k, String(params[k] === undefined || params[k] === null ? '' : params[k])); return; }
       if (params[k] !== undefined && params[k] !== null && String(params[k]) !== '')
         url.searchParams.set(k, String(params[k]));
     });
