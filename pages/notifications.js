@@ -356,18 +356,36 @@ window.WorkVoltPages['notifications'] = function(container) {
     if (window.WVNotifications) window.WVNotifications.refreshBadge();
 
     api('notifications/read-all', { user_id: myId })
-      .then(function() { toast('All notifications marked as read ✓', 'success'); })
-      .catch(function(e) { toast(e.message, 'error'); loadData(); }); // reload on failure
+      .then(function() {
+        toast('All notifications marked as read ✓', 'success');
+        // Reload so unread tab empties properly
+        if (activeTab === 'unread') loadData();
+      })
+      .catch(function(e) { toast(e.message, 'error'); loadData(); });
   }
 
   function doArchive(id) {
-    // Optimistic remove from list
-    allRows = allRows.filter(function(r) { return r.id !== id; });
+    // Optimistic: mark as archived in state so bell + badge update immediately
+    var r = allRows.find(function(x) { return x.id === id; });
+    if (r) {
+      r.archived = 'true';
+      r.read     = 'true';
+    }
+    // Remove from current visible list (non-archived tabs) OR
+    // add to archived list (archived tab) — handled by renderList filtering
+    if (activeTab !== 'archived') {
+      allRows = allRows.filter(function(x) { return x.id !== id; });
+    }
     updateSubtitle();
     renderList();
+    // Always refresh badge — archived item is no longer unread
     if (window.WVNotifications) window.WVNotifications.refreshBadge();
 
     api('notifications/archive', { id: id })
+      .then(function() {
+        // If viewing archived tab, reload so the item actually appears there
+        if (activeTab === 'archived') loadData();
+      })
       .catch(function(e) { toast(e.message, 'error'); loadData(); });
   }
 
