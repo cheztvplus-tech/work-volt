@@ -1707,10 +1707,11 @@ window.WorkVoltPages['tasks'] = function(container) {
     var projectField = '';
     if (projectsInstalled()) {
       if (projectsCache.length) {
+        var _selPid = (task && task.project_id) || defaults.project_id || '';
         var opts = '<option value="">— No project —</option>' +
           projectsCache.map(function(p) {
             var pid = p.id || p.project_id;
-            return '<option value="' + esc(pid) + '"' + (task && task.project_id === pid ? ' selected' : '') + '>' + esc(p.name || pid) + '</option>';
+            return '<option value="' + esc(pid) + '"' + (_selPid === pid ? ' selected' : '') + '>' + esc(p.name || pid) + '</option>';
           }).join('');
         projectField = '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Project</label>' +
           '<select id="tf-project_id" class="field text-sm">' + opts + '</select></div>';
