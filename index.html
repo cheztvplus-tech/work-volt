@@ -59,6 +59,23 @@
     .card-hover { transition: transform 0.18s, box-shadow 0.18s; }
     .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 28px -6px rgba(0,0,0,.12); }
 
+    /* ─── Sidebar collapse (desktop) ─── */
+    #sidebar { transition: width 0.22s cubic-bezier(.4,0,.2,1); overflow: hidden; }
+    #sidebar.collapsed { width: 60px !important; }
+    #sidebar.collapsed .nav-label,
+    #sidebar.collapsed .nav-section-label,
+    #sidebar.collapsed .sidebar-footer-text { display: none !important; }
+    #sidebar.collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+    #sidebar.collapsed .nav-item i { margin: 0; width: auto; }
+    #sidebar.collapsed #sidebar-toggle-btn i { transform: rotate(180deg); }
+    #sidebar.collapsed .sidebar-bottom { padding: 8px; justify-content: center; }
+
+    /* ─── Drag handle for reordering ─── */
+    .nav-drag-handle { cursor: grab; opacity: 0; transition: opacity .15s; color: #cbd5e1; font-size: .65rem; }
+    .nav-item:hover .nav-drag-handle { opacity: 1; }
+    .nav-item.dragging { opacity: .4; background: #f1f5f9; }
+    .nav-item.drag-over { border-top: 2px solid #3b82f6; }
+
     /* ─── Sortable ghost ─── */
     .sortable-ghost { opacity: 0.35; background: #e2e8f0; border: 2px dashed #94a3b8; }
 
@@ -240,11 +257,19 @@
 
       <!-- Sidebar -->
       <aside id="sidebar" class="w-64 bg-white border-r border-slate-200 flex-shrink-0 flex flex-col lg:translate-x-0">
+        <!-- Sidebar header with collapse toggle (desktop only) -->
+        <div class="hidden lg:flex items-center justify-end px-3 py-2 border-b border-slate-100 flex-shrink-0" id="sidebar-top-bar">
+          <button id="sidebar-toggle-btn" onclick="toggleSidebarCollapse()"
+            class="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
+            title="Collapse sidebar">
+            <i class="fas fa-chevron-left text-xs transition-transform duration-200"></i>
+          </button>
+        </div>
         <nav class="flex-1 overflow-y-auto thin-scroll p-3 space-y-0.5" id="nav-menu">
           <!-- Populated by renderNav() -->
         </nav>
-        <div class="p-4 border-t border-slate-100">
-          <p class="text-[10px] text-slate-400 text-center font-medium">Work Volt · v2.0</p>
+        <div class="p-4 border-t border-slate-100 sidebar-bottom flex items-center justify-between">
+          <p class="text-[10px] text-slate-400 font-medium sidebar-footer-text">Work Volt · v2.0</p>
         </div>
       </aside>
 
@@ -379,8 +404,7 @@
       const res  = await fetch(url.toString(), { cache: 'no-cache' });
       const data = await res.json();
       if (data.modules) {
-        INSTALLED_MODULES = data.modules;
-        window.INSTALLED_MODULES = INSTALLED_MODULES;
+        window.INSTALLED_MODULES = data.modules;
       }    } catch(e) {
       console.warn('Could not load modules from Sheet:', e.message);
     }
@@ -483,6 +507,7 @@
     document.getElementById('user-avatar').textContent = initials;
 
     renderNav();
+    applySidebarCollapse();
 
     const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
     history.replaceState({ module: lastModule }, '', '#' + lastModule);
@@ -491,62 +516,195 @@
     updateBackButton();
   }
 
+  // ─────────────────────────────────────────────
+  //  SIDEBAR COLLAPSE
+  // ─────────────────────────────────────────────
+  var _sidebarCollapsed = localStorage.getItem('wv_sidebar_collapsed') === 'true';
+
+  function toggleSidebarCollapse() {
+    _sidebarCollapsed = !_sidebarCollapsed;
+    localStorage.setItem('wv_sidebar_collapsed', _sidebarCollapsed);
+    applySidebarCollapse();
+  }
+
+  function applySidebarCollapse() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    if (_sidebarCollapsed) {
+      sidebar.classList.add('collapsed');
+    } else {
+      sidebar.classList.remove('collapsed');
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  //  MODULE ORDER (per-user drag persistence)
+  // ─────────────────────────────────────────────
+  function _navOrderKey() {
+    return 'wv_nav_order_' + (currentUser?.user_id || 'default');
+  }
+
+  function getSavedNavOrder() {
+    try { return JSON.parse(localStorage.getItem(_navOrderKey()) || 'null'); }
+    catch(e) { return null; }
+  }
+
+  function saveNavOrder(ids) {
+    try { localStorage.setItem(_navOrderKey(), JSON.stringify(ids)); }
+    catch(e) {}
+  }
+
+  function applyNavOrder(modules) {
+    // modules: array of { id, ... }
+    const saved = getSavedNavOrder();
+    if (!saved || !saved.length) return modules;
+    const ordered = [];
+    saved.forEach(id => {
+      const m = modules.find(x => x.id === id);
+      if (m) ordered.push(m);
+    });
+    // Append any new modules not yet in saved order
+    modules.forEach(m => { if (!ordered.find(x => x.id === m.id)) ordered.push(m); });
+    return ordered;
+  }
+
   // Build sidebar nav from user role
   function renderNav() {
     const nav  = document.getElementById('nav-menu');
+    if (!nav) return;
     const role = currentUser?.role || 'Employee';
 
-    // ── Permanent core entries: Dashboard ──
-    const dashLink = `
-      <a href="#dashboard" onclick="showModule('dashboard'); return false;"
-         class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
-         data-module="dashboard">
-        <i class="fas fa-th-large w-4 text-slate-400"></i>
-        <span>Dashboard</span>
-      </a>`;
+    // Use window.INSTALLED_MODULES so store.js updates are reflected live
+    const installedModules = window.INSTALLED_MODULES || [];
 
-    // ── Installed add-on modules (from INSTALLED_MODULES + ADDON_CATALOGUE) ──
-    const addons = INSTALLED_MODULES.filter(m => {
+    // ── Permanent core: Dashboard ──
+    const dashLink =
+      '<a href="#dashboard" onclick="showModule(\'dashboard\'); return false;"' +
+        ' class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"' +
+        ' data-module="dashboard">' +
+        '<i class="fas fa-th-large w-4 text-slate-400"></i>' +
+        '<span class="nav-label">Dashboard</span>' +
+      '</a>';
+
+    // ── Installed add-on modules ──
+    const eligible = installedModules.filter(m => {
       const def = ADDON_CATALOGUE[m.id];
       return def && def.roles.includes(role);
     });
 
-    const addonLinks = addons.length ? `
-      <div class="px-3 pt-4 pb-1">
-        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Modules</p>
-      </div>
-      ${addons.map(m => {
+    const ordered = applyNavOrder(eligible);
+
+    let addonSection = '';
+    if (ordered.length) {
+      const addonItems = ordered.map(m => {
         const def = ADDON_CATALOGUE[m.id] || {};
-        return `
-          <a href="#${m.id}" onclick="showModule('${m.id}'); return false;"
-             class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
-             data-module="${m.id}">
-            <i class="fas ${def.icon || m.icon} w-4 text-slate-400"></i>
-            <span>${def.label || m.label}</span>
-          </a>`;
-      }).join('')}
-    ` : '';
+        return (
+          '<a href="#' + m.id + '" onclick="showModule(\'' + m.id + '\'); return false;"' +
+            ' class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors group/nav"' +
+            ' data-module="' + m.id + '" draggable="true" data-nav-id="' + m.id + '">' +
+            '<i class="nav-drag-handle fas fa-grip-vertical mr-0 w-3" title="Drag to reorder"></i>' +
+            '<i class="fas ' + (def.icon || m.icon || 'fa-layer-group') + ' w-4 text-slate-400 flex-shrink-0"></i>' +
+            '<span class="nav-label flex-1 truncate">' + (def.label || m.label) + '</span>' +
+          '</a>'
+        );
+      }).join('');
+
+      addonSection =
+        '<div class="px-3 pt-4 pb-1" id="nav-modules-header">' +
+          '<p class="nav-section-label text-[10px] font-bold text-slate-400 uppercase tracking-widest">Modules</p>' +
+        '</div>' +
+        '<div id="nav-addon-list">' + addonItems + '</div>';
+    }
 
     // ── Bottom: Settings + Store ──
-    const bottomLinks = `
-      <div class="border-t border-slate-100 mt-2 pt-2 space-y-0.5">
-        ${MODULE_ROLES.settings.includes(role) ? `
-        <a href="#settings" onclick="showModule('settings'); return false;"
-           class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
-           data-module="settings">
-          <i class="fas fa-cog w-4 text-slate-400"></i>
-          <span>Settings</span>
-        </a>` : ''}
-        ${MODULE_ROLES.store.includes(role) ? `
-        <a href="#store" onclick="showModule('store'); return false;"
-           class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
-           data-module="store">
-          <i class="fas fa-store w-4 text-slate-400"></i>
-          <span>Module Store</span>
-        </a>` : ''}
-      </div>`;
+    const bottomLinks =
+      '<div class="border-t border-slate-100 mt-2 pt-2 space-y-0.5">' +
+        (MODULE_ROLES.settings.includes(role)
+          ? '<a href="#settings" onclick="showModule(\'settings\'); return false;"' +
+              ' class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"' +
+              ' data-module="settings">' +
+              '<i class="fas fa-cog w-4 text-slate-400"></i>' +
+              '<span class="nav-label">Settings</span>' +
+            '</a>'
+          : '') +
+        (MODULE_ROLES.store.includes(role)
+          ? '<a href="#store" onclick="showModule(\'store\'); return false;"' +
+              ' class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"' +
+              ' data-module="store">' +
+              '<i class="fas fa-store w-4 text-slate-400"></i>' +
+              '<span class="nav-label">Module Store</span>' +
+            '</a>'
+          : '') +
+      '</div>';
 
-    nav.innerHTML = dashLink + addonLinks + bottomLinks;
+    nav.innerHTML = dashLink + addonSection + bottomLinks;
+
+    // Re-apply active state
+    const cur = sessionStorage.getItem('lastModule') || 'dashboard';
+    nav.querySelectorAll('.nav-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.module === cur);
+    });
+
+    // Wire drag-to-reorder on addon list
+    wireDragReorder();
+
+    // Re-apply collapse state
+    applySidebarCollapse();
+  }
+
+  // ─────────────────────────────────────────────
+  //  DRAG-TO-REORDER NAV
+  // ─────────────────────────────────────────────
+  var _dragSrc = null;
+
+  function wireDragReorder() {
+    const list = document.getElementById('nav-addon-list');
+    if (!list) return;
+
+    const items = list.querySelectorAll('[data-nav-id]');
+    items.forEach(function(item) {
+      item.addEventListener('dragstart', function(e) {
+        _dragSrc = this;
+        e.dataTransfer.effectAllowed = 'move';
+        setTimeout(() => this.classList.add('dragging'), 0);
+      });
+      item.addEventListener('dragend', function() {
+        this.classList.remove('dragging');
+        list.querySelectorAll('[data-nav-id]').forEach(el => el.classList.remove('drag-over'));
+        // Save new order
+        const ids = Array.from(list.querySelectorAll('[data-nav-id]')).map(el => el.dataset.navId);
+        saveNavOrder(ids);
+      });
+      item.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (this === _dragSrc) return;
+        list.querySelectorAll('[data-nav-id]').forEach(el => el.classList.remove('drag-over'));
+        this.classList.add('drag-over');
+      });
+      item.addEventListener('dragleave', function() {
+        this.classList.remove('drag-over');
+      });
+      item.addEventListener('drop', function(e) {
+        e.preventDefault();
+        if (this === _dragSrc) return;
+        this.classList.remove('drag-over');
+        // Reorder in DOM
+        const items2 = Array.from(list.querySelectorAll('[data-nav-id]'));
+        const fromIdx = items2.indexOf(_dragSrc);
+        const toIdx   = items2.indexOf(this);
+        if (fromIdx < toIdx) {
+          this.after(_dragSrc);
+        } else {
+          this.before(_dragSrc);
+        }
+        // Save
+        const ids = Array.from(list.querySelectorAll('[data-nav-id]')).map(el => el.dataset.navId);
+        saveNavOrder(ids);
+        // Show brief toast
+        if (window.WorkVolt) window.WorkVolt.toast('Navigation order saved', 'success');
+      });
+    });
   }
 
   function showModule(name, push = true) {
@@ -1324,6 +1482,7 @@
   };
   window.WorkVoltPages = window.WorkVoltPages || {};
   window.renderNav = renderNav;
+  window.toggleSidebarCollapse = toggleSidebarCollapse;
 
   // ─────────────────────────────────────────────
   //  BOOT SEQUENCE
