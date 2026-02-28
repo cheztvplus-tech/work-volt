@@ -780,6 +780,8 @@ window.WorkVoltPages['tasks'] = function(container) {
       var done     = t.status === 'Done' || t.status === 'Cancelled';
       var pct      = calcProgress(t);
       var hasHours = parseFloat(t.estimated_hours) > 0 || parseFloat(t.actual_hours) > 0;
+      var checklistPct = calcChecklistPct(t.id);
+      var showProgress = hasHours || checklistPct > 0;
 
       var rowClass = 'border-t border-slate-100 hover:bg-blue-50/30 transition-colors group cursor-pointer' +
         (overdue && !done ? ' bg-red-50/30' : '') +
@@ -822,10 +824,17 @@ window.WorkVoltPages['tasks'] = function(container) {
 
         // Progress ring + bar
         '<td class="px-4 py-3 whitespace-nowrap" style="min-width:90px">' +
-          (hasHours
+          (showProgress
             ? '<div class="flex items-center gap-2">' +
                 progressRing(pct, 30, 2.5) +
-                '<div style="width:50px">' + hoursBar(t.actual_hours, t.estimated_hours) + '</div>' +
+                (hasHours
+                  ? '<div style="width:50px">' + hoursBar(t.actual_hours, t.estimated_hours) + '</div>'
+                  : '<div style="width:50px;display:flex;flex-direction:column;gap:2px">' +
+                      '<div style="height:4px;background:#e2e8f0;border-radius:9999px;width:100%">' +
+                        '<div style="height:4px;border-radius:9999px;background:' + (pct>=100?'#16a34a':pct>=60?'#3b82f6':pct>=40?'#f59e0b':'#94a3b8') + ';width:' + pct + '%"></div>' +
+                      '</div>' +
+                      '<span style="font-size:10px;color:#94a3b8;font-weight:600">' + pct + '%</span>' +
+                    '</div>') +
               '</div>'
             : '<span class="text-xs text-slate-300">—</span>') +
         '</td>' +
@@ -962,6 +971,8 @@ window.WorkVoltPages['tasks'] = function(container) {
         var overdue  = isOverdue(t);
         var hasHours = parseFloat(t.estimated_hours) > 0 || parseFloat(t.actual_hours) > 0;
         var pct      = calcProgress(t);
+        var checklistPct = calcChecklistPct(t.id);
+        var showProgress = hasHours || checklistPct > 0;
         var border   = STATUS_BORDER[t.status] || 'border-slate-200';
 
         return '<div draggable="true" data-drag-id="' + t.id + '" data-action="view" data-id="' + t.id + '" ' +
@@ -975,10 +986,17 @@ window.WorkVoltPages['tasks'] = function(container) {
           '</div>' +
 
           // Progress ring + countdown
-          (hasHours
+          (showProgress
             ? '<div class="flex items-center gap-2 mb-2">' +
                 progressRing(pct, 28, 2.5) +
-                '<div class="flex-1">' + hoursBar(t.actual_hours, t.estimated_hours) + '</div>' +
+                (hasHours
+                  ? '<div class="flex-1">' + hoursBar(t.actual_hours, t.estimated_hours) + '</div>'
+                  : '<div style="flex:1;display:flex;flex-direction:column;gap:2px">' +
+                      '<div style="height:4px;background:#e2e8f0;border-radius:9999px">' +
+                        '<div style="height:4px;border-radius:9999px;background:' + (pct>=100?'#16a34a':pct>=60?'#3b82f6':pct>=40?'#f59e0b':'#94a3b8') + ';width:' + pct + '%"></div>' +
+                      '</div>' +
+                      '<span style="font-size:10px;color:#94a3b8;font-weight:600">' + pct + '%</span>' +
+                    '</div>') +
               '</div>'
             : '') +
 
