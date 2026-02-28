@@ -882,10 +882,13 @@ window.WorkVoltPages['timesheets'] = function(container) {
     var userSelectHtml = isAdmin()
       ? '<div><label class="ts-label">Employee</label>' +
         '<select id="tf-user" class="ts-input">' +
-          usersCache.map(function(u) {
-            var id = u.user_id||u.id;
-            return '<option value="' + esc(id) + '"' + (uid===id?' selected':'') + '>' + esc(u.name||u.email||id) + '</option>';
-          }).join('') +
+          (usersCache.length
+            ? usersCache.map(function(u) {
+                var id = u.user_id||u.id;
+                return '<option value="' + esc(id) + '"' + (uid===id?' selected':'') + '>' + esc(u.name||u.email||id) + '</option>';
+              }).join('')
+            : '<option value="' + esc(uid) + '" selected>' + esc(uid) + '</option>'
+          ) +
         '</select></div>'
       : '<input type="hidden" id="tf-user" value="' + esc(uid) + '">';
 
@@ -995,7 +998,7 @@ window.WorkVoltPages['timesheets'] = function(container) {
         '<p class="text-xs text-slate-500 mb-4">The timer will run until you stop it. You\'ll be prompted to save the entry.</p>' +
         '<label style="display:block;font-size:.75rem;font-weight:700;color:#64748b;margin-bottom:.375rem;text-transform:uppercase;letter-spacing:.05em">Project</label>' +
         projSelectHtml +
-        '<label style="display:block;font-size:.75rem;font-weight:700;color:#64748b;margin-bottom:.375rem;text-transform:uppercase;letter-spacing:.05em">What are you working on?</label>' +
+        '<label style="display:block;font-size:.75rem;font-weight:700;color:#64748b;margin-bottom:.375rem;text-transform:uppercase;letter-spacing:.05em">Task</label>' +
         '<input id="timer-task" type="text" placeholder="Task description…" style="width:100%;padding:.55rem .75rem;border:1px solid #e2e8f0;border-radius:.625rem;font-size:.875rem;font-family:inherit;margin-bottom:1.25rem;box-sizing:border-box;outline:none">' +
         '<div class="flex gap-3">' +
           '<button id="timer-cancel" class="btn-secondary flex-1">Cancel</button>' +
@@ -1017,14 +1020,14 @@ window.WorkVoltPages['timesheets'] = function(container) {
   function startTimer(task, projId) {
     _timerStart = new Date();
     _timerEntry = { task: task, project_id: projId, user_id: myUserId() };
-    localStorage.setItem('wv_ts_timer', JSON.stringify({ start: _timerStart.toISOString(), task: task, project_id: projId }));
+    localStorage.setItem('wv_ts_timer_' + myUserId(), JSON.stringify({ start: _timerStart.toISOString(), task: task, project_id: projId }));
     updateTimerUI(true);
     _timerTick = setInterval(tickTimer, 1000);
   }
 
   function restoreTimer() {
     try {
-      var saved = localStorage.getItem('wv_ts_timer');
+      var saved = localStorage.getItem('wv_ts_timer_' + myUserId());
       if (!saved) return;
       var obj = JSON.parse(saved);
       _timerStart = new Date(obj.start);
@@ -1050,7 +1053,7 @@ window.WorkVoltPages['timesheets'] = function(container) {
     var elapsed = (end - _timerStart) / 3600000; // hours
     var startStr = _timerStart.toTimeString().slice(0,5);
     var endStr   = end.toTimeString().slice(0,5);
-    localStorage.removeItem('wv_ts_timer');
+    localStorage.removeItem('wv_ts_timer_' + myUserId());
     updateTimerUI(false);
     var prefill = {
       task: (_timerEntry && _timerEntry.task) || '',
