@@ -1510,6 +1510,8 @@ window.WorkVoltPages['payroll'] = function(container) {
         '<div class="grid grid-cols-2 gap-3 mb-4">'+
           '<div class="pr-field"><label>Period Start <span class="text-red-400">*</span></label><input id="bulk-start" type="date" class="pr-input"></div>'+
           '<div class="pr-field"><label>Period End <span class="text-red-400">*</span></label><input id="bulk-end" type="date" class="pr-input"></div>'+
+          '<div class="pr-field"><label>Regular Hours <span class="text-slate-400 font-normal text-[10px]">(optional — per employee)</span></label><input id="bulk-hours" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 80"></div>'+
+          '<div class="pr-field"><label>Overtime Hours <span class="text-slate-400 font-normal text-[10px]">(optional)</span></label><input id="bulk-hours-ot" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 0"></div>'+
         '</div>'+
         '<div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 max-h-48 overflow-y-auto">'+
           '<div class="flex items-center justify-between mb-2 px-1">'+
@@ -1549,16 +1551,18 @@ window.WorkVoltPages['payroll'] = function(container) {
       all.forEach(function(c){ c.checked = anyUnchecked; });
     });
     document.getElementById('bulk-go').addEventListener('click', function() {
-      var start  = document.getElementById('bulk-start').value;
-      var end    = document.getElementById('bulk-end').value;
+      var start   = document.getElementById('bulk-start').value;
+      var end     = document.getElementById('bulk-end').value;
       if (!start) { modalMsg('Period start is required.', false); return; }
       if (!end)   { modalMsg('Period end is required.', false); return; }
       var selected = Array.from(document.querySelectorAll('.bulk-emp-cb:checked'));
       if (!selected.length) { modalMsg('Select at least one employee.', false); return; }
+      var bulkHrs   = parseFloat(document.getElementById('bulk-hours').value)    || 0;
+      var bulkHrsOT = parseFloat(document.getElementById('bulk-hours-ot').value) || 0;
       var btn=this; btn.disabled=true; btn.innerHTML='<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i>Generating…';
       // Build all payloads first (unique IDs generated synchronously before any async calls)
       var payloads = selected.map(function(cb){
-        var computed = computeRun({ pay_type:cb.dataset.paytype||'Hourly', rate:parseFloat(cb.dataset.rate)||0, hours_regular:0, hours_ot:0, bonuses:0, deductions:0 });
+        var computed = computeRun({ pay_type:cb.dataset.paytype||'Hourly', rate:parseFloat(cb.dataset.rate)||0, hours_regular:bulkHrs, hours_ot:bulkHrsOT, bonuses:0, deductions:0 });
         return {
           id:            genId('PR'),
           employee_id:   cb.value,
@@ -1567,6 +1571,9 @@ window.WorkVoltPages['payroll'] = function(container) {
           period_end:    end,
           pay_type:      cb.dataset.paytype||'Hourly',
           rate:          String(parseFloat(cb.dataset.rate)||0),
+          hours_regular: String(bulkHrs),
+          hours_ot:      String(bulkHrsOT),
+          hours_total:   String(computed.hours_total),
           gross:         String(computed.gross),
           net:           String(computed.net),
           tax_total:     String(computed.tax_total),
@@ -1617,7 +1624,7 @@ window.WorkVoltPages['payroll'] = function(container) {
       '<div class="bg-gradient-to-br from-slate-900 to-emerald-950 px-6 pt-6 pb-8 text-white relative overflow-hidden">'+
         '<div class="absolute -right-4 -bottom-4 opacity-10"><i class="fas fa-money-bill-wave text-9xl"></i></div>'+
         (isPreview?'<div class="absolute top-4 left-4 bg-amber-400 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Preview</div>':'')+
-        '<button id="ps-close" class="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center border-none cursor-pointer text-white transition-colors"><i class="fas fa-times text-sm pointer-events-none"></i></button>'+
+        '<button id="ps-close" style="position:absolute;top:1rem;right:1rem;width:2rem;height:2rem;background:rgba(255,255,255,.2);border:none;border-radius:9999px;cursor:pointer;color:#fff;font-size:1.1rem;line-height:1;display:flex;align-items:center;justify-content:center;pointer-events:all;transition:background .15s">&#x2715;</button>'+
         '<div class="text-xs font-bold uppercase tracking-widest opacity-60 mb-3">Payslip</div>'+
         '<div class="flex items-center gap-3 mb-4">'+
           '<div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-xl font-black">'+userInitial(r.employee_id)+'</div>'+
