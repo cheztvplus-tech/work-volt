@@ -592,6 +592,7 @@ window.WorkVoltPages['tasks'] = function(container) {
       var task   = tasksCache[id];
       var title  = (task && task.title) || btn.dataset.title || '';
       if (action === 'view')      openTaskDetail(task);
+      if (action === 'edit-locked') { toast('Task is closed. Request a reopen to edit it.', 'info'); return; }
       if (action === 'edit')      openTaskForm(task);
       if (action === 'delete')    openDeleteModal(id, title);
       if (action === 'log-hours') openLogHoursModal(task);
@@ -784,8 +785,15 @@ window.WorkVoltPages['tasks'] = function(container) {
       var showProgress = hasHours || checklistPct > 0;
 
       var rowClass = 'border-t border-slate-100 hover:bg-blue-50/30 transition-colors group cursor-pointer' +
+        (done ? ' bg-slate-50/60 opacity-60' : '') +
         (overdue && !done ? ' bg-red-50/30' : '') +
         (t.priority === 'Urgent' && !done ? ' border-l-2 border-l-red-400' : '');
+
+      // Non-admins cannot edit a Done/Cancelled task unless it's been reopened
+      var editLocked = done && !isAdmin();
+      var editBtn = editLocked
+        ? '<button data-action="edit-locked" data-id="' + t.id + '" title="Task is closed — request reopen to edit" class="act-btn icon-btn text-slate-300 cursor-not-allowed"><i class="fas fa-lock text-xs"></i></button>'
+        : '<button data-action="edit" data-id="' + t.id + '" title="Edit" class="act-btn icon-btn hover:text-indigo-600 hover:bg-indigo-50"><i class="fas fa-pencil text-xs"></i></button>';
 
       var quickBtns =
         (!done
@@ -794,7 +802,7 @@ window.WorkVoltPages['tasks'] = function(container) {
           : '<button data-action="reopen"   data-id="' + t.id + '" title="Reopen"    class="act-btn icon-btn hover:text-blue-600 hover:bg-blue-50"><i class="fas fa-undo text-xs"></i></button>') +
         '<button data-action="log-hours" data-id="' + t.id + '" title="Log Hours"  class="act-btn icon-btn hover:text-blue-600 hover:bg-blue-50"><i class="fas fa-clock text-xs"></i></button>' +
         '<button data-action="log-note"  data-id="' + t.id + '" title="Comment"    class="act-btn icon-btn hover:text-purple-600 hover:bg-purple-50"><i class="fas fa-comment text-xs"></i></button>' +
-        '<button data-action="edit"      data-id="' + t.id + '" title="Edit"        class="act-btn icon-btn hover:text-indigo-600 hover:bg-indigo-50"><i class="fas fa-pencil text-xs"></i></button>' +
+        editBtn +
         (isAdmin() ? '<button data-action="delete" data-id="' + t.id + '" data-title="' + esc(t.title) + '" title="Delete" class="act-btn icon-btn hover:text-red-600 hover:bg-red-50"><i class="fas fa-trash text-xs"></i></button>' : '');
 
       return '<tr class="' + rowClass + '" data-action="view" data-id="' + t.id + '">' +
@@ -1434,6 +1442,14 @@ window.WorkVoltPages['tasks'] = function(container) {
       document.getElementById('td-log-btn').addEventListener('click', function() { closeModal(); openLogHoursModal(task); });
       document.getElementById('td-note-btn').addEventListener('click', function() { closeModal(); openLogNoteModal(task); });
       document.getElementById('td-edit-btn').addEventListener('click', function() { closeModal(); openTaskForm(task); });
+      // If task is closed and user is not admin, grey out and block the edit button
+      var tdEditBtn = document.getElementById('td-edit-btn');
+      if (tdEditBtn && (task.status === 'Done' || task.status === 'Cancelled') && !isAdmin()) {
+        tdEditBtn.disabled = true;
+        tdEditBtn.title = 'Task is closed — request reopen to edit';
+        tdEditBtn.style.opacity = '0.4';
+        tdEditBtn.style.cursor = 'not-allowed';
+      }
       var db = document.getElementById('td-delete-btn');
       if (db) db.addEventListener('click', function() { closeModal(); openDeleteModal(task.id, task.title); });
       var ab = document.getElementById('td-approve-btn');
@@ -1908,6 +1924,41 @@ window.WorkVoltPages['tasks'] = function(container) {
   function openTaskForm(task, defaults) {
     defaults = defaults || {};
     var isEdit   = !!task;
+
+    // If editing a closed task and user is not admin → show locked view instead
+    var isClosed = isEdit && (task.status === 'Done' || task.status === 'Cancelled');
+    if (isClosed && !isAdmin()) {
+      showModal(
+        '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
+          '<h3 class="font-extrabold text-slate-900">Task Locked</h3>' +
+          '<button id="tm-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>' +
+        '</div>' +
+        '<div class="px-6 py-6 flex flex-col items-center gap-4 text-center">' +
+          '<div class="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center">' +
+            '<i class="fas fa-lock text-slate-400 text-2xl"></i>' +
+          '</div>' +
+          '<div>' +
+            '<p class="font-bold text-slate-800 text-base mb-1">This task is ' + task.status + '</p>' +
+            '<p class="text-sm text-slate-500">You need to reopen this task before editing it. Submit a reopen request and a manager will approve it.</p>' +
+          '</div>' +
+          '<div class="flex gap-3 w-full mt-2">' +
+            '<button id="tf-locked-cancel" class="flex-1 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm border-none cursor-pointer hover:bg-slate-200">Cancel</button>' +
+            '<button id="tf-locked-reopen" class="flex-1 px-4 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-sm border-none cursor-pointer hover:bg-amber-600 flex items-center justify-center gap-2">' +
+              '<i class="fas fa-unlock-alt text-xs"></i>Request Reopen' +
+            '</button>' +
+          '</div>' +
+        '</div>',
+        '420px'
+      );
+      document.getElementById('tm-close').addEventListener('click', closeModal);
+      document.getElementById('tf-locked-cancel').addEventListener('click', closeModal);
+      document.getElementById('tf-locked-reopen').addEventListener('click', function() {
+        closeModal();
+        handleReopenRequest(task.id, 'To Do');
+      });
+      return;
+    }
+
     var btnLabel = isEdit ? '<i class="fas fa-save text-xs mr-1"></i>Save Changes' : '<i class="fas fa-plus text-xs mr-1"></i>Create Task';
 
     var statusOpts   = STATUSES.map(function(s) {
