@@ -1097,8 +1097,13 @@ window.WorkVoltPages['payroll'] = function(container) {
       return '<option value="'+esc(uid)+'" data-name="'+esc(u.name||u.email||uid)+'"'+(r.employee_id===uid?' selected':'')+'>'+esc(u.name||u.email||uid)+'</option>';
     }).join('');
 
-    // Determine initial compute values
-    var initRate    = r.rate || r.salary || '';
+    // Determine initial compute values — for new runs, pull rate from Users sheet
+    var _initUser = !r.id ? usersCache.find(function(u){ return (u.user_id||u.id)===r.employee_id; }) : null;
+    var _initPayType = (_initUser && _initUser.pay_type) || r.pay_type || '';
+    var _initRate = _initPayType === 'Salary'
+      ? ((_initUser && parseFloat(_initUser.salary)) || 0)
+      : ((_initUser && parseFloat(_initUser.hourly_rate)) || 0);
+    var initRate    = r.rate || r.salary || (_initRate || '');
     var initHrsReg  = r.hours_regular || '';
     var initHrsOT   = r.hours_ot || '';
     var initBonuses = r.bonuses || r.bonus || '';
@@ -1143,7 +1148,7 @@ window.WorkVoltPages['payroll'] = function(container) {
             '<div class="pr-field"><label>Period End <span class="text-red-400">*</span></label><input id="prf-end" type="date" class="pr-input" value="'+esc(fmtDateInput(r.period_end)||'')+'"></div>'+
             '<div class="pr-field"><label>Pay Type</label>'+
               '<select id="prf-paytype" class="pr-input">'+
-                PAY_TYPES.map(function(pt){ return '<option'+(r.pay_type===pt?' selected':'')+'>'+pt+'</option>'; }).join('')+
+                PAY_TYPES.map(function(pt){ return '<option'+((r.pay_type||_initPayType)===pt?' selected':'')+'>'+pt+'</option>'; }).join('')+
               '</select>'+
             '</div>'+
             '<div class="pr-field"><label>Rate ($/hr or salary)</label><input id="prf-rate" type="number" min="0" step="0.01" class="pr-input" value="'+esc(initRate)+'" placeholder="0.00"></div>'+
@@ -1365,17 +1370,24 @@ window.WorkVoltPages['payroll'] = function(container) {
       });
     }
 
-    // Employee change → update ts hours hint
+    // Employee change → auto-fill rate + pay_type from Users sheet data
     var empSel = document.getElementById('prf-emp');
     if (empSel && empSel.tagName==='SELECT') {
       empSel.addEventListener('change', function(){
         var uid = this.value;
         var empRecord = empCache.find(function(e){ return e.id===uid; });
-        var rateEl = document.getElementById('prf-rate');
-        if (rateEl && empRecord && empRecord.salary) {
-          rateEl.value = empRecord.salary;
-          recalc();
-        }
+        var userRecord = usersCache.find(function(u){ return (u.user_id||u.id)===uid; });
+        var rateEl   = document.getElementById('prf-rate');
+        var ptEl     = document.getElementById('prf-paytype');
+        // Pay type: user record first, empCache fallback
+        var payType = (userRecord && userRecord.pay_type) || (empRecord && empRecord.pay_type) || '';
+        // Rate: hourly_rate for hourly/contractor, salary for salaried — user record first
+        var rate = payType === 'Salary'
+          ? (parseFloat(userRecord && userRecord.salary) || parseFloat(empRecord && empRecord.salary) || 0)
+          : (parseFloat(userRecord && userRecord.hourly_rate) || parseFloat(empRecord && empRecord.salary) || 0);
+        if (ptEl && payType) { ptEl.value = payType; }
+        if (rateEl && rate)  { rateEl.value = rate; recalc(); }
+        else if (rateEl && empRecord && empRecord.salary) { rateEl.value = empRecord.salary; recalc(); }
       });
     }
 
@@ -1507,11 +1519,17 @@ window.WorkVoltPages['payroll'] = function(container) {
           usersCache.map(function(u){
             var uid=u.user_id||u.id;
             var emp=empCache.find(function(e){return e.id===uid;})||{};
+            // Resolve pay_type and rate from user record first (Users sheet), then empCache fallback
+            var payType = u.pay_type || emp.pay_type || 'Hourly';
+            var rate = payType==='Salary'
+              ? (parseFloat(u.salary)||parseFloat(emp.salary)||0)
+              : (parseFloat(u.hourly_rate)||parseFloat(emp.salary)||0);
+            var rateLabel = rate ? (payType==='Salary' ? '$'+rate+'/yr' : '$'+rate+'/hr') : 'No rate set';
             return '<label class="flex items-center gap-3 py-1.5 cursor-pointer">'+
-              '<input type="checkbox" class="bulk-emp-cb" value="'+esc(uid)+'" data-name="'+esc(u.name||u.email||uid)+'" data-salary="'+esc(emp.salary||0)+'" data-rate="'+esc(emp.salary||0)+'" data-paytype="'+esc(emp.pay_type||'Hourly')+'" checked style="accent-color:#10b981">'+
+              '<input type="checkbox" class="bulk-emp-cb" value="'+esc(uid)+'" data-name="'+esc(u.name||u.email||uid)+'" data-rate="'+esc(rate)+'" data-paytype="'+esc(payType)+'" checked style="accent-color:#10b981">'+
               userAvatar(uid,'w-5 h-5 text-[10px]')+
               '<span class="text-sm text-slate-700 flex-1">'+esc(u.name||u.email||uid)+'</span>'+
-              '<span class="text-xs text-slate-400">'+esc(emp.pay_type||'')+(emp.salary?' · $'+emp.salary:'')+'</span>'+
+              '<span class="text-xs '+(rate ? 'text-slate-400' : 'text-amber-500 font-semibold')+'">'+esc(payType)+' · '+esc(rateLabel)+'</span>'+
             '</label>';
           }).join('')+
         '</div>'+
