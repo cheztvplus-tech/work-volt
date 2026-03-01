@@ -39,13 +39,22 @@ window.WorkVoltPages['dashboard'] = function(container) {
     return { id: m.id, label: m.label, icon: m.icon, ...meta };
   });
 
-  // Steps checklist — dynamic based on state
+  // Steps checklist — dynamic based on real state
+  const isSheetConnected = !!(localStorage.getItem('wv_gas_url') && localStorage.getItem('wv_api_secret'));
+
   const steps = [
     {
       done: true,
       icon: 'fa-bolt',
       title: 'Work Volt is running',
       desc: 'Your app is live and ready to configure.',
+    },
+    {
+      done: isSheetConnected,
+      icon: 'fa-table',
+      title: 'Connect your Google Sheet',
+      desc: 'Link your Sheet to power real data across all modules.',
+      action: { label: 'Connect Sheet', module: 'settings' },
     },
     {
       done: installedCount > 0,
@@ -55,14 +64,7 @@ window.WorkVoltPages['dashboard'] = function(container) {
       action: { label: 'Open Store', module: 'store' },
     },
     {
-      done: false,
-      icon: 'fa-table',
-      title: 'Connect your Google Sheet',
-      desc: 'Link your Sheet to power real data across all modules.',
-      action: { label: 'Connect Sheet', module: 'settings' },
-    },
-    {
-      done: false,
+      done: isSheetConnected,
       icon: 'fa-users',
       title: 'Invite your team',
       desc: 'Add users, assign roles and get everyone working.',
