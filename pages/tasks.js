@@ -1175,7 +1175,7 @@ window.WorkVoltPages['tasks'] = function(container) {
       var _checklistPct = calcChecklistPct(task.id);
       var _checklistBarColor = _checklistPct >= 100 ? '#16a34a' : _checklistPct >= 60 ? '#3b82f6' : _checklistPct >= 40 ? '#f59e0b' : '#94a3b8';
       var checklistHtml =
-        '<div id="td-checklist-wrap" class="border border-slate-200 rounded-xl">' +
+        '<div id="td-checklist-wrap" class="border border-slate-200 rounded-xl overflow-hidden">' +
           '<div class="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between">' +
             '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Task Progress Checklist</p>' +
             '<span id="td-checklist-pct-lbl" style="font-size:.75rem;font-weight:700;color:' + _checklistBarColor + '">' + _checklistPct + '%</span>' +
@@ -1183,7 +1183,7 @@ window.WorkVoltPages['tasks'] = function(container) {
           '<div style="height:4px;background:#e2e8f0">' +
             '<div id="td-checklist-bar" style="height:4px;background:' + _checklistBarColor + ';width:' + _checklistPct + '%;transition:width .3s,background .3s"></div>' +
           '</div>' +
-          '<div>' + _checklistStagesHtml + '</div>' +
+          '<div class="py-1">' + _checklistStagesHtml + '</div>' +
         '</div>';
 
       // Build unified activity timeline (comments + notes + hours, sorted by date)
@@ -1262,10 +1262,10 @@ window.WorkVoltPages['tasks'] = function(container) {
         '</div>' +
 
         // Body — two columns
-        '<div style="display:grid;grid-template-columns:1fr 300px;min-height:480px;max-height:calc(90vh - 90px)">' +
+        '<div style="display:grid;grid-template-columns:1fr 280px;min-height:400px">' +
 
-          // Left: description, checklist, comment box, timeline
-          '<div class="px-6 py-5 border-r border-slate-100 flex flex-col gap-4" style="overflow-y:auto">' +
+          // Left: description, comment box, timeline
+          '<div class="px-6 py-5 border-r border-slate-100 flex flex-col gap-4" style="overflow-y:auto;max-height:70vh">' +
 
             (task.description
               ? '<div><p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2">Description</p>' +
@@ -1276,20 +1276,18 @@ window.WorkVoltPages['tasks'] = function(container) {
             checklistHtml +
 
             // Comment composer with @mention picker
-            '<div class="border border-slate-200 rounded-xl">' +
+            '<div class="border border-slate-200 rounded-xl overflow-hidden">' +
               '<div class="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between">' +
                 '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Leave a comment</p>' +
                 '<span class="text-[10px] text-slate-400">Type @ to mention someone</span>' +
               '</div>' +
-              '<div class="p-3">' +
-                '<div style="position:relative">' +
-                  '<div id="td-mention-picker" class="hidden" style="position:fixed;z-index:9999;background:#fff;border:1.5px solid #e2e8f0;border-radius:.875rem;box-shadow:0 16px 48px rgba(0,0,0,.18);min-width:240px;max-height:220px;overflow-y:auto"></div>' +
-                  '<textarea id="td-comment-input" rows="4" placeholder="Write a comment… type @name to mention someone" ' +
-                    'style="width:100%;font-size:.875rem;color:#334155;border:none;outline:none;background:transparent;resize:vertical;font-family:inherit;line-height:1.6;min-height:80px;box-sizing:border-box"></textarea>' +
-                '</div>' +
-                '<div class="flex items-center justify-between pt-2 border-t border-slate-100 mt-1">' +
-                  '<div id="td-mention-chips" class="flex flex-wrap gap-1 flex-1 mr-3"></div>' +
-                  '<button id="td-comment-submit" class="btn-primary text-xs py-2 px-4 flex-shrink-0" style="white-space:nowrap"><i class="fas fa-paper-plane mr-1 text-[10px]"></i>Comment</button>' +
+              '<div class="p-3 relative">' +
+                '<div id="td-mention-picker" class="hidden absolute z-50 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden" style="bottom:calc(100% - 2rem);left:.75rem;min-width:220px;max-height:200px;overflow-y:auto"></div>' +
+                '<textarea id="td-comment-input" rows="3" placeholder="Write a comment… type @name to mention someone" ' +
+                  'class="w-full text-sm text-slate-700 border-none outline-none bg-transparent resize-none placeholder-slate-300 leading-relaxed" style="font-family:inherit"></textarea>' +
+                '<div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">' +
+                  '<div id="td-mention-chips" class="flex flex-wrap gap-1"></div>' +
+                  '<button id="td-comment-submit" class="btn-primary text-xs py-1.5 px-3 flex-shrink-0"><i class="fas fa-paper-plane mr-1 text-[10px]"></i>Comment</button>' +
                 '</div>' +
               '</div>' +
             '</div>' +
@@ -1308,7 +1306,7 @@ window.WorkVoltPages['tasks'] = function(container) {
           '</div>' +
 
           // Right: metadata + actions
-          '<div class="px-5 py-5 bg-slate-50/50 flex flex-col" style="overflow-y:auto">' +
+          '<div class="px-5 py-5 bg-slate-50/50 flex flex-col" style="overflow-y:auto;max-height:70vh">' +
             '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-3">Details</p>' +
 
             meta('Status', statusBadge(task.status)) +
@@ -1342,7 +1340,7 @@ window.WorkVoltPages['tasks'] = function(container) {
 
             '<div class="flex flex-col gap-2 mt-4">' +
               // Billable approval panel
-              ((task.billable === 'true' || task.billable === true) && isAdmin()
+              ((task.billable === 'true' || task.billable === true) && task.status === 'Done' && isAdmin()
                 ? '<div class="border border-amber-200 rounded-xl p-3 bg-amber-50">' +
                     '<p class="text-[11px] font-bold text-amber-700 mb-2"><i class="fas fa-dollar-sign mr-1"></i>Billable Approval</p>' +
                     (task.approval_status === 'approved'
@@ -1473,19 +1471,6 @@ window.WorkVoltPages['tasks'] = function(container) {
               (u.job_title ? '<div class="text-[11px] text-slate-400">' + esc(u.job_title) + '</div>' : '') +
               '</div></button>';
           }).join('');
-          // Position the fixed dropdown above or below the textarea
-          var rect = commentInp.getBoundingClientRect();
-          var ddH  = Math.min(hits.length * 56, 220);
-          var spaceBelow = window.innerHeight - rect.bottom;
-          if (spaceBelow > ddH + 8) {
-            mentionDd.style.top    = (rect.bottom + 4) + 'px';
-            mentionDd.style.bottom = 'auto';
-          } else {
-            mentionDd.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
-            mentionDd.style.top    = 'auto';
-          }
-          mentionDd.style.left  = rect.left + 'px';
-          mentionDd.style.width = Math.max(rect.width, 240) + 'px';
           mentionDd.classList.remove('hidden');
           // Wire pick
           mentionDd.querySelectorAll('button').forEach(function(btn) {
