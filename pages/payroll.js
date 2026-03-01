@@ -82,7 +82,8 @@ window.WorkVoltPages['payroll'] = function(container) {
   function genId(prefix) {
     var d = new Date();
     var ds = String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') + d.getFullYear();
-    return (prefix||'PR') + '-' + ds + '-' + Math.random().toString(36).slice(2,6).toUpperCase();
+    var rand = Math.random().toString(36).slice(2,8) + Math.random().toString(36).slice(2,6);
+    return (prefix||'PR') + '-' + ds + '-' + rand.slice(0,8).toUpperCase();
   }
   function toast(msg, type) {
     if (window.WorkVolt && window.WorkVolt.toast) window.WorkVolt.toast(msg, type||'info');
@@ -1537,9 +1538,10 @@ window.WorkVoltPages['payroll'] = function(container) {
       var selected = Array.from(document.querySelectorAll('.bulk-emp-cb:checked'));
       if (!selected.length) { modalMsg('Select at least one employee.', false); return; }
       var btn=this; btn.disabled=true; btn.innerHTML='<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i>Generating…';
-      var creates = selected.map(function(cb){
+      // Build all payloads first (unique IDs generated synchronously before any async calls)
+      var payloads = selected.map(function(cb){
         var computed = computeRun({ pay_type:cb.dataset.paytype||'Hourly', rate:parseFloat(cb.dataset.rate)||0, hours_regular:0, hours_ot:0, bonuses:0, deductions:0 });
-        return api('payroll/runs/create', {
+        return {
           id:            genId('PR'),
           employee_id:   cb.value,
           employee_name: cb.dataset.name,
@@ -1552,10 +1554,13 @@ window.WorkVoltPages['payroll'] = function(container) {
           tax_total:     String(computed.tax_total),
           status:        'Draft',
           created_by:    myUserId(),
-        });
+        };
       });
-      Promise.all(creates).then(function(){
-        toast('Created '+creates.length+' pay runs', 'success');
+      // Run sequentially to avoid race conditions / ID collisions on the backend
+      payloads.reduce(function(chain, payload) {
+        return chain.then(function() { return api('payroll/runs/create', payload); });
+      }, Promise.resolve()).then(function(){
+        toast('Created '+payloads.length+' pay runs', 'success');
         closeModal(); loadData();
       }).catch(function(e){ modalMsg(e.message, false); btn.disabled=false; btn.innerHTML='<i class="fas fa-bolt mr-1.5 text-xs"></i>Generate Runs'; });
     });
