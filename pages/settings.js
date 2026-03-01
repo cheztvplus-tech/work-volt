@@ -833,6 +833,9 @@ window.WorkVoltPages['settings'] = function(container) {
           </div>
         </div>
 
+        <!-- Module-specific settings (shown when relevant module is installed) -->
+        <div id="module-settings-section"></div>
+
         <!-- Available -->
         <div>
           <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Available</h3>
@@ -845,6 +848,362 @@ window.WorkVoltPages['settings'] = function(container) {
       </div>
     `;
   }
+
+  // ================================================================
+  //  PAYROLL TAX SETTINGS
+  // ================================================================
+
+  // Default tax configs per country — all rates as percentages (e.g. 7.65 = 7.65%)
+  var PAYROLL_TAX_DEFAULTS = {
+    USA: {
+      country: 'USA',
+      pay_periods_per_year: 26,
+      // Federal income tax uses progressive brackets — not editable as a flat % here
+      // but user can override an effective flat rate if they prefer simplicity
+      federal_use_brackets: true,
+      federal_flat_rate: 22,          // fallback flat % if brackets disabled
+      fica_ss_rate: 6.2,              // Social Security
+      fica_medicare_rate: 1.45,       // Medicare
+      additional_medicare_rate: 0.9,  // Additional Medicare on income > $200k (annual)
+      state_tax_rate: 5.0,            // default; user sets their state
+      state_tax_label: 'State Income Tax',
+      local_tax_rate: 0,              // city/municipal tax
+      local_tax_label: 'Local Tax',
+      futa_rate: 0.6,                 // Federal Unemployment (employer only, not deducted from employee)
+      other_deduction_label: 'Other Deductions',
+      other_deduction_rate: 0,
+      currency: 'USD',
+      currency_symbol: '$',
+    },
+    Canada: {
+      country: 'Canada',
+      pay_periods_per_year: 26,
+      federal_use_brackets: true,
+      federal_flat_rate: 20.5,        // approx middle bracket
+      cpp_rate: 5.95,                 // Canada Pension Plan (employee share, 2024)
+      cpp_max_annual: 3867.50,        // 2024 max annual CPP contribution
+      ei_rate: 1.66,                  // Employment Insurance (employee, 2024)
+      ei_max_annual: 1049.12,         // 2024 max annual EI
+      provincial_tax_rate: 9.15,      // e.g. Ontario second bracket; user adjusts per province
+      provincial_tax_label: 'Provincial Income Tax',
+      additional_tax_rate: 0,         // e.g. Quebec abatement or surtax
+      additional_tax_label: 'Additional Tax',
+      other_deduction_label: 'Other Deductions',
+      other_deduction_rate: 0,
+      currency: 'CAD',
+      currency_symbol: '$',
+    },
+  };
+
+  var _payrollTaxConfig = null; // loaded from server
+
+  async function loadPayrollTaxSettings() {
+    var section = document.getElementById('module-settings-section');
+    if (!section) return;
+
+    var payrollInstalled = modulesCache.some(function(m) { return m.id === 'payroll'; });
+    if (!payrollInstalled) { section.innerHTML = ''; return; }
+
+    // Load saved config
+    try {
+      var res = await api('config/get-all', {});
+      var saved = res.settings && res.settings['payroll_tax_config'];
+      if (saved) {
+        try { _payrollTaxConfig = JSON.parse(saved); } catch(e) { _payrollTaxConfig = null; }
+      }
+    } catch(e) { /* silently fall back to defaults */ }
+
+    if (!_payrollTaxConfig) _payrollTaxConfig = Object.assign({}, PAYROLL_TAX_DEFAULTS.USA);
+
+    renderPayrollTaxCard();
+  }
+
+  function renderPayrollTaxCard() {
+    var section = document.getElementById('module-settings-section');
+    if (!section) return;
+
+    var cfg = _payrollTaxConfig || PAYROLL_TAX_DEFAULTS.USA;
+    var country = cfg.country || 'USA';
+    var isUSA = country === 'USA';
+
+    function fld(id, label, value, tooltip, unit, readOnly) {
+      unit = unit || '%';
+      return (
+        '<div>' +
+          '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1" title="' + (tooltip||'') + '">' +
+            label +
+            (tooltip ? ' <i class="fas fa-info-circle text-slate-300 text-[10px] cursor-help"></i>' : '') +
+          '</label>' +
+          '<div class="relative">' +
+            '<input id="ptax-' + id + '" type="number" min="0" max="99" step="0.01" ' +
+              'value="' + (value !== undefined ? value : '') + '" ' +
+              (readOnly ? 'readonly ' : '') +
+              'class="w-full pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-xl font-mono ' +
+              (readOnly ? 'bg-slate-50 text-slate-400 cursor-default' : 'bg-white text-slate-800 focus:outline-none focus:border-blue-400') + '" ' +
+              'style="font-family:inherit">' +
+            '<span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">' + unit + '</span>' +
+          '</div>' +
+        '</div>'
+      );
+    }
+
+    function section2(title, icon, color, fields) {
+      return (
+        '<div class="border border-slate-200 rounded-xl overflow-hidden">' +
+          '<div class="px-4 py-2.5 flex items-center gap-2" style="background:' + color + '">' +
+            '<i class="fas ' + icon + ' text-xs" style="color:' + color.replace('f0','600').replace('fef','red') + '"></i>' +
+            '<span class="text-xs font-extrabold uppercase tracking-wider text-slate-600">' + title + '</span>' +
+          '</div>' +
+          '<div class="p-4 grid grid-cols-2 gap-3">' + fields + '</div>' +
+        '</div>'
+      );
+    }
+
+    var usaFields = (
+      section2('Federal Income Tax', 'fa-landmark', '#f0f9ff',
+        fld('federal_flat_rate', 'Effective Fed. Rate (flat)', cfg.federal_flat_rate, 'Used when bracket calc is off, or as a cap reference', '%') +
+        fld('pay_periods_per_year', 'Pay Periods / Year', cfg.pay_periods_per_year, 'e.g. 26 = biweekly, 24 = semi-monthly, 12 = monthly', 'x') +
+        '<div class="col-span-2 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">' +
+          '<div>' +
+            '<div class="text-xs font-bold text-blue-800">Use Progressive Brackets</div>' +
+            '<div class="text-[10px] text-blue-600">2024 IRS marginal brackets (10%–37%)</div>' +
+          '</div>' +
+          '<label class="relative inline-flex items-center cursor-pointer">' +
+            '<input type="checkbox" id="ptax-federal_use_brackets" ' + (cfg.federal_use_brackets ? 'checked' : '') + ' class="sr-only peer">' +
+            '<div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 transition-colors after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>' +
+          '</label>' +
+        '</div>'
+      ) +
+      section2('FICA (Employee Share)', 'fa-shield-alt', '#f0fdf4',
+        fld('fica_ss_rate',       'Social Security',       cfg.fica_ss_rate,       'Employee portion only. Employer matches.') +
+        fld('fica_medicare_rate', 'Medicare',              cfg.fica_medicare_rate, 'Employee portion only. Employer matches.') +
+        fld('additional_medicare_rate', 'Additional Medicare', cfg.additional_medicare_rate, 'Extra 0.9% on annual wages over $200k') +
+        '<div></div>'
+      ) +
+      section2('State & Local Tax', 'fa-map-marker-alt', '#fefce8',
+        fld('state_tax_rate',  cfg.state_tax_label  || 'State Income Tax', cfg.state_tax_rate,  'Set to 0 for states with no income tax (e.g. TX, FL)') +
+        fld('local_tax_rate',  cfg.local_tax_label  || 'Local / City Tax',  cfg.local_tax_rate,  'Municipal or city tax if applicable') +
+        '<div class="col-span-2 grid grid-cols-2 gap-2">' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">State Tax Label</label>' +
+            '<input id="ptax-state_tax_label" type="text" value="' + (cfg.state_tax_label||'State Income Tax') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Local Tax Label</label>' +
+            '<input id="ptax-local_tax_label" type="text" value="' + (cfg.local_tax_label||'Local Tax') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>' +
+        '</div>'
+      ) +
+      section2('Other Deductions', 'fa-minus-circle', '#fdf4ff',
+        fld('other_deduction_rate', cfg.other_deduction_label || 'Auto-Deduction %', cfg.other_deduction_rate, 'Applied automatically to every pay run (e.g. benefits, union dues)') +
+        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Deduction Label</label>' +
+          '<input id="ptax-other_deduction_label" type="text" value="' + (cfg.other_deduction_label||'Other Deductions') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>'
+      )
+    );
+
+    var canadaFields = (
+      section2('Federal Income Tax', 'fa-landmark', '#f0f9ff',
+        fld('federal_flat_rate', 'Effective Fed. Rate (flat)', cfg.federal_flat_rate, 'Used as fallback when bracket calc is off', '%') +
+        fld('pay_periods_per_year', 'Pay Periods / Year', cfg.pay_periods_per_year, 'e.g. 26 = biweekly, 24 = semi-monthly, 12 = monthly', 'x') +
+        '<div class="col-span-2 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">' +
+          '<div>' +
+            '<div class="text-xs font-bold text-blue-800">Use Progressive Brackets</div>' +
+            '<div class="text-[10px] text-blue-600">2024 CRA federal marginal brackets (15%–33%)</div>' +
+          '</div>' +
+          '<label class="relative inline-flex items-center cursor-pointer">' +
+            '<input type="checkbox" id="ptax-federal_use_brackets" ' + (cfg.federal_use_brackets ? 'checked' : '') + ' class="sr-only peer">' +
+            '<div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 transition-colors after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>' +
+          '</label>' +
+        '</div>'
+      ) +
+      section2('CPP & EI (Employee Share)', 'fa-shield-alt', '#f0fdf4',
+        fld('cpp_rate',     'CPP Rate (2024: 5.95%)',   cfg.cpp_rate,     'Canada Pension Plan — employee contribution') +
+        fld('cpp_max_annual', 'CPP Max Annual ($)',      cfg.cpp_max_annual, 'Max annual CPP deduction per employee', '$') +
+        fld('ei_rate',      'EI Rate (2024: 1.66%)',    cfg.ei_rate,      'Employment Insurance — employee premium') +
+        fld('ei_max_annual', 'EI Max Annual ($)',        cfg.ei_max_annual,  'Max annual EI deduction per employee', '$')
+      ) +
+      section2('Provincial Tax', 'fa-map-marker-alt', '#fefce8',
+        fld('provincial_tax_rate', cfg.provincial_tax_label || 'Provincial Income Tax', cfg.provincial_tax_rate, 'Set to your province\'s rate') +
+        fld('additional_tax_rate', cfg.additional_tax_label || 'Additional / Surtax',  cfg.additional_tax_rate, 'Quebec abatement, surtax, etc.') +
+        '<div class="col-span-2 grid grid-cols-2 gap-2">' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Provincial Label</label>' +
+            '<input id="ptax-provincial_tax_label" type="text" value="' + (cfg.provincial_tax_label||'Provincial Income Tax') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Additional Tax Label</label>' +
+            '<input id="ptax-additional_tax_label" type="text" value="' + (cfg.additional_tax_label||'Additional Tax') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>' +
+        '</div>'
+      ) +
+      section2('Other Deductions', 'fa-minus-circle', '#fdf4ff',
+        fld('other_deduction_rate', cfg.other_deduction_label || 'Auto-Deduction %', cfg.other_deduction_rate, 'Applied automatically to every pay run') +
+        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Deduction Label</label>' +
+          '<input id="ptax-other_deduction_label" type="text" value="' + (cfg.other_deduction_label||'Other Deductions') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>'
+      )
+    );
+
+    var provinceGuide = !isUSA ? (
+      '<div class="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3">' +
+        '<p class="text-xs font-bold text-slate-600 mb-2"><i class="fas fa-map-marked-alt mr-1.5 text-slate-400"></i>2024 Provincial Rates (approximate — enter your province below)</p>' +
+        '<div class="grid grid-cols-3 gap-1 text-[10px] font-mono text-slate-500">' +
+          ['ON: 9.15%','BC: 5.06%','AB: 10.0%','QC: 14.0%','MB: 10.8%','SK: 10.5%','NS: 8.79%','NB: 9.40%','NL: 8.70%','PEI: 9.65%'].map(function(p){
+            return '<span class="bg-white border border-slate-100 rounded px-1.5 py-0.5">' + p + '</span>';
+          }).join('') +
+        '</div>' +
+      '</div>'
+    ) : (
+      '<div class="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3">' +
+        '<p class="text-xs font-bold text-slate-600 mb-2"><i class="fas fa-map-marked-alt mr-1.5 text-slate-400"></i>Common State Rates (2024 — enter your state below)</p>' +
+        '<div class="grid grid-cols-3 gap-1 text-[10px] font-mono text-slate-500">' +
+          ['CA: 13.3%','NY: 10.9%','TX: 0%','FL: 0%','WA: 0%','OR: 9.9%','MN: 9.85%','NJ: 10.75%','IL: 4.95%','GA: 5.49%'].map(function(p){
+            return '<span class="bg-white border border-slate-100 rounded px-1.5 py-0.5">' + p + '</span>';
+          }).join('') +
+        '</div>' +
+      '</div>'
+    );
+
+    section.innerHTML = (
+      '<div class="mb-6">' +
+        '<h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Module Settings</h3>' +
+        '<div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">' +
+
+          // Card header
+          '<div class="px-6 py-4 border-b border-slate-100 flex items-center gap-3">' +
+            '<div class="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center">' +
+              '<i class="fas fa-money-bill-wave text-emerald-600 text-sm"></i>' +
+            '</div>' +
+            '<div class="flex-1">' +
+              '<h2 class="font-bold text-slate-900">Payroll Tax Settings</h2>' +
+              '<p class="text-xs text-slate-500">Configure deduction rates for your region. Used in all pay run calculations.</p>' +
+            '</div>' +
+            '<span class="text-[10px] font-bold px-2 py-1 rounded-full ' +
+              (isUSA ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700') + '">' +
+              (isUSA ? '🇺🇸 USA' : '🇨🇦 Canada') +
+            '</span>' +
+          '</div>' +
+
+          '<div class="px-6 py-5 space-y-4">' +
+            '<div id="ptax-status"></div>' +
+
+            // Country selector
+            '<div>' +
+              '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Country / Region</label>' +
+              '<div class="grid grid-cols-2 gap-3">' +
+                '<label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors ' +
+                  (isUSA ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300') + '">' +
+                  '<input type="radio" name="ptax_country" value="USA" ' + (isUSA ? 'checked' : '') + ' id="ptax-country-usa" class="accent-blue-600" onchange="payrollTaxCountryChanged(\'USA\')">' +
+                  '<div><div class="font-bold text-slate-800 text-sm">🇺🇸 United States</div>' +
+                  '<div class="text-[10px] text-slate-500">IRS brackets · FICA · State tax</div></div>' +
+                '</label>' +
+                '<label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors ' +
+                  (!isUSA ? 'border-red-400 bg-red-50' : 'border-slate-200 hover:border-slate-300') + '">' +
+                  '<input type="radio" name="ptax_country" value="Canada" ' + (!isUSA ? 'checked' : '') + ' id="ptax-country-ca" class="accent-red-600" onchange="payrollTaxCountryChanged(\'Canada\')">' +
+                  '<div><div class="font-bold text-slate-800 text-sm">🇨🇦 Canada</div>' +
+                  '<div class="text-[10px] text-slate-500">CRA brackets · CPP · EI · Provincial</div></div>' +
+                '</label>' +
+              '</div>' +
+            '</div>' +
+
+            // Tax fields
+            '<div id="ptax-fields" class="space-y-3">' +
+              (isUSA ? usaFields : canadaFields) +
+            '</div>' +
+
+            // Rate reference guide
+            provinceGuide +
+
+            // Legal note
+            '<div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">' +
+              '<i class="fas fa-exclamation-triangle mr-1.5"></i>' +
+              '<strong>Note:</strong> Rates shown are estimates only. Always verify with your tax authority. Progressive federal bracket calculation uses ' +
+              (isUSA ? 'IRS 2024 rates' : 'CRA 2024 rates') + '.' +
+            '</div>' +
+
+            // Save button
+            '<button onclick="savePayrollTaxConfig()" id="ptax-save-btn" class="btn-primary w-full" style="background:#10b981">' +
+              '<i class="fas fa-save text-sm"></i> Save Payroll Tax Settings' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  window.payrollTaxCountryChanged = function(country) {
+    // Merge current field values back into config before switching
+    // so partial edits for the old country aren't lost if they switch back
+    var defaults = PAYROLL_TAX_DEFAULTS[country] || PAYROLL_TAX_DEFAULTS.USA;
+    _payrollTaxConfig = Object.assign({}, defaults);
+    renderPayrollTaxCard();
+  };
+
+  window.savePayrollTaxConfig = async function() {
+    var btn = document.getElementById('ptax-save-btn');
+    var statusEl = document.getElementById('ptax-status');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Saving…'; }
+    if (statusEl) statusEl.innerHTML = '';
+
+    var country = (document.querySelector('input[name="ptax_country"]:checked') || {}).value || 'USA';
+    var isUSA = country === 'USA';
+
+    function gn(id, fallback) {
+      var el = document.getElementById('ptax-' + id);
+      if (!el) return fallback !== undefined ? fallback : 0;
+      return parseFloat(el.value) || 0;
+    }
+    function gs(id, fallback) {
+      var el = document.getElementById('ptax-' + id);
+      if (!el) return fallback || '';
+      return el.value || fallback || '';
+    }
+    function gb(id) {
+      var el = document.getElementById('ptax-' + id);
+      return el ? el.checked : false;
+    }
+
+    var cfg;
+    if (isUSA) {
+      cfg = {
+        country: 'USA',
+        pay_periods_per_year:     gn('pay_periods_per_year', 26),
+        federal_use_brackets:     gb('federal_use_brackets'),
+        federal_flat_rate:        gn('federal_flat_rate', 22),
+        fica_ss_rate:             gn('fica_ss_rate', 6.2),
+        fica_medicare_rate:       gn('fica_medicare_rate', 1.45),
+        additional_medicare_rate: gn('additional_medicare_rate', 0.9),
+        state_tax_rate:           gn('state_tax_rate', 5),
+        state_tax_label:          gs('state_tax_label', 'State Income Tax'),
+        local_tax_rate:           gn('local_tax_rate', 0),
+        local_tax_label:          gs('local_tax_label', 'Local Tax'),
+        other_deduction_rate:     gn('other_deduction_rate', 0),
+        other_deduction_label:    gs('other_deduction_label', 'Other Deductions'),
+        currency: 'USD', currency_symbol: '$',
+      };
+    } else {
+      cfg = {
+        country: 'Canada',
+        pay_periods_per_year:   gn('pay_periods_per_year', 26),
+        federal_use_brackets:   gb('federal_use_brackets'),
+        federal_flat_rate:      gn('federal_flat_rate', 20.5),
+        cpp_rate:               gn('cpp_rate', 5.95),
+        cpp_max_annual:         gn('cpp_max_annual', 3867.50),
+        ei_rate:                gn('ei_rate', 1.66),
+        ei_max_annual:          gn('ei_max_annual', 1049.12),
+        provincial_tax_rate:    gn('provincial_tax_rate', 9.15),
+        provincial_tax_label:   gs('provincial_tax_label', 'Provincial Income Tax'),
+        additional_tax_rate:    gn('additional_tax_rate', 0),
+        additional_tax_label:   gs('additional_tax_label', 'Additional Tax'),
+        other_deduction_rate:   gn('other_deduction_rate', 0),
+        other_deduction_label:  gs('other_deduction_label', 'Other Deductions'),
+        currency: 'CAD', currency_symbol: '$',
+      };
+    }
+
+    try {
+      await api('config/set', { key: 'payroll_tax_config', value: JSON.stringify(cfg) });
+      _payrollTaxConfig = cfg;
+      // Expose globally so payroll.js can pick it up without a reload
+      window.WV_PAYROLL_TAX_CONFIG = cfg;
+      if (statusEl) statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium mb-3 bg-green-50 text-green-700 border border-green-200"><i class="fas fa-check-circle"></i><span>Payroll tax settings saved! Pay runs will use the new rates.</span></div>';
+    } catch(e) {
+      if (statusEl) statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium mb-3 bg-red-50 text-red-600 border border-red-200"><i class="fas fa-exclamation-circle"></i><span>' + e.message + '</span></div>';
+    }
+
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save text-sm"></i> Save Payroll Tax Settings'; }
+  };
 
   function setModuleStatus(msg, ok) {
     var el = document.getElementById('modules-status');
@@ -873,6 +1232,7 @@ window.WorkVoltPages['settings'] = function(container) {
       var data = await api('config/modules');
       modulesCache = data.modules || [];
       renderModuleLists();
+      loadPayrollTaxSettings();
     } catch(e) {
       setModuleStatus('Could not load modules: ' + e.message, false);
     }
@@ -968,6 +1328,7 @@ window.WorkVoltPages['settings'] = function(container) {
         if (typeof renderNav === 'function') renderNav();
       }
       renderModuleLists();
+      loadPayrollTaxSettings();
     } catch(e) {
       setModuleStatus('Install failed: ' + e.message, false);
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download text-xs"></i> Install'; }
@@ -1059,6 +1420,7 @@ window.WorkVoltPages['settings'] = function(container) {
         if (typeof renderNav === 'function') renderNav();
       }
       renderModuleLists();
+      loadPayrollTaxSettings();
     } catch(e) {
       setModuleStatus('Uninstall failed: ' + e.message, false);
     }
