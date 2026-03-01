@@ -129,22 +129,37 @@ window.WorkVoltPages['payroll'] = function(container) {
     },
   };
 
+  var _taxVisibleRoles = null; // loaded from config; null = not yet loaded
+
   function loadTaxConfig() {
-    // If settings.js already loaded config this session, use it immediately
+    // If settings.js already loaded config this session, use both caches
     if (window.WV_PAYROLL_TAX_CONFIG) {
       _taxCfg = window.WV_PAYROLL_TAX_CONFIG;
+      if (window.WV_PAYROLL_TAX_VISIBLE_ROLES) {
+        _taxVisibleRoles = window.WV_PAYROLL_TAX_VISIBLE_ROLES;
+      }
       return Promise.resolve();
     }
     return api('config/get-all', {})
       .then(function(res) {
         var saved = res.settings && res.settings['payroll_tax_config'];
         if (saved) { try { _taxCfg = JSON.parse(saved); } catch(e) {} }
+        var savedRoles = res.settings && res.settings['payroll_tax_visible_roles'];
+        if (savedRoles) { try { _taxVisibleRoles = JSON.parse(savedRoles); } catch(e) {} }
       })
       .catch(function() {})
       .then(function() {
         if (!_taxCfg) _taxCfg = Object.assign({}, _TAX_DEFAULTS.USA);
+        if (!_taxVisibleRoles) _taxVisibleRoles = ['SuperAdmin', 'Admin'];
         window.WV_PAYROLL_TAX_CONFIG = _taxCfg;
+        window.WV_PAYROLL_TAX_VISIBLE_ROLES = _taxVisibleRoles;
       });
+  }
+
+  // Can the current user VIEW the tax rates panel?
+  function canViewTaxRates() {
+    var roles = _taxVisibleRoles || window.WV_PAYROLL_TAX_VISIBLE_ROLES || ['SuperAdmin', 'Admin'];
+    return roles.includes(getRole());
   }
 
   function getTaxCfg() { return _taxCfg || _TAX_DEFAULTS.USA; }
@@ -172,7 +187,16 @@ window.WorkVoltPages['payroll'] = function(container) {
   // Returns a normalised result object with keys:
   //   federal, fica (SS+Med / CPP+EI), state (state+local / provincial+addl), other, total
   //   + country-specific detail keys for display
+  function taxEnabled() {
+    var cfg = getTaxCfg();
+    return cfg.tax_calculation_enabled !== false; // default true if not set
+  }
+
+  // Returns a zero-tax object when tax calc is disabled by admin
+  var ZERO_TAXES = { federal:0, fica:0, state:0, other:0, total:0, cpp:0, ei:0, provincial:0, additional:0, ss:0, medicare:0, addlMed:0, local:0 };
+
   function estimateTaxes(gross) {
+    if (!taxEnabled()) return Object.assign({}, ZERO_TAXES);
     var cfg = getTaxCfg();
     var rnd = function(v){ return Math.round(v*100)/100; };
     var periods = cfg.pay_periods_per_year || 26;
@@ -345,6 +369,9 @@ window.WorkVoltPages['payroll'] = function(container) {
     var sorted   = applySort(filtered);
     renderStats(filtered);
     renderLiveCounter();
+    // Populate tax rates panel for permitted roles (main admin view)
+    var taxPanel = document.getElementById('pr-tax-rates-panel');
+    if (taxPanel) taxPanel.innerHTML = renderTaxRatesPanel();
     if      (activeView==='employees') renderEmployees();
     else if (activeView==='summary')   renderSummary(filtered);
     else if (activeView==='audit')     renderAudit();
@@ -412,6 +439,121 @@ window.WorkVoltPages['payroll'] = function(container) {
       : 'USA — IRS/FICA/State rates active';
   }
 
+  // ── Tax Rates Info Panel (read-only, role-gated) ──────────────
+  // Returns HTML string of a clean info card showing the configured rates.
+  // Admins see an "Edit in Settings" link; other permitted roles see read-only.
+  function renderTaxRatesPanel() {
+    var cfg = getTaxCfg();
+    if (!cfg || cfg.tax_calculation_enabled === false) return '';
+    var isCA  = cfg.country === 'Canada';
+    var admin = isAdmin();
+    var yr    = new Date().getFullYear();
+
+    function rateRow(label, value, unit) {
+      unit = unit || '%';
+      if (!value && value !== 0) return '';
+      var v = parseFloat(value);
+      if (!v && v !== 0) return '';
+      return (
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:.35rem 0;border-bottom:1px solid #f1f5f9">' +
+          '<span style="font-size:.75rem;color:#64748b">' + label + '</span>' +
+          '<span style="font-size:.75rem;font-weight:700;color:#1e293b;font-family:monospace">' +
+            (unit === '%' ? v.toFixed(2) + '%' : unit + v.toFixed(2)) +
+          '</span>' +
+        '</div>'
+      );
+    }
+
+    var ratesHtml = '';
+    if (isCA) {
+      ratesHtml = (
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">' +
+          '<div>' +
+            '<p style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-bottom:.4rem">Federal (CRA ' + yr + ')</p>' +
+            rateRow(cfg.federal_use_brackets ? 'Progressive brackets' : 'Flat rate', cfg.federal_use_brackets ? null : cfg.federal_flat_rate) +
+            (cfg.federal_use_brackets ? '<div style="font-size:.7rem;color:#60a5fa;font-weight:600;padding:.35rem 0">15% – 33% brackets</div>' : '') +
+            rateRow('Pay periods / year', cfg.pay_periods_per_year, 'x ') +
+          '</div>' +
+          '<div>' +
+            '<p style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-bottom:.4rem">CPP & EI</p>' +
+            rateRow('CPP rate', cfg.cpp_rate) +
+            rateRow('CPP max/year', cfg.cpp_max_annual, '$') +
+            rateRow('EI rate', cfg.ei_rate) +
+            rateRow('EI max/year', cfg.ei_max_annual, '$') +
+          '</div>' +
+          '<div>' +
+            '<p style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-bottom:.4rem">' + (cfg.provincial_tax_label || 'Provincial Tax') + '</p>' +
+            rateRow(cfg.provincial_tax_label || 'Provincial', cfg.provincial_tax_rate) +
+            (parseFloat(cfg.additional_tax_rate || 0) ? rateRow(cfg.additional_tax_label || 'Additional', cfg.additional_tax_rate) : '') +
+          '</div>' +
+          (parseFloat(cfg.other_deduction_rate || 0) ?
+            '<div>' +
+              '<p style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-bottom:.4rem">' + (cfg.other_deduction_label || 'Other') + '</p>' +
+              rateRow(cfg.other_deduction_label || 'Auto-deduction', cfg.other_deduction_rate) +
+            '</div>' : '') +
+        '</div>'
+      );
+    } else {
+      ratesHtml = (
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">' +
+          '<div>' +
+            '<p style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-bottom:.4rem">Federal (IRS ' + yr + ')</p>' +
+            (cfg.federal_use_brackets ? '<div style="font-size:.7rem;color:#60a5fa;font-weight:600;padding:.35rem 0">10% – 37% brackets</div>' : rateRow('Flat rate', cfg.federal_flat_rate)) +
+            rateRow('Pay periods / year', cfg.pay_periods_per_year, 'x ') +
+          '</div>' +
+          '<div>' +
+            '<p style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-bottom:.4rem">FICA</p>' +
+            rateRow('Social Security', cfg.fica_ss_rate) +
+            rateRow('Medicare', cfg.fica_medicare_rate) +
+            rateRow('Addl. Medicare (>$200k)', cfg.additional_medicare_rate) +
+          '</div>' +
+          '<div>' +
+            '<p style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-bottom:.4rem">' + (cfg.state_tax_label || 'State & Local') + '</p>' +
+            rateRow(cfg.state_tax_label || 'State', cfg.state_tax_rate) +
+            (parseFloat(cfg.local_tax_rate || 0) ? rateRow(cfg.local_tax_label || 'Local', cfg.local_tax_rate) : '') +
+          '</div>' +
+          (parseFloat(cfg.other_deduction_rate || 0) ?
+            '<div>' +
+              '<p style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-bottom:.4rem">' + (cfg.other_deduction_label || 'Other') + '</p>' +
+              rateRow(cfg.other_deduction_label || 'Auto-deduction', cfg.other_deduction_rate) +
+            '</div>' : '') +
+        '</div>'
+      );
+    }
+
+    return (
+      '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:1rem;overflow:hidden;margin-bottom:.75rem">' +
+        // Header
+        '<div style="padding:.625rem 1rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">' +
+          '<div style="display:flex;align-items:center;gap:.5rem">' +
+            '<div style="width:1.75rem;height:1.75rem;background:#ecfdf5;border-radius:.5rem;display:flex;align-items:center;justify-content:center">' +
+              '<i class="fas fa-percent" style="font-size:.6rem;color:#10b981"></i>' +
+            '</div>' +
+            '<span style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#64748b">Tax Rates</span>' +
+            '<span style="font-size:.65rem;font-weight:700;padding:.15rem .5rem;border-radius:9999px;background:' + (isCA ? '#fee2e2' : '#dbeafe') + ';color:' + (isCA ? '#b91c1c' : '#1d4ed8') + '">' +
+              (isCA ? '🇨🇦 Canada' : '🇺🇸 USA') +
+            '</span>' +
+          '</div>' +
+          (admin ?
+            '<a href="#" onclick="if(window.settingsTab)window.settingsTab(&apos;modules&apos;);return false;" style="font-size:.7rem;font-weight:700;color:#10b981;text-decoration:none;display:flex;align-items:center;gap:.25rem">' +
+              '<i class="fas fa-external-link-alt" style="font-size:.6rem"></i>Edit in Settings' +
+            '</a>'
+          :
+            '<span style="font-size:.65rem;color:#94a3b8;font-style:italic">Read-only · Set by Admin</span>'
+          ) +
+        '</div>' +
+        // Rates grid
+        '<div style="padding:1rem">' +
+          ratesHtml +
+          '<p style="font-size:.65rem;color:#94a3b8;margin-top:.75rem;padding-top:.5rem;border-top:1px solid #f1f5f9">' +
+            '<i class="fas fa-info-circle" style="margin-right:.25rem"></i>' +
+            'These rates are applied automatically to every pay run. Contact your admin to request changes.' +
+          '</p>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
   // ── Main Shell ────────────────────────────────────────────────
   function render() {
     var empOpts = isAdmin()
@@ -475,6 +617,7 @@ window.WorkVoltPages['payroll'] = function(container) {
             '</div>'+
           '</div>'+
           '<div id="pr-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3"></div>'+
+          (canViewTaxRates() ? '<div id="pr-tax-rates-panel" class="mb-3"></div>' : '')+
           '<div class="flex items-center gap-2 flex-wrap">'+
             '<div class="relative flex-1 min-w-[150px] max-w-xs">'+
               '<i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs pointer-events-none"></i>'+
@@ -722,7 +865,14 @@ window.WorkVoltPages['payroll'] = function(container) {
         '<td class="px-4 py-2.5">'+statusBadge(r.status)+'</td>'+
       '</tr>';
     });
-    html += '</tbody></table></div></div>';
+    html += '</tbody></table></div>';
+
+    // Tax rates panel — shown if this user's role has access
+    if (canViewTaxRates()) {
+      html += renderTaxRatesPanel();
+    }
+
+    html += '</div>';
     el.innerHTML = html;
 
     el.querySelectorAll('.pr-payslip-btn').forEach(function(b){
@@ -1029,11 +1179,31 @@ window.WorkVoltPages['payroll'] = function(container) {
               '</div>'+
             '</div>'+
           '</div>'+
-          // Tax breakdown (labels driven by admin config)
+          // Tax breakdown — shows disabled notice or live-updating rows based on admin config
           '<div class="mx-4 mb-4 border border-slate-200 rounded-xl overflow-hidden">'+
             (function(){
               var cfg = getTaxCfg();
               var isCA = cfg.country === 'Canada';
+              var enabled = cfg.tax_calculation_enabled !== false;
+              var yr = new Date().getFullYear();
+
+              if (!enabled) {
+                // Admin turned off auto tax calc — show a clean notice instead of rows
+                return (
+                  '<div class="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center gap-2">'+
+                    '<i class="fas fa-calculator-alt text-slate-300 text-xs"></i>'+
+                    '<span class="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Taxes &amp; Deductions</span>'+
+                  '</div>'+
+                  '<div class="px-4 py-4 flex items-center gap-3 text-sm text-slate-400">'+
+                    '<i class="fas fa-toggle-off text-slate-300 text-lg flex-shrink-0"></i>'+
+                    '<div>'+
+                      '<div class="font-semibold text-slate-500 text-xs">Auto tax calculation is off</div>'+
+                      '<div class="text-[11px] mt-0.5">Taxes are not deducted automatically. Enter deductions manually above, or turn on tax calculation in Settings → Modules → Payroll Tax Settings.</div>'+
+                    '</div>'+
+                  '</div>'
+                );
+              }
+
               var rows = isCA ? [
                 ['Federal Income Tax (CRA brackets)', 'prf-tax-fed'],
                 ['CPP ('+(cfg.cpp_rate||5.95)+'%)', 'prf-tax-fica'],
@@ -1054,7 +1224,7 @@ window.WorkVoltPages['payroll'] = function(container) {
               return (
                 '<div class="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between">'+
                   '<span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Estimated Taxes &amp; Deductions</span>'+
-                  '<span class="text-[10px] text-slate-400">'+(isCA?'🇨🇦 CRA 2024':'🇺🇸 IRS 2024')+' · Admin-configured rates</span>'+
+                  '<span class="text-[10px] text-slate-400">'+(isCA?'🇨🇦 CRA ':' 🇺🇸 IRS ')+yr+' · Admin rates</span>'+
                 '</div>'+
                 '<div class="px-4 py-2">'+
                   rowsHtml+
