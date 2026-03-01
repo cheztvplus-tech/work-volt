@@ -111,6 +111,19 @@
     #sidebar-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:40; }
     #sidebar-overlay.visible { display:block; }
 
+    /* ─── Collapsible sidebar (desktop) ─── */
+    #sidebar { transition: width .22s cubic-bezier(.4,0,.2,1); }
+    #sidebar.collapsed { width: 56px !important; }
+    #sidebar.collapsed .nav-label,
+    #sidebar.collapsed .nav-section-label,
+    #sidebar.collapsed .sidebar-footer-text,
+    #sidebar.collapsed .drag-hint { display: none !important; }
+    #sidebar.collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+    #sidebar.collapsed .nav-item i.w-4 { margin: 0; }
+    #sidebar.collapsed .nav-item i.fa-grip-vertical { display: none; }
+    #sidebar.collapsed #nav-sortable .nav-sortable-item a { justify-content: center; padding-left:0; padding-right:0; }
+    #sidebar.collapsed .sidebar-collapse-btn i { transform: rotate(180deg); }
+
     /* ─── Responsive mobile tweaks ─── */
     @media (max-width: 768px) {
       #sidebar { position:fixed; top:0; left:0; height:100vh; z-index:50; transform:translateX(-100%); transition:transform .25s ease; }
@@ -243,8 +256,12 @@
         <nav class="flex-1 overflow-y-auto thin-scroll p-3 space-y-0.5" id="nav-menu">
           <!-- Populated by renderNav() -->
         </nav>
-        <div class="p-4 border-t border-slate-100">
-          <p class="text-[10px] text-slate-400 text-center font-medium">Work Volt · v2.0</p>
+        <div class="p-3 border-t border-slate-100 flex items-center justify-between">
+          <p class="text-[10px] text-slate-400 font-medium sidebar-footer-text">Work Volt · v2.0</p>
+          <button onclick="toggleSidebarCollapse()" title="Collapse sidebar"
+            class="sidebar-collapse-btn w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all flex-shrink-0">
+            <i class="fas fa-chevron-left text-xs" style="transition:transform .22s"></i>
+          </button>
         </div>
       </aside>
 
@@ -483,6 +500,7 @@
     document.getElementById('user-avatar').textContent = initials;
 
     renderNav();
+    applySidebarCollapse();
 
     const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
     history.replaceState({ module: lastModule }, '', '#' + lastModule);
@@ -513,7 +531,7 @@
          class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
          data-module="dashboard">
         <i class="fas fa-th-large w-4 text-slate-400"></i>
-        <span>Dashboard</span>
+        <span class="nav-label">Dashboard</span>
       </a>`;
 
     // ── Installed add-on modules filtered by role ──
@@ -538,8 +556,8 @@
 
     const addonLinks = addons.length ? `
       <div class="px-3 pt-4 pb-1 flex items-center justify-between">
-        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Modules</p>
-        <span class="text-[9px] text-slate-300 font-medium">drag to reorder</span>
+        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest nav-section-label">Modules</p>
+        <span class="text-[9px] text-slate-300 font-medium drag-hint">drag to reorder</span>
       </div>
       <div id="nav-sortable" class="space-y-0.5">
         ${addons.map(m => {
@@ -551,7 +569,7 @@
                  data-module="${m.id}">
                 <i class="fas fa-grip-vertical text-slate-200 group-hover:text-slate-300 text-[10px] flex-shrink-0 cursor-grab"></i>
                 <i class="fas ${def.icon || m.icon} w-4 text-slate-400 flex-shrink-0"></i>
-                <span>${def.label || m.label}</span>
+                <span class="nav-label">${def.label || m.label}</span>
               </a>
             </div>`;
         }).join('')}
@@ -566,14 +584,14 @@
            class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
            data-module="settings">
           <i class="fas fa-cog w-4 text-slate-400"></i>
-          <span>Settings</span>
+          <span class="nav-label">Settings</span>
         </a>` : ''}
         ${MODULE_ROLES.store.includes(role) ? `
         <a href="#store" onclick="showModule('store'); return false;"
            class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
            data-module="store">
           <i class="fas fa-store w-4 text-slate-400"></i>
-          <span>Module Store</span>
+          <span class="nav-label">Module Store</span>
         </a>` : ''}
       </div>`;
 
@@ -1340,6 +1358,18 @@
   // ─────────────────────────────────────────────
   //  MOBILE SIDEBAR
   // ─────────────────────────────────────────────
+  function toggleSidebarCollapse() {
+    const sidebar = document.getElementById('sidebar');
+    const collapsed = sidebar.classList.toggle('collapsed');
+    localStorage.setItem('wv_sidebar_collapsed', collapsed ? '1' : '0');
+  }
+
+  function applySidebarCollapse() {
+    if (localStorage.getItem('wv_sidebar_collapsed') === '1') {
+      document.getElementById('sidebar').classList.add('collapsed');
+    }
+  }
+
   function toggleMobileSidebar() {
     document.getElementById('sidebar').classList.toggle('open');
     document.getElementById('sidebar-overlay').classList.toggle('visible');
