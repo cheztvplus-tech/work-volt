@@ -598,7 +598,7 @@ window.WorkVoltPages['tasks'] = function(container) {
       if (action === 'log-note')  openLogNoteModal(task);
       if (action === 'complete')  quickUpdate(id, { status:'Done' },      'Task completed ✓');
       if (action === 'cancel')    quickUpdate(id, { status:'Cancelled' }, 'Task cancelled');
-      if (action === 'reopen')    quickUpdate(id, { status:'To Do' },     'Task reopened');
+      if (action === 'reopen')    handleReopenRequest(id, 'To Do');
       if (action === 'sort')      setSort(btn.dataset.col);
     });
 
@@ -912,7 +912,13 @@ window.WorkVoltPages['tasks'] = function(container) {
         var task = tasksCache[id];
         if (!task) return;
         openInlineSelect(this, STATUSES, task.status, function(val) {
-          quickUpdate(id, { status: val }, 'Status updated');
+          var isReopening = (task.status === 'Done' || task.status === 'Cancelled')
+                         && val !== 'Done' && val !== 'Cancelled';
+          if (isReopening) {
+            handleReopenRequest(id, val);
+          } else {
+            quickUpdate(id, { status: val }, 'Status updated');
+          }
         });
       });
     });
@@ -1133,7 +1139,13 @@ window.WorkVoltPages['tasks'] = function(container) {
         if (!newStatus || !dragId) return;
         var task = tasksCache[dragId];
         if (!task || task.status === newStatus) return;
-        quickUpdate(dragId, { status: newStatus }, 'Moved to ' + newStatus);
+        var isReopening = (task.status === 'Done' || task.status === 'Cancelled')
+                       && newStatus !== 'Done' && newStatus !== 'Cancelled';
+        if (isReopening) {
+          handleReopenRequest(dragId, newStatus);
+        } else {
+          quickUpdate(dragId, { status: newStatus }, 'Moved to ' + newStatus);
+        }
         dragId = null;
       });
     });
@@ -1339,8 +1351,18 @@ window.WorkVoltPages['tasks'] = function(container) {
             meta('Created', fmtDate(task.created_at) || '<span class="text-slate-300">—</span>') +
 
             '<div class="flex flex-col gap-2 mt-4">' +
+              // Reopen request panel — managers see Approve/Deny buttons on Done/Cancelled tasks
+              ((task.status === 'Done' || task.status === 'Cancelled') && isAdmin()
+                ? '<div class="border border-orange-200 rounded-xl p-3 bg-orange-50">' +
+                    '<p class="text-[11px] font-bold text-orange-700 mb-2"><i class="fas fa-unlock-alt mr-1"></i>Reopen Task</p>' +
+                    '<p class="text-[11px] text-orange-600 mb-2">As a manager you can reopen this task directly, or approve a pending request.</p>' +
+                    '<div class="flex gap-2">' +
+                      '<button id="td-reopen-btn" class="flex-1 text-xs text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg px-3 py-2 font-semibold border-none cursor-pointer"><i class="fas fa-undo mr-1"></i>Reopen</button>' +
+                    '</div>' +
+                  '</div>'
+                : '') +
               // Billable approval panel
-              ((task.billable === 'true' || task.billable === true) && task.status === 'Done' && isAdmin()
+              ((task.billable === 'true' || task.billable === true) && isAdmin()
                 ? '<div class="border border-amber-200 rounded-xl p-3 bg-amber-50">' +
                     '<p class="text-[11px] font-bold text-amber-700 mb-2"><i class="fas fa-dollar-sign mr-1"></i>Billable Approval</p>' +
                     (task.approval_status === 'approved'
@@ -1418,6 +1440,8 @@ window.WorkVoltPages['tasks'] = function(container) {
       if (ab) ab.addEventListener('click', function() { submitApproval(task.id, 'approve'); });
       var rb = document.getElementById('td-reject-btn');
       if (rb) rb.addEventListener('click', function() { submitApproval(task.id, 'reject'); });
+      var reb = document.getElementById('td-reopen-btn');
+      if (reb) reb.addEventListener('click', function() { closeModal(); handleReopenRequest(task.id, task._reopenTarget || 'To Do'); });
 
       // ── @mention picker wiring ───────────────────────────────
       var _mentionedUsers = []; // [{uid, name}] resolved mentions
@@ -1538,6 +1562,93 @@ window.WorkVoltPages['tasks'] = function(container) {
       });
 
     }).catch(function() { toast('Could not load task details', 'error'); });
+  }
+
+
+  // ================================================================
+  //  REOPEN APPROVAL
+  // ================================================================
+  // Managers and above can reopen immediately. Anyone else must send a
+  // request — managers receive a notification and can approve from the
+  // task detail panel.
+  function handleReopenRequest(taskId, targetStatus) {
+    targetStatus = targetStatus || 'To Do';
+    var task = tasksCache[taskId];
+    if (!task) return;
+
+    // Manager / Admin / SuperAdmin → reopen directly
+    if (isAdmin()) {
+      quickUpdate(taskId, { status: targetStatus }, 'Task reopened ✓');
+      return;
+    }
+
+    // Lower roles → show request dialog
+    var modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
+    modal.innerHTML =
+      '<div style="background:#fff;border-radius:1.25rem;box-shadow:0 30px 70px rgba(0,0,0,.25);width:100%;max-width:420px;overflow:hidden;font-family:inherit">' +
+        // Header
+        '<div style="padding:1.25rem 1.5rem;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:.875rem">' +
+          '<div style="width:2.75rem;height:2.75rem;border-radius:.75rem;background:#fef3c7;display:flex;align-items:center;justify-content:center;flex-shrink:0">' +
+            '<i class="fas fa-unlock-alt" style="color:#d97706;font-size:1.1rem"></i>' +
+          '</div>' +
+          '<div>' +
+            '<h3 style="font-size:.9375rem;font-weight:800;color:#0f172a;margin:0">Reopen Requires Approval</h3>' +
+            '<p style="font-size:.72rem;color:#94a3b8;margin:.2rem 0 0">Only a Manager or above can reopen a closed task.</p>' +
+          '</div>' +
+        '</div>' +
+        // Body
+        '<div style="padding:1.25rem 1.5rem">' +
+          '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:.75rem;padding:.875rem 1rem;margin-bottom:1rem">' +
+            '<p style="font-size:.8rem;font-weight:700;color:#92400e;margin:0 0 .3rem"><i class="fas fa-info-circle" style="margin-right:.35rem"></i>What happens</p>' +
+            '<p style="font-size:.8rem;color:#78350f;margin:0;line-height:1.55">' +
+              'A reopen request for <strong>&ldquo;' + esc(task.title) + '&rdquo;</strong> will be sent to your managers. ' +
+              'The task stays closed until someone approves it.' +
+            '</p>' +
+          '</div>' +
+          '<div id="wv-reopen-result" style="margin-bottom:.75rem"></div>' +
+          '<div style="display:flex;gap:.75rem">' +
+            '<button id="wv-reopen-cancel" style="flex:1;padding:.65rem 1rem;background:#f1f5f9;color:#475569;border:none;border-radius:.625rem;font-size:.875rem;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>' +
+            '<button id="wv-reopen-send"   style="flex:1;padding:.65rem 1rem;background:#d97706;color:#fff;border:none;border-radius:.625rem;font-size:.875rem;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:.5rem">' +
+              '<i class="fas fa-paper-plane" style="font-size:.75rem"></i>Send Request' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(modal);
+    modal.querySelector('#wv-reopen-cancel').addEventListener('click', function() { modal.remove(); });
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+
+    modal.querySelector('#wv-reopen-send').addEventListener('click', function() {
+      var btn = this;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="font-size:.75rem"></i> Sending…';
+
+      var myName  = userName(myUserId()) || 'A team member';
+      var body    = myName + ' has requested to reopen "' + task.title + '" (currently ' + task.status + ')';
+      var managers = usersCache.filter(function(u) {
+        return ['SuperAdmin','Admin','Manager'].includes(u.role) && (u.user_id || u.id) !== myUserId();
+      });
+
+      managers.forEach(function(u) {
+        sendNotification(u.user_id || u.id, 'Reopen request: ' + task.title, taskId, {
+          type: 'approval_needed', priority: 'high', body: body,
+        });
+      });
+
+      // Store the pending reopen target status so managers can action it from the detail modal
+      task._reopenTarget = targetStatus;
+
+      var resultEl = modal.querySelector('#wv-reopen-result');
+      resultEl.innerHTML =
+        '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:.625rem;padding:.75rem 1rem;font-size:.8rem;color:#15803d;display:flex;align-items:center;gap:.5rem">' +
+          '<i class="fas fa-check-circle"></i>' +
+          '<span>Request sent to ' + managers.length + ' manager' + (managers.length !== 1 ? 's' : '') + '. They\'ll be notified to approve.</span>' +
+        '</div>';
+      btn.innerHTML = '<i class="fas fa-check"></i> Sent!';
+      setTimeout(function() { modal.remove(); }, 2000);
+    });
   }
 
 
