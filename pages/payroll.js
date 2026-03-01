@@ -104,26 +104,118 @@ window.WorkVoltPages['payroll'] = function(container) {
     return fmtDate(start) + (end ? ' – ' + fmtDate(end) : '');
   }
 
-  // ── Financial calculations (mirrors GAS _computeRun) ──────────
-  function estimateTaxes(gross) {
-    var payPeriods = 26;
-    var annual     = gross * payPeriods;
-    var brackets   = [
-      {max:11600,rate:.10},{max:47150,rate:.12},{max:100525,rate:.22},
-      {max:191950,rate:.24},{max:243725,rate:.32},{max:609350,rate:.35},{max:Infinity,rate:.37}
-    ];
-    var annualFed = 0, prev = 0;
+  // ── Tax config (loaded from admin settings) ───────────────────
+  var _taxCfg = null;
+
+  var _TAX_DEFAULTS = {
+    USA: {
+      country:'USA', pay_periods_per_year:26,
+      federal_use_brackets:true, federal_flat_rate:22,
+      fica_ss_rate:6.2, fica_medicare_rate:1.45, additional_medicare_rate:0.9,
+      state_tax_rate:5, state_tax_label:'State Income Tax',
+      local_tax_rate:0, local_tax_label:'Local Tax',
+      other_deduction_rate:0, other_deduction_label:'Other Deductions',
+      currency:'USD', currency_symbol:'$',
+    },
+    Canada: {
+      country:'Canada', pay_periods_per_year:26,
+      federal_use_brackets:true, federal_flat_rate:20.5,
+      cpp_rate:5.95, cpp_max_annual:3867.50,
+      ei_rate:1.66,  ei_max_annual:1049.12,
+      provincial_tax_rate:9.15, provincial_tax_label:'Provincial Income Tax',
+      additional_tax_rate:0, additional_tax_label:'Additional Tax',
+      other_deduction_rate:0, other_deduction_label:'Other Deductions',
+      currency:'CAD', currency_symbol:'$',
+    },
+  };
+
+  function loadTaxConfig() {
+    // If settings.js already loaded config this session, use it immediately
+    if (window.WV_PAYROLL_TAX_CONFIG) {
+      _taxCfg = window.WV_PAYROLL_TAX_CONFIG;
+      return Promise.resolve();
+    }
+    return api('config/get-all', {})
+      .then(function(res) {
+        var saved = res.settings && res.settings['payroll_tax_config'];
+        if (saved) { try { _taxCfg = JSON.parse(saved); } catch(e) {} }
+      })
+      .catch(function() {})
+      .then(function() {
+        if (!_taxCfg) _taxCfg = Object.assign({}, _TAX_DEFAULTS.USA);
+        window.WV_PAYROLL_TAX_CONFIG = _taxCfg;
+      });
+  }
+
+  function getTaxCfg() { return _taxCfg || _TAX_DEFAULTS.USA; }
+
+  // Progressive bracket helper
+  function _fromBrackets(grossPerPeriod, brackets, payPeriods) {
+    var annual = grossPerPeriod * payPeriods, annualTax = 0, prev = 0;
     for (var i = 0; i < brackets.length; i++) {
       if (annual <= prev) break;
-      annualFed += (Math.min(annual, brackets[i].max) - prev) * brackets[i].rate;
+      annualTax += (Math.min(annual, brackets[i].max) - prev) * brackets[i].rate;
       prev = brackets[i].max;
     }
-    var rnd = function(v){ return Math.round(v*100)/100; };
-    var fed   = rnd(annualFed / payPeriods);
-    var fica  = rnd(gross * 0.0765);
-    var state = rnd(gross * 0.05);
-    return { federal: fed, fica: fica, state: state, total: rnd(fed+fica+state) };
+    return Math.round(annualTax / payPeriods * 100) / 100;
   }
+
+  var _US_BRACKETS = [
+    {max:11600,rate:.10},{max:47150,rate:.12},{max:100525,rate:.22},
+    {max:191950,rate:.24},{max:243725,rate:.32},{max:609350,rate:.35},{max:Infinity,rate:.37}
+  ];
+  var _CA_BRACKETS = [
+    {max:55867,rate:.15},{max:111733,rate:.205},{max:154906,rate:.26},
+    {max:220000,rate:.29},{max:Infinity,rate:.33}
+  ];
+
+  // Returns a normalised result object with keys:
+  //   federal, fica (SS+Med / CPP+EI), state (state+local / provincial+addl), other, total
+  //   + country-specific detail keys for display
+  function estimateTaxes(gross) {
+    var cfg = getTaxCfg();
+    var rnd = function(v){ return Math.round(v*100)/100; };
+    var periods = cfg.pay_periods_per_year || 26;
+
+    if (cfg.country === 'Canada') {
+      var fed = cfg.federal_use_brackets
+        ? _fromBrackets(gross, _CA_BRACKETS, periods)
+        : rnd(gross * (cfg.federal_flat_rate||20.5) / 100);
+
+      var cppRate = (cfg.cpp_rate||5.95) / 100;
+      var cpp = rnd(Math.min(gross * cppRate, (cfg.cpp_max_annual||3867.50) / periods));
+      var eiRate  = (cfg.ei_rate||1.66) / 100;
+      var ei  = rnd(Math.min(gross * eiRate,  (cfg.ei_max_annual ||1049.12) / periods));
+      var prov  = rnd(gross * (cfg.provincial_tax_rate||9.15) / 100);
+      var addl  = rnd(gross * (cfg.additional_tax_rate||0)    / 100);
+      var other = rnd(gross * (cfg.other_deduction_rate||0)   / 100);
+      return {
+        federal: fed, cpp: cpp, ei: ei, provincial: prov, additional: addl, other: other,
+        fica: rnd(cpp+ei), state: rnd(prov+addl),          // normalised aliases
+        total: rnd(fed + cpp + ei + prov + addl + other),
+      };
+    } else {
+      // USA
+      var fed2 = cfg.federal_use_brackets
+        ? _fromBrackets(gross, _US_BRACKETS, periods)
+        : rnd(gross * (cfg.federal_flat_rate||22) / 100);
+      var ss   = rnd(gross * (cfg.fica_ss_rate||6.2) / 100);
+      var med  = rnd(gross * (cfg.fica_medicare_rate||1.45) / 100);
+      var addlMed = (gross * periods) > 200000
+        ? rnd((gross * periods - 200000) * ((cfg.additional_medicare_rate||0.9)/100) / periods)
+        : 0;
+      var fica2  = rnd(ss + med + addlMed);
+      var state2 = rnd(gross * (cfg.state_tax_rate||5) / 100);
+      var local  = rnd(gross * (cfg.local_tax_rate||0) / 100);
+      var other2 = rnd(gross * (cfg.other_deduction_rate||0) / 100);
+      return {
+        federal: rnd(fed2), ss: ss, medicare: med, addlMed: addlMed,
+        fica: fica2, state: rnd(state2+local), local: local, other: other2,
+        total: rnd(fed2 + fica2 + state2 + local + other2),
+      };
+    }
+  }
+
   function computeRun(p) {
     var hoursReg = parseFloat(p.hours_regular)||0;
     var hoursOT  = parseFloat(p.hours_ot)||0;
@@ -133,14 +225,21 @@ window.WorkVoltPages['payroll'] = function(container) {
     var payType  = p.pay_type||'Hourly';
     var gross    = payType==='Salary' ? rate+bonuses : (hoursReg*rate)+(hoursOT*rate*1.5)+bonuses;
     var taxes    = estimateTaxes(gross);
-    var net      = Math.max(0, gross - ded - taxes.total);
     var rnd      = function(v){ return Math.round(v*100)/100; };
+    var net      = rnd(Math.max(0, gross - ded - taxes.total));
+    var cfg      = getTaxCfg();
     return {
       hours_regular: rnd(hoursReg), hours_ot: rnd(hoursOT),
       hours_total: rnd(hoursReg+hoursOT), rate: rnd(rate), gross: rnd(gross),
       bonuses: rnd(bonuses), deductions: rnd(ded),
-      tax_federal: taxes.federal, tax_fica: taxes.fica,
-      tax_state: taxes.state, tax_total: taxes.total, net: rnd(net),
+      tax_federal: taxes.federal,
+      tax_fica:    taxes.fica,
+      tax_state:   taxes.state,
+      tax_total:   taxes.total,
+      net:         net,
+      _taxes:      taxes,        // full breakdown for UI display
+      _country:    cfg.country,
+      _cfg:        cfg,
     };
   }
   // Legacy helpers for backward-compat with old sheet fields
@@ -215,6 +314,10 @@ window.WorkVoltPages['payroll'] = function(container) {
   function loadData() {
     var el = document.getElementById('pr-content');
     if (el) el.innerHTML = '<div class="flex items-center justify-center py-24 text-slate-400"><i class="fas fa-circle-notch fa-spin text-2xl mr-3"></i>Loading payroll…</div>';
+    // Load tax config first (silently), then fetch payroll data
+    loadTaxConfig().then(function() {
+      updateCountryBadge();
+    }).catch(function(){});
     Promise.all([
       api('payroll/runs/list', {}).catch(function(){ return {rows:[]}; }),
       api('payroll/employees/list', {}).catch(function(){ return {rows:[]}; }),
@@ -299,6 +402,15 @@ window.WorkVoltPages['payroll'] = function(container) {
     var el = document.getElementById('pr-live-total');
     if (el) el.textContent = fmtMoney(_liveTotal, 0);
   }
+  function updateCountryBadge() {
+    var el = document.getElementById('pr-country-badge');
+    if (!el) return;
+    var cfg = getTaxCfg();
+    el.textContent = cfg.country === 'Canada' ? '🇨🇦 CA' : '🇺🇸 US';
+    el.title = cfg.country === 'Canada'
+      ? 'Canada — CPP/EI/Provincial rates active'
+      : 'USA — IRS/FICA/State rates active';
+  }
 
   // ── Main Shell ────────────────────────────────────────────────
   function render() {
@@ -357,6 +469,7 @@ window.WorkVoltPages['payroll'] = function(container) {
                 '<span class="text-xs font-semibold text-slate-500">Month payroll:</span>'+
                 '<span id="pr-live-total" class="text-sm font-extrabold text-emerald-700">—</span>'+
               '</div>'+
+              '<span id="pr-country-badge" class="hidden md:inline-flex items-center px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-600 cursor-default" title="Tax region">🇺🇸 US</span>'+
               (isPayAdmin()?'<button id="pr-run-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl text-white border-none cursor-pointer" style="background:#10b981"><i class="fas fa-plus text-[10px]"></i>New Pay Run</button>':'') +
               (isPayAdmin()?'<button id="pr-bulk-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer"><i class="fas fa-bolt text-[10px]"></i>Bulk Run</button>':'') +
             '</div>'+
@@ -916,18 +1029,39 @@ window.WorkVoltPages['payroll'] = function(container) {
               '</div>'+
             '</div>'+
           '</div>'+
-          // Tax breakdown
+          // Tax breakdown (labels driven by admin config)
           '<div class="mx-4 mb-4 border border-slate-200 rounded-xl overflow-hidden">'+
-            '<div class="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between">'+
-              '<span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Estimated Taxes</span>'+
-              '<span class="text-[10px] text-slate-400">US 2024 rates · biweekly</span>'+
-            '</div>'+
-            '<div class="px-4 py-2">'+
-              '<div class="pr-tax-row"><span class="text-slate-500">Federal Income Tax</span><span id="prf-tax-fed" class="font-semibold text-red-500">$0.00</span></div>'+
-              '<div class="pr-tax-row"><span class="text-slate-500">FICA (SS 6.2% + Medicare 1.45%)</span><span id="prf-tax-fica" class="font-semibold text-red-500">$0.00</span></div>'+
-              '<div class="pr-tax-row"><span class="text-slate-500">State Tax (est. 5%)</span><span id="prf-tax-state" class="font-semibold text-red-500">$0.00</span></div>'+
-              '<div class="pr-tax-row border-t-2 border-slate-200 mt-1 pt-1"><span class="font-bold text-slate-700">Total Tax</span><span id="prf-tax-total" class="font-extrabold text-red-600">$0.00</span></div>'+
-            '</div>'+
+            (function(){
+              var cfg = getTaxCfg();
+              var isCA = cfg.country === 'Canada';
+              var rows = isCA ? [
+                ['Federal Income Tax (CRA brackets)', 'prf-tax-fed'],
+                ['CPP ('+(cfg.cpp_rate||5.95)+'%)', 'prf-tax-fica'],
+                ['EI ('+(cfg.ei_rate||1.66)+'%)', 'prf-tax-fica2'],
+                [(cfg.provincial_tax_label||'Provincial Tax'), 'prf-tax-state'],
+                (parseFloat(cfg.additional_tax_rate||0) > 0 ? [(cfg.additional_tax_label||'Additional Tax'), 'prf-tax-addl'] : null),
+                (parseFloat(cfg.other_deduction_rate||0) > 0 ? [(cfg.other_deduction_label||'Other Deductions'), 'prf-tax-other'] : null),
+              ] : [
+                ['Federal Income Tax (IRS brackets)', 'prf-tax-fed'],
+                ['FICA — SS ('+(cfg.fica_ss_rate||6.2)+'%) + Medicare ('+(cfg.fica_medicare_rate||1.45)+'%)', 'prf-tax-fica'],
+                [(cfg.state_tax_label||'State Income Tax')+' ('+(cfg.state_tax_rate||5)+'%)', 'prf-tax-state'],
+                (parseFloat(cfg.local_tax_rate||0) > 0 ? [(cfg.local_tax_label||'Local Tax')+' ('+(cfg.local_tax_rate)+'%)', 'prf-tax-local'] : null),
+                (parseFloat(cfg.other_deduction_rate||0) > 0 ? [(cfg.other_deduction_label||'Other Deductions')+' ('+(cfg.other_deduction_rate)+'%)', 'prf-tax-other'] : null),
+              ];
+              var rowsHtml = rows.filter(Boolean).map(function(r){
+                return '<div class="pr-tax-row"><span class="text-slate-500">'+esc(r[0])+'</span><span id="'+r[1]+'" class="font-semibold text-red-500">$0.00</span></div>';
+              }).join('');
+              return (
+                '<div class="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between">'+
+                  '<span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Estimated Taxes &amp; Deductions</span>'+
+                  '<span class="text-[10px] text-slate-400">'+(isCA?'🇨🇦 CRA 2024':'🇺🇸 IRS 2024')+' · Admin-configured rates</span>'+
+                '</div>'+
+                '<div class="px-4 py-2">'+
+                  rowsHtml+
+                  '<div class="pr-tax-row border-t-2 border-slate-200 mt-1 pt-1"><span class="font-bold text-slate-700">Total Tax &amp; Deductions</span><span id="prf-tax-total" class="font-extrabold text-red-600">$0.00</span></div>'+
+                '</div>'
+              );
+            })() +
           '</div>'+
         '</div>'+
 
@@ -978,13 +1112,28 @@ window.WorkVoltPages['payroll'] = function(container) {
 
       var setTxt = function(id, val){ var e=document.getElementById(id); if(e) e.textContent=val; };
       setTxt('prf-gross-total', fmtMoney(computed.gross));
-      setTxt('prf-tax-fed',     fmtMoney(computed.tax_federal));
-      setTxt('prf-tax-fica',    fmtMoney(computed.tax_fica));
-      setTxt('prf-tax-state',   fmtMoney(computed.tax_state));
       setTxt('prf-tax-total',   fmtMoney(computed.tax_total));
       setTxt('prf-ded-total',   '-'+fmtMoney(computed.deductions+computed.tax_total));
       setTxt('prf-net-pay',     fmtMoney(computed.net));
       setTxt('prf-net-formula', fmtMoney(computed.gross)+' − '+fmtMoney(computed.tax_total)+' − '+fmtMoney(computed.deductions));
+
+      // Populate per-country tax rows
+      var tx = computed._taxes || {};
+      var cfg2 = getTaxCfg();
+      if (cfg2.country === 'Canada') {
+        setTxt('prf-tax-fed',   fmtMoney(tx.federal||0));
+        setTxt('prf-tax-fica',  fmtMoney(tx.cpp||0));    // CPP
+        setTxt('prf-tax-fica2', fmtMoney(tx.ei||0));     // EI
+        setTxt('prf-tax-state', fmtMoney(tx.provincial||0));
+        setTxt('prf-tax-addl',  fmtMoney(tx.additional||0));
+        setTxt('prf-tax-other', fmtMoney(tx.other||0));
+      } else {
+        setTxt('prf-tax-fed',   fmtMoney(tx.federal||0));
+        setTxt('prf-tax-fica',  fmtMoney(tx.fica||0));
+        setTxt('prf-tax-state', fmtMoney(tx.state||0));
+        setTxt('prf-tax-local', fmtMoney(tx.local||0));
+        setTxt('prf-tax-other', fmtMoney(tx.other||0));
+      }
 
       var warn = document.getElementById('prf-net-warn');
       if (warn) warn.classList.toggle('hidden', computed.net >= 0);
@@ -1308,13 +1457,29 @@ window.WorkVoltPages['payroll'] = function(container) {
         '</div>'+
         '<div class="px-5 py-4">'+
           '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><i class="fas fa-arrow-down text-red-400 text-[10px]"></i>Taxes &amp; Deductions</p>'+
-          (parseFloat(r.tax_federal||0)?_lineItem('Federal Tax', '-'+fmtMoney(r.tax_federal), 'text-red-500'):'') +
-          (parseFloat(r.tax_fica||0)?_lineItem('FICA', '-'+fmtMoney(r.tax_fica), 'text-red-500'):'') +
-          (parseFloat(r.tax_state||0)?_lineItem('State Tax', '-'+fmtMoney(r.tax_state), 'text-red-500'):'') +
-          (parseFloat(r.tax_total||r.tax||0)&&!parseFloat(r.tax_federal||0)?_lineItem('Income Tax', '-'+fmtMoney(r.tax_total||r.tax||0), 'text-red-500'):'') +
-          (parseFloat(r.health_insurance||0)?_lineItem('Health Insurance', '-'+fmtMoney(r.health_insurance), 'text-red-500'):'') +
-          (parseFloat(r.pension||0)?_lineItem('Pension / 401k', '-'+fmtMoney(r.pension), 'text-red-500'):'') +
-          (parseFloat(r.deductions||r.other_deductions||0)?_lineItem('Other Deductions', '-'+fmtMoney(r.deductions||r.other_deductions||0), 'text-red-500'):'') +
+          (function(){
+            var cfg2 = getTaxCfg();
+            var isCA = cfg2.country === 'Canada';
+            var lines = '';
+            if (isCA) {
+              lines += (parseFloat(r.tax_federal||0)?_lineItem('Federal Tax (CRA)', '-'+fmtMoney(r.tax_federal), 'text-red-500'):'');
+              // try to show CPP/EI if stored, else show fica as combined
+              lines += (parseFloat(r.tax_fica||0)?_lineItem('CPP + EI', '-'+fmtMoney(r.tax_fica), 'text-red-500'):'');
+              lines += (parseFloat(r.tax_state||0)?_lineItem(cfg2.provincial_tax_label||'Provincial Tax', '-'+fmtMoney(r.tax_state), 'text-red-500'):'');
+            } else {
+              lines += (parseFloat(r.tax_federal||0)?_lineItem('Federal Tax (IRS)', '-'+fmtMoney(r.tax_federal), 'text-red-500'):'');
+              lines += (parseFloat(r.tax_fica||0)?_lineItem('FICA (SS + Medicare)', '-'+fmtMoney(r.tax_fica), 'text-red-500'):'');
+              lines += (parseFloat(r.tax_state||0)?_lineItem(cfg2.state_tax_label||'State Tax', '-'+fmtMoney(r.tax_state), 'text-red-500'):'');
+            }
+            // Fallback: old-style single tax field
+            if (!parseFloat(r.tax_federal||0) && !parseFloat(r.tax_fica||0) && parseFloat(r.tax_total||r.tax||0)) {
+              lines += _lineItem('Income Tax', '-'+fmtMoney(r.tax_total||r.tax||0), 'text-red-500');
+            }
+            lines += (parseFloat(r.health_insurance||0)?_lineItem('Health Insurance', '-'+fmtMoney(r.health_insurance), 'text-red-500'):'');
+            lines += (parseFloat(r.pension||0)?_lineItem('Pension / 401k', '-'+fmtMoney(r.pension), 'text-red-500'):'');
+            lines += (parseFloat(r.deductions||r.other_deductions||0)?_lineItem(cfg2.other_deduction_label||'Other Deductions', '-'+fmtMoney(r.deductions||r.other_deductions||0), 'text-red-500'):'');
+            return lines;
+          })()
           '<div class="flex items-center justify-between mt-2 pt-2 border-t-2 border-slate-200">'+
             '<span class="text-xs font-extrabold text-slate-700 uppercase">Total Deductions</span>'+
             '<span class="text-sm font-extrabold text-red-600">-'+fmtMoney(ded)+'</span>'+
