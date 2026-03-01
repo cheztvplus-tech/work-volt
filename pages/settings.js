@@ -897,6 +897,8 @@ window.WorkVoltPages['settings'] = function(container) {
 
   var _payrollTaxConfig = null; // loaded from server
 
+  var _payrollTaxVisibleRoles = ['SuperAdmin', 'Admin']; // default: admin-only
+
   async function loadPayrollTaxSettings() {
     var section = document.getElementById('module-settings-section');
     if (!section) return;
@@ -904,12 +906,16 @@ window.WorkVoltPages['settings'] = function(container) {
     var payrollInstalled = modulesCache.some(function(m) { return m.id === 'payroll'; });
     if (!payrollInstalled) { section.innerHTML = ''; return; }
 
-    // Load saved config
+    // Load saved config + visible roles in one request
     try {
       var res = await api('config/get-all', {});
       var saved = res.settings && res.settings['payroll_tax_config'];
       if (saved) {
         try { _payrollTaxConfig = JSON.parse(saved); } catch(e) { _payrollTaxConfig = null; }
+      }
+      var savedRoles = res.settings && res.settings['payroll_tax_visible_roles'];
+      if (savedRoles) {
+        try { _payrollTaxVisibleRoles = JSON.parse(savedRoles); } catch(e) {}
       }
     } catch(e) { /* silently fall back to defaults */ }
 
@@ -966,7 +972,7 @@ window.WorkVoltPages['settings'] = function(container) {
         '<div class="col-span-2 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">' +
           '<div>' +
             '<div class="text-xs font-bold text-blue-800">Use Progressive Brackets</div>' +
-            '<div class="text-[10px] text-blue-600">2024 IRS marginal brackets (10%–37%)</div>' +
+            '<div class="text-[10px] text-blue-600">' + new Date().getFullYear() + ' IRS marginal brackets (10%–37%)</div>' +
           '</div>' +
           '<label class="relative inline-flex items-center cursor-pointer">' +
             '<input type="checkbox" id="ptax-federal_use_brackets" ' + (cfg.federal_use_brackets ? 'checked' : '') + ' class="sr-only peer">' +
@@ -1004,7 +1010,7 @@ window.WorkVoltPages['settings'] = function(container) {
         '<div class="col-span-2 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">' +
           '<div>' +
             '<div class="text-xs font-bold text-blue-800">Use Progressive Brackets</div>' +
-            '<div class="text-[10px] text-blue-600">2024 CRA federal marginal brackets (15%–33%)</div>' +
+            '<div class="text-[10px] text-blue-600">' + new Date().getFullYear() + ' CRA federal marginal brackets (15%–33%)</div>' +
           '</div>' +
           '<label class="relative inline-flex items-center cursor-pointer">' +
             '<input type="checkbox" id="ptax-federal_use_brackets" ' + (cfg.federal_use_brackets ? 'checked' : '') + ' class="sr-only peer">' +
@@ -1013,9 +1019,9 @@ window.WorkVoltPages['settings'] = function(container) {
         '</div>'
       ) +
       section2('CPP & EI (Employee Share)', 'fa-shield-alt', '#f0fdf4',
-        fld('cpp_rate',     'CPP Rate (2024: 5.95%)',   cfg.cpp_rate,     'Canada Pension Plan — employee contribution') +
+        fld('cpp_rate',     'CPP Rate (' + new Date().getFullYear() + ')',   cfg.cpp_rate,     'Canada Pension Plan — employee contribution') +
         fld('cpp_max_annual', 'CPP Max Annual ($)',      cfg.cpp_max_annual, 'Max annual CPP deduction per employee', '$') +
-        fld('ei_rate',      'EI Rate (2024: 1.66%)',    cfg.ei_rate,      'Employment Insurance — employee premium') +
+        fld('ei_rate',      'EI Rate (' + new Date().getFullYear() + ')',    cfg.ei_rate,      'Employment Insurance — employee premium') +
         fld('ei_max_annual', 'EI Max Annual ($)',        cfg.ei_max_annual,  'Max annual EI deduction per employee', '$')
       ) +
       section2('Provincial Tax', 'fa-map-marker-alt', '#fefce8',
@@ -1035,92 +1041,244 @@ window.WorkVoltPages['settings'] = function(container) {
       )
     );
 
-    var provinceGuide = !isUSA ? (
-      '<div class="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3">' +
-        '<p class="text-xs font-bold text-slate-600 mb-2"><i class="fas fa-map-marked-alt mr-1.5 text-slate-400"></i>2024 Provincial Rates (approximate — enter your province below)</p>' +
-        '<div class="grid grid-cols-3 gap-1 text-[10px] font-mono text-slate-500">' +
-          ['ON: 9.15%','BC: 5.06%','AB: 10.0%','QC: 14.0%','MB: 10.8%','SK: 10.5%','NS: 8.79%','NB: 9.40%','NL: 8.70%','PEI: 9.65%'].map(function(p){
-            return '<span class="bg-white border border-slate-100 rounded px-1.5 py-0.5">' + p + '</span>';
-          }).join('') +
+    // Dynamic rate reference panel — shows a "Refresh rates" button that hits the Anthropic API
+    // to get the current year's rates, so the reference is always up to date
+    var rateGuide = (
+      '<div class="border border-slate-200 rounded-xl overflow-hidden">' +
+        '<div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">' +
+          '<div class="flex items-center gap-2">' +
+            '<i class="fas fa-table text-slate-400 text-xs"></i>' +
+            '<span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">' +
+              (isUSA ? 'State Income Tax Reference' : 'Provincial Income Tax Reference') +
+            '</span>' +
+          '</div>' +
+          '<button id="ptax-refresh-rates" onclick="refreshTaxRates()" ' +
+            'class="flex items-center gap-1.5 text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg hover:bg-blue-100 cursor-pointer transition-colors">' +
+            '<i class="fas fa-magic text-[10px]"></i>Fetch ' + new Date().getFullYear() + ' Rates' +
+          '</button>' +
         '</div>' +
-      '</div>'
-    ) : (
-      '<div class="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3">' +
-        '<p class="text-xs font-bold text-slate-600 mb-2"><i class="fas fa-map-marked-alt mr-1.5 text-slate-400"></i>Common State Rates (2024 — enter your state below)</p>' +
-        '<div class="grid grid-cols-3 gap-1 text-[10px] font-mono text-slate-500">' +
-          ['CA: 13.3%','NY: 10.9%','TX: 0%','FL: 0%','WA: 0%','OR: 9.9%','MN: 9.85%','NJ: 10.75%','IL: 4.95%','GA: 5.49%'].map(function(p){
-            return '<span class="bg-white border border-slate-100 rounded px-1.5 py-0.5">' + p + '</span>';
-          }).join('') +
+        '<div id="ptax-rate-table" class="px-4 py-3">' +
+          '<p class="text-[11px] text-slate-400 text-center py-2">' +
+            'Click <strong>Fetch ' + new Date().getFullYear() + ' Rates</strong> to load current rates via AI — automatically correct for this year.' +
+          '</p>' +
         '</div>' +
       '</div>'
     );
+
+    var taxEnabled = cfg.tax_calculation_enabled !== false; // default true
 
     section.innerHTML = (
       '<div class="mb-6">' +
         '<h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Module Settings</h3>' +
         '<div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">' +
 
-          // Card header
+          // Card header with master enable toggle
           '<div class="px-6 py-4 border-b border-slate-100 flex items-center gap-3">' +
             '<div class="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center">' +
               '<i class="fas fa-money-bill-wave text-emerald-600 text-sm"></i>' +
             '</div>' +
             '<div class="flex-1">' +
               '<h2 class="font-bold text-slate-900">Payroll Tax Settings</h2>' +
-              '<p class="text-xs text-slate-500">Configure deduction rates for your region. Used in all pay run calculations.</p>' +
+              '<p class="text-xs text-slate-500">Auto-calculate taxes on every pay run. Disable if you enter taxes manually.</p>' +
             '</div>' +
-            '<span class="text-[10px] font-bold px-2 py-1 rounded-full ' +
-              (isUSA ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700') + '">' +
-              (isUSA ? '🇺🇸 USA' : '🇨🇦 Canada') +
-            '</span>' +
+            // Master on/off toggle
+            '<div class="flex items-center gap-2">' +
+              '<span id="ptax-enabled-label" class="text-xs font-bold ' + (taxEnabled ? 'text-emerald-600' : 'text-slate-400') + '">' +
+                (taxEnabled ? 'Enabled' : 'Disabled') +
+              '</span>' +
+              '<label class="relative inline-flex items-center cursor-pointer">' +
+                '<input type="checkbox" id="ptax-master-toggle" ' + (taxEnabled ? 'checked' : '') + ' class="sr-only peer" onchange="payrollTaxToggleChanged(this.checked)">' +
+                '<div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-emerald-500 transition-colors after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5 after:shadow-sm"></div>' +
+              '</label>' +
+            '</div>' +
           '</div>' +
 
-          '<div class="px-6 py-5 space-y-4">' +
-            '<div id="ptax-status"></div>' +
+          // Collapsible body — hidden when disabled
+          '<div id="ptax-body" class="' + (taxEnabled ? '' : 'hidden') + '">' +
+            '<div class="px-6 py-5 space-y-4">' +
+              '<div id="ptax-status"></div>' +
 
-            // Country selector
-            '<div>' +
-              '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Country / Region</label>' +
-              '<div class="grid grid-cols-2 gap-3">' +
-                '<label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors ' +
-                  (isUSA ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300') + '">' +
-                  '<input type="radio" name="ptax_country" value="USA" ' + (isUSA ? 'checked' : '') + ' id="ptax-country-usa" class="accent-blue-600" onchange="payrollTaxCountryChanged(\'USA\')">' +
-                  '<div><div class="font-bold text-slate-800 text-sm">🇺🇸 United States</div>' +
-                  '<div class="text-[10px] text-slate-500">IRS brackets · FICA · State tax</div></div>' +
-                '</label>' +
-                '<label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors ' +
-                  (!isUSA ? 'border-red-400 bg-red-50' : 'border-slate-200 hover:border-slate-300') + '">' +
-                  '<input type="radio" name="ptax_country" value="Canada" ' + (!isUSA ? 'checked' : '') + ' id="ptax-country-ca" class="accent-red-600" onchange="payrollTaxCountryChanged(\'Canada\')">' +
-                  '<div><div class="font-bold text-slate-800 text-sm">🇨🇦 Canada</div>' +
-                  '<div class="text-[10px] text-slate-500">CRA brackets · CPP · EI · Provincial</div></div>' +
-                '</label>' +
+              // Country selector
+              '<div>' +
+                '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Country / Region</label>' +
+                '<div class="grid grid-cols-2 gap-3">' +
+                  '<label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors ' +
+                    (isUSA ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300') + '">' +
+                    '<input type="radio" name="ptax_country" value="USA" ' + (isUSA ? 'checked' : '') + ' id="ptax-country-usa" class="accent-blue-600" onchange="payrollTaxCountryChanged(\'USA\')">' +
+                    '<div><div class="font-bold text-slate-800 text-sm">🇺🇸 United States</div>' +
+                    '<div class="text-[10px] text-slate-500">IRS brackets · FICA · State tax</div></div>' +
+                  '</label>' +
+                  '<label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors ' +
+                    (!isUSA ? 'border-red-400 bg-red-50' : 'border-slate-200 hover:border-slate-300') + '">' +
+                    '<input type="radio" name="ptax_country" value="Canada" ' + (!isUSA ? 'checked' : '') + ' id="ptax-country-ca" class="accent-red-600" onchange="payrollTaxCountryChanged(\'Canada\')">' +
+                    '<div><div class="font-bold text-slate-800 text-sm">🇨🇦 Canada</div>' +
+                    '<div class="text-[10px] text-slate-500">CRA brackets · CPP · EI · Provincial</div></div>' +
+                  '</label>' +
+                '</div>' +
+              '</div>' +
+
+              // Tax fields
+              '<div id="ptax-fields" class="space-y-3">' +
+                (isUSA ? usaFields : canadaFields) +
+              '</div>' +
+
+              // Dynamic rate reference panel
+              rateGuide +
+
+              // Legal note
+              '<div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">' +
+                '<i class="fas fa-exclamation-triangle mr-1.5"></i>' +
+                '<strong>Note:</strong> Rates are estimates. Always verify with your tax authority (' +
+                (isUSA ? 'IRS.gov' : 'CRA · canada.ca') + '). The AI-fetched rates reflect the current tax year.' +
+              '</div>' +
+
+              // Role access picker
+              '<div class="border border-slate-200 rounded-xl overflow-hidden">' +
+                '<div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center gap-2">' +
+                  '<i class="fas fa-user-shield text-slate-400 text-xs"></i>' +
+                  '<span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Who Can View Tax Settings</span>' +
+                '</div>' +
+                '<div class="p-4">' +
+                  '<p class="text-[11px] text-slate-500 mb-3">Choose which roles can view the tax rates panel inside the Payroll module. Admins can always edit; other roles see a read-only view.</p>' +
+                  '<div class="space-y-1">' +
+                    (function() {
+                      var ALL_ROLES = ['SuperAdmin','Admin','Manager','Employee','Contractor'];
+                      var roleColors = { SuperAdmin:'purple', Admin:'blue', Manager:'indigo', Employee:'green', Contractor:'amber' };
+                      return ALL_ROLES.map(function(r) {
+                        var isChecked = _payrollTaxVisibleRoles.includes(r);
+                        var isLocked  = r === 'SuperAdmin' || r === 'Admin';
+                        var col = roleColors[r] || 'slate';
+                        return (
+                          '<label class="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-slate-50 cursor-pointer ' + (isLocked ? 'opacity-70' : '') + '">' +
+                            '<div class="flex items-center gap-2">' +
+                              '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-' + col + '-100 text-' + col + '-700">' + r + '</span>' +
+                              (isLocked ? '<span class="text-[10px] text-slate-400">Always has access</span>' : '') +
+                            '</div>' +
+                            '<input type="checkbox" class="ptax-role-check w-4 h-4 accent-emerald-600 rounded" value="' + r + '"' +
+                              (isChecked ? ' checked' : '') +
+                              (isLocked  ? ' disabled' : '') + '>' +
+                          '</label>'
+                        );
+                      }).join('');
+                    })() +
+                  '</div>' +
+                '</div>' +
+              '</div>' +
+
+              // Save button
+              '<button onclick="savePayrollTaxConfig()" id="ptax-save-btn" class="btn-primary w-full" style="background:#10b981">' +
+                '<i class="fas fa-save text-sm"></i> Save Payroll Tax Settings' +
+              '</button>' +
+            '</div>' +
+          '</div>' +
+
+          // Disabled state message
+          '<div id="ptax-disabled-msg" class="' + (taxEnabled ? 'hidden' : '') + ' px-6 py-5">' +
+            '<div class="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-500">' +
+              '<i class="fas fa-calculator text-slate-300 text-xl"></i>' +
+              '<div>' +
+                '<div class="font-semibold text-slate-600">Tax auto-calculation is off</div>' +
+                '<div class="text-xs mt-0.5">Pay runs will not have taxes automatically deducted. You can still enter taxes manually on each pay run.</div>' +
               '</div>' +
             '</div>' +
-
-            // Tax fields
-            '<div id="ptax-fields" class="space-y-3">' +
-              (isUSA ? usaFields : canadaFields) +
-            '</div>' +
-
-            // Rate reference guide
-            provinceGuide +
-
-            // Legal note
-            '<div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">' +
-              '<i class="fas fa-exclamation-triangle mr-1.5"></i>' +
-              '<strong>Note:</strong> Rates shown are estimates only. Always verify with your tax authority. Progressive federal bracket calculation uses ' +
-              (isUSA ? 'IRS 2024 rates' : 'CRA 2024 rates') + '.' +
-            '</div>' +
-
-            // Save button
-            '<button onclick="savePayrollTaxConfig()" id="ptax-save-btn" class="btn-primary w-full" style="background:#10b981">' +
-              '<i class="fas fa-save text-sm"></i> Save Payroll Tax Settings' +
+            '<button onclick="savePayrollTaxConfig()" class="mt-3 btn-primary w-full" style="background:#10b981">' +
+              '<i class="fas fa-save text-sm"></i> Save' +
             '</button>' +
           '</div>' +
+
         '</div>' +
       '</div>'
     );
   }
+
+  window.payrollTaxToggleChanged = function(enabled) {
+    var body    = document.getElementById('ptax-body');
+    var disMsg  = document.getElementById('ptax-disabled-msg');
+    var label   = document.getElementById('ptax-enabled-label');
+    if (body)   body.classList.toggle('hidden', !enabled);
+    if (disMsg) disMsg.classList.toggle('hidden', enabled);
+    if (label)  { label.textContent = enabled ? 'Enabled' : 'Disabled'; label.className = 'text-xs font-bold ' + (enabled ? 'text-emerald-600' : 'text-slate-400'); }
+  };
+
+  window.refreshTaxRates = async function() {
+    var btn = document.getElementById('ptax-refresh-rates');
+    var table = document.getElementById('ptax-rate-table');
+    var country = (document.querySelector('input[name="ptax_country"]:checked') || {}).value || 'USA';
+    var isUSA = country === 'USA';
+    var yr = new Date().getFullYear();
+
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-[10px]"></i> Fetching…'; }
+    if (table) table.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-3"><i class="fas fa-circle-notch fa-spin mr-1"></i>Asking AI for ' + yr + ' rates…</p>';
+
+    var prompt = isUSA
+      ? 'List the ' + yr + ' US state income tax rates (top marginal rate for a single filer) for all 50 states plus DC. Return ONLY a JSON array, no markdown, no explanation. Each item: {"state":"CA","rate":13.3}. Use 0 for states with no income tax. Sort by state code alphabetically.'
+      : 'List the ' + yr + ' Canadian provincial and territorial income tax rates (lowest bracket / first bracket rate %) for all provinces and territories. Return ONLY a JSON array, no markdown, no explanation. Each item: {"province":"ON","rate":5.05,"label":"Ontario"}. Sort by province code alphabetically.';
+
+    try {
+      var response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+      var data = await response.json();
+      var text = (data.content || []).map(function(b){ return b.text || ''; }).join('');
+      // Strip any accidental markdown fences
+      text = text.replace(/```json|```/g, '').trim();
+      var rates = JSON.parse(text);
+
+      if (!Array.isArray(rates) || !rates.length) throw new Error('Unexpected response format');
+
+      // Render rate chips
+      var chipsHtml = rates.map(function(r) {
+        var code = r.state || r.province || '';
+        var rate = parseFloat(r.rate) || 0;
+        var label = r.label ? r.label.replace(/^.*\s/, '') : code; // short name
+        var rateStr = rate === 0 ? 'None' : rate.toFixed(2) + '%';
+        var color = rate === 0 ? 'bg-green-50 border-green-100 text-green-700'
+                  : rate < 5  ? 'bg-blue-50 border-blue-100 text-blue-700'
+                  : rate < 10 ? 'bg-amber-50 border-amber-100 text-amber-700'
+                  :              'bg-red-50 border-red-100 text-red-700';
+        return (
+          '<button class="ptax-rate-chip text-left ' + color + ' border rounded-lg px-2 py-1.5 text-[10px] font-semibold hover:opacity-80 transition-opacity cursor-pointer" ' +
+            'data-rate="' + rate + '" data-label="' + (r.label || code) + '" title="Click to use this rate">' +
+            '<div class="font-extrabold">' + code + '</div>' +
+            '<div class="opacity-80">' + rateStr + '</div>' +
+          '</button>'
+        );
+      }).join('');
+
+      table.innerHTML = (
+        '<p class="text-[10px] text-slate-400 mb-2"><i class="fas fa-robot text-blue-400 mr-1"></i>AI-fetched ' + yr + ' rates · Click any rate to apply it</p>' +
+        '<div class="grid grid-cols-5 gap-1">' + chipsHtml + '</div>'
+      );
+
+      // Wire click-to-apply
+      table.querySelectorAll('.ptax-rate-chip').forEach(function(chip) {
+        chip.addEventListener('click', function() {
+          var rate = this.dataset.rate;
+          var label = this.dataset.label;
+          var fieldId = isUSA ? 'ptax-state_tax_rate' : 'ptax-provincial_tax_rate';
+          var labelId = isUSA ? 'ptax-state_tax_label'    : 'ptax-provincial_tax_label';
+          var rateEl  = document.getElementById(fieldId);
+          var labelEl = document.getElementById(labelId);
+          if (rateEl)  rateEl.value  = rate;
+          if (labelEl) labelEl.value = label + (isUSA ? ' State Tax' : ' Provincial Tax');
+          // Highlight the selected chip
+          table.querySelectorAll('.ptax-rate-chip').forEach(function(c){ c.style.outline = ''; });
+          this.style.outline = '2px solid #10b981';
+        });
+      });
+
+    } catch(e) {
+      table.innerHTML = '<p class="text-[11px] text-red-500 text-center py-2"><i class="fas fa-exclamation-circle mr-1"></i>Could not fetch rates: ' + (e.message||'unknown error') + '</p>';
+    }
+
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-magic text-[10px]"></i>Fetch ' + yr + ' Rates'; }
+  };
 
   window.payrollTaxCountryChanged = function(country) {
     // Merge current field values back into config before switching
@@ -1154,10 +1312,15 @@ window.WorkVoltPages['settings'] = function(container) {
       return el ? el.checked : false;
     }
 
+    // Read the master enabled toggle before building the config object
+    var masterToggle = document.getElementById('ptax-master-toggle');
+    var taxEnabled = masterToggle ? masterToggle.checked : true;
+
     var cfg;
     if (isUSA) {
       cfg = {
         country: 'USA',
+        tax_calculation_enabled:  taxEnabled,
         pay_periods_per_year:     gn('pay_periods_per_year', 26),
         federal_use_brackets:     gb('federal_use_brackets'),
         federal_flat_rate:        gn('federal_flat_rate', 22),
@@ -1175,6 +1338,7 @@ window.WorkVoltPages['settings'] = function(container) {
     } else {
       cfg = {
         country: 'Canada',
+        tax_calculation_enabled: taxEnabled,
         pay_periods_per_year:   gn('pay_periods_per_year', 26),
         federal_use_brackets:   gb('federal_use_brackets'),
         federal_flat_rate:      gn('federal_flat_rate', 20.5),
@@ -1192,11 +1356,21 @@ window.WorkVoltPages['settings'] = function(container) {
       };
     }
 
+    // Collect visible roles from the picker
+    var checkedRoles = Array.from(document.querySelectorAll('.ptax-role-check:checked')).map(function(c) { return c.value; });
+    if (!checkedRoles.includes('SuperAdmin')) checkedRoles.unshift('SuperAdmin');
+    if (!checkedRoles.includes('Admin'))      checkedRoles.unshift('Admin');
+
     try {
-      await api('config/set', { key: 'payroll_tax_config', value: JSON.stringify(cfg) });
-      _payrollTaxConfig = cfg;
-      // Expose globally so payroll.js can pick it up without a reload
-      window.WV_PAYROLL_TAX_CONFIG = cfg;
+      await Promise.all([
+        api('config/set', { key: 'payroll_tax_config',        value: JSON.stringify(cfg) }),
+        api('config/set', { key: 'payroll_tax_visible_roles', value: JSON.stringify(checkedRoles) }),
+      ]);
+      _payrollTaxConfig       = cfg;
+      _payrollTaxVisibleRoles = checkedRoles;
+      // Expose globally so payroll.js can pick up both without a reload
+      window.WV_PAYROLL_TAX_CONFIG        = cfg;
+      window.WV_PAYROLL_TAX_VISIBLE_ROLES = checkedRoles;
       if (statusEl) statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium mb-3 bg-green-50 text-green-700 border border-green-200"><i class="fas fa-check-circle"></i><span>Payroll tax settings saved! Pay runs will use the new rates.</span></div>';
     } catch(e) {
       if (statusEl) statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium mb-3 bg-red-50 text-red-600 border border-red-200"><i class="fas fa-exclamation-circle"></i><span>' + e.message + '</span></div>';
