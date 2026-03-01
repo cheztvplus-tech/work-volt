@@ -268,13 +268,22 @@ window.WorkVoltPages['projects'] = function(container) {
     loadListData();
   }
 
+  // Normalize a project so it always has .id (handles project_id, row_id, etc.)
+  function normalizeProject(p) {
+    if (!p) return p;
+    if (!p.id) p.id = p.project_id || p.row_id || p.ID || '';
+    return p;
+  }
+
   function loadListData() {
     Promise.all([
       api('projects/list', {}),
       api('users/list').catch(function() { return {}; }),
     ]).then(function(res) {
-      projectsCache = res[0].rows || [];
+      projectsCache = (res[0].rows || []).map(normalizeProject);
       usersCache    = res[1].users || res[1].rows || [];
+      // Debug: log first project to check field names
+      if (projectsCache.length) console.log('[Projects] First row keys:', Object.keys(projectsCache[0]), 'id=', projectsCache[0].id);
       var sub = document.getElementById('proj-subtitle');
       if (sub) sub.textContent = projectsCache.length + ' project' + (projectsCache.length !== 1 ? 's' : '');
       renderGrid('');
@@ -311,15 +320,16 @@ window.WorkVoltPages['projects'] = function(container) {
     // Wire card clicks
     grid.querySelectorAll('[data-proj-id]').forEach(function(card) {
       card.addEventListener('click', function(e) {
+        var card = e.currentTarget;
+        var pid  = card.getAttribute('data-proj-id');
         if (e.target.closest('[data-proj-action]')) {
           e.stopPropagation();
-          var act = e.target.closest('[data-proj-action]').dataset.projAction;
-          var pid = this.dataset.projId;
+          var act  = e.target.closest('[data-proj-action]').getAttribute('data-proj-action');
           var proj = projectsCache.find(function(p) { return String(p.id) === String(pid); });
           if (act === 'edit')   { openProjectForm(proj); return; }
           if (act === 'delete') { confirmDeleteProject(pid, proj && proj.name); return; }
         }
-        openProjectDetail(this.dataset.projId);
+        openProjectDetail(pid);
       });
     });
   }
@@ -412,8 +422,12 @@ window.WorkVoltPages['projects'] = function(container) {
   //  PROJECT DETAIL VIEW — Mission Control
   // ================================================================
   function openProjectDetail(pid) {
-    pid = String(pid || '');
-    if (!pid) { toast('Project ID is missing', 'error'); return; }
+    pid = String(pid !== undefined && pid !== null ? pid : '');
+    if (!pid || pid === 'undefined' || pid === 'null') {
+      console.error('[Projects] openProjectDetail called with empty/invalid pid:', pid, '| projectsCache sample:', projectsCache.slice(0,2));
+      toast('Could not open project (ID missing). Check console for details.', 'error');
+      return;
+    }
     view = 'detail';
     tasksCache = {};
     membersCache = [];
@@ -433,7 +447,7 @@ window.WorkVoltPages['projects'] = function(container) {
       api('projects/activity', { project_id: pid, limit: 30 }).catch(function() { return { rows: [] }; }),
       api('projects/stats',    { project_id: pid }).catch(function() { return { stats: {} }; }),
     ]).then(function(res) {
-      activeProject  = res[0].project || {};
+      activeProject  = normalizeProject(res[0].project || res[0].row || {});
       usersCache     = res[1].users || res[1].rows || [];
       membersCache   = res[2].rows || [];
       activityCache  = res[3].rows || [];
