@@ -44,7 +44,7 @@ window.WorkVoltPages['payroll'] = function(container) {
     url.searchParams.set('path',  path);
     url.searchParams.set('token', savedSecret);
     if (params) Object.keys(params).forEach(function(k) {
-      if (params[k] !== undefined && params[k] !== null && String(params[k]) !== '')
+      if (params[k] !== undefined && params[k] !== null)
         url.searchParams.set(k, String(params[k]));
     });
     return fetch(url.toString(), { cache: 'no-cache' })
@@ -1548,7 +1548,7 @@ window.WorkVoltPages['payroll'] = function(container) {
           period_start:  start,
           period_end:    end,
           pay_type:      cb.dataset.paytype||'Hourly',
-          rate:          cb.dataset.rate||'0',
+          rate:          String(parseFloat(cb.dataset.rate)||0),
           gross:         String(computed.gross),
           net:           String(computed.net),
           tax_total:     String(computed.tax_total),
@@ -1556,13 +1556,29 @@ window.WorkVoltPages['payroll'] = function(container) {
           created_by:    myUserId(),
         };
       });
-      // Run sequentially to avoid race conditions / ID collisions on the backend
+      // Run sequentially — failures are collected but do NOT abort the chain
+      // so every employee always gets processed regardless of individual errors.
+      var results = { ok: 0, fail: [] };
       payloads.reduce(function(chain, payload) {
-        return chain.then(function() { return api('payroll/runs/create', payload); });
+        return chain.then(function() {
+          return api('payroll/runs/create', payload)
+            .then(function() { results.ok++; })
+            .catch(function(e) { results.fail.push(payload.employee_name + ': ' + (e.message||'failed')); });
+        });
       }, Promise.resolve()).then(function(){
-        toast('Created '+payloads.length+' pay runs', 'success');
-        closeModal(); loadData();
-      }).catch(function(e){ modalMsg(e.message, false); btn.disabled=false; btn.innerHTML='<i class="fas fa-bolt mr-1.5 text-xs"></i>Generate Runs'; });
+        if (results.fail.length === 0) {
+          toast('Created ' + results.ok + ' pay runs', 'success');
+          closeModal(); loadData();
+        } else if (results.ok > 0) {
+          toast('Created ' + results.ok + ' of ' + payloads.length + ' pay runs', 'warning');
+          modalMsg('Created ' + results.ok + ' pay run(s). Failed for: ' + results.fail.join('; '), false);
+          btn.disabled = false; btn.innerHTML = '<i class="fas fa-bolt mr-1.5 text-xs"></i>Generate Runs';
+          loadData();
+        } else {
+          modalMsg('All runs failed: ' + results.fail.join('; '), false);
+          btn.disabled = false; btn.innerHTML = '<i class="fas fa-bolt mr-1.5 text-xs"></i>Generate Runs';
+        }
+      });
     });
   }
 
