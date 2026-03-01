@@ -492,6 +492,17 @@
   }
 
   // Build sidebar nav from user role
+  // ── Per-user nav order (stored in localStorage, personal only) ──
+  function _navOrderKey() {
+    return 'wv_nav_order_' + (currentUser?.user_id || 'default');
+  }
+  function _getSavedOrder() {
+    try { return JSON.parse(localStorage.getItem(_navOrderKey()) || '[]'); } catch(e) { return []; }
+  }
+  function _saveNavOrder(ids) {
+    localStorage.setItem(_navOrderKey(), JSON.stringify(ids));
+  }
+
   function renderNav() {
     const nav  = document.getElementById('nav-menu');
     const role = currentUser?.role || 'Employee';
@@ -505,27 +516,46 @@
         <span>Dashboard</span>
       </a>`;
 
-    // ── Installed add-on modules (from INSTALLED_MODULES + ADDON_CATALOGUE) ──
-    const addons = INSTALLED_MODULES.filter(m => {
+    // ── Installed add-on modules filtered by role ──
+    let addons = INSTALLED_MODULES.filter(m => {
       const def = ADDON_CATALOGUE[m.id];
       const roles = m.allowed_roles || (def && def.roles) || [];
       return roles.includes(role);
     });
 
+    // Apply personal saved order
+    const savedOrder = _getSavedOrder();
+    if (savedOrder.length) {
+      addons.sort((a, b) => {
+        const ai = savedOrder.indexOf(a.id);
+        const bi = savedOrder.indexOf(b.id);
+        if (ai === -1 && bi === -1) return 0;
+        if (ai === -1) return 1;
+        if (bi === -1) return -1;
+        return ai - bi;
+      });
+    }
+
     const addonLinks = addons.length ? `
-      <div class="px-3 pt-4 pb-1">
+      <div class="px-3 pt-4 pb-1 flex items-center justify-between">
         <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Modules</p>
+        <span class="text-[9px] text-slate-300 font-medium">drag to reorder</span>
       </div>
-      ${addons.map(m => {
-        const def = ADDON_CATALOGUE[m.id] || {};
-        return `
-          <a href="#${m.id}" onclick="showModule('${m.id}'); return false;"
-             class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
-             data-module="${m.id}">
-            <i class="fas ${def.icon || m.icon} w-4 text-slate-400"></i>
-            <span>${def.label || m.label}</span>
-          </a>`;
-      }).join('')}
+      <div id="nav-sortable" class="space-y-0.5">
+        ${addons.map(m => {
+          const def = ADDON_CATALOGUE[m.id] || {};
+          return `
+            <div class="nav-sortable-item" data-module-id="${m.id}" draggable="true">
+              <a href="#${m.id}" onclick="showModule('${m.id}'); return false;"
+                 class="nav-item flex items-center gap-2 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors group"
+                 data-module="${m.id}">
+                <i class="fas fa-grip-vertical text-slate-200 group-hover:text-slate-300 text-[10px] flex-shrink-0 cursor-grab"></i>
+                <i class="fas ${def.icon || m.icon} w-4 text-slate-400 flex-shrink-0"></i>
+                <span>${def.label || m.label}</span>
+              </a>
+            </div>`;
+        }).join('')}
+      </div>
     ` : '';
 
     // ── Bottom: Settings + Store ──
@@ -548,6 +578,39 @@
       </div>`;
 
     nav.innerHTML = dashLink + addonLinks + bottomLinks;
+
+    // ── Wire drag-to-reorder ──
+    _initNavDrag();
+  }
+
+  function _initNavDrag() {
+    const sortable = document.getElementById('nav-sortable');
+    if (!sortable) return;
+    let dragEl = null;
+
+    sortable.querySelectorAll('.nav-sortable-item').forEach(item => {
+      item.addEventListener('dragstart', e => {
+        dragEl = item;
+        setTimeout(() => { item.style.opacity = '0.4'; }, 0);
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      item.addEventListener('dragend', () => {
+        item.style.opacity = '';
+        dragEl = null;
+        const order = Array.from(sortable.querySelectorAll('.nav-sortable-item')).map(el => el.dataset.moduleId);
+        _saveNavOrder(order);
+      });
+      item.addEventListener('dragover', e => {
+        e.preventDefault();
+        if (!dragEl || dragEl === item) return;
+        const rect = item.getBoundingClientRect();
+        if (e.clientY < rect.top + rect.height / 2) {
+          sortable.insertBefore(dragEl, item);
+        } else {
+          sortable.insertBefore(dragEl, item.nextSibling);
+        }
+      });
+    });
   }
 
   function showModule(name, push = true) {
