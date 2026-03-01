@@ -315,7 +315,7 @@ window.WorkVoltPages['projects'] = function(container) {
           e.stopPropagation();
           var act = e.target.closest('[data-proj-action]').dataset.projAction;
           var pid = this.dataset.projId;
-          var proj = projectsCache.find(function(p) { return p.id === pid; });
+          var proj = projectsCache.find(function(p) { return String(p.id) === String(pid); });
           if (act === 'edit')   { openProjectForm(proj); return; }
           if (act === 'delete') { confirmDeleteProject(pid, proj && proj.name); return; }
         }
@@ -412,6 +412,8 @@ window.WorkVoltPages['projects'] = function(container) {
   //  PROJECT DETAIL VIEW — Mission Control
   // ================================================================
   function openProjectDetail(pid) {
+    pid = String(pid || '');
+    if (!pid) { toast('Project ID is missing', 'error'); return; }
     view = 'detail';
     tasksCache = {};
     membersCache = [];
@@ -1268,6 +1270,42 @@ window.WorkVoltPages['projects'] = function(container) {
         return '<option value="' + esc(uid) + '"' + (uid === v('owner_id') ? ' selected' : '') + '>' + esc(u.name || u.email) + '</option>';
       }).join('');
 
+    // Build linked task field if Tasks module is installed
+    var linkedTaskId = v('linked_task_id');
+    var linkedTaskHtml = '';
+    if (tasksInstalled()) {
+      // Gather tasks from cache (list view) or tasksCache (detail view)
+      var allTasks = Object.values(tasksCache);
+      var taskOpts = '<option value="">— None —</option>' +
+        allTasks.map(function(t) {
+          return '<option value="' + esc(String(t.id)) + '"' + (String(t.id) === String(linkedTaskId) ? ' selected' : '') + '>' +
+            esc(t.title) + (t.status ? ' [' + t.status + ']' : '') + '</option>';
+        }).join('');
+
+      // Show current linked task pill if set, with a remove button
+      var linkedPill = '';
+      if (linkedTaskId) {
+        var lt = allTasks.find(function(t){ return String(t.id) === String(linkedTaskId); });
+        var ltName = lt ? lt.title : ('Task #' + linkedTaskId);
+        var ltStatus = lt ? lt.status : '';
+        linkedPill =
+          '<div id="pf-linked-pill" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 border border-blue-200 text-sm mt-1">' +
+            '<i class="fas fa-link text-blue-400 text-xs"></i>' +
+            '<span class="flex-1 font-semibold text-blue-800 truncate">' + esc(ltName) + (ltStatus ? ' <span class="font-normal text-blue-500 text-xs">[' + esc(ltStatus) + ']</span>' : '') + '</span>' +
+            '<button id="pf-remove-task" type="button" class="w-5 h-5 flex items-center justify-center text-blue-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border-none bg-transparent cursor-pointer text-xs" title="Remove linked task">✕</button>' +
+          '</div>';
+      }
+
+      linkedTaskHtml =
+        '<div>' +
+          '<label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">' +
+            '<i class="fas fa-link text-[10px] mr-1"></i>Linked Task</label>' +
+          (linkedPill ? linkedPill : '') +
+          '<select id="pf-linked-task" class="field text-sm' + (linkedTaskId ? ' mt-2' : '') + '">' + taskOpts + '</select>' +
+          '<p class="text-[11px] text-slate-400 mt-1">Associate this project with a task from the Tasks module.</p>' +
+        '</div>';
+    }
+
     var html =
       '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
         '<h3 class="font-extrabold text-slate-900 flex items-center gap-2">' +
@@ -1314,6 +1352,9 @@ window.WorkVoltPages['projects'] = function(container) {
         '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Tags</label>' +
         '<input id="pf-tags" class="field text-sm" type="text" placeholder="design, q1, client-work…" value="' + esc(v('tags')) + '"></div>' +
 
+        // Linked Task (Tasks module only)
+        linkedTaskHtml +
+
         // Color
         '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Color</label>' +
         '<div class="flex gap-2 flex-wrap">' + colorSwatches + '</div></div>' +
@@ -1341,6 +1382,20 @@ window.WorkVoltPages['projects'] = function(container) {
       });
     });
 
+    // Wire remove linked task button
+    if (tasksInstalled()) {
+      var removeTaskBtn = document.getElementById('pf-remove-task');
+      if (removeTaskBtn) {
+        removeTaskBtn.addEventListener('click', function() {
+          var pill = document.getElementById('pf-linked-pill');
+          if (pill) pill.remove();
+          var sel = document.getElementById('pf-linked-task');
+          if (sel) sel.value = '';
+          this.remove();
+        });
+      }
+    }
+
     document.getElementById('pf-close').addEventListener('click', closeModal);
     document.getElementById('pf-cancel').addEventListener('click', closeModal);
     document.getElementById('pf-save').addEventListener('click', function() {
@@ -1352,22 +1407,27 @@ window.WorkVoltPages['projects'] = function(container) {
       btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i>Saving…';
       modalStatus('', null);
 
+      // Determine linked_task_id — if remove was clicked, the select is cleared
+      var linkedTaskSel = document.getElementById('pf-linked-task');
+      var resolvedLinkedTaskId = linkedTaskSel ? linkedTaskSel.value : '';
+
       var params = {
-        name:        name,
-        description: document.getElementById('pf-desc').value.trim(),
-        status:      document.getElementById('pf-status').value,
-        priority:    document.getElementById('pf-priority').value,
-        owner_id:    document.getElementById('pf-owner').value,
-        start_date:  document.getElementById('pf-start').value,
-        due_date:    document.getElementById('pf-due').value,
-        budget:      document.getElementById('pf-budget').value,
-        tags:        document.getElementById('pf-tags').value,
-        color:       selectedColor,
-        created_by:  myId,
+        name:            name,
+        description:     document.getElementById('pf-desc').value.trim(),
+        status:          document.getElementById('pf-status').value,
+        priority:        document.getElementById('pf-priority').value,
+        owner_id:        document.getElementById('pf-owner').value,
+        start_date:      document.getElementById('pf-start').value,
+        due_date:        document.getElementById('pf-due').value,
+        budget:          document.getElementById('pf-budget').value,
+        tags:            document.getElementById('pf-tags').value,
+        color:           selectedColor,
+        created_by:      myId,
+        linked_task_id:  resolvedLinkedTaskId,
       };
 
       var promise = isEdit
-        ? api('projects/update', Object.assign({ id: proj.id, log_user: myId }, params))
+        ? api('projects/update', Object.assign({ id: String(proj.id), log_user: myId }, params))
         : api('projects/create', params);
 
       promise.then(function(data) {
@@ -1375,11 +1435,9 @@ window.WorkVoltPages['projects'] = function(container) {
         setTimeout(function() {
           closeModal();
           if (isEdit) {
-            // Reload detail
-            openProjectDetail(proj.id);
+            openProjectDetail(String(proj.id));
           } else {
-            // Go to new project detail
-            openProjectDetail(data.id);
+            openProjectDetail(String(data.id));
           }
         }, 600);
       }).catch(function(e) {
@@ -1617,7 +1675,7 @@ window.WorkVoltPages['projects'] = function(container) {
     var link = window._wvDeepLink;
     if (!link || link.module !== 'projects' || !link.id) return;
     window._wvDeepLink = null;
-    openProjectDetail(link.id);
+    openProjectDetail(String(link.id));
   }
 
   // Initial render
