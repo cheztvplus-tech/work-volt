@@ -8,34 +8,34 @@ window.WorkVoltPages['payroll'] = function(container) {
   var runsCache   = [];
   var empCache    = [];
   var usersCache  = [];
-  var tsCache     = [];   // timesheets (if module installed)
-  var activeView  = sessionStorage.getItem('pr_view') || 'runs';  // runs | employees | summary
+  var tsCache     = [];
+  var auditCache  = [];
+  var activeView  = sessionStorage.getItem('pr_view') || 'runs';
   var filters     = { status: '', employee_id: '', period: '' };
   var _searchVal  = '';
   var _searchTimer = null;
   var sortState   = { col: 'period_start', dir: 'desc' };
-  var _liveTotal  = 0; // running payroll cost counter
+  var _liveTotal  = 0;
 
   // ── Constants ─────────────────────────────────────────────────
-  var STATUSES   = ['Draft', 'Pending', 'Approved', 'Paid', 'Void'];
+  var STATUSES   = ['Draft', 'Pending', 'Approved', 'Paid', 'Rejected', 'Void'];
   var PAY_TYPES  = ['Hourly', 'Salary', 'Contract'];
-  var DEDUCTION_TYPES = ['Tax', 'Health Insurance', 'Pension', '401k', 'Garnishment', 'Other'];
 
   var STATUS_CFG = {
-    'Draft':    { bg:'bg-slate-100',   text:'text-slate-600',  icon:'fa-pencil',        border:'border-slate-200',  dot:'#94a3b8' },
-    'Pending':  { bg:'bg-amber-100',   text:'text-amber-700',  icon:'fa-hourglass-half',border:'border-amber-300',  dot:'#f59e0b' },
-    'Approved': { bg:'bg-green-100',   text:'text-green-700',  icon:'fa-check-circle',  border:'border-green-300',  dot:'#16a34a' },
-    'Paid':     { bg:'bg-blue-100',    text:'text-blue-700',   icon:'fa-dollar-sign',   border:'border-blue-300',   dot:'#2563eb' },
-    'Rejected': { bg:'#fef2f2',        text:'#991b1b',         icon:'fa-times-circle',  border:'#fca5a5',           dot:'#ef4444' },
-    'Void':     { bg:'bg-red-100',     text:'text-red-600',    icon:'fa-ban',           border:'border-red-300',    dot:'#dc2626' },
+    'Draft':    { bg:'bg-slate-100',   text:'text-slate-600',  icon:'fa-pencil',         dot:'#94a3b8', border:'border-l-slate-300' },
+    'Pending':  { bg:'bg-amber-100',   text:'text-amber-700',  icon:'fa-hourglass-half', dot:'#f59e0b', border:'border-l-amber-400' },
+    'Approved': { bg:'bg-green-100',   text:'text-green-700',  icon:'fa-check-circle',   dot:'#16a34a', border:'border-l-green-500' },
+    'Paid':     { bg:'bg-blue-100',    text:'text-blue-700',   icon:'fa-dollar-sign',    dot:'#2563eb', border:'border-l-blue-500'  },
+    'Rejected': { bg:'bg-red-100',     text:'text-red-700',    icon:'fa-times-circle',   dot:'#ef4444', border:'border-l-red-400'   },
+    'Void':     { bg:'bg-red-100',     text:'text-red-600',    icon:'fa-ban',            dot:'#dc2626', border:'border-l-red-500'   },
   };
 
   // ── Role helpers ──────────────────────────────────────────────
-  function getRole()    { try { return window.WorkVolt.user().role || 'SuperAdmin'; } catch(e) { return 'SuperAdmin'; } }
+  function getRole()    { try { return window.WorkVolt.user().role || 'Employee'; } catch(e) { return 'Employee'; } }
   function isAdmin()    { return ['SuperAdmin','Admin','Manager'].includes(getRole()); }
   function isPayAdmin() { return ['SuperAdmin','Admin'].includes(getRole()); }
   function myUserId()   { try { return window.WorkVolt.user().user_id || ''; } catch(e) { return ''; } }
-  function myName()     { try { return window.WorkVolt.user().name || ''; } catch(e) { return ''; } }
+  function myName()     { try { return window.WorkVolt.user().name    || ''; } catch(e) { return ''; } }
 
   // ── API ───────────────────────────────────────────────────────
   function api(path, params) {
@@ -47,7 +47,7 @@ window.WorkVoltPages['payroll'] = function(container) {
       if (params[k] !== undefined && params[k] !== null && String(params[k]) !== '')
         url.searchParams.set(k, String(params[k]));
     });
-    return fetch(url.toString(), { cache:'no-cache' })
+    return fetch(url.toString(), { cache: 'no-cache' })
       .then(function(r) { return r.json(); })
       .then(function(d) { if (d.error) throw new Error(d.error); return d; });
   }
@@ -74,6 +74,11 @@ window.WorkVoltPages['payroll'] = function(container) {
     var n = parseFloat(h)||0;
     return n % 1 === 0 ? n+'h' : n.toFixed(1)+'h';
   }
+  function fmtDateTime(d) {
+    if (!d) return '—';
+    try { return new Date(d).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}); }
+    catch(e) { return d; }
+  }
   function genId(prefix) {
     var d = new Date();
     var ds = String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') + d.getFullYear();
@@ -87,7 +92,7 @@ window.WorkVoltPages['payroll'] = function(container) {
     var u = usersCache.find(function(u){ return u.user_id===uid||u.id===uid; });
     return u ? (u.name||u.email||uid) : uid;
   }
-  function userInitial(uid) { return userName(uid).charAt(0).toUpperCase()||'?'; }
+  function userInitial(uid) { return (userName(uid)||'?').charAt(0).toUpperCase(); }
   function userAvatar(uid, sz) {
     sz = sz||'w-7 h-7 text-[11px]';
     var cols = ['bg-blue-100 text-blue-600','bg-violet-100 text-violet-600','bg-emerald-100 text-emerald-600','bg-amber-100 text-amber-600','bg-rose-100 text-rose-600'];
@@ -98,46 +103,88 @@ window.WorkVoltPages['payroll'] = function(container) {
     if (!start) return '—';
     return fmtDate(start) + (end ? ' – ' + fmtDate(end) : '');
   }
+
+  // ── Financial calculations (mirrors GAS _computeRun) ──────────
+  function estimateTaxes(gross) {
+    var payPeriods = 26;
+    var annual     = gross * payPeriods;
+    var brackets   = [
+      {max:11600,rate:.10},{max:47150,rate:.12},{max:100525,rate:.22},
+      {max:191950,rate:.24},{max:243725,rate:.32},{max:609350,rate:.35},{max:Infinity,rate:.37}
+    ];
+    var annualFed = 0, prev = 0;
+    for (var i = 0; i < brackets.length; i++) {
+      if (annual <= prev) break;
+      annualFed += (Math.min(annual, brackets[i].max) - prev) * brackets[i].rate;
+      prev = brackets[i].max;
+    }
+    var rnd = function(v){ return Math.round(v*100)/100; };
+    var fed   = rnd(annualFed / payPeriods);
+    var fica  = rnd(gross * 0.0765);
+    var state = rnd(gross * 0.05);
+    return { federal: fed, fica: fica, state: state, total: rnd(fed+fica+state) };
+  }
+  function computeRun(p) {
+    var hoursReg = parseFloat(p.hours_regular)||0;
+    var hoursOT  = parseFloat(p.hours_ot)||0;
+    var rate     = parseFloat(p.rate)||0;
+    var bonuses  = parseFloat(p.bonuses)||0;
+    var ded      = parseFloat(p.deductions)||0;
+    var payType  = p.pay_type||'Hourly';
+    var gross    = payType==='Salary' ? rate+bonuses : (hoursReg*rate)+(hoursOT*rate*1.5)+bonuses;
+    var taxes    = estimateTaxes(gross);
+    var net      = Math.max(0, gross - ded - taxes.total);
+    var rnd      = function(v){ return Math.round(v*100)/100; };
+    return {
+      hours_regular: rnd(hoursReg), hours_ot: rnd(hoursOT),
+      hours_total: rnd(hoursReg+hoursOT), rate: rnd(rate), gross: rnd(gross),
+      bonuses: rnd(bonuses), deductions: rnd(ded),
+      tax_federal: taxes.federal, tax_fica: taxes.fica,
+      tax_state: taxes.state, tax_total: taxes.total, net: rnd(net),
+    };
+  }
+  // Legacy helpers for backward-compat with old sheet fields
   function calcGross(r) {
-    var base     = parseFloat(r.gross_salary) || 0;
-    var bonus    = parseFloat(r.bonus) || 0;
-    var overtime = parseFloat(r.overtime_pay) || 0;
-    var extra    = parseFloat(r.extra_pay) || 0;
-    return base + bonus + overtime + extra;
+    if (r.gross !== undefined && r.gross !== '') return parseFloat(r.gross)||0;
+    return (parseFloat(r.gross_salary)||0)+(parseFloat(r.bonus)||0)+(parseFloat(r.overtime_pay)||0)+(parseFloat(r.extra_pay)||0);
   }
   function calcDeductions(r) {
-    var tax      = parseFloat(r.tax) || 0;
-    var health   = parseFloat(r.health_insurance) || 0;
-    var pension  = parseFloat(r.pension) || 0;
-    var other    = parseFloat(r.other_deductions) || 0;
-    return tax + health + pension + other;
+    if (r.deductions !== undefined && r.deductions !== '') {
+      var d = parseFloat(r.deductions)||0;
+      var t = parseFloat(r.tax_total)||parseFloat(r.tax)||0;
+      return d + t;
+    }
+    return (parseFloat(r.tax)||0)+(parseFloat(r.health_insurance)||0)+(parseFloat(r.pension)||0)+(parseFloat(r.other_deductions)||0);
   }
   function calcNet(r) {
+    if (r.net !== undefined && r.net !== '') return Math.max(0, parseFloat(r.net)||0);
     return Math.max(0, calcGross(r) - calcDeductions(r));
   }
   function detectAnomaly(run, allRuns) {
-    // Flag if net pay changed >50% vs last period for same employee
-    var prev = allRuns.filter(function(r) {
-      return r.employee_id === run.employee_id && r.id !== run.id && r.status !== 'Void';
+    var prev = allRuns.filter(function(r){
+      return r.employee_id===run.employee_id && r.id!==run.id && r.status!=='Void' && r.status!=='Rejected';
     }).sort(function(a,b){ return new Date(b.period_start)-new Date(a.period_start); })[0];
     if (!prev) return null;
-    var cur  = calcNet(run);
-    var old  = calcNet(prev);
+    var cur = calcNet(run), old = calcNet(prev);
     if (!old) return null;
-    var pct = Math.abs((cur - old) / old) * 100;
-    if (pct > 50) return { pct: Math.round(pct), dir: cur > old ? 'up' : 'down' };
+    var pct = Math.abs((cur-old)/old)*100;
+    if (pct>50) return { pct: Math.round(pct), dir: cur>old?'up':'down' };
     return null;
+  }
+  function hasOvertimeRisk(r) {
+    var hrs = parseFloat(r.hours_total||r.overtime_hours)||0;
+    return hrs > 40;
   }
 
   // ── Badges ────────────────────────────────────────────────────
   function statusBadge(s) {
-    var c = STATUS_CFG[s] || STATUS_CFG['Draft'];
-    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold '+c.bg+' '+c.text+'">' +
+    var c = STATUS_CFG[s]||STATUS_CFG['Draft'];
+    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold '+c.bg+' '+c.text+'">'+
       '<i class="fas '+c.icon+' text-[9px]"></i>'+esc(s||'Draft')+'</span>';
   }
   function anomalyBadge(anom) {
     if (!anom) return '';
-    return '<span class="inline-flex items-center gap-1 px-1.5 py-px rounded text-[10px] font-bold bg-red-50 text-red-600 border border-red-200" title="Pay changed '+anom.pct+'% vs last period">' +
+    return '<span class="inline-flex items-center gap-1 px-1.5 py-px rounded text-[10px] font-bold bg-red-50 text-red-600 border border-red-200" title="Pay changed '+anom.pct+'% vs last period">'+
       '<i class="fas fa-'+(anom.dir==='up'?'arrow-up':'arrow-down')+' text-[9px]"></i>'+anom.pct+'% change</span>';
   }
 
@@ -149,10 +196,10 @@ window.WorkVoltPages['payroll'] = function(container) {
     return el;
   }
   function showModal(html, w) {
-    w = w||'680px';
+    w = w||'720px';
     getPortal().innerHTML =
-      '<div id="pr-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9998;display:flex;align-items:center;justify-content:center;padding:1rem">' +
-        '<div style="background:#fff;border-radius:1.25rem;box-shadow:0 30px 70px rgba(0,0,0,.25);width:100%;max-width:'+w+';max-height:92vh;overflow-y:auto;z-index:9999">'+html+'</div>' +
+      '<div id="pr-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9998;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto">'+
+        '<div style="background:#fff;border-radius:1.25rem;box-shadow:0 30px 80px rgba(0,0,0,.3);width:100%;max-width:'+w+';max-height:92vh;overflow-y:auto;z-index:9999;position:relative">'+html+'</div>'+
       '</div>';
     document.getElementById('pr-backdrop').addEventListener('click',function(e){if(e.target.id==='pr-backdrop')closeModal();});
   }
@@ -160,7 +207,7 @@ window.WorkVoltPages['payroll'] = function(container) {
   function modalMsg(msg, ok) {
     var el=document.getElementById('pr-msg'); if(!el) return;
     el.innerHTML = msg ? '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium mb-3 '+
-      (ok?'bg-green-50 text-green-700 border border-green-200':'bg-red-50 text-red-600 border border-red-200')+'">' +
+      (ok?'bg-green-50 text-green-700 border border-green-200':'bg-red-50 text-red-600 border border-red-200')+'">'+
       '<i class="fas '+(ok?'fa-check-circle':'fa-exclamation-circle')+'"></i><span>'+esc(msg)+'</span></div>' : '';
   }
 
@@ -168,31 +215,25 @@ window.WorkVoltPages['payroll'] = function(container) {
   function loadData() {
     var el = document.getElementById('pr-content');
     if (el) el.innerHTML = '<div class="flex items-center justify-center py-24 text-slate-400"><i class="fas fa-circle-notch fa-spin text-2xl mr-3"></i>Loading payroll…</div>';
-
-    var tasks = [
+    Promise.all([
       api('payroll/runs/list', {}).catch(function(){ return {rows:[]}; }),
       api('payroll/employees/list', {}).catch(function(){ return {rows:[]}; }),
       api('users/list', {}).catch(function(){ return {rows:[]}; }),
       api('timesheets/list', {}).catch(function(){ return {rows:[]}; }),
-    ];
-
-    Promise.all(tasks).then(function(res) {
+      api('payroll/audit/list', {}).catch(function(){ return {rows:[]}; }),
+    ]).then(function(res) {
       runsCache  = res[0].rows || [];
       empCache   = res[1].rows || [];
       usersCache = res[2].rows || [];
       tsCache    = res[3].rows || [];
-
-      // Compute live total (approved + paid runs this month)
-      var now = new Date();
-      var monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      auditCache = res[4].rows || [];
+      var now = new Date(), monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
       _liveTotal = runsCache
-        .filter(function(r){ return r.status==='Approved'||r.status==='Paid'; })
-        .filter(function(r){ return (r.period_start||'') >= monthStart; })
-        .reduce(function(s,r){ return s + calcNet(r); }, 0);
-
+        .filter(function(r){ return (r.status==='Approved'||r.status==='Paid')&&(r.period_start||'')>=monthStart; })
+        .reduce(function(s,r){ return s+calcNet(r); }, 0);
       rerender();
     }).catch(function(e) {
-      if (el) el.innerHTML = '<div class="flex flex-col items-center justify-center py-20 text-slate-400"><i class="fas fa-exclamation-triangle text-3xl mb-3 text-amber-400"></i><p class="font-semibold">Could not load payroll data</p><p class="text-sm mt-1 text-center max-w-xs">'+esc(e.message)+'</p></div>';
+      if (el) el.innerHTML = '<div class="flex flex-col items-center justify-center py-20 text-slate-400"><i class="fas fa-exclamation-triangle text-3xl mb-3 text-amber-400"></i><p class="font-semibold">Could not load payroll</p><p class="text-sm mt-1">'+esc(e.message)+'</p></div>';
     });
   }
 
@@ -201,24 +242,22 @@ window.WorkVoltPages['payroll'] = function(container) {
     var sorted   = applySort(filtered);
     renderStats(filtered);
     renderLiveCounter();
-    if (activeView === 'employees') renderEmployees();
-    else if (activeView === 'summary') renderSummary(filtered);
-    else renderRuns(sorted);
+    if      (activeView==='employees') renderEmployees();
+    else if (activeView==='summary')   renderSummary(filtered);
+    else if (activeView==='audit')     renderAudit();
+    else                               renderRuns(sorted);
   }
 
   // ── Filtering + Sorting ───────────────────────────────────────
   function applyFilters(rows) {
-    if (!isAdmin()) {
-      var me = myUserId();
-      rows = rows.filter(function(r){ return r.employee_id === me; });
-    }
+    if (!isAdmin()) rows = rows.filter(function(r){ return r.employee_id===myUserId(); });
     if (filters.status)      rows = rows.filter(function(r){ return r.status===filters.status; });
     if (filters.employee_id) rows = rows.filter(function(r){ return r.employee_id===filters.employee_id; });
     if (_searchVal) {
       var q = _searchVal.toLowerCase();
       rows = rows.filter(function(r){
-        return (r.employee_name||'').toLowerCase().includes(q) ||
-               (r.id||'').toLowerCase().includes(q) ||
+        return (r.employee_name||'').toLowerCase().includes(q)||
+               (r.id||'').toLowerCase().includes(q)||
                userName(r.employee_id).toLowerCase().includes(q);
       });
     }
@@ -227,38 +266,35 @@ window.WorkVoltPages['payroll'] = function(container) {
   function applySort(rows) {
     return rows.slice().sort(function(a,b){
       var va=a[sortState.col]||'', vb=b[sortState.col]||'';
-      if (sortState.col==='net'||sortState.col==='gross') { va=calcNet(a); vb=calcNet(b); }
+      if (sortState.col==='net')          { va=calcNet(a);  vb=calcNet(b); }
+      else if (sortState.col==='gross')   { va=calcGross(a); vb=calcGross(b); }
       else if (sortState.col==='period_start') { va=new Date(va||0).getTime(); vb=new Date(vb||0).getTime(); }
       else { va=String(va).toLowerCase(); vb=String(vb).toLowerCase(); }
-      var c = va<vb?-1:va>vb?1:0;
-      return sortState.dir==='desc'?-c:c;
+      return (sortState.dir==='desc'?-1:1)*(va<vb?-1:va>vb?1:0);
     });
   }
 
   // ── Stats bar ─────────────────────────────────────────────────
   function renderStats(rows) {
-    var el = document.getElementById('pr-stats');
-    if (!el) return;
-    var totalNet   = rows.reduce(function(s,r){ return s+calcNet(r); }, 0);
-    var pendingCt  = rows.filter(function(r){ return r.status==='Pending'||r.status==='Draft'; }).length;
-    var paidCt     = rows.filter(function(r){ return r.status==='Paid'; }).length;
-    var anomalies  = rows.filter(function(r){ return detectAnomaly(r, runsCache); }).length;
-
+    var el = document.getElementById('pr-stats'); if (!el) return;
+    var totalNet  = rows.reduce(function(s,r){ return s+calcNet(r); }, 0);
+    var pending   = rows.filter(function(r){ return r.status==='Pending'||r.status==='Draft'; });
+    var paid      = rows.filter(function(r){ return r.status==='Paid'; });
+    var anomalies = rows.filter(function(r){ return detectAnomaly(r,runsCache); });
     function card(icon, iconCls, label, val, sub, alert) {
-      return '<div class="bg-white border '+(alert?'border-red-200 bg-red-50/30':'border-slate-200')+' rounded-xl px-4 py-3 flex items-center gap-3">' +
-        '<div class="w-9 h-9 '+iconCls+' rounded-xl flex items-center justify-center flex-shrink-0"><i class="fas '+icon+' text-sm"></i></div>' +
-        '<div><p class="text-xs text-slate-400 font-medium">'+label+'</p>' +
-        '<p class="text-lg font-extrabold text-slate-900 leading-none mt-0.5">'+val+'</p>' +
+      return '<div class="bg-white border '+(alert?'border-red-300 bg-red-50/40':'border-slate-200')+' rounded-xl px-4 py-3 flex items-center gap-3">'+
+        '<div class="w-9 h-9 '+iconCls+' rounded-xl flex items-center justify-center flex-shrink-0"><i class="fas '+icon+' text-sm"></i></div>'+
+        '<div><p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">'+label+'</p>'+
+        '<p class="text-xl font-black text-slate-900 leading-none mt-0.5">'+val+'</p>'+
         (sub?'<p class="text-[10px] text-slate-400 mt-0.5">'+sub+'</p>':'')+
         '</div></div>';
     }
     el.innerHTML =
       card('fa-dollar-sign','bg-emerald-100 text-emerald-600','Total Net Pay',fmtMoney(totalNet,0),rows.length+' run'+(rows.length!==1?'s':'')) +
-      card('fa-hourglass-half','bg-amber-100 text-amber-600','Awaiting Action',pendingCt+' runs',pendingCt?'need review':'all clear',pendingCt>0) +
-      card('fa-check-circle','bg-blue-100 text-blue-600','Paid This View',paidCt+' runs',paidCt?fmtMoney(rows.filter(function(r){return r.status==='Paid';}).reduce(function(s,r){return s+calcNet(r);},0),0)+' paid':'') +
-      card('fa-exclamation-triangle','bg-red-100 text-red-500','Pay Anomalies',anomalies+' flagged',anomalies?'review recommended':'none detected',anomalies>0);
+      card('fa-hourglass-half','bg-amber-100 text-amber-600','Awaiting Action',pending.length,pending.length?'need review':'all clear',pending.length>0) +
+      card('fa-check-circle','bg-blue-100 text-blue-600','Paid',paid.length+' runs',paid.length?fmtMoney(paid.reduce(function(s,r){return s+calcNet(r);},0),0)+' paid':'') +
+      card('fa-exclamation-triangle','bg-red-100 text-red-500','Anomalies',anomalies.length+' flagged',anomalies.length?'review recommended':'none detected',anomalies.length>0);
   }
-
   function renderLiveCounter() {
     var el = document.getElementById('pr-live-total');
     if (el) el.textContent = fmtMoney(_liveTotal, 0);
@@ -273,92 +309,99 @@ window.WorkVoltPages['payroll'] = function(container) {
         }).join('')
       : '';
 
-    container.innerHTML =
-      '<style>' +
-        '.pr-section{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;overflow:hidden;margin-bottom:1rem}' +
-        '.pr-section-head{padding:.75rem 1.25rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:between;gap:.5rem}' +
-        '.pr-field label{display:block;font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem}' +
-        '.pr-input{width:100%;padding:.5rem .75rem;border:1.5px solid #e2e8f0;border-radius:.625rem;font-size:.875rem;color:#1e293b;outline:none;font-family:inherit;background:#fff;box-sizing:border-box;transition:border-color .15s}' +
-        '.pr-input:focus{border-color:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.1)}' +
-        '.pr-input[readonly]{background:#f8fafc;color:#64748b;cursor:default}' +
-        '.net-pay-box{background:linear-gradient(135deg,#064e3b,#065f46);border-radius:1rem;padding:1.5rem;color:#fff;text-align:center}' +
-        '.net-pay-box .amount{font-size:2.5rem;font-weight:900;letter-spacing:-.02em;line-height:1}' +
-        '.net-pay-box .label{font-size:.75rem;font-weight:600;opacity:.7;text-transform:uppercase;letter-spacing:.08em;margin-top:.375rem}' +
-      '</style>' +
+    var VIEWS = [
+      ['runs','fa-list-alt','Pay Runs'],
+      ['employees','fa-users','Employees'],
+      ['summary','fa-chart-bar','Summary'],
+      ['audit','fa-history','Audit Log'],
+    ];
+    // Non-admins skip audit + employees views
+    var visibleViews = isAdmin() ? VIEWS : VIEWS.slice(0,1);
 
-      '<div class="flex flex-col h-full" style="font-family:\'DM Sans\',sans-serif">' +
+    container.innerHTML =
+      '<style>'+
+        '.pr-section{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;overflow:hidden;margin-bottom:.75rem}'+
+        '.pr-section-head{padding:.625rem 1rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:.5rem}'+
+        '.pr-field label{display:block;font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem}'+
+        '.pr-input{width:100%;padding:.5rem .75rem;border:1.5px solid #e2e8f0;border-radius:.625rem;font-size:.875rem;color:#1e293b;outline:none;font-family:inherit;background:#fff;box-sizing:border-box;transition:border-color .15s,box-shadow .15s}'+
+        '.pr-input:focus{border-color:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.12)}'+
+        '.pr-input[readonly]{background:#f8fafc;color:#64748b;cursor:default}'+
+        '.pr-input.error{border-color:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.1)}'+
+        '.pr-calc{background:#f0fdf4;color:#064e3b;font-weight:700}'+
+        '.net-pay-hero{background:linear-gradient(135deg,#064e3b,#065f46);border-radius:1rem;padding:1.25rem 1.5rem;color:#fff;display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem}'+
+        '.net-pay-hero .amount{font-size:2.25rem;font-weight:900;letter-spacing:-.03em;line-height:1}'+
+        '.pr-warn{display:flex;align-items:start;gap:.5rem;padding:.625rem .875rem;border-radius:.625rem;font-size:.75rem;font-weight:600;margin-bottom:.5rem}'+
+        '.pr-warn.red{background:#fef2f2;border:1px solid #fca5a5;color:#991b1b}'+
+        '.pr-warn.amber{background:#fffbeb;border:1px solid #fcd34d;color:#92400e}'+
+        '.pr-warn.blue{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}'+
+        '.pr-tax-row{display:flex;justify-content:space-between;align-items:center;padding:.375rem 0;border-bottom:1px solid #f1f5f9;font-size:.75rem}'+
+        '.pr-tax-row:last-child{border:none}'+
+        '.sticky-header{position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #e2e8f0;padding:.875rem 1.25rem;border-radius:1rem 1rem 0 0}'+
+      '</style>'+
+
+      '<div class="flex flex-col h-full" style="font-family:\'DM Sans\',sans-serif">'+
 
         // ── Header
-        '<div class="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-4">' +
-          '<div class="flex items-center justify-between gap-4 mb-3">' +
-            '<div class="flex items-center gap-3">' +
-              '<div class="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center"><i class="fas fa-money-bill-wave text-emerald-600 text-sm"></i></div>' +
-              '<div>' +
-                '<h1 class="text-xl font-extrabold text-slate-900 tracking-tight">Payroll</h1>' +
-                '<p class="text-xs text-slate-400">Manage pay runs, approvals &amp; employee compensation</p>' +
-              '</div>' +
-            '</div>' +
-            '<div class="flex items-center gap-2">' +
-              // Live total counter
-              '<div class="hidden md:flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">' +
-                '<span class="w-2 h-2 bg-emerald-500 rounded-full"></span>' +
-                '<span class="text-xs font-semibold text-slate-500">Month payroll:</span>' +
-                '<span id="pr-live-total" class="text-sm font-extrabold text-emerald-700">—</span>' +
-              '</div>' +
-              (isPayAdmin() ? '<button id="pr-run-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl text-white border-none cursor-pointer" style="background:#10b981"><i class="fas fa-play text-[10px]"></i>New Pay Run</button>' : '') +
-              (isPayAdmin() ? '<button id="pr-bulk-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer"><i class="fas fa-bolt text-[10px]"></i>Bulk Run</button>' : '') +
-            '</div>' +
-          '</div>' +
-
-          // Stats
-          '<div id="pr-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3"></div>' +
-
-          // Toolbar
-          '<div class="flex items-center gap-2 flex-wrap">' +
-            '<div class="relative flex-1 min-w-[150px] max-w-xs">' +
-              '<i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs pointer-events-none"></i>' +
-              '<input id="pr-search" type="text" placeholder="Search employee or run…" value="'+esc(_searchVal)+'" ' +
-                'class="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-xl bg-white text-slate-700 focus:outline-none focus:border-emerald-400" style="font-family:inherit">' +
-            '</div>' +
-            '<select id="pr-filter-status" class="px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white text-slate-600 focus:outline-none focus:border-emerald-400" style="font-family:inherit">' +
-              '<option value="">All Statuses</option>' +
-              STATUSES.map(function(s){ return '<option value="'+s+'"'+(filters.status===s?' selected':'')+'>'+s+'</option>'; }).join('') +
-            '</select>' +
-            (isAdmin() ? '<select id="pr-filter-emp" class="px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white text-slate-600 focus:outline-none focus:border-emerald-400" style="font-family:inherit">'+empOpts+'</select>' : '') +
-            '<div class="flex-1"></div>' +
-            // View switcher
-            '<div class="flex items-center gap-1 bg-slate-100 rounded-xl p-1">' +
-              [['runs','fa-list-alt','Pay Runs'],['employees','fa-users','Employees'],['summary','fa-chart-bar','Summary']].map(function(v){
+        '<div class="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-4">'+
+          '<div class="flex items-center justify-between gap-4 mb-3">'+
+            '<div class="flex items-center gap-3">'+
+              '<div class="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center"><i class="fas fa-money-bill-wave text-emerald-600 text-sm"></i></div>'+
+              '<div>'+
+                '<h1 class="text-xl font-extrabold text-slate-900 tracking-tight">Payroll</h1>'+
+                '<p class="text-xs text-slate-400">Pay runs · approvals · employee compensation</p>'+
+              '</div>'+
+            '</div>'+
+            '<div class="flex items-center gap-2">'+
+              '<div class="hidden md:flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">'+
+                '<span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>'+
+                '<span class="text-xs font-semibold text-slate-500">Month payroll:</span>'+
+                '<span id="pr-live-total" class="text-sm font-extrabold text-emerald-700">—</span>'+
+              '</div>'+
+              (isPayAdmin()?'<button id="pr-run-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl text-white border-none cursor-pointer" style="background:#10b981"><i class="fas fa-plus text-[10px]"></i>New Pay Run</button>':'') +
+              (isPayAdmin()?'<button id="pr-bulk-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer"><i class="fas fa-bolt text-[10px]"></i>Bulk Run</button>':'') +
+            '</div>'+
+          '</div>'+
+          '<div id="pr-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3"></div>'+
+          '<div class="flex items-center gap-2 flex-wrap">'+
+            '<div class="relative flex-1 min-w-[150px] max-w-xs">'+
+              '<i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs pointer-events-none"></i>'+
+              '<input id="pr-search" type="text" placeholder="Search employee or run ID…" value="'+esc(_searchVal)+'" class="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-xl bg-white text-slate-700 focus:outline-none focus:border-emerald-400" style="font-family:inherit">'+
+            '</div>'+
+            '<select id="pr-filter-status" class="px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white text-slate-600 focus:outline-none focus:border-emerald-400" style="font-family:inherit">'+
+              '<option value="">All Statuses</option>'+
+              STATUSES.map(function(s){ return '<option value="'+s+'"'+(filters.status===s?' selected':'')+'>'+s+'</option>'; }).join('')+
+            '</select>'+
+            (isAdmin()?'<select id="pr-filter-emp" class="px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white text-slate-600 focus:outline-none focus:border-emerald-400" style="font-family:inherit">'+empOpts+'</select>':'') +
+            '<div class="flex-1"></div>'+
+            '<div class="flex items-center gap-1 bg-slate-100 rounded-xl p-1">'+
+              visibleViews.map(function(v){
                 return '<button data-view="'+v[0]+'" class="flex items-center gap-1.5 px-3 h-7 rounded-lg text-xs font-semibold transition-all '+
-                  (activeView===v[0]?'bg-white shadow-sm text-emerald-600':'text-slate-500 hover:text-slate-700')+'">' +
+                  (activeView===v[0]?'bg-white shadow-sm text-emerald-600':'text-slate-500 hover:text-slate-700')+'">'+
                   '<i class="fas '+v[1]+' text-[10px]"></i>'+v[2]+'</button>';
-              }).join('') +
-            '</div>' +
-          '</div>' +
-        '</div>' +
+              }).join('')+
+            '</div>'+
+          '</div>'+
+        '</div>'+
 
-        // ── Content
-        '<div id="pr-content" class="flex-1 overflow-y-auto px-6 py-4"></div>' +
+        '<div id="pr-content" class="flex-1 overflow-y-auto px-6 py-4"></div>'+
       '</div>';
 
     // Bind toolbar
     document.getElementById('pr-search').addEventListener('input', function(){
       clearTimeout(_searchTimer);
       var v = this.value;
-      _searchTimer = setTimeout(function(){ _searchVal=v; rerender(); }, 300);
+      _searchTimer = setTimeout(function(){ _searchVal=v; rerender(); }, 280);
     });
     document.getElementById('pr-filter-status').addEventListener('change', function(){ filters.status=this.value; rerender(); });
     var fe = document.getElementById('pr-filter-emp');
     if (fe) fe.addEventListener('change', function(){ filters.employee_id=this.value; rerender(); });
-
     document.querySelectorAll('[data-view]').forEach(function(btn){
       btn.addEventListener('click', function(){
-        activeView = this.dataset.view;
-        sessionStorage.setItem('pr_view', activeView);
+        activeView=this.dataset.view;
+        sessionStorage.setItem('pr_view',activeView);
         render();
       });
     });
-
     var rb = document.getElementById('pr-run-btn');
     if (rb) rb.addEventListener('click', function(){ openRunForm(null); });
     var bb = document.getElementById('pr-bulk-btn');
@@ -367,97 +410,107 @@ window.WorkVoltPages['payroll'] = function(container) {
     loadData();
   }
 
-  // ── Pay Runs List View ────────────────────────────────────────
+  // ── Pay Runs List ─────────────────────────────────────────────
   function renderRuns(rows) {
-    var el = document.getElementById('pr-content');
-    if (!el) return;
-
+    var el = document.getElementById('pr-content'); if (!el) return;
     if (!rows.length) {
-      el.innerHTML = '<div class="flex flex-col items-center justify-center py-20 text-slate-300"><i class="fas fa-money-check-alt text-5xl mb-4 opacity-30"></i><p class="font-semibold text-slate-500">No pay runs found</p><p class="text-sm mt-1">Create a new pay run to get started.</p></div>';
+      el.innerHTML = '<div class="flex flex-col items-center justify-center py-20 text-slate-300"><i class="fas fa-money-check-alt text-5xl mb-4 opacity-30"></i><p class="font-semibold text-slate-500">No pay runs found</p>'+(isPayAdmin()?'<button onclick="document.getElementById(\'pr-run-btn\').click()" class="mt-4 px-4 py-2 text-sm font-bold text-white rounded-xl border-none cursor-pointer" style="background:#10b981">Create First Pay Run</button>':'')+' </div>';
+      return;
+    }
+
+    // ── Employee self-view (non-admin) — card-based breakdown
+    if (!isAdmin()) {
+      renderSelfView(rows);
       return;
     }
 
     function th(col, lbl) {
-      var active = sortState.col===col;
-      var icon   = active?(sortState.dir==='asc'?'fa-sort-up':'fa-sort-down'):'fa-sort';
-      return '<th class="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider text-left whitespace-nowrap" data-sort="'+col+'">' +
-        '<span class="flex items-center gap-1">'+lbl+'<i class="fas '+icon+' text-[9px] '+(active?'text-emerald-500':'text-slate-300')+'"></i></span></th>';
+      var active=sortState.col===col;
+      return '<th class="px-4 py-3 cursor-pointer select-none hover:bg-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider text-left whitespace-nowrap" data-sort="'+col+'">'+
+        '<span class="flex items-center gap-1">'+lbl+'<i class="fas '+(active?(sortState.dir==='asc'?'fa-sort-up':'fa-sort-down'):'fa-sort')+' text-[9px] '+(active?'text-emerald-500':'text-slate-300')+'"></i></span></th>';
     }
 
     var html =
-      '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">' +
-      '<table class="w-full text-sm border-collapse"><thead class="bg-slate-50 border-b border-slate-200"><tr>' +
-        (isAdmin() ? '<th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-left">Employee</th>' : '') +
-        th('period_start','Pay Period') +
-        '<th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-left">Earnings</th>' +
-        '<th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-left">Deductions</th>' +
-        '<th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-left whitespace-nowrap">Net Pay</th>' +
-        th('status','Status') +
-        '<th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-left">Actions</th>' +
+      '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">'+
+      '<table class="w-full text-sm border-collapse">'+
+      '<thead class="bg-slate-50 border-b border-slate-200"><tr>'+
+        '<th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-left">Employee</th>'+
+        th('period_start','Pay Period')+
+        '<th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-left">Earnings</th>'+
+        '<th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-left">Taxes & Ded.</th>'+
+        th('net','Net Pay')+
+        th('status','Status')+
+        '<th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>'+
       '</tr></thead><tbody>';
 
     rows.forEach(function(r) {
-      var gross   = calcGross(r);
-      var ded     = calcDeductions(r);
-      var net     = calcNet(r);
-      var anom    = detectAnomaly(r, runsCache);
-      var cfg     = STATUS_CFG[r.status] || STATUS_CFG['Draft'];
-      var canEdit = isPayAdmin() && r.status !== 'Paid' && r.status !== 'Void';
-      var canApprove = isPayAdmin() && r.status === 'Pending';
-      var canPay     = isPayAdmin() && r.status === 'Approved';
-      var netColor   = r.status==='Approved'||r.status==='Paid' ? 'text-emerald-700' : net<0 ? 'text-red-600' : 'text-slate-900';
+      var gross = calcGross(r), ded = calcDeductions(r), net = calcNet(r);
+      var anom  = detectAnomaly(r, runsCache);
+      var cfg   = STATUS_CFG[r.status]||STATUS_CFG['Draft'];
+      var canEdit    = isPayAdmin() && r.status!=='Paid' && r.status!=='Void';
+      var canApprove = isPayAdmin() && r.status==='Pending';
+      var canPay     = isPayAdmin() && r.status==='Approved';
+      var otRisk     = hasOvertimeRisk(r);
+      var netColor   = (r.status==='Approved'||r.status==='Paid')?'text-emerald-700':net<0?'text-red-600':'text-slate-900';
 
-      html += '<tr class="border-t border-slate-100 hover:bg-emerald-50/20 transition-colors group cursor-pointer pr-row" data-id="'+esc(r.id)+'" style="border-left:3px solid '+cfg.dot+'">' +
-        (isAdmin() ? '<td class="px-4 py-3"><div class="flex items-center gap-2">'+userAvatar(r.employee_id,'w-6 h-6 text-[10px]')+'<div><div class="text-xs font-semibold text-slate-900 leading-snug">'+esc(r.employee_name||userName(r.employee_id))+'</div><div class="text-[10px] font-mono text-slate-400">'+esc(r.id)+'</div></div></div></td>' : '') +
-        '<td class="px-4 py-3 whitespace-nowrap"><div class="text-xs font-bold text-slate-800">'+esc(periodLabel(r.period_start,r.period_end))+'</div>'+(r.pay_type?'<div class="text-[10px] text-slate-400">'+esc(r.pay_type)+'</div>':'')+
-        '</td>' +
-        '<td class="px-4 py-3 whitespace-nowrap">' +
-          '<div class="text-sm font-bold text-slate-900">'+fmtMoney(gross)+'</div>' +
-          '<div class="flex flex-col gap-0.5 mt-0.5">' +
-            (parseFloat(r.gross_salary) ? '<div class="text-[10px] text-slate-400">Base: '+fmtMoney(r.gross_salary)+'</div>' : '') +
-            (parseFloat(r.bonus)        ? '<div class="text-[10px] text-emerald-600 font-semibold">+Bonus: '+fmtMoney(r.bonus)+'</div>' : '') +
-            (parseFloat(r.overtime_pay) ? '<div class="text-[10px] text-orange-600 font-semibold">+OT: '+fmtMoney(r.overtime_pay)+'</div>' : '') +
-          '</div>' +
-        '</td>' +
-        '<td class="px-4 py-3 whitespace-nowrap">' +
-          '<div class="text-sm font-bold text-red-500">-'+fmtMoney(ded)+'</div>' +
-          '<div class="flex flex-col gap-0.5 mt-0.5">' +
-            (parseFloat(r.tax)              ? '<div class="text-[10px] text-slate-400">Tax: '+fmtMoney(r.tax)+'</div>' : '') +
-            (parseFloat(r.health_insurance) ? '<div class="text-[10px] text-slate-400">Health: '+fmtMoney(r.health_insurance)+'</div>' : '') +
-            (parseFloat(r.pension)          ? '<div class="text-[10px] text-slate-400">Pension: '+fmtMoney(r.pension)+'</div>' : '') +
-          '</div>' +
-        '</td>' +
-        '<td class="px-4 py-3 whitespace-nowrap">' +
-          '<div class="text-base font-extrabold '+netColor+'">'+fmtMoney(net)+'</div>' +
-          (anom ? '<div class="mt-0.5">'+anomalyBadge(anom)+'</div>' : '') +
-          (net < 0 ? '<div class="text-[10px] text-red-600 font-bold mt-0.5"><i class="fas fa-exclamation-triangle mr-0.5"></i>Net &lt; 0</div>' : '') +
-        '</td>' +
-        '<td class="px-4 py-3 whitespace-nowrap">'+statusBadge(r.status||'Draft')+'</td>' +
-        '<td class="px-4 py-3 whitespace-nowrap"><div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">' +
-          (canEdit    ? '<button class="pr-act w-7 h-7 rounded-lg border-none bg-transparent hover:bg-blue-50 hover:text-blue-600 text-slate-400 cursor-pointer flex items-center justify-center" data-action="edit"    data-id="'+esc(r.id)+'" title="Edit"><i class="fas fa-pencil text-xs"></i></button>' : '') +
-          (r.status==='Draft' && isPayAdmin() ? '<button class="pr-act w-7 h-7 rounded-lg border-none bg-transparent hover:bg-amber-50 hover:text-amber-600 text-slate-400 cursor-pointer flex items-center justify-center" data-action="submit" data-id="'+esc(r.id)+'" title="Submit"><i class="fas fa-paper-plane text-xs"></i></button>' : '') +
-          (canApprove ? '<button class="pr-act w-7 h-7 rounded-lg border-none bg-transparent hover:bg-green-50 hover:text-green-600 text-slate-400 cursor-pointer flex items-center justify-center" data-action="approve" data-id="'+esc(r.id)+'" title="Approve"><i class="fas fa-check text-xs"></i></button>' : '') +
-          (canPay     ? '<button class="pr-act w-7 h-7 rounded-lg border-none bg-transparent hover:bg-blue-50 hover:text-blue-600 text-slate-400 cursor-pointer flex items-center justify-center" data-action="pay" data-id="'+esc(r.id)+'" title="Mark Paid"><i class="fas fa-dollar-sign text-xs"></i></button>' : '') +
-          '<button class="pr-act w-7 h-7 rounded-lg border-none bg-transparent hover:bg-purple-50 hover:text-purple-600 text-slate-400 cursor-pointer flex items-center justify-center" data-action="payslip" data-id="'+esc(r.id)+'" title="View Payslip"><i class="fas fa-file-alt text-xs"></i></button>' +
-          (isPayAdmin() ? '<button class="pr-act w-7 h-7 rounded-lg border-none bg-transparent hover:bg-red-50 hover:text-red-600 text-slate-400 cursor-pointer flex items-center justify-center" data-action="void" data-id="'+esc(r.id)+'" title="Void"><i class="fas fa-ban text-xs"></i></button>' : '') +
-        '</div></td>' +
+      html += '<tr class="border-t border-slate-100 hover:bg-emerald-50/20 transition-colors group cursor-pointer pr-row border-l-4 '+cfg.border+'" data-id="'+esc(r.id)+'">'+
+        '<td class="px-4 py-3">'+
+          '<div class="flex items-center gap-2">'+
+            userAvatar(r.employee_id,'w-7 h-7 text-[11px]')+
+            '<div>'+
+              '<div class="text-xs font-bold text-slate-900 leading-snug">'+esc(r.employee_name||userName(r.employee_id))+'</div>'+
+              '<div class="text-[10px] font-mono text-slate-400">'+esc(r.id)+'</div>'+
+            '</div>'+
+          '</div>'+
+        '</td>'+
+        '<td class="px-4 py-3 whitespace-nowrap">'+
+          '<div class="text-xs font-bold text-slate-800">'+esc(periodLabel(r.period_start,r.period_end))+'</div>'+
+          (r.pay_type?'<div class="text-[10px] text-slate-400">'+esc(r.pay_type)+'</div>':'')+
+          (otRisk?'<div class="text-[10px] text-orange-600 font-bold mt-0.5"><i class="fas fa-clock mr-0.5 text-[9px]"></i>OT flagged</div>':'')+
+        '</td>'+
+        '<td class="px-4 py-3 whitespace-nowrap">'+
+          '<div class="text-sm font-bold text-slate-900">'+fmtMoney(gross)+'</div>'+
+          '<div class="text-[10px] text-slate-400 mt-0.5">'+
+            (parseFloat(r.hours_total||r.overtime_hours||0)?fmtHours(r.hours_total||r.overtime_hours||0)+' hrs · ':'')+
+            (parseFloat(r.rate||0)?fmtMoney(r.rate)+'/hr':'')+
+          '</div>'+
+          (parseFloat(r.bonuses||r.bonus)?'<div class="text-[10px] text-emerald-600 font-semibold">+Bonus '+fmtMoney(r.bonuses||r.bonus)+'</div>':'')+
+        '</td>'+
+        '<td class="px-4 py-3 whitespace-nowrap">'+
+          '<div class="text-sm font-bold text-red-500">-'+fmtMoney(ded)+'</div>'+
+          '<div class="text-[10px] text-slate-400 mt-0.5">'+
+            (parseFloat(r.tax_total||r.tax)?'Tax '+fmtMoney(r.tax_total||r.tax):'')+
+          '</div>'+
+        '</td>'+
+        '<td class="px-4 py-3 whitespace-nowrap">'+
+          '<div class="text-base font-extrabold '+netColor+'">'+fmtMoney(net)+'</div>'+
+          (anom?'<div class="mt-0.5">'+anomalyBadge(anom)+'</div>':'')+
+          (net<0?'<div class="text-[10px] text-red-600 font-bold mt-0.5"><i class="fas fa-exclamation-triangle mr-0.5"></i>Net &lt; 0</div>':'')+
+        '</td>'+
+        '<td class="px-4 py-3 whitespace-nowrap">'+statusBadge(r.status||'Draft')+'</td>'+
+        '<td class="px-4 py-3 whitespace-nowrap">'+
+          '<div class="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">'+
+            (canEdit?'<button class="pr-act w-7 h-7 rounded-lg border-none bg-transparent hover:bg-blue-50 hover:text-blue-600 text-slate-400 cursor-pointer flex items-center justify-center" data-action="edit" data-id="'+esc(r.id)+'" title="Edit"><i class="fas fa-pencil text-xs"></i></button>':'')+
+            (r.status==='Draft'&&isPayAdmin()?'<button class="pr-act w-7 h-7 rounded-lg border-none bg-transparent hover:bg-amber-50 hover:text-amber-600 text-slate-400 cursor-pointer flex items-center justify-center" data-action="submit" data-id="'+esc(r.id)+'" title="Submit for Approval"><i class="fas fa-paper-plane text-xs"></i></button>':'')+
+            (canApprove?'<button class="pr-act w-7 h-7 rounded-lg border-none bg-transparent hover:bg-green-50 hover:text-green-600 text-slate-400 cursor-pointer flex items-center justify-center" data-action="approve" data-id="'+esc(r.id)+'" title="Approve"><i class="fas fa-check text-xs"></i></button>':'')+
+            (canPay?'<button class="pr-act w-7 h-7 rounded-lg border-none bg-transparent hover:bg-blue-50 hover:text-blue-600 text-slate-400 cursor-pointer flex items-center justify-center" data-action="pay" data-id="'+esc(r.id)+'" title="Mark Paid"><i class="fas fa-dollar-sign text-xs"></i></button>':'')+
+            '<button class="pr-act w-7 h-7 rounded-lg border-none bg-transparent hover:bg-purple-50 hover:text-purple-600 text-slate-400 cursor-pointer flex items-center justify-center" data-action="payslip" data-id="'+esc(r.id)+'" title="View Payslip"><i class="fas fa-file-alt text-xs"></i></button>'+
+            (isPayAdmin()?'<button class="pr-act w-7 h-7 rounded-lg border-none bg-transparent hover:bg-red-50 hover:text-red-600 text-slate-400 cursor-pointer flex items-center justify-center" data-action="void" data-id="'+esc(r.id)+'" title="Void"><i class="fas fa-ban text-xs"></i></button>':'')+
+          '</div>'+
+        '</td>'+
       '</tr>';
     });
 
     html += '</tbody></table></div>';
     el.innerHTML = html;
 
-    // Sort headers
     el.querySelectorAll('[data-sort]').forEach(function(th){
       th.addEventListener('click', function(){
-        var col = this.dataset.sort;
-        if (sortState.col===col) sortState.dir=sortState.dir==='asc'?'desc':'asc';
-        else { sortState.col=col; sortState.dir='asc'; }
+        var col=this.dataset.sort;
+        sortState = { col:col, dir:(sortState.col===col&&sortState.dir==='asc'?'desc':'asc') };
         rerender();
       });
     });
-
-    // Row click → detail
     el.querySelectorAll('.pr-row').forEach(function(row){
       row.addEventListener('click', function(e){
         if (e.target.closest('.pr-act')) return;
@@ -465,63 +518,149 @@ window.WorkVoltPages['payroll'] = function(container) {
         if (run) openPayslip(run);
       });
     });
-
-    // Action buttons
     el.querySelectorAll('.pr-act').forEach(function(btn){
       btn.addEventListener('click', function(e){
         e.stopPropagation();
-        var id  = this.dataset.id;
-        var act = this.dataset.action;
-        var run = runsCache.find(function(r){ return r.id===id; });
+        var id=this.dataset.id, act=this.dataset.action;
+        var run=runsCache.find(function(r){ return r.id===id; });
         if (act==='edit')    openRunForm(run);
         if (act==='submit')  updateRunStatus(id,'Pending');
         if (act==='approve') updateRunStatus(id,'Approved');
         if (act==='pay')     updateRunStatus(id,'Paid');
         if (act==='payslip') openPayslip(run);
-        if (act==='void')    { if (confirm('Void this pay run? This cannot be undone.')) updateRunStatus(id,'Void'); }
+        if (act==='void')    { if(confirm('Void this pay run? This cannot be undone.')) updateRunStatus(id,'Void'); }
       });
     });
   }
 
+  // ── Employee Self-View ────────────────────────────────────────
+  function renderSelfView(rows) {
+    var el = document.getElementById('pr-content'); if (!el) return;
+    var sorted = rows.slice().sort(function(a,b){ return new Date(b.period_start)-new Date(a.period_start); });
+    var latest = sorted[0];
+    var totalPaid = sorted.filter(function(r){ return r.status==='Paid'; }).reduce(function(s,r){ return s+calcNet(r); }, 0);
+    var ytd = sorted.filter(function(r){
+      var y = new Date().getFullYear();
+      return r.period_start && new Date(r.period_start).getFullYear()===y && r.status==='Paid';
+    }).reduce(function(s,r){ return s+calcNet(r); }, 0);
+
+    var html = '<div class="max-w-2xl mx-auto space-y-4">';
+
+    // Personal summary hero
+    html += '<div class="bg-gradient-to-br from-slate-900 to-emerald-950 rounded-2xl p-6 text-white">'+
+      '<p class="text-xs font-bold uppercase tracking-widest opacity-60 mb-1">My Payroll</p>'+
+      '<div class="flex items-end gap-4">'+
+        '<div><p class="text-sm opacity-70">YTD Take-Home</p><p class="text-4xl font-black">'+fmtMoney(ytd,0)+'</p></div>'+
+        '<div class="ml-auto text-right"><p class="text-sm opacity-70">Lifetime Paid</p><p class="text-xl font-bold">'+fmtMoney(totalPaid,0)+'</p></div>'+
+      '</div>'+
+    '</div>';
+
+    // Latest payslip breakdown
+    if (latest) {
+      var g=calcGross(latest), d=calcDeductions(latest), n=calcNet(latest);
+      html += '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">'+
+        '<div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">'+
+          '<div><p class="font-bold text-slate-900">Latest Pay Run</p>'+
+          '<p class="text-xs text-slate-400">'+esc(periodLabel(latest.period_start,latest.period_end))+'</p></div>'+
+          statusBadge(latest.status)+
+        '</div>'+
+        '<div class="p-5 grid grid-cols-3 gap-3 border-b border-slate-100">'+
+          '<div class="text-center"><p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Gross</p><p class="text-xl font-black text-slate-900">'+fmtMoney(g,0)+'</p></div>'+
+          '<div class="text-center border-x border-slate-100"><p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Deductions</p><p class="text-xl font-black text-red-500">-'+fmtMoney(d,0)+'</p></div>'+
+          '<div class="text-center"><p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Net Pay</p><p class="text-xl font-black text-emerald-700">'+fmtMoney(n,0)+'</p></div>'+
+        '</div>'+
+        // Breakdown rows
+        '<div class="px-5 py-3 space-y-0.5">'+
+          _lineItem('Base / Rate', fmtMoney(parseFloat(latest.gross_salary||latest.gross)||0), '')+
+          (parseFloat(latest.hours_total||latest.overtime_hours||0)?_lineItem('Hours', fmtHours(latest.hours_total||latest.overtime_hours||0)+' total', ''):'') +
+          (parseFloat(latest.bonuses||latest.bonus)?_lineItem('Bonus', '+'+fmtMoney(latest.bonuses||latest.bonus), 'text-emerald-600'):'') +
+          '<div class="border-t border-slate-100 mt-2 pt-2">'+
+          (parseFloat(latest.tax_federal||0)?_lineItem('Federal Tax', '-'+fmtMoney(latest.tax_federal), 'text-red-500'):'') +
+          (parseFloat(latest.tax_fica||0)?_lineItem('FICA (SS + Medicare)', '-'+fmtMoney(latest.tax_fica), 'text-red-500'):'') +
+          (parseFloat(latest.tax_state||0)?_lineItem('State Tax', '-'+fmtMoney(latest.tax_state), 'text-red-500'):'') +
+          (parseFloat(latest.deductions||latest.other_deductions||0)?_lineItem('Other Deductions', '-'+fmtMoney(latest.deductions||latest.other_deductions||0), 'text-red-500'):'') +
+          '</div>'+
+        '</div>'+
+        '<div class="px-5 py-4 bg-emerald-50 flex items-center justify-between border-t border-emerald-100">'+
+          '<span class="text-sm font-extrabold text-emerald-800 uppercase tracking-wide">Net Pay</span>'+
+          '<span class="text-2xl font-black text-emerald-700">'+fmtMoney(n)+'</span>'+
+        '</div>'+
+        '<div class="px-5 py-3 flex gap-2">'+
+          '<button class="pr-payslip-btn flex-1 py-2 text-xs font-bold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 bg-white cursor-pointer" data-id="'+esc(latest.id)+'"><i class="fas fa-eye mr-1.5"></i>View Full Payslip</button>'+
+          '<button class="pr-export-btn flex-1 py-2 text-xs font-bold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 bg-white cursor-pointer" data-id="'+esc(latest.id)+'"><i class="fas fa-download mr-1.5"></i>Export CSV</button>'+
+        '</div>'+
+      '</div>';
+    }
+
+    // History table
+    html += '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">'+
+      '<div class="px-5 py-3 border-b border-slate-100"><p class="font-bold text-slate-900 text-sm">Pay History</p></div>'+
+      '<table class="w-full text-sm"><thead class="bg-slate-50"><tr>'+
+        '<th class="px-4 py-2 text-left text-xs font-bold text-slate-400 uppercase">Period</th>'+
+        '<th class="px-4 py-2 text-right text-xs font-bold text-slate-400 uppercase">Gross</th>'+
+        '<th class="px-4 py-2 text-right text-xs font-bold text-slate-400 uppercase">Net</th>'+
+        '<th class="px-4 py-2 text-left text-xs font-bold text-slate-400 uppercase">Status</th>'+
+      '</tr></thead><tbody>';
+    sorted.forEach(function(r){
+      html += '<tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer pr-hist-row" data-id="'+esc(r.id)+'">'+
+        '<td class="px-4 py-2.5 text-xs font-semibold text-slate-700">'+esc(periodLabel(r.period_start,r.period_end))+'</td>'+
+        '<td class="px-4 py-2.5 text-right text-xs text-slate-600">'+fmtMoney(calcGross(r))+'</td>'+
+        '<td class="px-4 py-2.5 text-right text-xs font-bold text-emerald-700">'+fmtMoney(calcNet(r))+'</td>'+
+        '<td class="px-4 py-2.5">'+statusBadge(r.status)+'</td>'+
+      '</tr>';
+    });
+    html += '</tbody></table></div></div>';
+    el.innerHTML = html;
+
+    el.querySelectorAll('.pr-payslip-btn').forEach(function(b){
+      b.addEventListener('click', function(){ var r=runsCache.find(function(x){return x.id===b.dataset.id;}); if(r) openPayslip(r); });
+    });
+    el.querySelectorAll('.pr-export-btn').forEach(function(b){
+      b.addEventListener('click', function(){ var r=runsCache.find(function(x){return x.id===b.dataset.id;}); if(r) exportPayslipCSV(r); });
+    });
+    el.querySelectorAll('.pr-hist-row').forEach(function(row){
+      row.addEventListener('click', function(){ var r=runsCache.find(function(x){return x.id===row.dataset.id;}); if(r) openPayslip(r); });
+    });
+  }
+
+  function _lineItem(label, val, valCls) {
+    return '<div class="pr-tax-row"><span class="text-slate-500">'+esc(label)+'</span><span class="font-semibold '+(valCls||'text-slate-800')+'">'+esc(val)+'</span></div>';
+  }
+
   // ── Employees View ────────────────────────────────────────────
   function renderEmployees() {
-    var el = document.getElementById('pr-content');
-    if (!el) return;
-
-    // Merge users with payroll employee records
+    var el = document.getElementById('pr-content'); if (!el) return;
     var empMap = {};
-    empCache.forEach(function(e){ empMap[e.id] = e; });
-
+    empCache.forEach(function(e){ empMap[e.id]=e; });
     var people = usersCache.map(function(u) {
-      var uid = u.user_id||u.id;
-      var emp = empMap[uid] || {};
-      var empRuns = runsCache.filter(function(r){ return r.employee_id===uid; });
-      var lastRun = empRuns.sort(function(a,b){ return new Date(b.period_start)-new Date(a.period_start); })[0];
+      var uid=u.user_id||u.id, emp=empMap[uid]||{};
+      var empRuns=runsCache.filter(function(r){ return r.employee_id===uid; });
+      var lastRun=empRuns.sort(function(a,b){ return new Date(b.period_start)-new Date(a.period_start); })[0];
       return { u:u, emp:emp, uid:uid, lastRun:lastRun, runCount:empRuns.length,
-               totalPaid: empRuns.filter(function(r){ return r.status==='Paid'; }).reduce(function(s,r){ return s+calcNet(r);},0) };
+               totalPaid:empRuns.filter(function(r){return r.status==='Paid';}).reduce(function(s,r){return s+calcNet(r);},0) };
     });
 
     var html = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">';
     people.forEach(function(p) {
-      var u = p.u; var lastRun = p.lastRun;
+      var u=p.u, lr=p.lastRun;
+      var anom = lr ? detectAnomaly(lr, runsCache) : null;
       html +=
-        '<div class="pr-emp-card bg-white border border-slate-200 rounded-2xl p-5 hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer" data-uid="'+esc(p.uid)+'">' +
-          '<div class="flex items-start gap-3 mb-4">' +
-            userAvatar(p.uid, 'w-10 h-10 text-sm') +
-            '<div class="flex-1 min-w-0">' +
-              '<div class="font-bold text-slate-900 text-sm truncate">'+esc(u.name||u.email||p.uid)+'</div>' +
-              '<div class="text-xs text-slate-400 truncate">'+esc(u.role||'—')+(u.department?' · '+esc(u.department):'')+'</div>' +
-              (p.emp.pay_type ? '<div class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-px rounded font-semibold inline-block mt-1">'+esc(p.emp.pay_type)+'</div>' : '') +
-            '</div>' +
-          '</div>' +
-          '<div class="grid grid-cols-2 gap-3 mb-3">' +
-            '<div class="bg-slate-50 rounded-xl p-2.5 text-center"><div class="text-lg font-extrabold text-slate-900">'+p.runCount+'</div><div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Pay Runs</div></div>' +
-            '<div class="bg-emerald-50 rounded-xl p-2.5 text-center"><div class="text-lg font-extrabold text-emerald-700">'+fmtMoney(p.totalPaid,0)+'</div><div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Total Paid</div></div>' +
-          '</div>' +
-          (lastRun
-            ? '<div class="flex items-center justify-between pt-3 border-t border-slate-100"><span class="text-[10px] text-slate-400">Last run: '+esc(fmtDate(lastRun.period_start))+'</span>'+statusBadge(lastRun.status||'Draft')+'</div>'
-            : '<div class="pt-3 border-t border-slate-100 text-[10px] text-slate-400">No pay runs yet</div>') +
-          (isPayAdmin() ? '<button class="pr-emp-run w-full mt-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 border border-dashed border-emerald-300 rounded-xl transition-colors bg-transparent cursor-pointer" data-uid="'+esc(p.uid)+'" data-name="'+esc(u.name||u.email||p.uid)+'"><i class="fas fa-plus mr-1 text-[10px]"></i>New Pay Run</button>' : '') +
+        '<div class="pr-emp-card bg-white border border-slate-200 rounded-2xl p-5 hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer" data-uid="'+esc(p.uid)+'">'+
+          '<div class="flex items-start gap-3 mb-4">'+
+            userAvatar(p.uid,'w-10 h-10 text-sm')+
+            '<div class="flex-1 min-w-0">'+
+              '<div class="font-bold text-slate-900 text-sm truncate">'+esc(u.name||u.email||p.uid)+'</div>'+
+              '<div class="text-xs text-slate-400 truncate">'+esc(u.role||'—')+(u.department?' · '+esc(u.department):'')+'</div>'+
+              (p.emp.pay_type?'<div class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-px rounded font-semibold inline-block mt-1">'+esc(p.emp.pay_type)+(p.emp.salary?' · $'+p.emp.salary+(p.emp.pay_type==='Hourly'?'/hr':''):'')+' </div>':'') +
+            '</div>'+
+            (anom?anomalyBadge(anom):'')+
+          '</div>'+
+          '<div class="grid grid-cols-2 gap-3 mb-3">'+
+            '<div class="bg-slate-50 rounded-xl p-2.5 text-center"><div class="text-lg font-extrabold text-slate-900">'+p.runCount+'</div><div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Pay Runs</div></div>'+
+            '<div class="bg-emerald-50 rounded-xl p-2.5 text-center"><div class="text-lg font-extrabold text-emerald-700">'+fmtMoney(p.totalPaid,0)+'</div><div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Total Paid</div></div>'+
+          '</div>'+
+          (lr?'<div class="flex items-center justify-between pt-3 border-t border-slate-100"><span class="text-[10px] text-slate-400">Last: '+esc(fmtDate(lr.period_start))+'</span>'+statusBadge(lr.status||'Draft')+'</div>':'<div class="pt-3 border-t border-slate-100 text-[10px] text-slate-400">No pay runs yet</div>')+
+          (isPayAdmin()?'<button class="pr-emp-run w-full mt-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 border border-dashed border-emerald-300 rounded-xl transition-colors bg-transparent cursor-pointer" data-uid="'+esc(p.uid)+'" data-name="'+esc(u.name||u.email||p.uid)+'"><i class="fas fa-plus mr-1 text-[10px]"></i>New Pay Run</button>':'')+
         '</div>';
     });
     html += '</div>';
@@ -530,10 +669,8 @@ window.WorkVoltPages['payroll'] = function(container) {
     el.querySelectorAll('.pr-emp-card').forEach(function(card){
       card.addEventListener('click', function(e){
         if (e.target.closest('.pr-emp-run')) return;
-        filters.employee_id = this.dataset.uid;
-        filters.status = '';
-        activeView = 'runs';
-        sessionStorage.setItem('pr_view','runs');
+        filters.employee_id=this.dataset.uid; filters.status='';
+        activeView='runs'; sessionStorage.setItem('pr_view','runs');
         render();
         setTimeout(function(){ var fe=document.getElementById('pr-filter-emp'); if(fe) fe.value=filters.employee_id; },100);
       });
@@ -541,96 +678,154 @@ window.WorkVoltPages['payroll'] = function(container) {
     el.querySelectorAll('.pr-emp-run').forEach(function(btn){
       btn.addEventListener('click', function(e){
         e.stopPropagation();
-        openRunForm(null, { employee_id: this.dataset.uid, employee_name: this.dataset.name });
+        openRunForm(null, { employee_id:this.dataset.uid, employee_name:this.dataset.name });
       });
     });
   }
 
   // ── Summary View ──────────────────────────────────────────────
   function renderSummary(rows) {
-    var el = document.getElementById('pr-content');
-    if (!el) return;
-
-    // Group by employee
+    var el = document.getElementById('pr-content'); if (!el) return;
     var byEmp = {};
     rows.forEach(function(r){
-      var eid = r.employee_id||'unknown';
-      if (!byEmp[eid]) byEmp[eid] = { name:r.employee_name||userName(r.employee_id), runs:[], gross:0, deductions:0, net:0 };
+      var eid=r.employee_id||'unknown';
+      if (!byEmp[eid]) byEmp[eid]={ name:r.employee_name||userName(r.employee_id), runs:[], gross:0, deductions:0, net:0 };
       byEmp[eid].runs.push(r);
       byEmp[eid].gross      += calcGross(r);
       byEmp[eid].deductions += calcDeductions(r);
       byEmp[eid].net        += calcNet(r);
     });
+    var totalGross=rows.reduce(function(s,r){return s+calcGross(r);},0);
+    var totalDed  =rows.reduce(function(s,r){return s+calcDeductions(r);},0);
+    var totalNet  =rows.reduce(function(s,r){return s+calcNet(r);},0);
 
-    var totalGross = rows.reduce(function(s,r){ return s+calcGross(r); },0);
-    var totalDed   = rows.reduce(function(s,r){ return s+calcDeductions(r); },0);
-    var totalNet   = rows.reduce(function(s,r){ return s+calcNet(r); },0);
+    function sCard(label, icon, cls, val, sub) {
+      return '<div class="'+cls+' rounded-2xl px-5 py-4 text-white">'+
+        '<p class="text-xs font-bold opacity-70 uppercase tracking-widest mb-2"><i class="fas '+icon+' mr-1.5"></i>'+label+'</p>'+
+        '<p class="text-3xl font-black leading-none">'+val+'</p>'+
+        '<p class="text-xs opacity-60 mt-1.5">'+sub+'</p>'+
+      '</div>';
+    }
 
     var html =
-      // Grand total banner
-      '<div class="grid grid-cols-3 gap-4 mb-6">' +
-        summaryCard('Total Gross','fa-arrow-up','bg-slate-900 text-white',fmtMoney(totalGross,0),'All earnings before deductions') +
-        summaryCard('Total Deductions','fa-arrow-down','bg-red-600 text-white','-'+fmtMoney(totalDed,0),'Taxes, insurance, pension') +
-        summaryCard('Total Net Pay','fa-check','bg-emerald-700 text-white',fmtMoney(totalNet,0),'Employee take-home') +
-      '</div>' +
+      '<div class="grid grid-cols-3 gap-4 mb-6">'+
+        sCard('Total Gross','fa-arrow-up','bg-slate-800',fmtMoney(totalGross,0),'All earnings before deductions')+
+        sCard('Taxes & Deductions','fa-arrow-down','bg-red-700','-'+fmtMoney(totalDed,0),'Taxes, insurance, pension')+
+        sCard('Total Net Pay','fa-check','bg-emerald-700',fmtMoney(totalNet,0),'Employee take-home')+
+      '</div>'+
 
-      // Per-employee table
-      '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">' +
-        '<div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">' +
-          '<p class="text-xs font-extrabold text-slate-500 uppercase tracking-widest">Breakdown by Employee</p>' +
-          '<span class="text-xs text-slate-400">'+Object.keys(byEmp).length+' employees</span>' +
-        '</div>' +
-        '<table class="w-full text-sm border-collapse">' +
-          '<thead><tr class="border-b border-slate-100">' +
-            '<th class="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Employee</th>' +
-            '<th class="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Gross</th>' +
-            '<th class="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Deductions</th>' +
-            '<th class="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Net Pay</th>' +
-            '<th class="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Runs</th>' +
+      // Export row
+      '<div class="flex gap-2 mb-4">'+
+        '<button id="pr-export-all" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold border border-slate-200 rounded-xl bg-white hover:bg-slate-50 text-slate-600 cursor-pointer"><i class="fas fa-file-csv text-emerald-500"></i>Export CSV</button>'+
+      '</div>'+
+
+      '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">'+
+        '<div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">'+
+          '<p class="text-xs font-extrabold text-slate-500 uppercase tracking-widest">Breakdown by Employee</p>'+
+          '<span class="text-xs text-slate-400">'+Object.keys(byEmp).length+' employees</span>'+
+        '</div>'+
+        '<table class="w-full text-sm border-collapse">'+
+          '<thead><tr class="border-b border-slate-100">'+
+            '<th class="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Employee</th>'+
+            '<th class="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Gross</th>'+
+            '<th class="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Tax & Ded.</th>'+
+            '<th class="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Net Pay</th>'+
+            '<th class="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Runs</th>'+
           '</tr></thead><tbody>';
 
-    Object.entries(byEmp).forEach(function(entry) {
-      var eid = entry[0], d = entry[1];
-      var pct = totalGross ? Math.round(d.gross/totalGross*100) : 0;
+    Object.entries(byEmp).forEach(function(entry){
+      var eid=entry[0], d=entry[1];
+      var pct=totalGross?Math.round(d.gross/totalGross*100):0;
       html +=
-        '<tr class="border-t border-slate-100 hover:bg-slate-50 transition-colors">' +
-          '<td class="px-5 py-3"><div class="flex items-center gap-2">'+userAvatar(eid,'w-6 h-6 text-[10px]')+'<span class="text-sm font-semibold text-slate-900">'+esc(d.name)+'</span></div></td>' +
-          '<td class="px-5 py-3 text-right text-sm text-slate-700 font-semibold">'+fmtMoney(d.gross)+'</td>' +
-          '<td class="px-5 py-3 text-right text-sm text-red-500 font-semibold">-'+fmtMoney(d.deductions)+'</td>' +
-          '<td class="px-5 py-3 text-right">' +
-            '<div class="text-sm font-extrabold text-emerald-700">'+fmtMoney(d.net)+'</div>' +
-            '<div class="h-1.5 bg-slate-100 rounded-full mt-1" style="width:80px;margin-left:auto">' +
-              '<div class="h-1.5 bg-emerald-500 rounded-full" style="width:'+pct+'%"></div>' +
-            '</div>' +
-          '</td>' +
-          '<td class="px-5 py-3 text-right text-xs text-slate-500 font-semibold">'+d.runs.length+'</td>' +
+        '<tr class="border-t border-slate-100 hover:bg-slate-50 transition-colors">'+
+          '<td class="px-5 py-3"><div class="flex items-center gap-2">'+userAvatar(eid,'w-6 h-6 text-[10px]')+'<span class="text-sm font-semibold text-slate-900">'+esc(d.name)+'</span></div></td>'+
+          '<td class="px-5 py-3 text-right text-sm text-slate-700 font-semibold">'+fmtMoney(d.gross)+'</td>'+
+          '<td class="px-5 py-3 text-right text-sm text-red-500 font-semibold">-'+fmtMoney(d.deductions)+'</td>'+
+          '<td class="px-5 py-3 text-right">'+
+            '<div class="text-sm font-extrabold text-emerald-700">'+fmtMoney(d.net)+'</div>'+
+            '<div class="h-1.5 bg-slate-100 rounded-full mt-1" style="width:80px;margin-left:auto">'+
+              '<div class="h-1.5 bg-emerald-500 rounded-full" style="width:'+pct+'%"></div>'+
+            '</div>'+
+          '</td>'+
+          '<td class="px-5 py-3 text-right text-xs text-slate-500 font-semibold">'+d.runs.length+'</td>'+
         '</tr>';
     });
-
     html += '</tbody></table></div>';
+    el.innerHTML = html;
+
+    var exportBtn = document.getElementById('pr-export-all');
+    if (exportBtn) exportBtn.addEventListener('click', function(){ exportSummaryCSV(rows); });
+  }
+
+  // ── Audit Log View ────────────────────────────────────────────
+  function renderAudit() {
+    var el = document.getElementById('pr-content'); if (!el) return;
+    var logs = auditCache.slice().sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+
+    var ACTION_CFG = {
+      'created':  { icon:'fa-plus',        cls:'bg-blue-100 text-blue-600'   },
+      'updated':  { icon:'fa-pencil',      cls:'bg-amber-100 text-amber-600' },
+      'approved': { icon:'fa-check',       cls:'bg-green-100 text-green-600' },
+      'rejected': { icon:'fa-times',       cls:'bg-red-100 text-red-600'     },
+      'paid':     { icon:'fa-dollar-sign', cls:'bg-emerald-100 text-emerald-600' },
+      'deleted':  { icon:'fa-trash',       cls:'bg-red-100 text-red-600'     },
+    };
+
+    var html = '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">';
+    if (!logs.length) {
+      html += '<div class="p-12 text-center text-slate-400"><i class="fas fa-history text-3xl mb-3 opacity-30"></i><p class="font-semibold">No audit records yet</p></div>';
+    } else {
+      html += '<div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">'+
+        '<p class="text-xs font-extrabold text-slate-500 uppercase tracking-widest">Audit Log</p>'+
+        '<span class="text-xs text-slate-400">'+logs.length+' events</span>'+
+      '</div>';
+      html += '<div class="divide-y divide-slate-100">';
+      logs.forEach(function(log){
+        var cfg = ACTION_CFG[log.action]||{icon:'fa-circle',cls:'bg-slate-100 text-slate-500'};
+        var who = log.performed_by ? userName(log.performed_by) : '—';
+        html +=
+          '<div class="flex items-start gap-3 px-5 py-3 hover:bg-slate-50">'+
+            '<div class="w-7 h-7 rounded-full '+cfg.cls+' flex items-center justify-center flex-shrink-0 mt-0.5">'+
+              '<i class="fas '+cfg.icon+' text-[10px]"></i>'+
+            '</div>'+
+            '<div class="flex-1 min-w-0">'+
+              '<div class="flex items-center gap-2 flex-wrap">'+
+                '<span class="text-xs font-bold text-slate-800 capitalize">'+esc(log.action)+'</span>'+
+                '<span class="text-[10px] font-mono text-slate-400">'+esc(log.run_id||'')+'</span>'+
+                (log.old_status&&log.new_status?'<span class="text-[10px] text-slate-400">'+esc(log.old_status)+' → '+esc(log.new_status)+'</span>':'')+
+              '</div>'+
+              '<div class="text-[11px] text-slate-500 mt-0.5">'+
+                'By <span class="font-semibold">'+esc(who)+'</span>'+
+                (log.note?' · <em>'+esc(log.note)+'</em>':'')+
+              '</div>'+
+            '</div>'+
+            '<div class="text-[10px] text-slate-400 flex-shrink-0 text-right">'+esc(fmtDateTime(log.created_at))+'</div>'+
+          '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
     el.innerHTML = html;
   }
 
-  function summaryCard(label, icon, cls, val, sub) {
-    return '<div class="'+cls+' rounded-2xl px-5 py-4">' +
-      '<p class="text-xs font-bold opacity-70 uppercase tracking-widest mb-2">'+label+'</p>' +
-      '<p class="text-3xl font-black leading-none">'+val+'</p>' +
-      '<p class="text-xs opacity-60 mt-1.5">'+sub+'</p>' +
-    '</div>';
-  }
-
-  // ── Pay Run Form (Create / Edit) ──────────────────────────────
+  // ── Pay Run Form ──────────────────────────────────────────────
   function openRunForm(run, prefill) {
     var isEdit = !!run;
     var r = run || prefill || {};
 
-    // Try to autofill from timesheets for this employee
+    // Timesheet autofill
     var tsHours = 0;
     if (r.employee_id && tsCache.length) {
       tsHours = tsCache
-        .filter(function(t){ return t.employee_id===r.employee_id||t.user_id===r.employee_id; })
-        .filter(function(t){ return t.status==='Approved'; })
+        .filter(function(t){ return (t.employee_id===r.employee_id||t.user_id===r.employee_id)&&t.status==='Approved'; })
         .reduce(function(s,t){ return s+(parseFloat(t.hours)||parseFloat(t.total_hours)||0); }, 0);
+    }
+
+    // Last pay period for "copy" feature
+    var lastRun = null;
+    if (r.employee_id) {
+      lastRun = runsCache.filter(function(x){ return x.employee_id===r.employee_id&&x.id!==(r.id||''); })
+        .sort(function(a,b){ return new Date(b.period_start)-new Date(a.period_start); })[0];
     }
 
     var userOpts = usersCache.map(function(u){
@@ -638,134 +833,206 @@ window.WorkVoltPages['payroll'] = function(container) {
       return '<option value="'+esc(uid)+'" data-name="'+esc(u.name||u.email||uid)+'"'+(r.employee_id===uid?' selected':'')+'>'+esc(u.name||u.email||uid)+'</option>';
     }).join('');
 
-    var html =
-      '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
-        '<h3 class="font-extrabold text-slate-900 flex items-center gap-2"><i class="fas fa-file-invoice-dollar text-emerald-500"></i>'+(isEdit?'Edit Pay Run':'New Pay Run')+'</h3>' +
-        '<button id="prf-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>' +
-      '</div>' +
-      '<div class="px-6 py-5">' +
-        '<div id="pr-msg"></div>' +
+    // Determine initial compute values
+    var initRate    = r.rate || r.salary || '';
+    var initHrsReg  = r.hours_regular || '';
+    var initHrsOT   = r.hours_ot || '';
+    var initBonuses = r.bonuses || r.bonus || '';
+    var initDed     = r.deductions || '';
+    var initGross   = r.gross || '';
+    var initNet     = r.net   || '';
+    var initTaxFed  = r.tax_federal || '';
+    var initTaxFica = r.tax_fica    || '';
+    var initTaxSt   = r.tax_state   || '';
+    var initTaxTot  = r.tax_total   || r.tax || '';
 
-        // ── SECTION: Employee + Period ──────────────────────────
-        '<div class="pr-section mb-0">' +
-          '<div class="pr-section-head"><i class="fas fa-user text-slate-400 mr-2"></i><span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Employee &amp; Pay Period</span></div>' +
-          '<div class="p-4 grid grid-cols-2 gap-3">' +
-            '<div class="col-span-2 pr-field"><label>Employee</label>' +
+    var html =
+      // ── Sticky header
+      '<div class="sticky-header flex items-center justify-between">'+
+        '<div class="flex items-center gap-2">'+
+          '<div class="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center"><i class="fas fa-file-invoice-dollar text-emerald-600 text-sm"></i></div>'+
+          '<div>'+
+            '<h3 class="font-extrabold text-slate-900 text-base">'+(isEdit?'Edit Pay Run':'New Pay Run')+'</h3>'+
+            (isEdit?'<p class="text-[11px] text-slate-400 font-mono">'+esc(run.id)+'</p>':'')+
+          '</div>'+
+        '</div>'+
+        '<div class="flex items-center gap-2">'+
+          (lastRun&&!isEdit?'<button id="prf-copy-last" class="flex items-center gap-1.5 text-xs font-bold text-slate-500 border border-slate-200 bg-white rounded-lg px-2.5 py-1.5 hover:bg-slate-50 cursor-pointer"><i class="fas fa-copy text-[10px]"></i>Copy Last Period</button>':'') +
+          '<button id="prf-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>'+
+        '</div>'+
+      '</div>'+
+
+      '<div class="px-6 py-5">'+
+        '<div id="pr-msg"></div>'+
+        '<div id="prf-warnings"></div>'+
+
+        // ── SECTION 1: Employee & Period ──────────────────────────
+        '<div class="pr-section">'+
+          '<div class="pr-section-head"><i class="fas fa-user text-slate-400 text-xs"></i><span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Employee &amp; Pay Period</span></div>'+
+          '<div class="p-4 grid grid-cols-2 gap-3">'+
+            '<div class="col-span-2 pr-field"><label>Employee <span class="text-red-400">*</span></label>'+
               (isPayAdmin()
                 ? '<select id="prf-emp" class="pr-input"><option value="">Select employee…</option>'+userOpts+'</select>'
-                : '<input class="pr-input" readonly value="'+esc(r.employee_name||userName(r.employee_id)||myName())+'"><input type="hidden" id="prf-emp" value="'+esc(r.employee_id||myUserId())+'">') +
-            '</div>' +
-            '<div class="pr-field"><label>Period Start</label><input id="prf-start" type="date" class="pr-input" value="'+esc(fmtDateInput(r.period_start)||'')+'"></div>' +
-            '<div class="pr-field"><label>Period End</label><input id="prf-end" type="date" class="pr-input" value="'+esc(fmtDateInput(r.period_end)||'')+'"></div>' +
-            '<div class="pr-field"><label>Pay Type</label>' +
-              '<select id="prf-paytype" class="pr-input">' +
-                PAY_TYPES.map(function(pt){ return '<option'+(r.pay_type===pt?' selected':'')+'>'+pt+'</option>'; }).join('') +
-              '</select>' +
-            '</div>' +
-            (tsHours > 0
-              ? '<div class="col-span-2 flex items-center gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs"><i class="fas fa-clock text-amber-500"></i><span class="text-amber-700 font-semibold">'+fmtHours(tsHours)+' approved timesheet hours found for this employee</span><button id="prf-ts-fill" class="ml-auto text-xs font-bold text-amber-700 underline border-none bg-transparent cursor-pointer">Autofill</button></div>'
-              : '') +
-          '</div>' +
-        '</div>' +
+                : '<input class="pr-input" readonly value="'+esc(r.employee_name||userName(r.employee_id)||myName())+'"><input type="hidden" id="prf-emp" value="'+esc(r.employee_id||myUserId())+'">')+
+            '</div>'+
+            '<div class="pr-field"><label>Period Start <span class="text-red-400">*</span></label><input id="prf-start" type="date" class="pr-input" value="'+esc(fmtDateInput(r.period_start)||'')+'"></div>'+
+            '<div class="pr-field"><label>Period End <span class="text-red-400">*</span></label><input id="prf-end" type="date" class="pr-input" value="'+esc(fmtDateInput(r.period_end)||'')+'"></div>'+
+            '<div class="pr-field"><label>Pay Type</label>'+
+              '<select id="prf-paytype" class="pr-input">'+
+                PAY_TYPES.map(function(pt){ return '<option'+(r.pay_type===pt?' selected':'')+'>'+pt+'</option>'; }).join('')+
+              '</select>'+
+            '</div>'+
+            '<div class="pr-field"><label>Rate ($/hr or salary)</label><input id="prf-rate" type="number" min="0" step="0.01" class="pr-input" value="'+esc(initRate)+'" placeholder="0.00"></div>'+
+            (tsHours>0?
+              '<div class="col-span-2 pr-warn blue"><i class="fas fa-clock text-xs mt-0.5"></i><span>'+fmtHours(tsHours)+' approved timesheet hours found for this employee. <button id="prf-ts-fill" class="underline font-bold cursor-pointer bg-transparent border-none text-blue-700">Autofill hours</button></span></div>':'')+
+          '</div>'+
+        '</div>'+
 
-        // ── SECTION: Earnings ──────────────────────────────────
-        '<div class="pr-section">' +
-          '<div class="pr-section-head"><i class="fas fa-arrow-up text-emerald-500 mr-2"></i><span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Earnings</span></div>' +
-          '<div class="p-4 grid grid-cols-2 gap-3">' +
-            '<div class="pr-field"><label>Base / Gross Salary</label><input id="prf-gross" type="number" min="0" step="0.01" class="pr-input" value="'+esc(r.gross_salary||'')+'" placeholder="0.00"></div>' +
-            '<div class="pr-field"><label>Overtime Hours</label><input id="prf-ot-hours" type="number" min="0" step="0.5" class="pr-input" value="'+esc(r.overtime_hours||'')+'" placeholder="0"></div>' +
-            '<div class="pr-field"><label>Overtime Rate ($/hr)</label><input id="prf-ot-rate" type="number" min="0" step="0.01" class="pr-input" value="'+esc(r.overtime_rate||'')+'" placeholder="0.00"></div>' +
-            '<div class="pr-field"><label>Overtime Pay</label><input id="prf-ot-pay" type="number" min="0" step="0.01" class="pr-input pr-input-calc" value="'+esc(r.overtime_pay||'')+'" placeholder="auto-calculated" readonly></div>' +
-            '<div class="pr-field"><label>Bonus</label><input id="prf-bonus" type="number" min="0" step="0.01" class="pr-input" value="'+esc(r.bonus||'')+'" placeholder="0.00"></div>' +
-            '<div class="pr-field"><label>Extra / Commission</label><input id="prf-extra" type="number" min="0" step="0.01" class="pr-input" value="'+esc(r.extra_pay||'')+'" placeholder="0.00"></div>' +
-          '</div>' +
-          '<div class="px-4 pb-3"><div class="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">' +
-            '<span class="text-xs font-bold text-emerald-700 uppercase tracking-wider">Gross Earnings</span>' +
-            '<span id="prf-gross-total" class="text-lg font-extrabold text-emerald-700">'+fmtMoney(calcGross(r))+'</span>' +
-          '</div></div>' +
-        '</div>' +
+        // ── SECTION 2: Hours & Earnings ───────────────────────────
+        '<div class="pr-section">'+
+          '<div class="pr-section-head"><i class="fas fa-arrow-up text-emerald-500 text-xs"></i><span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Hours &amp; Earnings</span></div>'+
+          '<div class="p-4 grid grid-cols-3 gap-3">'+
+            '<div class="pr-field"><label>Regular Hours</label><input id="prf-hrs-reg" type="number" min="0" step="0.5" class="pr-input" value="'+esc(initHrsReg)+'" placeholder="0"></div>'+
+            '<div class="pr-field"><label>Overtime Hours</label><input id="prf-hrs-ot" type="number" min="0" step="0.5" class="pr-input" value="'+esc(initHrsOT)+'" placeholder="0"></div>'+
+            '<div class="pr-field"><label>Total Hours</label><input id="prf-hrs-total" type="number" class="pr-input pr-calc" readonly value="'+esc(r.hours_total||'')+'"></div>'+
+            '<div class="pr-field"><label>Bonuses</label><input id="prf-bonuses" type="number" min="0" step="0.01" class="pr-input" value="'+esc(initBonuses)+'" placeholder="0.00"></div>'+
+            '<div class="col-span-2 pr-field"><label>Gross Earnings</label>'+
+              '<div class="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">'+
+                '<span class="text-xs font-bold text-emerald-700 uppercase tracking-wider flex-1">Auto-calculated</span>'+
+                '<span id="prf-gross-total" class="text-xl font-extrabold text-emerald-700">'+fmtMoney(parseFloat(initGross)||0)+'</span>'+
+              '</div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
 
-        // ── SECTION: Deductions ────────────────────────────────
-        '<div class="pr-section">' +
-          '<div class="pr-section-head"><i class="fas fa-arrow-down text-red-400 mr-2"></i><span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Deductions</span></div>' +
-          '<div class="p-4 grid grid-cols-2 gap-3">' +
-            '<div class="pr-field"><label>Income Tax</label><input id="prf-tax" type="number" min="0" step="0.01" class="pr-input" value="'+esc(r.tax||'')+'" placeholder="0.00"></div>' +
-            '<div class="pr-field"><label>Health Insurance</label><input id="prf-health" type="number" min="0" step="0.01" class="pr-input" value="'+esc(r.health_insurance||'')+'" placeholder="0.00"></div>' +
-            '<div class="pr-field"><label>Pension / 401k</label><input id="prf-pension" type="number" min="0" step="0.01" class="pr-input" value="'+esc(r.pension||'')+'" placeholder="0.00"></div>' +
-            '<div class="pr-field"><label>Other Deductions</label><input id="prf-other-ded" type="number" min="0" step="0.01" class="pr-input" value="'+esc(r.other_deductions||'')+'" placeholder="0.00"></div>' +
-          '</div>' +
-          '<div class="px-4 pb-3"><div class="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">' +
-            '<span class="text-xs font-bold text-red-600 uppercase tracking-wider">Total Deductions</span>' +
-            '<span id="prf-ded-total" class="text-lg font-extrabold text-red-600">-'+fmtMoney(calcDeductions(r))+'</span>' +
-          '</div></div>' +
-        '</div>' +
+        // ── SECTION 3: Deductions ─────────────────────────────────
+        '<div class="pr-section">'+
+          '<div class="pr-section-head"><i class="fas fa-arrow-down text-red-400 text-xs"></i><span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Deductions</span></div>'+
+          '<div class="p-4 grid grid-cols-2 gap-3">'+
+            '<div class="pr-field"><label>Other Deductions</label><input id="prf-ded" type="number" min="0" step="0.01" class="pr-input" value="'+esc(initDed)+'" placeholder="0.00"></div>'+
+            '<div class="pr-field"><label>Total Deductions</label>'+
+              '<div class="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">'+
+                '<span id="prf-ded-total" class="text-xl font-extrabold text-red-600 flex-1 text-right">-'+fmtMoney(0)+'</span>'+
+              '</div>'+
+            '</div>'+
+          '</div>'+
+          // Tax breakdown
+          '<div class="mx-4 mb-4 border border-slate-200 rounded-xl overflow-hidden">'+
+            '<div class="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between">'+
+              '<span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Estimated Taxes</span>'+
+              '<span class="text-[10px] text-slate-400">US 2024 rates · biweekly</span>'+
+            '</div>'+
+            '<div class="px-4 py-2">'+
+              '<div class="pr-tax-row"><span class="text-slate-500">Federal Income Tax</span><span id="prf-tax-fed" class="font-semibold text-red-500">$0.00</span></div>'+
+              '<div class="pr-tax-row"><span class="text-slate-500">FICA (SS 6.2% + Medicare 1.45%)</span><span id="prf-tax-fica" class="font-semibold text-red-500">$0.00</span></div>'+
+              '<div class="pr-tax-row"><span class="text-slate-500">State Tax (est. 5%)</span><span id="prf-tax-state" class="font-semibold text-red-500">$0.00</span></div>'+
+              '<div class="pr-tax-row border-t-2 border-slate-200 mt-1 pt-1"><span class="font-bold text-slate-700">Total Tax</span><span id="prf-tax-total" class="font-extrabold text-red-600">$0.00</span></div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
 
-        // ── NET PAY BOX ────────────────────────────────────────
-        '<div class="net-pay-box mb-4">' +
-          '<div class="label">Net Pay</div>' +
-          '<div class="amount" id="prf-net-pay">'+fmtMoney(calcNet(r))+'</div>' +
-          '<div id="prf-net-warn" class="hidden mt-2 text-xs font-bold text-red-300"><i class="fas fa-exclamation-triangle mr-1"></i>Net pay is negative — check your figures</div>' +
-        '</div>' +
+        // ── NET PAY HERO ───────────────────────────────────────────
+        '<div class="net-pay-hero">'+
+          '<div>'+
+            '<div class="text-xs font-bold uppercase tracking-widest opacity-60 mb-1">Net Pay</div>'+
+            '<div id="prf-net-pay" class="amount">'+fmtMoney(parseFloat(initNet)||0)+'</div>'+
+            '<div id="prf-net-warn" class="hidden mt-1 text-xs font-bold text-red-300"><i class="fas fa-exclamation-triangle mr-1"></i>Net pay is negative</div>'+
+          '</div>'+
+          '<div class="text-right">'+
+            '<div class="text-xs opacity-50 mb-1">Gross - Tax - Deductions</div>'+
+            '<div id="prf-net-formula" class="text-sm font-bold opacity-70">—</div>'+
+          '</div>'+
+        '</div>'+
 
-        // ── Notes ──────────────────────────────────────────────
-        '<div class="pr-field mb-4"><label>Notes</label>' +
-          '<textarea id="prf-notes" rows="2" class="pr-input" placeholder="Internal payroll notes…" style="resize:vertical">'+esc(r.notes||'')+'</textarea>' +
-        '</div>' +
+        // ── Notes ──────────────────────────────────────────────────
+        '<div class="pr-field mb-5">'+
+          '<label>Internal Notes</label>'+
+          '<textarea id="prf-notes" rows="2" class="pr-input" placeholder="Any internal notes about this pay run…" style="resize:vertical">'+esc(r.notes||'')+'</textarea>'+
+        '</div>'+
 
-        '<div class="flex gap-3">' +
-          '<button id="prf-cancel" class="btn-secondary flex-1">Cancel</button>' +
-          '<button id="prf-save" class="btn-primary flex-1" style="background:#10b981"><i class="fas fa-save mr-1.5 text-xs"></i>'+(isEdit?'Save Changes':'Create Pay Run')+'</button>' +
-        '</div>' +
+        '<div class="flex gap-3">'+
+          '<button id="prf-cancel" class="btn-secondary flex-1 py-2.5">Cancel</button>'+
+          '<button id="prf-preview" class="flex items-center justify-center gap-1.5 flex-1 py-2.5 text-sm font-bold border border-emerald-300 text-emerald-700 rounded-xl bg-emerald-50 hover:bg-emerald-100 cursor-pointer"><i class="fas fa-eye text-xs"></i>Preview Payslip</button>'+
+          '<button id="prf-save" class="btn-primary flex-1 py-2.5" style="background:#10b981"><i class="fas fa-save mr-1.5 text-xs"></i>'+(isEdit?'Save Changes':'Create Pay Run')+'</button>'+
+        '</div>'+
       '</div>';
 
-    showModal(html, '700px');
+    showModal(html, '720px');
 
-    // Live recalculator
-    var calcIds = ['prf-gross','prf-bonus','prf-extra','prf-tax','prf-health','prf-pension','prf-other-ded','prf-ot-hours','prf-ot-rate'];
+    // ── Live recalculator
+    var calcIds = ['prf-rate','prf-hrs-reg','prf-hrs-ot','prf-bonuses','prf-ded'];
+
     function recalc() {
-      // Overtime auto-calc
-      var otHours = parseFloat(document.getElementById('prf-ot-hours').value)||0;
-      var otRate  = parseFloat(document.getElementById('prf-ot-rate').value)||0;
-      var otPay   = otHours * otRate;
-      var otEl    = document.getElementById('prf-ot-pay');
-      if (otEl) { otEl.value = otPay ? otPay.toFixed(2) : ''; }
+      var payType  = (document.getElementById('prf-paytype')||{}).value||'Hourly';
+      var rate     = parseFloat((document.getElementById('prf-rate')||{}).value)||0;
+      var hrsReg   = parseFloat((document.getElementById('prf-hrs-reg')||{}).value)||0;
+      var hrsOT    = parseFloat((document.getElementById('prf-hrs-ot')||{}).value)||0;
+      var bonuses  = parseFloat((document.getElementById('prf-bonuses')||{}).value)||0;
+      var ded      = parseFloat((document.getElementById('prf-ded')||{}).value)||0;
 
-      var tempR = {
-        gross_salary:     parseFloat(document.getElementById('prf-gross').value)||0,
-        bonus:            parseFloat(document.getElementById('prf-bonus').value)||0,
-        overtime_pay:     otPay,
-        extra_pay:        parseFloat(document.getElementById('prf-extra').value)||0,
-        tax:              parseFloat(document.getElementById('prf-tax').value)||0,
-        health_insurance: parseFloat(document.getElementById('prf-health').value)||0,
-        pension:          parseFloat(document.getElementById('prf-pension').value)||0,
-        other_deductions: parseFloat(document.getElementById('prf-other-ded').value)||0,
-      };
-      var gross = calcGross(tempR);
-      var ded   = calcDeductions(tempR);
-      var net   = Math.max(0, gross - ded);
-      var rawNet= gross - ded;
+      var hrsTotal = hrsReg + hrsOT;
+      var htEl = document.getElementById('prf-hrs-total');
+      if (htEl) htEl.value = hrsTotal || '';
 
-      var gEl = document.getElementById('prf-gross-total');
-      var dEl = document.getElementById('prf-ded-total');
-      var nEl = document.getElementById('prf-net-pay');
-      var wEl = document.getElementById('prf-net-warn');
-      if (gEl) gEl.textContent = fmtMoney(gross);
-      if (dEl) dEl.textContent = '-' + fmtMoney(ded);
-      if (nEl) nEl.textContent = fmtMoney(net);
-      if (wEl) wEl.classList.toggle('hidden', rawNet >= 0);
+      var computed = computeRun({ pay_type:payType, rate:rate, hours_regular:hrsReg, hours_ot:hrsOT, bonuses:bonuses, deductions:ded });
+
+      var setTxt = function(id, val){ var e=document.getElementById(id); if(e) e.textContent=val; };
+      setTxt('prf-gross-total', fmtMoney(computed.gross));
+      setTxt('prf-tax-fed',     fmtMoney(computed.tax_federal));
+      setTxt('prf-tax-fica',    fmtMoney(computed.tax_fica));
+      setTxt('prf-tax-state',   fmtMoney(computed.tax_state));
+      setTxt('prf-tax-total',   fmtMoney(computed.tax_total));
+      setTxt('prf-ded-total',   '-'+fmtMoney(computed.deductions+computed.tax_total));
+      setTxt('prf-net-pay',     fmtMoney(computed.net));
+      setTxt('prf-net-formula', fmtMoney(computed.gross)+' − '+fmtMoney(computed.tax_total)+' − '+fmtMoney(computed.deductions));
+
+      var warn = document.getElementById('prf-net-warn');
+      if (warn) warn.classList.toggle('hidden', computed.net >= 0);
+
+      // OT warning
+      updateWarnings(hrsOT, computed, payType, hrsReg, rate);
+    }
+
+    function updateWarnings(hrsOT, computed, payType, hrsReg, rate) {
+      var wEl = document.getElementById('prf-warnings');
+      if (!wEl) return;
+      var warns = [];
+      if (hrsOT > 0 && payType === 'Hourly') {
+        warns.push('<div class="pr-warn amber"><i class="fas fa-clock text-xs mt-0.5"></i><span>Overtime detected: '+fmtHours(hrsOT)+' @ 1.5× rate ('+fmtMoney(rate*1.5)+'/hr)</span></div>');
+      }
+      if (computed.net <= 0 && computed.gross > 0) {
+        warns.push('<div class="pr-warn red"><i class="fas fa-exclamation-triangle text-xs mt-0.5"></i><span>Net pay is zero or negative — review deductions</span></div>');
+      }
+      if (hrsReg > 60) {
+        warns.push('<div class="pr-warn red"><i class="fas fa-exclamation-triangle text-xs mt-0.5"></i><span>Regular hours exceed 60 — please verify</span></div>');
+      }
+      wEl.innerHTML = warns.join('');
     }
 
     calcIds.forEach(function(id){
-      var el2 = document.getElementById(id);
+      var el2=document.getElementById(id);
       if (el2) el2.addEventListener('input', recalc);
     });
+    var ptEl = document.getElementById('prf-paytype');
+    if (ptEl) ptEl.addEventListener('change', recalc);
 
-    // Employee selector → update name
-    var empSel = document.getElementById('prf-emp');
-    if (empSel && empSel.tagName === 'SELECT') {
-      empSel.addEventListener('change', function(){
-        var opt = this.options[this.selectedIndex];
-        // prefill ts hours for newly selected employee
+    // Run initial calc if editing
+    if (isEdit || r.rate) recalc();
+
+    // Copy last period
+    var copyBtn = document.getElementById('prf-copy-last');
+    if (copyBtn && lastRun) {
+      copyBtn.addEventListener('click', function(){
+        var setVal = function(id, v){ var e=document.getElementById(id); if(e&&v!==undefined&&v!=='') e.value=v; };
+        setVal('prf-rate',    lastRun.rate||lastRun.salary||'');
+        setVal('prf-hrs-reg', lastRun.hours_regular||'');
+        setVal('prf-hrs-ot',  lastRun.hours_ot||'');
+        setVal('prf-bonuses', lastRun.bonuses||lastRun.bonus||'');
+        setVal('prf-ded',     lastRun.deductions||'');
+        var ptEl2 = document.getElementById('prf-paytype');
+        if (ptEl2 && lastRun.pay_type) ptEl2.value = lastRun.pay_type;
+        recalc();
+        toast('Copied from '+periodLabel(lastRun.period_start,lastRun.period_end), 'info');
       });
     }
 
@@ -773,267 +1040,115 @@ window.WorkVoltPages['payroll'] = function(container) {
     var tsBtn = document.getElementById('prf-ts-fill');
     if (tsBtn) {
       tsBtn.addEventListener('click', function(){
-        var grossEl = document.getElementById('prf-gross');
-        if (grossEl && tsHours > 0) {
-          // Try to find hourly rate from employee record
-          var uid = (document.getElementById('prf-emp')||{}).value || r.employee_id;
-          var emp = empCache.find(function(e){ return e.id===uid; });
-          var rate = parseFloat((emp||{}).salary) || 0;
-          if (rate) { grossEl.value = (tsHours * rate).toFixed(2); recalc(); toast('Autofilled '+fmtHours(tsHours)+' × $'+rate+'/hr','info'); }
-          else { toast('No hourly rate on employee record — set salary first','warning'); }
+        var hrsEl = document.getElementById('prf-hrs-reg');
+        if (hrsEl) { hrsEl.value = tsHours.toFixed(1); recalc(); toast('Autofilled '+fmtHours(tsHours)+' from approved timesheets','info'); }
+      });
+    }
+
+    // Employee change → update ts hours hint
+    var empSel = document.getElementById('prf-emp');
+    if (empSel && empSel.tagName==='SELECT') {
+      empSel.addEventListener('change', function(){
+        var uid = this.value;
+        var empRecord = empCache.find(function(e){ return e.id===uid; });
+        var rateEl = document.getElementById('prf-rate');
+        if (rateEl && empRecord && empRecord.salary) {
+          rateEl.value = empRecord.salary;
+          recalc();
         }
       });
     }
 
     document.getElementById('prf-close').addEventListener('click', closeModal);
     document.getElementById('prf-cancel').addEventListener('click', closeModal);
-    document.getElementById('prf-save').addEventListener('click', function(){ submitRunForm(isEdit ? run.id : null); });
-  }
 
-  // ── Bulk Run Modal ────────────────────────────────────────────
-  function openBulkRunModal() {
-    var html =
-      '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
-        '<h3 class="font-extrabold text-slate-900 flex items-center gap-2"><i class="fas fa-bolt text-amber-500"></i>Bulk Pay Run</h3>' +
-        '<button id="bulk-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>' +
-      '</div>' +
-      '<div class="px-6 py-5">' +
-        '<div id="pr-msg"></div>' +
-        '<p class="text-sm text-slate-600 mb-4">Generate a Draft pay run for every employee using their base salary on record. You can edit each run individually before approving.</p>' +
-        '<div class="grid grid-cols-2 gap-3 mb-4">' +
-          '<div class="pr-field"><label>Period Start</label><input id="bulk-start" type="date" class="pr-input"></div>' +
-          '<div class="pr-field"><label>Period End</label><input id="bulk-end" type="date" class="pr-input"></div>' +
-        '</div>' +
-        '<div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 max-h-40 overflow-y-auto">' +
-          usersCache.map(function(u){
-            var uid=u.user_id||u.id;
-            var emp=empCache.find(function(e){return e.id===uid;})||{};
-            return '<label class="flex items-center gap-3 py-1.5 cursor-pointer">' +
-              '<input type="checkbox" class="bulk-emp-cb" value="'+esc(uid)+'" data-name="'+esc(u.name||u.email||uid)+'" data-salary="'+esc(emp.salary||0)+'" checked style="accent-color:#10b981">' +
-              userAvatar(uid,'w-5 h-5 text-[10px]') +
-              '<span class="text-sm text-slate-700 flex-1">'+esc(u.name||u.email||uid)+'</span>' +
-              '<span class="text-xs text-slate-400">'+esc(emp.pay_type||'')+(emp.salary?' · $'+emp.salary:'')+'</span>' +
-            '</label>';
-          }).join('') +
-        '</div>' +
-        '<div class="flex gap-3">' +
-          '<button id="bulk-cancel" class="btn-secondary flex-1">Cancel</button>' +
-          '<button id="bulk-go" class="btn-primary flex-1" style="background:#10b981"><i class="fas fa-bolt mr-1.5 text-xs"></i>Generate Runs</button>' +
-        '</div>' +
-      '</div>';
-
-    showModal(html, '540px');
-    document.getElementById('bulk-close').addEventListener('click', closeModal);
-    document.getElementById('bulk-cancel').addEventListener('click', closeModal);
-    document.getElementById('bulk-go').addEventListener('click', function() {
-      var start = document.getElementById('bulk-start').value;
-      var end   = document.getElementById('bulk-end').value;
-      if (!start) { modalMsg('Period start is required.', false); return; }
-      var selected = Array.from(document.querySelectorAll('.bulk-emp-cb:checked'));
-      if (!selected.length) { modalMsg('Select at least one employee.', false); return; }
-      var btn = this; btn.disabled=true; btn.innerHTML='<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i>Generating…';
-      var creates = selected.map(function(cb){
-        return api('payroll/runs/create', {
-          id:            genId('PR'),
-          employee_id:   cb.value,
-          employee_name: cb.dataset.name,
-          period_start:  start,
-          period_end:    end||'',
-          gross_salary:  cb.dataset.salary||'0',
-          status:        'Draft',
-          created_by:    myUserId(),
-        });
-      });
-      Promise.all(creates).then(function(){
-        toast('Created '+creates.length+' pay runs', 'success');
+    // Preview payslip before saving
+    document.getElementById('prf-preview').addEventListener('click', function(){
+      var tempRun = buildFormParams(isEdit ? run.id : null);
+      if (tempRun) {
         closeModal();
-        loadData();
-      }).catch(function(e){ modalMsg(e.message, false); btn.disabled=false; btn.innerHTML='<i class="fas fa-bolt mr-1.5 text-xs"></i>Generate Runs'; });
+        openPayslip(Object.assign({ id:'PREVIEW', status:'Draft' }, tempRun));
+      }
     });
+
+    document.getElementById('prf-save').addEventListener('click', function(){ submitRunForm(isEdit ? run.id : null); });
+
+    // Keyboard: Escape to close
+    var escHandler = function(e){ if(e.key==='Escape') { closeModal(); document.removeEventListener('keydown',escHandler); } };
+    document.addEventListener('keydown', escHandler);
   }
 
-  // ── Payslip Modal ─────────────────────────────────────────────
-  function openPayslip(r) {
-    if (!r) return;
-    var gross = calcGross(r);
-    var ded   = calcDeductions(r);
-    var net   = calcNet(r);
-    var cfg   = STATUS_CFG[r.status]||STATUS_CFG['Draft'];
-    var anom  = detectAnomaly(r, runsCache);
-
-    var lineItem = function(label, val, color, bold) {
-      return '<div class="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">' +
-        '<span class="text-xs text-slate-500">'+label+'</span>' +
-        '<span class="text-xs font-'+(bold?'bold':'semibold')+' '+(color||'text-slate-800')+'">'+val+'</span>' +
-      '</div>';
+  function buildFormParams(runId) {
+    var empEl  = document.getElementById('prf-emp');
+    var empId  = empEl ? empEl.value : myUserId();
+    var empName = '';
+    if (empEl && empEl.tagName==='SELECT') {
+      var opt = empEl.options[empEl.selectedIndex];
+      empName = opt ? opt.text : '';
+    } else { empName = myName(); }
+    var start = (document.getElementById('prf-start')||{}).value||'';
+    if (!start || !empId) return null;
+    var payType = (document.getElementById('prf-paytype')||{}).value||'Hourly';
+    var rate    = parseFloat((document.getElementById('prf-rate')||{}).value)||0;
+    var hrsReg  = parseFloat((document.getElementById('prf-hrs-reg')||{}).value)||0;
+    var hrsOT   = parseFloat((document.getElementById('prf-hrs-ot')||{}).value)||0;
+    var bonuses = parseFloat((document.getElementById('prf-bonuses')||{}).value)||0;
+    var ded     = parseFloat((document.getElementById('prf-ded')||{}).value)||0;
+    var computed = computeRun({ pay_type:payType, rate:rate, hours_regular:hrsReg, hours_ot:hrsOT, bonuses:bonuses, deductions:ded });
+    return {
+      employee_id:   empId,
+      employee_name: empName,
+      period_start:  start,
+      period_end:    (document.getElementById('prf-end')||{}).value||'',
+      pay_type:      payType,
+      rate:          String(rate),
+      hours_regular: String(hrsReg),
+      hours_ot:      String(hrsOT),
+      hours_total:   String(hrsReg+hrsOT),
+      bonuses:       String(bonuses),
+      deductions:    String(ded),
+      tax_federal:   String(computed.tax_federal),
+      tax_fica:      String(computed.tax_fica),
+      tax_state:     String(computed.tax_state),
+      tax_total:     String(computed.tax_total),
+      gross:         String(computed.gross),
+      net:           String(computed.net),
+      notes:         (document.getElementById('prf-notes')||{}).value||'',
+      // legacy compat fields
+      gross_salary:  String(computed.gross),
+      tax:           String(computed.tax_total),
+      overtime_pay:  String(hrsOT*rate*1.5),
+      overtime_hours: String(hrsOT),
     };
-
-    var html =
-      // Header
-      '<div class="bg-gradient-to-br from-slate-900 to-emerald-950 px-6 pt-6 pb-8 text-white relative overflow-hidden">' +
-        '<div class="absolute -right-4 -bottom-4 opacity-10"><i class="fas fa-money-bill-wave text-9xl"></i></div>' +
-        '<button id="ps-close" class="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center border-none cursor-pointer text-white transition-colors"><i class="fas fa-times text-sm"></i></button>' +
-        '<div class="text-xs font-bold uppercase tracking-widest opacity-60 mb-3">Payslip</div>' +
-        '<div class="flex items-center gap-3 mb-4">' +
-          '<div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-xl font-black">'+userInitial(r.employee_id)+'</div>' +
-          '<div><div class="text-lg font-extrabold">'+esc(r.employee_name||userName(r.employee_id))+'</div>' +
-          '<div class="text-xs opacity-70">'+esc(periodLabel(r.period_start,r.period_end))+(r.pay_type?' · '+esc(r.pay_type):'')+'</div></div>' +
-        '</div>' +
-        // Big net pay
-        '<div class="bg-white/10 rounded-2xl px-5 py-4 text-center">' +
-          '<div class="text-xs font-bold uppercase tracking-widest opacity-60 mb-1">Net Pay</div>' +
-          '<div class="text-4xl font-black">'+fmtMoney(net)+'</div>' +
-          '<div class="mt-2">'+statusBadge(r.status||'Draft')+'</div>' +
-        '</div>' +
-      '</div>' +
-
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0">' +
-
-        // Earnings column
-        '<div class="px-5 py-5 border-r border-slate-100">' +
-          '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5"><i class="fas fa-arrow-up text-emerald-500 text-[10px]"></i>Earnings</p>' +
-          (parseFloat(r.gross_salary) ? lineItem('Base Salary', fmtMoney(r.gross_salary)) : '') +
-          (parseFloat(r.overtime_pay) ? lineItem('Overtime ('+(r.overtime_hours||0)+'h × $'+(r.overtime_rate||0)+')', fmtMoney(r.overtime_pay), 'text-orange-600') : '') +
-          (parseFloat(r.bonus)        ? lineItem('Bonus', fmtMoney(r.bonus), 'text-emerald-600') : '') +
-          (parseFloat(r.extra_pay)    ? lineItem('Extra / Commission', fmtMoney(r.extra_pay), 'text-emerald-600') : '') +
-          '<div class="flex items-center justify-between mt-2 pt-2 border-t-2 border-slate-200">' +
-            '<span class="text-xs font-extrabold text-slate-700 uppercase tracking-wider">Gross Total</span>' +
-            '<span class="text-sm font-extrabold text-slate-900">'+fmtMoney(gross)+'</span>' +
-          '</div>' +
-        '</div>' +
-
-        // Deductions column
-        '<div class="px-5 py-5">' +
-          '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5"><i class="fas fa-arrow-down text-red-400 text-[10px]"></i>Deductions</p>' +
-          (parseFloat(r.tax)              ? lineItem('Income Tax', '-'+fmtMoney(r.tax), 'text-red-500') : '') +
-          (parseFloat(r.health_insurance) ? lineItem('Health Insurance', '-'+fmtMoney(r.health_insurance), 'text-red-500') : '') +
-          (parseFloat(r.pension)          ? lineItem('Pension / 401k', '-'+fmtMoney(r.pension), 'text-red-500') : '') +
-          (parseFloat(r.other_deductions) ? lineItem('Other', '-'+fmtMoney(r.other_deductions), 'text-red-500') : '') +
-          '<div class="flex items-center justify-between mt-2 pt-2 border-t-2 border-slate-200">' +
-            '<span class="text-xs font-extrabold text-slate-700 uppercase tracking-wider">Total Deductions</span>' +
-            '<span class="text-sm font-extrabold text-red-600">-'+fmtMoney(ded)+'</span>' +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-
-      // Anomaly + notes
-      (anom ? '<div class="mx-5 mb-4 flex gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700"><i class="fas fa-exclamation-triangle text-red-400 mt-0.5 flex-shrink-0"></i><div><strong>Anomaly Detected:</strong> Net pay changed '+anom.pct+'% ('+anom.dir+') vs previous period. Review before approving.</div></div>' : '') +
-      (r.notes ? '<div class="mx-5 mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600"><i class="fas fa-sticky-note text-slate-400 mr-1.5"></i>'+esc(r.notes)+'</div>' : '') +
-
-      // Actions
-      '<div class="px-5 pb-5 flex gap-3">' +
-        (isPayAdmin() && r.status==='Draft'   ? '<button class="ps-act flex-1 py-2.5 text-sm font-bold rounded-xl border-none cursor-pointer" style="background:#f59e0b;color:#fff" data-action="submit"  data-id="'+esc(r.id)+'"><i class="fas fa-paper-plane mr-1.5 text-xs"></i>Submit</button>' : '') +
-        (isPayAdmin() && r.status==='Pending' ? '<button class="ps-act flex-1 py-2.5 text-sm font-bold rounded-xl border-none cursor-pointer" style="background:#16a34a;color:#fff" data-action="approve" data-id="'+esc(r.id)+'"><i class="fas fa-check mr-1.5 text-xs"></i>Approve</button>' : '') +
-        (isPayAdmin() && r.status==='Approved'? '<button class="ps-act flex-1 py-2.5 text-sm font-bold rounded-xl border-none cursor-pointer" style="background:#2563eb;color:#fff" data-action="pay"     data-id="'+esc(r.id)+'"><i class="fas fa-dollar-sign mr-1.5 text-xs"></i>Mark Paid</button>' : '') +
-        (isPayAdmin() && r.status==='Draft'   ? '<button class="ps-act flex-1 btn-secondary py-2.5 text-sm" data-action="edit" data-id="'+esc(r.id)+'"><i class="fas fa-pencil mr-1.5 text-xs"></i>Edit</button>' : '') +
-        '<button id="ps-export" class="flex-1 btn-secondary py-2.5 text-sm"><i class="fas fa-download mr-1.5 text-xs"></i>Export CSV</button>' +
-      '</div>';
-
-    showModal(html, '800px');
-    document.getElementById('ps-close').addEventListener('click', closeModal);
-
-    document.querySelectorAll('.ps-act').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        var act = this.dataset.action;
-        var id  = this.dataset.id;
-        if (act==='submit')  { closeModal(); updateRunStatus(id,'Pending'); }
-        if (act==='approve') { closeModal(); updateRunStatus(id,'Approved'); }
-        if (act==='pay')     { closeModal(); updateRunStatus(id,'Paid'); }
-        if (act==='edit')    { closeModal(); openRunForm(r); }
-      });
-    });
-
-    document.getElementById('ps-export').addEventListener('click', function(){ exportPayslipCSV(r); });
   }
 
-  // ── Export CSV ────────────────────────────────────────────────
-  function exportPayslipCSV(r) {
-    var rows = [
-      ['Field','Value'],
-      ['Employee',r.employee_name||userName(r.employee_id)],
-      ['Pay Period',periodLabel(r.period_start,r.period_end)],
-      ['Pay Type',r.pay_type||''],
-      ['Status',r.status||''],
-      ['',''],
-      ['Base Salary',calcGross({gross_salary:r.gross_salary,bonus:0,overtime_pay:0,extra_pay:0})],
-      ['Overtime Pay',r.overtime_pay||0],
-      ['Bonus',r.bonus||0],
-      ['Extra Pay',r.extra_pay||0],
-      ['Gross Earnings',calcGross(r)],
-      ['',''],
-      ['Income Tax',r.tax||0],
-      ['Health Insurance',r.health_insurance||0],
-      ['Pension/401k',r.pension||0],
-      ['Other Deductions',r.other_deductions||0],
-      ['Total Deductions',calcDeductions(r)],
-      ['',''],
-      ['NET PAY',calcNet(r)],
-    ];
-    var csv = rows.map(function(row){ return row.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
-    var blob = new Blob([csv], { type:'text/csv' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'payslip-'+(r.employee_name||r.employee_id||'unknown').replace(/\s+/g,'-')+'-'+( r.period_start||'').replace(/\//g,'-')+'.csv';
-    a.click();
-    URL.revokeObjectURL(a.href);
-    toast('Payslip CSV downloaded','success');
-  }
-
-  // ── Submit form ───────────────────────────────────────────────
   function submitRunForm(runId) {
     var isEdit = !!runId;
     var empEl  = document.getElementById('prf-emp');
     var empId  = empEl ? empEl.value : myUserId();
-    var empName = '';
-    if (empEl && empEl.tagName === 'SELECT') {
-      var opt = empEl.options[empEl.selectedIndex];
-      empName = opt ? opt.text : '';
-    } else {
-      empName = myName();
-    }
-
-    var start = (document.getElementById('prf-start').value||'').trim();
-    if (!start) { modalMsg('Period start is required.',false); return; }
-    if (!empId) { modalMsg('Please select an employee.',false); return; }
-
-    var otHours = parseFloat(document.getElementById('prf-ot-hours').value)||0;
-    var otRate  = parseFloat(document.getElementById('prf-ot-rate').value)||0;
-    var otPay   = otHours * otRate;
-
-    var params = {
-      employee_id:      empId,
-      employee_name:    empName,
-      period_start:     start,
-      period_end:       (document.getElementById('prf-end').value||''),
-      pay_type:         document.getElementById('prf-paytype').value||'Salary',
-      gross_salary:     document.getElementById('prf-gross').value||'0',
-      overtime_hours:   String(otHours),
-      overtime_rate:    String(otRate),
-      overtime_pay:     String(otPay),
-      bonus:            document.getElementById('prf-bonus').value||'0',
-      extra_pay:        document.getElementById('prf-extra').value||'0',
-      tax:              document.getElementById('prf-tax').value||'0',
-      health_insurance: document.getElementById('prf-health').value||'0',
-      pension:          document.getElementById('prf-pension').value||'0',
-      other_deductions: document.getElementById('prf-other-ded').value||'0',
-      notes:            document.getElementById('prf-notes').value||'',
-      status:           isEdit ? (runsCache.find(function(r){return r.id===runId;})||{}).status||'Draft' : 'Draft',
-    };
-    if (!isEdit) { params.id = genId('PR'); params.created_by = myUserId(); }
-    else          params.id = runId;
+    var start  = (document.getElementById('prf-start')||{}).value||'';
 
     // Validation
-    var gross = calcGross(params);
-    var net   = calcNet(params);
-    if (net < 0 && !confirm('Net pay is negative ('+fmtMoney(net)+'). Save anyway?')) return;
+    if (!empId) { modalMsg('Please select an employee.', false); return; }
+    if (!start) { modalMsg('Period start date is required.', false); document.getElementById('prf-start').classList.add('error'); return; }
+    if (!(document.getElementById('prf-end')||{}).value) { modalMsg('Period end date is required.', false); document.getElementById('prf-end').classList.add('error'); return; }
 
-    // Duplicate detection (same employee + same period)
+    var params = buildFormParams(runId);
+    if (!params) { modalMsg('Please fill all required fields.', false); return; }
+
+    var net = parseFloat(params.net)||0;
+    if (net <= 0 && !confirm('Net pay is '+fmtMoney(net)+'. Save anyway?')) return;
+
+    // Duplicate detection
     if (!isEdit) {
       var dup = runsCache.find(function(r){
-        return r.employee_id===empId && r.period_start===start && r.status!=='Void';
+        return r.employee_id===empId && r.period_start===start && r.status!=='Void' && r.status!=='Rejected';
       });
       if (dup && !confirm('A pay run for this employee and period already exists ('+dup.id+'). Create another?')) return;
     }
+
+    if (!isEdit) { params.id = genId('PR'); params.created_by = myUserId(); params.status = 'Draft'; }
+    else          params.id = runId;
 
     var btn = document.getElementById('prf-save');
     if (btn) { btn.disabled=true; btn.innerHTML='<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i>Saving…'; }
@@ -1050,6 +1165,206 @@ window.WorkVoltPages['payroll'] = function(container) {
       });
   }
 
+  // ── Bulk Run Modal ────────────────────────────────────────────
+  function openBulkRunModal() {
+    var html =
+      '<div class="sticky-header flex items-center justify-between">'+
+        '<h3 class="font-extrabold text-slate-900 flex items-center gap-2"><i class="fas fa-bolt text-amber-500"></i>Bulk Pay Run</h3>'+
+        '<button id="bulk-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>'+
+      '</div>'+
+      '<div class="px-6 py-5">'+
+        '<div id="pr-msg"></div>'+
+        '<p class="text-sm text-slate-600 mb-4">Generate Draft pay runs for multiple employees using their rates on record. You can edit each individually before approving.</p>'+
+        '<div class="grid grid-cols-2 gap-3 mb-4">'+
+          '<div class="pr-field"><label>Period Start <span class="text-red-400">*</span></label><input id="bulk-start" type="date" class="pr-input"></div>'+
+          '<div class="pr-field"><label>Period End <span class="text-red-400">*</span></label><input id="bulk-end" type="date" class="pr-input"></div>'+
+        '</div>'+
+        '<div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 max-h-48 overflow-y-auto">'+
+          '<div class="flex items-center justify-between mb-2 px-1">'+
+            '<span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Select Employees</span>'+
+            '<button id="bulk-check-all" class="text-[10px] font-bold text-blue-600 cursor-pointer border-none bg-transparent">All</button>'+
+          '</div>'+
+          usersCache.map(function(u){
+            var uid=u.user_id||u.id;
+            var emp=empCache.find(function(e){return e.id===uid;})||{};
+            return '<label class="flex items-center gap-3 py-1.5 cursor-pointer">'+
+              '<input type="checkbox" class="bulk-emp-cb" value="'+esc(uid)+'" data-name="'+esc(u.name||u.email||uid)+'" data-salary="'+esc(emp.salary||0)+'" data-rate="'+esc(emp.salary||0)+'" data-paytype="'+esc(emp.pay_type||'Hourly')+'" checked style="accent-color:#10b981">'+
+              userAvatar(uid,'w-5 h-5 text-[10px]')+
+              '<span class="text-sm text-slate-700 flex-1">'+esc(u.name||u.email||uid)+'</span>'+
+              '<span class="text-xs text-slate-400">'+esc(emp.pay_type||'')+(emp.salary?' · $'+emp.salary:'')+'</span>'+
+            '</label>';
+          }).join('')+
+        '</div>'+
+        '<div class="flex gap-3">'+
+          '<button id="bulk-cancel" class="btn-secondary flex-1">Cancel</button>'+
+          '<button id="bulk-go" class="btn-primary flex-1" style="background:#10b981"><i class="fas fa-bolt mr-1.5 text-xs"></i>Generate Runs</button>'+
+        '</div>'+
+      '</div>';
+
+    showModal(html, '540px');
+    document.getElementById('bulk-close').addEventListener('click', closeModal);
+    document.getElementById('bulk-cancel').addEventListener('click', closeModal);
+    var checkAll = document.getElementById('bulk-check-all');
+    if (checkAll) checkAll.addEventListener('click', function(){
+      var all = document.querySelectorAll('.bulk-emp-cb');
+      var anyUnchecked = Array.from(all).some(function(c){ return !c.checked; });
+      all.forEach(function(c){ c.checked = anyUnchecked; });
+    });
+    document.getElementById('bulk-go').addEventListener('click', function() {
+      var start  = document.getElementById('bulk-start').value;
+      var end    = document.getElementById('bulk-end').value;
+      if (!start) { modalMsg('Period start is required.', false); return; }
+      if (!end)   { modalMsg('Period end is required.', false); return; }
+      var selected = Array.from(document.querySelectorAll('.bulk-emp-cb:checked'));
+      if (!selected.length) { modalMsg('Select at least one employee.', false); return; }
+      var btn=this; btn.disabled=true; btn.innerHTML='<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i>Generating…';
+      var creates = selected.map(function(cb){
+        var computed = computeRun({ pay_type:cb.dataset.paytype||'Hourly', rate:parseFloat(cb.dataset.rate)||0, hours_regular:0, hours_ot:0, bonuses:0, deductions:0 });
+        return api('payroll/runs/create', {
+          id:            genId('PR'),
+          employee_id:   cb.value,
+          employee_name: cb.dataset.name,
+          period_start:  start,
+          period_end:    end,
+          pay_type:      cb.dataset.paytype||'Hourly',
+          rate:          cb.dataset.rate||'0',
+          gross:         String(computed.gross),
+          net:           String(computed.net),
+          tax_total:     String(computed.tax_total),
+          status:        'Draft',
+          created_by:    myUserId(),
+        });
+      });
+      Promise.all(creates).then(function(){
+        toast('Created '+creates.length+' pay runs', 'success');
+        closeModal(); loadData();
+      }).catch(function(e){ modalMsg(e.message, false); btn.disabled=false; btn.innerHTML='<i class="fas fa-bolt mr-1.5 text-xs"></i>Generate Runs'; });
+    });
+  }
+
+  // ── Payslip Modal ─────────────────────────────────────────────
+  function openPayslip(r) {
+    if (!r) return;
+    var gross = calcGross(r), ded = calcDeductions(r), net = calcNet(r);
+    var cfg   = STATUS_CFG[r.status]||STATUS_CFG['Draft'];
+    var anom  = detectAnomaly(r, runsCache);
+    var isPreview = r.id==='PREVIEW';
+
+    // Audit trail for this run
+    var runAudit = auditCache.filter(function(a){ return a.run_id===r.id; })
+      .sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+
+    var html =
+      // Dark header
+      '<div class="bg-gradient-to-br from-slate-900 to-emerald-950 px-6 pt-6 pb-8 text-white relative overflow-hidden">'+
+        '<div class="absolute -right-4 -bottom-4 opacity-10"><i class="fas fa-money-bill-wave text-9xl"></i></div>'+
+        (isPreview?'<div class="absolute top-4 left-4 bg-amber-400 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Preview</div>':'')+
+        '<button id="ps-close" class="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center border-none cursor-pointer text-white transition-colors"><i class="fas fa-times text-sm"></i></button>'+
+        '<div class="text-xs font-bold uppercase tracking-widest opacity-60 mb-3">Payslip</div>'+
+        '<div class="flex items-center gap-3 mb-4">'+
+          '<div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-xl font-black">'+userInitial(r.employee_id)+'</div>'+
+          '<div>'+
+            '<div class="text-lg font-extrabold">'+esc(r.employee_name||userName(r.employee_id))+'</div>'+
+            '<div class="text-xs opacity-70">'+esc(periodLabel(r.period_start,r.period_end))+(r.pay_type?' · '+esc(r.pay_type):'')+'</div>'+
+            (r.id&&!isPreview?'<div class="text-[10px] font-mono opacity-50 mt-0.5">'+esc(r.id)+'</div>':'')+
+          '</div>'+
+        '</div>'+
+        '<div class="bg-white/10 rounded-2xl px-5 py-4 text-center">'+
+          '<div class="text-xs font-bold uppercase tracking-widest opacity-60 mb-1">Net Pay</div>'+
+          '<div class="text-4xl font-black">'+fmtMoney(net)+'</div>'+
+          '<div class="mt-2 flex items-center justify-center gap-2">'+statusBadge(r.status||'Draft')+'</div>'+
+        '</div>'+
+      '</div>'+
+
+      // Three column: hours · earnings · deductions
+      '<div class="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">'+
+        '<div class="px-4 py-4 text-center">'+
+          '<div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Hours</div>'+
+          '<div class="text-xl font-black text-slate-900">'+fmtHours(r.hours_total||r.overtime_hours||0)+'</div>'+
+          (parseFloat(r.hours_ot||0)?'<div class="text-[10px] text-orange-500 font-semibold">'+fmtHours(r.hours_ot)+' OT</div>':'')+
+        '</div>'+
+        '<div class="px-4 py-4 text-center">'+
+          '<div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Gross</div>'+
+          '<div class="text-xl font-black text-slate-900">'+fmtMoney(gross)+'</div>'+
+          (r.rate?'<div class="text-[10px] text-slate-400">'+fmtMoney(r.rate)+'/hr</div>':'')+
+        '</div>'+
+        '<div class="px-4 py-4 text-center">'+
+          '<div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Deductions</div>'+
+          '<div class="text-xl font-black text-red-500">-'+fmtMoney(ded)+'</div>'+
+        '</div>'+
+      '</div>'+
+
+      // Earnings + Deductions side by side
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0">'+
+        '<div class="px-5 py-4 border-r border-slate-100">'+
+          '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><i class="fas fa-arrow-up text-emerald-500 text-[10px]"></i>Earnings</p>'+
+          _lineItem('Base Salary', fmtMoney(r.gross_salary||r.gross||0), '')+
+          (parseFloat(r.hours_ot||0)?_lineItem('Overtime ('+fmtHours(r.hours_ot)+' × '+fmtMoney(parseFloat(r.rate||0)*1.5)+'/hr)', fmtMoney((r.hours_ot||0)*(r.rate||0)*1.5), 'text-orange-600'):'') +
+          (parseFloat(r.bonuses||r.bonus||0)?_lineItem('Bonus', fmtMoney(r.bonuses||r.bonus||0), 'text-emerald-600'):'') +
+          '<div class="flex items-center justify-between mt-2 pt-2 border-t-2 border-slate-200">'+
+            '<span class="text-xs font-extrabold text-slate-700 uppercase">Gross Total</span>'+
+            '<span class="text-sm font-extrabold text-slate-900">'+fmtMoney(gross)+'</span>'+
+          '</div>'+
+        '</div>'+
+        '<div class="px-5 py-4">'+
+          '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><i class="fas fa-arrow-down text-red-400 text-[10px]"></i>Taxes &amp; Deductions</p>'+
+          (parseFloat(r.tax_federal||0)?_lineItem('Federal Tax', '-'+fmtMoney(r.tax_federal), 'text-red-500'):'') +
+          (parseFloat(r.tax_fica||0)?_lineItem('FICA', '-'+fmtMoney(r.tax_fica), 'text-red-500'):'') +
+          (parseFloat(r.tax_state||0)?_lineItem('State Tax', '-'+fmtMoney(r.tax_state), 'text-red-500'):'') +
+          (parseFloat(r.tax_total||r.tax||0)&&!parseFloat(r.tax_federal||0)?_lineItem('Income Tax', '-'+fmtMoney(r.tax_total||r.tax||0), 'text-red-500'):'') +
+          (parseFloat(r.health_insurance||0)?_lineItem('Health Insurance', '-'+fmtMoney(r.health_insurance), 'text-red-500'):'') +
+          (parseFloat(r.pension||0)?_lineItem('Pension / 401k', '-'+fmtMoney(r.pension), 'text-red-500'):'') +
+          (parseFloat(r.deductions||r.other_deductions||0)?_lineItem('Other Deductions', '-'+fmtMoney(r.deductions||r.other_deductions||0), 'text-red-500'):'') +
+          '<div class="flex items-center justify-between mt-2 pt-2 border-t-2 border-slate-200">'+
+            '<span class="text-xs font-extrabold text-slate-700 uppercase">Total Deductions</span>'+
+            '<span class="text-sm font-extrabold text-red-600">-'+fmtMoney(ded)+'</span>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+
+      // Anomaly + notes
+      (anom?'<div class="mx-5 mb-2 flex gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700"><i class="fas fa-exclamation-triangle text-red-400 mt-0.5 flex-shrink-0"></i><div><strong>Anomaly:</strong> Net pay changed '+anom.pct+'% ('+anom.dir+') vs previous period. Review before approving.</div></div>':'')+
+      (r.notes?'<div class="mx-5 mb-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600"><i class="fas fa-sticky-note text-slate-400 mr-1.5"></i>'+esc(r.notes)+'</div>':'')+
+
+      // Audit mini-trail
+      (runAudit.length&&!isPreview?
+        '<div class="mx-5 mb-4">'+
+          '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5">History</p>'+
+          runAudit.slice(0,4).map(function(a){
+            return '<div class="flex items-center gap-2 text-[10px] text-slate-500 py-0.5">'+
+              '<i class="fas fa-circle text-[5px] text-slate-300"></i>'+
+              '<span class="capitalize font-semibold text-slate-600">'+esc(a.action)+'</span>'+
+              '<span>by '+esc(userName(a.performed_by)||'—')+'</span>'+
+              '<span class="ml-auto text-slate-300">'+esc(fmtDate(a.created_at))+'</span>'+
+            '</div>';
+          }).join('')+
+        '</div>':'') +
+
+      // Actions
+      '<div class="px-5 pb-5 flex gap-2 flex-wrap">'+
+        (!isPreview&&isPayAdmin()&&r.status==='Draft'  ?'<button class="ps-act flex-1 py-2.5 text-sm font-bold rounded-xl border-none cursor-pointer" style="background:#f59e0b;color:#fff" data-action="submit"  data-id="'+esc(r.id)+'"><i class="fas fa-paper-plane mr-1.5 text-xs"></i>Submit</button>':'')+
+        (!isPreview&&isPayAdmin()&&r.status==='Pending'?'<button class="ps-act flex-1 py-2.5 text-sm font-bold rounded-xl border-none cursor-pointer" style="background:#16a34a;color:#fff" data-action="approve" data-id="'+esc(r.id)+'"><i class="fas fa-check mr-1.5 text-xs"></i>Approve</button>':'')+
+        (!isPreview&&isPayAdmin()&&r.status==='Approved'?'<button class="ps-act flex-1 py-2.5 text-sm font-bold rounded-xl border-none cursor-pointer" style="background:#2563eb;color:#fff" data-action="pay" data-id="'+esc(r.id)+'"><i class="fas fa-dollar-sign mr-1.5 text-xs"></i>Mark Paid</button>':'')+
+        (!isPreview&&isPayAdmin()&&r.status==='Draft'  ?'<button class="ps-act flex-1 py-2.5 text-sm font-bold rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer" style="font-size:.875rem" data-action="edit" data-id="'+esc(r.id)+'"><i class="fas fa-pencil mr-1.5 text-xs"></i>Edit</button>':'')+
+        (!isPreview?'<button id="ps-export" class="flex-1 py-2.5 text-sm font-bold rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer"><i class="fas fa-download mr-1.5 text-xs"></i>Export CSV</button>':'')+
+      '</div>';
+
+    showModal(html, '820px');
+    document.getElementById('ps-close').addEventListener('click', closeModal);
+
+    document.querySelectorAll('.ps-act').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var act=this.dataset.action, id=this.dataset.id;
+        if (act==='submit')  { closeModal(); updateRunStatus(id,'Pending');  }
+        if (act==='approve') { closeModal(); updateRunStatus(id,'Approved'); }
+        if (act==='pay')     { closeModal(); updateRunStatus(id,'Paid');     }
+        if (act==='edit')    { closeModal(); openRunForm(runsCache.find(function(r){ return r.id===id; })); }
+      });
+    });
+    var expBtn = document.getElementById('ps-export');
+    if (expBtn) expBtn.addEventListener('click', function(){ exportPayslipCSV(r); });
+  }
+
   // ── Status actions ────────────────────────────────────────────
   function updateRunStatus(id, status) {
     var params = { id:id, status:status };
@@ -1058,10 +1373,72 @@ window.WorkVoltPages['payroll'] = function(container) {
       .then(function(){
         var run = runsCache.find(function(r){ return r.id===id; });
         if (run) run.status = status;
-        toast(status==='Paid'?'Marked as paid!':status==='Approved'?'Run approved!':status==='Void'?'Run voided.':'Status updated.', status==='Void'?'warning':'success');
+        var msgs = { Paid:'Marked as paid!', Approved:'Run approved!', Void:'Run voided.', Pending:'Submitted for approval.' };
+        toast(msgs[status]||'Status updated.', status==='Void'?'warning':'success');
         loadData();
       })
       .catch(function(e){ toast(e.message,'error'); });
+  }
+
+  // ── Export CSV ────────────────────────────────────────────────
+  function exportPayslipCSV(r) {
+    var rows = [
+      ['Field','Value'],
+      ['Run ID', r.id||''],
+      ['Employee', r.employee_name||userName(r.employee_id)],
+      ['Pay Period', periodLabel(r.period_start,r.period_end)],
+      ['Pay Type', r.pay_type||''],
+      ['Status', r.status||''],
+      [''],
+      ['Regular Hours', r.hours_regular||0],
+      ['Overtime Hours', r.hours_ot||0],
+      ['Total Hours', r.hours_total||0],
+      ['Rate', r.rate||0],
+      [''],
+      ['Gross Earnings', calcGross(r)],
+      ['Bonuses', r.bonuses||r.bonus||0],
+      [''],
+      ['Federal Tax', r.tax_federal||0],
+      ['FICA', r.tax_fica||0],
+      ['State Tax', r.tax_state||0],
+      ['Total Tax', r.tax_total||r.tax||0],
+      ['Other Deductions', r.deductions||r.other_deductions||0],
+      ['Total Deductions', calcDeductions(r)],
+      [''],
+      ['NET PAY', calcNet(r)],
+    ];
+    var csv = rows.map(function(row){ return row.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+    a.download = 'payslip-'+(r.employee_name||r.employee_id||'unknown').replace(/\s+/g,'-')+'-'+(r.period_start||'').replace(/\//g,'-')+'.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Payslip CSV downloaded','success');
+  }
+
+  function exportSummaryCSV(rows) {
+    var headers = ['Employee','Period Start','Period End','Pay Type','Hours','Rate','Gross','Tax','Deductions','Net Pay','Status'];
+    var data = rows.map(function(r){
+      return [
+        r.employee_name||userName(r.employee_id),
+        r.period_start||'', r.period_end||'',
+        r.pay_type||'',
+        r.hours_total||r.overtime_hours||'',
+        r.rate||'',
+        calcGross(r), r.tax_total||r.tax||0,
+        r.deductions||r.other_deductions||0,
+        calcNet(r), r.status||'',
+      ];
+    });
+    var csv = [headers].concat(data).map(function(row){
+      return row.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(',');
+    }).join('\n');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+    a.download = 'payroll-summary-'+new Date().toISOString().split('T')[0]+'.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Summary CSV downloaded','success');
   }
 
   // ── Boot ──────────────────────────────────────────────────────
