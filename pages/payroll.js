@@ -629,6 +629,7 @@ window.WorkVoltPages['payroll'] = function(container) {
               '<span id="pr-country-badge" class="hidden md:inline-flex items-center px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-600 cursor-default" title="Tax region">🇺🇸 US</span>'+
               (isPayAdmin()?'<button id="pr-run-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl text-white border-none cursor-pointer" style="background:#10b981"><i class="fas fa-plus text-[10px]"></i>New Pay Run</button>':'') +
               (isPayAdmin()?'<button id="pr-bulk-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer"><i class="fas fa-bolt text-[10px]"></i>Bulk Run</button>':'') +
+              (canViewTaxRates()?'<button id="pr-tax-settings-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer"><i class="fas fa-sliders-h text-[10px]"></i>Tax Settings</button>':'') +
             '</div>'+
           '</div>'+
           '<div id="pr-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3"></div>'+
@@ -677,6 +678,8 @@ window.WorkVoltPages['payroll'] = function(container) {
     if (rb) rb.addEventListener('click', function(){ openRunForm(null); });
     var bb = document.getElementById('pr-bulk-btn');
     if (bb) bb.addEventListener('click', openBulkRunModal);
+    var tb = document.getElementById('pr-tax-settings-btn');
+    if (tb) tb.addEventListener('click', openTaxSettingsModal);
 
     loadData();
   }
@@ -1509,6 +1512,167 @@ window.WorkVoltPages['payroll'] = function(container) {
         modalMsg(e.message, false);
         if (btn) { btn.disabled=false; btn.innerHTML='<i class="fas fa-save mr-1.5 text-xs"></i>'+(isEdit?'Save Changes':'Create Pay Run'); }
       });
+  }
+
+  // ── Tax Settings Modal ───────────────────────────────────────────
+  function openTaxSettingsModal() {
+    var cfg    = getTaxCfg();
+    var adm    = isPayAdmin();
+    var isUSA  = cfg.country !== 'Canada';
+    var taxOn  = cfg.tax_calculation_enabled === true;
+    var ro     = !adm ? 'readonly' : '';
+    var dis    = !adm ? 'disabled' : '';
+
+    function field(label, id, val, placeholder, type) {
+      type = type || 'number';
+      return '<div class="pr-field">'+
+        '<label>'+label+'</label>'+
+        '<input id="ptaxm-'+id+'" type="'+type+'" class="pr-input" value="'+val+'" placeholder="'+(placeholder||'')+'" step="0.01" min="0" '+ro+'></div>';
+    }
+    function chk(label, id, checked) {
+      return '<label class="flex items-center gap-2 text-sm cursor-pointer">'+
+        '<input type="checkbox" id="ptaxm-'+id+'" '+(checked?'checked':'')+' '+dis+' class="w-4 h-4 accent-emerald-600 rounded">'+
+        '<span class="text-slate-700">'+label+'</span></label>';
+    }
+
+    var usaFields =
+      '<div class="grid grid-cols-2 gap-3">'+
+        field('Federal Flat Rate (%)',       'federal_flat_rate',        cfg.federal_flat_rate||22,        '22') +
+        field('FICA - SS Rate (%)',          'fica_ss_rate',             cfg.fica_ss_rate||6.2,            '6.2') +
+        field('FICA - Medicare (%)',         'fica_medicare_rate',       cfg.fica_medicare_rate||1.45,     '1.45') +
+        field("Add'l Medicare (%)",          'additional_medicare_rate', cfg.additional_medicare_rate||0.9,'0.9') +
+        field('State Tax Rate (%)',          'state_tax_rate',           cfg.state_tax_rate||5,            '5') +
+        field('State Tax Label',             'state_tax_label',          cfg.state_tax_label||'State Income Tax','State Income Tax','text') +
+        field('Local Tax Rate (%)',          'local_tax_rate',           cfg.local_tax_rate||0,            '0') +
+        field('Local Tax Label',             'local_tax_label',          cfg.local_tax_label||'Local Tax','Local Tax','text') +
+        field('Other Deduction (%)',         'other_deduction_rate',     cfg.other_deduction_rate||0,      '0') +
+        field('Other Deduction Label',       'other_deduction_label',    cfg.other_deduction_label||'Other Deductions','Other Deductions','text') +
+        field('Pay Periods / Year',          'pay_periods_per_year',     cfg.pay_periods_per_year||26,     '26') +
+      '</div>'+
+      '<div class="mt-2">'+chk('Use progressive federal tax brackets (recommended)', 'federal_use_brackets', cfg.federal_use_brackets!==false)+'</div>';
+
+    var caFields =
+      '<div class="grid grid-cols-2 gap-3">'+
+        field('Federal Flat Rate (%)',   'federal_flat_rate',      cfg.federal_flat_rate||20.5,   '20.5') +
+        field('CPP Rate (%)',            'cpp_rate',               cfg.cpp_rate||5.95,            '5.95') +
+        field('CPP Max Annual ($)',      'cpp_max_annual',         cfg.cpp_max_annual||3867.50,   '3867.50') +
+        field('EI Rate (%)',             'ei_rate',                cfg.ei_rate||1.66,             '1.66') +
+        field('EI Max Annual ($)',       'ei_max_annual',          cfg.ei_max_annual||1049.12,    '1049.12') +
+        field('Provincial Tax (%)',      'provincial_tax_rate',    cfg.provincial_tax_rate||9.15, '9.15') +
+        field('Provincial Tax Label',    'provincial_tax_label',   cfg.provincial_tax_label||'Provincial Income Tax','Provincial Income Tax','text') +
+        field('Additional Tax (%)',      'additional_tax_rate',    cfg.additional_tax_rate||0,    '0') +
+        field('Additional Tax Label',    'additional_tax_label',   cfg.additional_tax_label||'Additional Tax','Additional Tax','text') +
+        field('Other Deduction (%)',     'other_deduction_rate',   cfg.other_deduction_rate||0,   '0') +
+        field('Other Deduction Label',   'other_deduction_label',  cfg.other_deduction_label||'Other Deductions','Other Deductions','text') +
+        field('Pay Periods / Year',      'pay_periods_per_year',   cfg.pay_periods_per_year||26,  '26') +
+      '</div>'+
+      '<div class="mt-2">'+chk('Use progressive federal tax brackets (recommended)', 'federal_use_brackets', cfg.federal_use_brackets!==false)+'</div>';
+
+    var html =
+      '<div class="sticky-header flex items-center justify-between">'+
+        '<h3 class="font-extrabold text-slate-900 flex items-center gap-2"><i class="fas fa-sliders-h text-emerald-500"></i>Payroll Tax Settings</h3>'+
+        '<button id="ptaxm-close" class="flex-shrink-0 w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>'+
+      '</div>'+
+      '<div class="px-6 py-5 space-y-5">'+
+        '<div id="ptaxm-msg"></div>'+
+        '<div class="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl">'+
+          '<div>'+
+            '<div class="font-bold text-slate-800 text-sm">Auto-calculate taxes</div>'+
+            '<div class="text-xs text-slate-500 mt-0.5">Automatically deduct taxes from every pay run</div>'+
+          '</div>'+
+          '<div class="flex items-center gap-2">'+
+            '<span id="ptaxm-toggle-label" class="text-xs font-bold '+(taxOn?'text-emerald-600':'text-slate-400')+'">'+(taxOn?'Enabled':'Disabled')+'</span>'+
+            '<label class="relative inline-flex items-center cursor-pointer">'+
+              '<input type="checkbox" id="ptaxm-master-toggle" '+(taxOn?'checked':'')+' '+dis+' class="sr-only peer">'+
+              '<div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-emerald-500 transition-colors after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5 after:shadow-sm"></div>'+
+            '</label>'+
+          '</div>'+
+        '</div>'+
+        '<div>'+
+          '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Country / Region</label>'+
+          '<div class="grid grid-cols-2 gap-3">'+
+            '<label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer '+(isUSA?'border-blue-500 bg-blue-50':'border-slate-200')+'">'+
+              '<input type="radio" name="ptaxm_country" value="USA" '+(isUSA?'checked':'')+' id="ptaxm-country-usa" class="accent-blue-600" '+dis+'>'+
+              '<div><div class="font-bold text-slate-800 text-sm">US United States</div><div class="text-[10px] text-slate-500">IRS · FICA · State</div></div>'+
+            '</label>'+
+            '<label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer '+(isUSA?'border-slate-200':'border-red-400 bg-red-50')+'">'+
+              '<input type="radio" name="ptaxm_country" value="Canada" '+(isUSA?'':'checked')+' id="ptaxm-country-ca" class="accent-red-600" '+dis+'>'+
+              '<div><div class="font-bold text-slate-800 text-sm">CA Canada</div><div class="text-[10px] text-slate-500">CRA · CPP · EI · Provincial</div></div>'+
+            '</label>'+
+          '</div>'+
+        '</div>'+
+        '<div id="ptaxm-fields">'+(isUSA ? usaFields : caFields)+'</div>'+
+        '<div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">'+
+          '<i class="fas fa-exclamation-triangle mr-1.5"></i>'+
+          '<strong>Note:</strong> Rates are estimates. Always verify with your tax authority '+(isUSA?'(IRS.gov).':'(CRA - canada.ca).')+
+        '</div>'+
+        (!adm ?
+          '<div class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-xs text-blue-700"><i class="fas fa-lock mr-1.5"></i>View only - contact an Admin to change tax settings.</div>' :
+          '<button id="ptaxm-save" class="w-full py-2.5 text-sm font-bold text-white rounded-xl border-none cursor-pointer" style="background:#10b981"><i class="fas fa-save mr-1.5 text-xs"></i>Save Tax Settings</button>')+
+      '</div>';
+
+    showModal(html, '680px');
+    document.getElementById('ptaxm-close').addEventListener('click', closeModal);
+
+    var masterToggle = document.getElementById('ptaxm-master-toggle');
+    if (masterToggle) masterToggle.addEventListener('change', function() {
+      var lbl = document.getElementById('ptaxm-toggle-label');
+      if (lbl) { lbl.textContent = this.checked ? 'Enabled' : 'Disabled'; lbl.className = 'text-xs font-bold '+(this.checked?'text-emerald-600':'text-slate-400'); }
+    });
+
+    ['ptaxm-country-usa','ptaxm-country-ca'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('change', function() {
+        var newCfg = Object.assign({}, this.value === 'Canada' ? _TAX_DEFAULTS.Canada : _TAX_DEFAULTS.USA);
+        _taxCfg = newCfg; window.WV_PAYROLL_TAX_CONFIG = newCfg;
+        closeModal(); openTaxSettingsModal();
+      });
+    });
+
+    var saveBtn = document.getElementById('ptaxm-save');
+    if (saveBtn) saveBtn.addEventListener('click', function() {
+      var btn     = this;
+      var msgEl   = document.getElementById('ptaxm-msg');
+      var country = (document.querySelector('input[name="ptaxm_country"]:checked')||{}).value || 'USA';
+      var newIsUSA= country !== 'Canada';
+      var toggle  = document.getElementById('ptaxm-master-toggle');
+      var enabled = toggle ? toggle.checked : false;
+      function gn(id,fb){ var el=document.getElementById('ptaxm-'+id); return el?(parseFloat(el.value)||0):(fb||0); }
+      function gs(id,fb){ var el=document.getElementById('ptaxm-'+id); return el?(el.value||fb||''):(fb||''); }
+      function gb(id)   { var el=document.getElementById('ptaxm-'+id); return el?el.checked:false; }
+      var newCfg = newIsUSA ? {
+        country:'USA', tax_calculation_enabled:enabled,
+        pay_periods_per_year:gn('pay_periods_per_year',26), federal_use_brackets:gb('federal_use_brackets'),
+        federal_flat_rate:gn('federal_flat_rate',22), fica_ss_rate:gn('fica_ss_rate',6.2),
+        fica_medicare_rate:gn('fica_medicare_rate',1.45), additional_medicare_rate:gn('additional_medicare_rate',0.9),
+        state_tax_rate:gn('state_tax_rate',5), state_tax_label:gs('state_tax_label','State Income Tax'),
+        local_tax_rate:gn('local_tax_rate',0), local_tax_label:gs('local_tax_label','Local Tax'),
+        other_deduction_rate:gn('other_deduction_rate',0), other_deduction_label:gs('other_deduction_label','Other Deductions'),
+        currency:'USD', currency_symbol:'$'
+      } : {
+        country:'Canada', tax_calculation_enabled:enabled,
+        pay_periods_per_year:gn('pay_periods_per_year',26), federal_use_brackets:gb('federal_use_brackets'),
+        federal_flat_rate:gn('federal_flat_rate',20.5), cpp_rate:gn('cpp_rate',5.95),
+        cpp_max_annual:gn('cpp_max_annual',3867.50), ei_rate:gn('ei_rate',1.66),
+        ei_max_annual:gn('ei_max_annual',1049.12), provincial_tax_rate:gn('provincial_tax_rate',9.15),
+        provincial_tax_label:gs('provincial_tax_label','Provincial Income Tax'),
+        additional_tax_rate:gn('additional_tax_rate',0), additional_tax_label:gs('additional_tax_label','Additional Tax'),
+        other_deduction_rate:gn('other_deduction_rate',0), other_deduction_label:gs('other_deduction_label','Other Deductions'),
+        currency:'CAD', currency_symbol:'$'
+      };
+      btn.disabled=true; btn.innerHTML='<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i>Saving...';
+      api('config/set', { key:'payroll_tax_config', value:JSON.stringify(newCfg) })
+        .then(function() {
+          _taxCfg=newCfg; window.WV_PAYROLL_TAX_CONFIG=newCfg;
+          updateCountryBadge(); rerender();
+          if(msgEl) msgEl.innerHTML='<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium mb-3 bg-green-50 text-green-700 border border-green-200"><i class="fas fa-check-circle"></i><span>Saved!</span></div>';
+          btn.disabled=false; btn.innerHTML='<i class="fas fa-save mr-1.5 text-xs"></i>Save Tax Settings';
+        })
+        .catch(function(e) {
+          if(msgEl) msgEl.innerHTML='<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium mb-3 bg-red-50 text-red-600 border border-red-200"><i class="fas fa-exclamation-circle"></i><span>'+esc(e.message)+'</span></div>';
+          btn.disabled=false; btn.innerHTML='<i class="fas fa-save mr-1.5 text-xs"></i>Save Tax Settings';
+        });
+    });
   }
 
   // ── Bulk Run Modal ────────────────────────────────────────────
