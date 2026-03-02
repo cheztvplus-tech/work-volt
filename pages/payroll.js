@@ -1161,8 +1161,8 @@ window.WorkVoltPages['payroll'] = function(container) {
         '<div class="pr-section">'+
           '<div class="pr-section-head"><i class="fas fa-arrow-up text-emerald-500 text-xs"></i><span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Hours &amp; Earnings</span></div>'+
           '<div class="p-4 grid grid-cols-3 gap-3">'+
-            '<div class="pr-field"><label>Regular Hours<br><span class="text-slate-400 font-normal text-[10px]">(optional — per employee)</span></label><input id="bulk-hours" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 80"></div>'+
-            '<div class="pr-field"><label>Overtime Hours<br><span class="text-slate-400 font-normal text-[10px]">(optional)</span></label><input id="bulk-hours-ot" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 0"></div>'+
+            '<div class="pr-field"><label>Regular Hours</label><div class="text-slate-400 font-normal text-[10px] mb-1">(optional — per employee)</div><input id="bulk-hours" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 80"></div>'+
+            '<div class="pr-field"><label>Overtime Hours</label><div class="text-slate-400 font-normal text-[10px] mb-1">(optional)</div><input id="bulk-hours-ot" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 0"></div>'+
             '<div class="pr-field"><label>Total Hours</label><input id="prf-hrs-total" type="number" class="pr-input pr-calc" readonly value="'+esc(r.hours_total||'')+'"></div>'+
             '<div class="pr-field"><label>Bonuses</label><input id="prf-bonuses" type="number" min="0" step="0.01" class="pr-input" value="'+esc(initBonuses)+'" placeholder="0.00"></div>'+
             '<div class="col-span-2 pr-field"><label>Gross Earnings</label>'+
