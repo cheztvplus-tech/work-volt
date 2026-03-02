@@ -442,7 +442,7 @@ window.WorkVoltPages['payroll'] = function(container) {
     var totalNet  = rows.reduce(function(s,r){ return s+calcNet(r); }, 0);
     var pending   = rows.filter(function(r){ return r.status==='Pending'||r.status==='Draft'; });
     var paid      = rows.filter(function(r){ return r.status==='Paid'; });
-    var anomalies = rows.filter(function(r){ return detectAnomaly(r,runsCache); });
+    var anomalies = rows.filter(function(r){ return (detectAnomaly(r,runsCache)||hasOvertimeRisk(r)) && !isFlagReviewed(r); });
     function card(icon, iconCls, label, val, sub, alert) {
       return '<div class="bg-white border '+(alert?'border-red-300 bg-red-50/40':'border-slate-200')+' rounded-xl px-4 py-3 flex items-center gap-3">'+
         '<div class="w-9 h-9 '+iconCls+' rounded-xl flex items-center justify-center flex-shrink-0"><i class="fas '+icon+' text-sm"></i></div>'+
