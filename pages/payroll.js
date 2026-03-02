@@ -1161,8 +1161,8 @@ window.WorkVoltPages['payroll'] = function(container) {
         '<div class="pr-section">'+
           '<div class="pr-section-head"><i class="fas fa-arrow-up text-emerald-500 text-xs"></i><span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Hours &amp; Earnings</span></div>'+
           '<div class="p-4 grid grid-cols-3 gap-3">'+
-            '<div class="pr-field"><label>Regular Hours<br><span class="text-slate-400 font-normal text-[10px]">(optional — per employee)</span></label><input id="bulk-hours" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 80"></div>'+
-            '<div class="pr-field"><label>Overtime Hours<br><span class="text-slate-400 font-normal text-[10px]">(optional)</span></label><input id="bulk-hours-ot" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 0"></div>'+
+            '<div class="pr-field"><label>Regular Hours</label><input id="prf-hrs-reg" type="number" min="0" step="0.5" class="pr-input" value="'+esc(initHrsReg)+'" placeholder="0"></div>'+
+            '<div class="pr-field"><label>Overtime Hours</label><input id="prf-hrs-ot" type="number" min="0" step="0.5" class="pr-input" value="'+esc(initHrsOT)+'" placeholder="0"></div>'+
             '<div class="pr-field"><label>Total Hours</label><input id="prf-hrs-total" type="number" class="pr-input pr-calc" readonly value="'+esc(r.hours_total||'')+'"></div>'+
             '<div class="pr-field"><label>Bonuses</label><input id="prf-bonuses" type="number" min="0" step="0.01" class="pr-input" value="'+esc(initBonuses)+'" placeholder="0.00"></div>'+
             '<div class="col-span-2 pr-field"><label>Gross Earnings</label>'+
@@ -1621,10 +1621,10 @@ window.WorkVoltPages['payroll'] = function(container) {
 
     var html =
       // Dark header
-      '<div class="bg-gradient-to-br from-slate-900 to-emerald-950 px-6 pt-6 pb-8 text-white relative overflow-hidden">'+
+      '<div class="bg-gradient-to-br from-slate-900 to-emerald-950 px-6 pt-6 pb-8 text-white relative">'+
         '<div class="absolute -right-4 -bottom-4 opacity-10"><i class="fas fa-money-bill-wave text-9xl"></i></div>'+
         (isPreview?'<div class="absolute top-4 left-4 bg-amber-400 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Preview</div>':'')+
-        '<button id="ps-close" style="position:absolute;top:1rem;right:1rem;width:2rem;height:2rem;background:rgba(255,255,255,.2);border:none;border-radius:9999px;cursor:pointer;color:#fff;font-size:1.1rem;line-height:1;display:flex;align-items:center;justify-content:center;pointer-events:all;transition:background .15s">&#x2715;</button>'+
+        '<button id="ps-close" class="flex-shrink-0 w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-white hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer" style="position:absolute;top:1rem;right:1rem;z-index:10">✕</button>'+
         '<div class="text-xs font-bold uppercase tracking-widest opacity-60 mb-3">Payslip</div>'+
         '<div class="flex items-center gap-3 mb-4">'+
           '<div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-xl font-black">'+userInitial(r.employee_id)+'</div>'+
