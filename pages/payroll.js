@@ -1510,8 +1510,8 @@ window.WorkVoltPages['payroll'] = function(container) {
         '<div class="grid grid-cols-2 gap-3 mb-4">'+
           '<div class="pr-field"><label>Period Start <span class="text-red-400">*</span></label><input id="bulk-start" type="date" class="pr-input"></div>'+
           '<div class="pr-field"><label>Period End <span class="text-red-400">*</span></label><input id="bulk-end" type="date" class="pr-input"></div>'+
-          '<div class="pr-field"><label>Regular Hours <span class="text-slate-400 font-normal text-[10px]">(optional — per employee)</span></label><input id="bulk-hours" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 80"></div>'+
-          '<div class="pr-field"><label>Overtime Hours <span class="text-slate-400 font-normal text-[10px]">(optional)</span></label><input id="bulk-hours-ot" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 0"></div>'+
+          '<div class="pr-field"><label style="display:block;margin-bottom:2px">Regular Hours</label><p style="font-size:10px;color:#94a3b8;margin:0 0 4px">optional — per employee</p><input id="bulk-hours" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 80"></div>'+
+          '<div class="pr-field"><label style="display:block;margin-bottom:2px">Overtime Hours</label><p style="font-size:10px;color:#94a3b8;margin:0 0 4px">optional</p><input id="bulk-hours-ot" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 0"></div>'+
         '</div>'+
         '<div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 max-h-48 overflow-y-auto">'+
           '<div class="flex items-center justify-between mb-2 px-1">'+
