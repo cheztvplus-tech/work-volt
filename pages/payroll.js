@@ -274,12 +274,14 @@ window.WorkVoltPages['payroll'] = function(container) {
     return (parseFloat(r.gross_salary)||0)+(parseFloat(r.bonus)||0)+(parseFloat(r.overtime_pay)||0)+(parseFloat(r.extra_pay)||0);
   }
   function calcDeductions(r) {
+    var taxOn = taxEnabled();
     if (r.deductions !== undefined && r.deductions !== '') {
       var d = parseFloat(r.deductions)||0;
-      var t = parseFloat(r.tax_total)||parseFloat(r.tax)||0;
+      var t = taxOn ? (parseFloat(r.tax_total)||parseFloat(r.tax)||0) : 0;
       return d + t;
     }
-    return (parseFloat(r.tax)||0)+(parseFloat(r.health_insurance)||0)+(parseFloat(r.pension)||0)+(parseFloat(r.other_deductions)||0);
+    var t2 = taxOn ? (parseFloat(r.tax)||0) : 0;
+    return t2+(parseFloat(r.health_insurance)||0)+(parseFloat(r.pension)||0)+(parseFloat(r.other_deductions)||0);
   }
   function calcNet(r) {
     if (r.net !== undefined && r.net !== '') return Math.max(0, parseFloat(r.net)||0);
@@ -745,7 +747,7 @@ window.WorkVoltPages['payroll'] = function(container) {
         '<td class="px-4 py-3 whitespace-nowrap">'+
           '<div class="text-sm font-bold text-red-500">-'+fmtMoney(ded)+'</div>'+
           '<div class="text-[10px] text-slate-400 mt-0.5">'+
-            (parseFloat(r.tax_total||r.tax)?'Tax '+fmtMoney(r.tax_total||r.tax):'')+
+            (taxEnabled()&&parseFloat(r.tax_total||r.tax)?'Tax '+fmtMoney(r.tax_total||r.tax):'')+
           '</div>'+
         '</td>'+
         '<td class="px-4 py-3 whitespace-nowrap">'+
@@ -841,9 +843,9 @@ window.WorkVoltPages['payroll'] = function(container) {
           (parseFloat(latest.hours_total||latest.overtime_hours||0)?_lineItem('Hours', fmtHours(latest.hours_total||latest.overtime_hours||0)+' total', ''):'') +
           (parseFloat(latest.bonuses||latest.bonus)?_lineItem('Bonus', '+'+fmtMoney(latest.bonuses||latest.bonus), 'text-emerald-600'):'') +
           '<div class="border-t border-slate-100 mt-2 pt-2">'+
-          (parseFloat(latest.tax_federal||0)?_lineItem('Federal Tax', '-'+fmtMoney(latest.tax_federal), 'text-red-500'):'') +
-          (parseFloat(latest.tax_fica||0)?_lineItem('FICA (SS + Medicare)', '-'+fmtMoney(latest.tax_fica), 'text-red-500'):'') +
-          (parseFloat(latest.tax_state||0)?_lineItem('State Tax', '-'+fmtMoney(latest.tax_state), 'text-red-500'):'') +
+          (taxEnabled()&&parseFloat(latest.tax_federal||0)?_lineItem('Federal Tax', '-'+fmtMoney(latest.tax_federal), 'text-red-500'):'') +
+          (taxEnabled()&&parseFloat(latest.tax_fica||0)?_lineItem('FICA (SS + Medicare)', '-'+fmtMoney(latest.tax_fica), 'text-red-500'):'') +
+          (taxEnabled()&&parseFloat(latest.tax_state||0)?_lineItem('State Tax', '-'+fmtMoney(latest.tax_state), 'text-red-500'):'') +
           (parseFloat(latest.deductions||latest.other_deductions||0)?_lineItem('Other Deductions', '-'+fmtMoney(latest.deductions||latest.other_deductions||0), 'text-red-500'):'') +
           '</div>'+
         '</div>'+
@@ -1199,7 +1201,7 @@ window.WorkVoltPages['payroll'] = function(container) {
             (function(){
               var cfg = getTaxCfg();
               var isCA = cfg.country === 'Canada';
-              var enabled = cfg.tax_calculation_enabled !== false;
+              var enabled = cfg.tax_calculation_enabled === true;
               var yr = new Date().getFullYear();
 
               if (!enabled) {
@@ -1585,7 +1587,10 @@ window.WorkVoltPages['payroll'] = function(container) {
           hours_total:   String(computed.hours_total),
           gross:         String(computed.gross),
           net:           String(computed.net),
-          tax_total:     String(computed.tax_total),
+          tax_federal:   String(computed.tax_federal || 0),
+          tax_fica:      String(computed.tax_fica    || 0),
+          tax_state:     String(computed.tax_state   || 0),
+          tax_total:     String(computed.tax_total   || 0),
           status:        'Draft',
           created_by:    myUserId(),
         };
