@@ -290,6 +290,23 @@ window.WorkVoltPages['payroll'] = function(container) {
     if (r.net !== undefined && r.net !== '') return Math.max(0, parseFloat(r.net)||0);
     return Math.max(0, calcGross(r) - calcDeductions(r));
   }
+  function isFlagReviewed(r) {
+    return String(r.notes||'').indexOf('[flag_reviewed]') !== -1;
+  }
+  function markFlagReviewed(runId) {
+    var r = runsCache.find(function(x){ return x.id===runId; });
+    if (!r) return;
+    var notes = String(r.notes||'');
+    if (notes.indexOf('[flag_reviewed]') !== -1) return;
+    var newNotes = notes ? notes+' [flag_reviewed]' : '[flag_reviewed]';
+    api('payroll/runs/update', { id: runId, notes: newNotes })
+      .then(function() {
+        r.notes = newNotes;
+        rerender();
+      })
+      .catch(function(e){ toast('Could not save review: '+e.message, 'error'); });
+  }
+
   function detectAnomaly(run, allRuns) {
     var prev = allRuns.filter(function(r){
       return r.employee_id===run.employee_id && r.id!==run.id && r.status!=='Void' && r.status!=='Rejected';
@@ -740,7 +757,7 @@ window.WorkVoltPages['payroll'] = function(container) {
         '<td class="px-4 py-3 whitespace-nowrap">'+
           '<div class="text-xs font-bold text-slate-800">'+esc(periodLabel(r.period_start,r.period_end))+'</div>'+
           (r.pay_type?'<div class="text-[10px] text-slate-400">'+esc(r.pay_type)+'</div>':'')+
-          (otRisk?'<div class="text-[10px] text-orange-600 font-bold mt-0.5"><i class="fas fa-clock mr-0.5 text-[9px]"></i>OT flagged</div>':'')+
+          (otRisk&&!isFlagReviewed(r)?'<div class="flex items-center gap-1 mt-0.5"><span class="text-[10px] text-orange-600 font-bold"><i class="fas fa-clock mr-0.5 text-[9px]"></i>OT flagged</span><button class="pr-flag-review text-[9px] font-bold text-orange-600 border border-orange-300 bg-orange-50 hover:bg-orange-100 rounded px-1.5 py-px cursor-pointer ml-1" data-id="'+esc(r.id)+'" title="Mark as reviewed">Reviewed</button></div>':'')+ 
         '</td>'+
         '<td class="px-4 py-3 whitespace-nowrap">'+
           '<div class="text-sm font-bold text-slate-900">'+fmtMoney(gross)+'</div>'+
@@ -758,7 +775,7 @@ window.WorkVoltPages['payroll'] = function(container) {
         '</td>'+
         '<td class="px-4 py-3 whitespace-nowrap">'+
           '<div class="text-base font-extrabold '+netColor+'">'+fmtMoney(net)+'</div>'+
-          (anom?'<div class="mt-0.5">'+anomalyBadge(anom)+'</div>':'')+
+          (anom&&!isFlagReviewed(r)?'<div class="flex items-center gap-1 mt-0.5">'+anomalyBadge(anom)+'<button class="pr-flag-review text-[9px] font-bold text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 rounded px-1.5 py-px cursor-pointer ml-1" data-id="'+esc(r.id)+'" title="Mark as reviewed">Reviewed</button></div>':'')+ 
           (net<0?'<div class="text-[10px] text-red-600 font-bold mt-0.5"><i class="fas fa-exclamation-triangle mr-0.5"></i>Net &lt; 0</div>':'')+
         '</td>'+
         '<td class="px-4 py-3 whitespace-nowrap">'+statusBadge(r.status||'Draft')+'</td>'+
@@ -788,8 +805,15 @@ window.WorkVoltPages['payroll'] = function(container) {
     el.querySelectorAll('.pr-row').forEach(function(row){
       row.addEventListener('click', function(e){
         if (e.target.closest('.pr-act')) return;
+        if (e.target.closest('.pr-flag-review')) return;
         var run = runsCache.find(function(r){ return r.id===this.dataset.id; }.bind(this));
         if (run) openPayslip(run);
+      });
+    });
+    el.querySelectorAll('.pr-flag-review').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        markFlagReviewed(this.dataset.id);
       });
     });
     el.querySelectorAll('.pr-act').forEach(function(btn){
@@ -1881,7 +1905,7 @@ window.WorkVoltPages['payroll'] = function(container) {
       '</div>'+
 
       // Anomaly + notes
-      (anom?'<div class="mx-5 mb-2 flex gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700"><i class="fas fa-exclamation-triangle text-red-400 mt-0.5 flex-shrink-0"></i><div><strong>Anomaly:</strong> Net pay changed '+anom.pct+'% ('+anom.dir+') vs previous period. Review before approving.</div></div>':'')+
+      (anom&&!isFlagReviewed(r)?'<div class="mx-5 mb-2 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700"><i class="fas fa-exclamation-triangle text-red-400 mt-0.5 flex-shrink-0"></i><div class="flex-1"><strong>Anomaly:</strong> Net pay changed '+anom.pct+'% ('+anom.dir+') vs previous period. Review before approving.</div><button class="pr-flag-review flex-shrink-0 text-[10px] font-bold text-red-600 border border-red-300 bg-white hover:bg-red-50 rounded-lg px-2 py-1 cursor-pointer" data-id="'+esc(r.id)+'" title="Mark as reviewed">Mark Reviewed</button></div>':'')+
       (r.notes?'<div class="mx-5 mb-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600"><i class="fas fa-sticky-note text-slate-400 mr-1.5"></i>'+esc(r.notes)+'</div>':'')+
 
       // Audit mini-trail
@@ -1921,6 +1945,14 @@ window.WorkVoltPages['payroll'] = function(container) {
     });
     var expBtn = document.getElementById('ps-export');
     if (expBtn) expBtn.addEventListener('click', function(){ exportPayslipCSV(r); });
+    // Wire flag review button inside payslip
+    document.querySelectorAll('.pr-flag-review').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        markFlagReviewed(this.dataset.id);
+        closeModal();
+      });
+    });
   }
 
   // ── Status actions ────────────────────────────────────────────
