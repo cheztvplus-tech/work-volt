@@ -277,13 +277,12 @@ window.WorkVoltPages['roles'] = function(container) {
   }
 
   function allAddonEntries() {
-    // All from ADDON_CATALOGUE — show installed ones first
+    // Only show modules that are currently installed
     const installed = installedAddonIds();
-    const entries = Object.entries(ADDON_CATALOGUE).map(([id, def]) => ({
-      id, ...def, installed: installed.includes(id),
-    }));
-    entries.sort((a, b) => b.installed - a.installed || a.label.localeCompare(b.label));
-    return entries;
+    return installed
+      .filter(id => ADDON_CATALOGUE[id])
+      .map(id => ({ id, ...ADDON_CATALOGUE[id], installed: true }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -442,7 +441,12 @@ window.WorkVoltPages['roles'] = function(container) {
       return `
         <div class="bg-white border border-dashed border-slate-300 rounded-2xl p-10 text-center">
           <i class="fas fa-store text-slate-300 text-3xl mb-3"></i>
-          <p class="text-slate-500 font-semibold">No modules in catalogue</p>
+          <p class="text-slate-500 font-semibold mb-1">No modules installed yet</p>
+          <p class="text-slate-400 text-sm mb-4">Install modules from the Module Store first, then configure their role permissions here.</p>
+          <button onclick="window.WorkVolt.navigate('store')"
+            class="inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors">
+            <i class="fas fa-store text-xs"></i> Browse Module Store
+          </button>
         </div>`;
     }
 
@@ -454,10 +458,6 @@ window.WorkVoltPages['roles'] = function(container) {
           <div class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-blue-500 inline-block"></span>Has access</div>
           <div class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-slate-100 border border-slate-200 inline-block"></span>No access</div>
           <div class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-purple-100 border border-purple-200 inline-block"></span>SuperAdmin (always on)</div>
-          <div class="flex items-center gap-1.5 ml-auto">
-            <span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span>Installed
-            <span class="w-2 h-2 rounded-full bg-slate-300 inline-block ml-2"></span>Not installed
-          </div>
         </div>
 
         <!-- Matrix table -->
@@ -514,10 +514,8 @@ window.WorkVoltPages['roles'] = function(container) {
         <tr class="${rowBg} hover:bg-blue-50/30 transition-colors border-b border-slate-100 last:border-0">
           <td class="px-5 py-3">
             <div class="flex items-center gap-2.5">
-              ${!mod.installed ? `<span class="w-1.5 h-1.5 rounded-full bg-slate-300 flex-shrink-0" title="Not installed"></span>` : `<span class="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" title="Installed"></span>`}
               <i class="fas ${mod.icon} text-slate-400 text-xs w-3.5"></i>
               <span class="font-semibold text-slate-800 text-sm">${mod.label}</span>
-              ${!mod.installed ? `<span class="text-[10px] text-slate-400 font-medium">(not installed)</span>` : ''}
             </div>
           </td>
           ${ALL_ROLES.map(role => {
@@ -727,17 +725,9 @@ window.WorkVoltPages['roles'] = function(container) {
                       </div>`).join('')}
                   ` : ''}
 
-                  ${installedAccessible.length === 0 && coreVisible.length > 0 ? `
+                ${installedAccessible.length === 0 && coreVisible.length > 0 ? `
                     <div class="px-3 py-2 text-xs text-slate-400 italic">No add-on modules</div>` : ''}
                 </div>
-
-                ${notInstalledAccessible.length > 0 ? `
-                  <div class="px-4 py-2.5 border-t border-slate-100 bg-white">
-                    <p class="text-[10px] text-slate-400 font-medium mb-1">
-                      <i class="fas fa-store mr-1"></i>Would see if installed (${notInstalledAccessible.length}):
-                    </p>
-                    <p class="text-[10px] text-slate-500">${notInstalledAccessible.map(m => m.label).join(', ')}</p>
-                  </div>` : ''}
               </div>`;
           }).join('')}
         </div>
