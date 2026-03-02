@@ -284,6 +284,9 @@ window.WorkVoltPages['payroll'] = function(container) {
     return t2+(parseFloat(r.health_insurance)||0)+(parseFloat(r.pension)||0)+(parseFloat(r.other_deductions)||0);
   }
   function calcNet(r) {
+    // Always recalculate when tax is enabled so deductions are reflected live,
+    // regardless of what net value was stored when the run was created with taxes off.
+    if (taxEnabled()) return Math.max(0, calcGross(r) - calcDeductions(r));
     if (r.net !== undefined && r.net !== '') return Math.max(0, parseFloat(r.net)||0);
     return Math.max(0, calcGross(r) - calcDeductions(r));
   }
