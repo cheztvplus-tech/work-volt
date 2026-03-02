@@ -1178,8 +1178,8 @@ window.WorkVoltPages['payroll'] = function(container) {
         '<div class="pr-section">'+
           '<div class="pr-section-head"><i class="fas fa-arrow-up text-emerald-500 text-xs"></i><span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Hours &amp; Earnings</span></div>'+
           '<div class="p-4 grid grid-cols-3 gap-3">'+
-            '<div class="pr-field"><label>Regular Hours</label><div class="text-slate-400 font-normal text-[10px] mb-1">(optional — per employee)</div><input id="bulk-hours" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 80"></div>'+
-            '<div class="pr-field"><label>Overtime Hours</label><div class="text-slate-400 font-normal text-[10px] mb-1">(optional)</div><input id="bulk-hours-ot" type="number" min="0" step="0.5" class="pr-input" placeholder="e.g. 0"></div>'+
+            '<div class="pr-field"><label>Regular Hours</label><input id="prf-hrs-reg" type="number" min="0" step="0.5" class="pr-input" value="'+esc(initHrsReg)+'" placeholder="0"></div>'+
+            '<div class="pr-field"><label>Overtime Hours</label><input id="prf-hrs-ot" type="number" min="0" step="0.5" class="pr-input" value="'+esc(initHrsOT)+'" placeholder="0"></div>'+
             '<div class="pr-field"><label>Total Hours</label><input id="prf-hrs-total" type="number" class="pr-input pr-calc" readonly value="'+esc(r.hours_total||'')+'"></div>'+
             '<div class="pr-field"><label>Bonuses</label><input id="prf-bonuses" type="number" min="0" step="0.01" class="pr-input" value="'+esc(initBonuses)+'" placeholder="0.00"></div>'+
             '<div class="col-span-2 pr-field"><label>Gross Earnings</label>'+
@@ -1279,7 +1279,7 @@ window.WorkVoltPages['payroll'] = function(container) {
 
         '<div class="flex gap-3">'+
           '<button id="prf-cancel" class="btn-secondary flex-1 py-2.5">Cancel</button>'+
-          '<button id="prf-preview" class="flex items-center justify-center gap-1.5 flex-1 py-2.5 text-sm font-bold border border-emerald-300 text-emerald-700 rounded-xl bg-emerald-50 hover:bg-emerald-100 cursor-pointer"><i class="fas fa-eye text-xs"></i>Preview Payslip</button>'+
+  
           '<button id="prf-save" class="btn-primary flex-1 py-2.5" style="background:#10b981"><i class="fas fa-save mr-1.5 text-xs"></i>'+(isEdit?'Save Changes':'Create Pay Run')+'</button>'+
         '</div>'+
       '</div>';
@@ -1412,13 +1412,6 @@ window.WorkVoltPages['payroll'] = function(container) {
     document.getElementById('prf-cancel').addEventListener('click', closeModal);
 
     // Preview payslip before saving
-    document.getElementById('prf-preview').addEventListener('click', function(){
-      var tempRun = buildFormParams(isEdit ? run.id : null);
-      if (tempRun) {
-        closeModal();
-        openPayslip(Object.assign({ id:'PREVIEW', status:'Draft' }, tempRun));
-      }
-    });
 
     document.getElementById('prf-save').addEventListener('click', function(){ submitRunForm(isEdit ? run.id : null); });
 
