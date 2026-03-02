@@ -190,7 +190,8 @@ window.WorkVoltPages['payroll'] = function(container) {
   //   + country-specific detail keys for display
   function taxEnabled() {
     var cfg = getTaxCfg();
-    return cfg.tax_calculation_enabled !== false; // default true if not set
+    // Must be explicitly true — missing/undefined/false all mean disabled
+    return cfg.tax_calculation_enabled === true;
   }
 
   // Returns a zero-tax object when tax calc is disabled by admin
@@ -297,7 +298,14 @@ window.WorkVoltPages['payroll'] = function(container) {
   }
   function hasOvertimeRisk(r) {
     var hrs = parseFloat(r.hours_total||r.overtime_hours)||0;
-    return hrs > 40;
+    if (!hrs) return false;
+    // Calculate OT threshold based on pay period length (40hrs per week)
+    var weeksInPeriod = 1;
+    if (r.period_start && r.period_end) {
+      var days = (new Date(r.period_end) - new Date(r.period_start)) / (1000*60*60*24) + 1;
+      weeksInPeriod = Math.max(1, Math.round(days / 7));
+    }
+    return hrs > (40 * weeksInPeriod);
   }
 
   // ── Badges ────────────────────────────────────────────────────
@@ -1677,20 +1685,23 @@ window.WorkVoltPages['payroll'] = function(container) {
           (function(){
             var cfg2 = getTaxCfg();
             var isCA = cfg2.country === 'Canada';
+            var taxOn = cfg2.tax_calculation_enabled === true;
             var lines = '';
-            if (isCA) {
-              lines += (parseFloat(r.tax_federal||0)?_lineItem('Federal Tax (CRA)', '-'+fmtMoney(r.tax_federal), 'text-red-500'):'');
-              // try to show CPP/EI if stored, else show fica as combined
-              lines += (parseFloat(r.tax_fica||0)?_lineItem('CPP + EI', '-'+fmtMoney(r.tax_fica), 'text-red-500'):'');
-              lines += (parseFloat(r.tax_state||0)?_lineItem(cfg2.provincial_tax_label||'Provincial Tax', '-'+fmtMoney(r.tax_state), 'text-red-500'):'');
-            } else {
-              lines += (parseFloat(r.tax_federal||0)?_lineItem('Federal Tax (IRS)', '-'+fmtMoney(r.tax_federal), 'text-red-500'):'');
-              lines += (parseFloat(r.tax_fica||0)?_lineItem('FICA (SS + Medicare)', '-'+fmtMoney(r.tax_fica), 'text-red-500'):'');
-              lines += (parseFloat(r.tax_state||0)?_lineItem(cfg2.state_tax_label||'State Tax', '-'+fmtMoney(r.tax_state), 'text-red-500'):'');
-            }
-            // Fallback: old-style single tax field
-            if (!parseFloat(r.tax_federal||0) && !parseFloat(r.tax_fica||0) && parseFloat(r.tax_total||r.tax||0)) {
-              lines += _lineItem('Income Tax', '-'+fmtMoney(r.tax_total||r.tax||0), 'text-red-500');
+            // Only show tax breakdown lines if tax calculation is actively enabled
+            if (taxOn) {
+              if (isCA) {
+                lines += (parseFloat(r.tax_federal||0)?_lineItem('Federal Tax (CRA)', '-'+fmtMoney(r.tax_federal), 'text-red-500'):'');
+                lines += (parseFloat(r.tax_fica||0)?_lineItem('CPP + EI', '-'+fmtMoney(r.tax_fica), 'text-red-500'):'');
+                lines += (parseFloat(r.tax_state||0)?_lineItem(cfg2.provincial_tax_label||'Provincial Tax', '-'+fmtMoney(r.tax_state), 'text-red-500'):'');
+              } else {
+                lines += (parseFloat(r.tax_federal||0)?_lineItem('Federal Tax (IRS)', '-'+fmtMoney(r.tax_federal), 'text-red-500'):'');
+                lines += (parseFloat(r.tax_fica||0)?_lineItem('FICA (SS + Medicare)', '-'+fmtMoney(r.tax_fica), 'text-red-500'):'');
+                lines += (parseFloat(r.tax_state||0)?_lineItem(cfg2.state_tax_label||'State Tax', '-'+fmtMoney(r.tax_state), 'text-red-500'):'');
+              }
+              // Fallback: old-style single tax field
+              if (!parseFloat(r.tax_federal||0) && !parseFloat(r.tax_fica||0) && parseFloat(r.tax_total||r.tax||0)) {
+                lines += _lineItem('Income Tax', '-'+fmtMoney(r.tax_total||r.tax||0), 'text-red-500');
+              }
             }
             lines += (parseFloat(r.health_insurance||0)?_lineItem('Health Insurance', '-'+fmtMoney(r.health_insurance), 'text-red-500'):'');
             lines += (parseFloat(r.pension||0)?_lineItem('Pension / 401k', '-'+fmtMoney(r.pension), 'text-red-500'):'');
