@@ -110,7 +110,7 @@ window.WorkVoltPages['payroll'] = function(container) {
 
   var _TAX_DEFAULTS = {
     USA: {
-      country:'USA', pay_periods_per_year:26,
+      country:'USA', tax_calculation_enabled:false, pay_periods_per_year:26,
       federal_use_brackets:true, federal_flat_rate:22,
       fica_ss_rate:6.2, fica_medicare_rate:1.45, additional_medicare_rate:0.9,
       state_tax_rate:5, state_tax_label:'State Income Tax',
@@ -119,7 +119,7 @@ window.WorkVoltPages['payroll'] = function(container) {
       currency:'USD', currency_symbol:'$',
     },
     Canada: {
-      country:'Canada', pay_periods_per_year:26,
+      country:'Canada', tax_calculation_enabled:false, pay_periods_per_year:26,
       federal_use_brackets:true, federal_flat_rate:20.5,
       cpp_rate:5.95, cpp_max_annual:3867.50,
       ei_rate:1.66,  ei_max_annual:1049.12,
@@ -339,17 +339,18 @@ window.WorkVoltPages['payroll'] = function(container) {
   function loadData() {
     var el = document.getElementById('pr-content');
     if (el) el.innerHTML = '<div class="flex items-center justify-center py-24 text-slate-400"><i class="fas fa-circle-notch fa-spin text-2xl mr-3"></i>Loading payroll…</div>';
-    // Load tax config first (silently), then fetch payroll data
-    loadTaxConfig().then(function() {
+    // Load tax config FIRST, then fetch all payroll data — prevents race condition
+    // where rerender() runs before tax settings are known (causes country flip + wrong deductions)
+    loadTaxConfig().catch(function(){}).then(function() {
       updateCountryBadge();
-    }).catch(function(){});
-    Promise.all([
-      api('payroll/runs/list', {}).catch(function(){ return {rows:[]}; }),
-      api('payroll/employees/list', {}).catch(function(){ return {rows:[]}; }),
-      api('users/list', {}).catch(function(){ return {rows:[]}; }),
-      api('timesheets/list', {}).catch(function(){ return {rows:[]}; }),
-      api('payroll/audit/list', {}).catch(function(){ return {rows:[]}; }),
-    ]).then(function(res) {
+      return Promise.all([
+        api('payroll/runs/list', {}).catch(function(){ return {rows:[]}; }),
+        api('payroll/employees/list', {}).catch(function(){ return {rows:[]}; }),
+        api('users/list', {}).catch(function(){ return {rows:[]}; }),
+        api('timesheets/list', {}).catch(function(){ return {rows:[]}; }),
+        api('payroll/audit/list', {}).catch(function(){ return {rows:[]}; }),
+      ]);
+    }).then(function(res) {
       runsCache  = res[0].rows || [];
       empCache   = res[1].rows || [];
       usersCache = res[2].rows || [];
