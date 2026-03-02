@@ -257,7 +257,7 @@
           <!-- Populated by renderNav() -->
         </nav>
         <div class="p-3 border-t border-slate-100 flex items-center justify-between">
-          <p class="text-[10px] text-slate-400 font-medium sidebar-footer-text">Work Volt · v1.1</p>
+          <p class="text-[10px] text-slate-400 font-medium sidebar-footer-text">Work Volt · v2.0</p>
           <button onclick="toggleSidebarCollapse()" title="Collapse sidebar"
             class="sidebar-collapse-btn w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all flex-shrink-0">
             <i class="fas fa-chevron-left text-xs" style="transition:transform .22s"></i>
@@ -324,19 +324,93 @@
     dashboard:  ['SuperAdmin','Admin','Manager','Employee','Contractor'],
     settings:   ['SuperAdmin','Admin'],
     store:      ['SuperAdmin','Admin'],
+    roles:      ['SuperAdmin','Admin'],
   };
 
   const MODULE_ICONS = {
     dashboard:  'fa-th-large',
     settings:   'fa-cog',
     store:      'fa-store',
+    roles:      'fa-shield-alt',
   };
 
   const MODULE_LABELS = {
     dashboard:  'Dashboard',
     settings:   'Settings',
     store:      'Module Store',
+    roles:      'Role Permissions',
   };
+
+  // Live role-permission overrides loaded from config sheet.
+  // Structure: { moduleId: { role: bool } }
+  // When populated, overrides ADDON_CATALOGUE[m.id].roles in renderNav().
+  let _rolePermissions   = {};  // e.g. { tasks: { Admin: true, Employee: false, ... } }
+  let _userModuleOverrides = {}; // e.g. { "WV123456": ["tasks","payroll"] }
+
+  // Load custom role permissions saved by the Roles module
+  async function loadRolePermissions() {
+    const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
+
+    // Try localStorage fallback first (works even without Sheet)
+    try {
+      const local = JSON.parse(localStorage.getItem('wv_role_permissions') || 'null');
+      if (local) _rolePermissions = local;
+      const localOv = JSON.parse(localStorage.getItem('wv_user_overrides') || 'null');
+      if (localOv) _userModuleOverrides = localOv;
+    } catch(e) {}
+
+    if (!savedUrl || !savedSecret) return;
+
+    try {
+      const url = new URL(savedUrl);
+      url.searchParams.set('path',  'config/get-all');
+      url.searchParams.set('token', savedSecret);
+      const res  = await fetch(url.toString(), { cache: 'no-cache' });
+      const data = await res.json();
+      const settings = data.settings || {};
+      if (settings.role_permissions) {
+        try { _rolePermissions = JSON.parse(settings.role_permissions); } catch(e) {}
+      }
+      if (settings.user_module_overrides) {
+        try { _userModuleOverrides = JSON.parse(settings.user_module_overrides); } catch(e) {}
+      }
+    } catch(e) {
+      console.warn('Could not load role permissions:', e.message);
+    }
+  }
+
+  // Resolve which roles can access a given addon module
+  function resolvedRolesForModule(moduleId) {
+    if (_rolePermissions[moduleId]) {
+      return Object.entries(_rolePermissions[moduleId])
+        .filter(([, allowed]) => allowed)
+        .map(([role]) => role);
+    }
+    const def = ADDON_CATALOGUE[moduleId];
+    return (def && def.roles) || [];
+  }
+
+  // Check if the current user can access a given module
+  function canAccessModule(moduleId) {
+    const role   = currentUser?.role || 'Employee';
+    const userId = currentUser?.user_id || '';
+
+    // Core always-accessible pages
+    if (moduleId === 'dashboard') return true;
+    if (MODULE_ROLES[moduleId])   return MODULE_ROLES[moduleId].includes(role);
+
+    // SuperAdmin can always access everything
+    if (role === 'SuperAdmin') return true;
+
+    // Check per-user override first
+    if (_userModuleOverrides[userId]) {
+      return _userModuleOverrides[userId].includes(moduleId);
+    }
+
+    // Fall back to role permissions
+    return resolvedRolesForModule(moduleId).includes(role);
+  }
 
   // Add-on modules available in the Store
   // These are registered here so the app knows how to render them once installed
@@ -534,11 +608,10 @@
         <span class="nav-label">Dashboard</span>
       </a>`;
 
-    // ── Installed add-on modules filtered by role ──
+    // ── Installed add-on modules filtered by role + permission overrides ──
     let addons = INSTALLED_MODULES.filter(m => {
-      const def = ADDON_CATALOGUE[m.id];
-      const roles = m.allowed_roles || (def && def.roles) || [];
-      return roles.includes(role);
+      if (!canAccessModule(m.id)) return false;
+      return true;
     });
 
     // Apply personal saved order
@@ -576,7 +649,7 @@
       </div>
     ` : '';
 
-    // ── Bottom: Settings + Store ──
+    // ── Bottom: Settings + Store + Roles ──
     const bottomLinks = `
       <div class="border-t border-slate-100 mt-2 pt-2 space-y-0.5">
         ${MODULE_ROLES.settings.includes(role) ? `
@@ -592,6 +665,13 @@
            data-module="store">
           <i class="fas fa-store w-4 text-slate-400"></i>
           <span class="nav-label">Module Store</span>
+        </a>` : ''}
+        ${MODULE_ROLES.roles.includes(role) ? `
+        <a href="#roles" onclick="showModule('roles'); return false;"
+           class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
+           data-module="roles">
+          <i class="fas fa-shield-alt w-4 text-slate-400"></i>
+          <span class="nav-label">Role Permissions</span>
         </a>` : ''}
       </div>`;
 
@@ -1418,6 +1498,14 @@
   };
   window.WorkVoltPages = window.WorkVoltPages || {};
   window.renderNav = renderNav;
+  // Expose permission state so roles.js can update it after save
+  window._wvRolePermissions    = () => _rolePermissions;
+  window._wvUserOverrides      = () => _userModuleOverrides;
+  window._wvApplyPermissions   = function(perms, overrides) {
+    if (perms)     _rolePermissions     = perms;
+    if (overrides) _userModuleOverrides = overrides;
+    renderNav();
+  };
 
   // ─────────────────────────────────────────────
   //  BOOT SEQUENCE
@@ -1425,6 +1513,7 @@
   window.addEventListener('load', async () => {
     // Go straight to app — login & Google Sheet will be connected later
     await loadInstalledModules(); // no-op until Sheet connected; swaps for apiCall later
+    await loadRolePermissions();  // load custom role permissions from config/localStorage
     hideSplash();
     await showApp();
   });
@@ -1434,4 +1523,3 @@
 
 </body>
 </html>
-
