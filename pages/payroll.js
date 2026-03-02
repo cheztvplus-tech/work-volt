@@ -323,7 +323,7 @@ window.WorkVoltPages['payroll'] = function(container) {
     w = w||'720px';
     getPortal().innerHTML =
       '<div id="pr-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9998;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto">'+
-        '<div style="background:#fff;border-radius:1.25rem;box-shadow:0 30px 80px rgba(0,0,0,.3);width:100%;max-width:'+w+';max-height:92vh;overflow-y:auto;z-index:9999;position:relative">'+html+'</div>'+
+        '<div style="background:#fff;border-radius:1.25rem;box-shadow:0 30px 80px rgba(0,0,0,.3);width:100%;max-width:'+w+';max-height:92vh;overflow-y:auto;overflow-x:hidden;z-index:9999;position:relative">'+html+'</div>'+
       '</div>';
     document.getElementById('pr-backdrop').addEventListener('click',function(e){if(e.target.id==='pr-backdrop')closeModal();});
   }
