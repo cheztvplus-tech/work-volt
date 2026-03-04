@@ -35,7 +35,7 @@ window.WorkVoltPages['login'] = function(container) {
       const hasAdmin = (adminData.rows || []).some(u => u.role === 'SuperAdmin');
       mode = hasAdmin ? 'login' : 'first-admin';
       
-    } catch(e) {
+    } catch (e) {
       mode = 'demo';
     }
     render();
@@ -242,7 +242,6 @@ window.WorkVoltPages['login'] = function(container) {
   
   // ── Actions ────────────────────────────────────────────────────
   window.enterDemoMode = function() {
-    // Set demo user
     const demoUser = {
       user_id: 'DEMO-001',
       email: 'demo@workvolt.app',
@@ -258,34 +257,35 @@ window.WorkVoltPages['login'] = function(container) {
     localStorage.setItem('wv_user', JSON.stringify(demoUser));
     localStorage.setItem('wv_token', 'demo-token');
     
-    // Load app
     window.location.reload();
   };
   
   window.previewDemoModule = function(moduleId) {
-    // Store preview intent
     sessionStorage.setItem('wv_demo_preview', moduleId);
     enterDemoMode();
   };
   
-    window.showConnectSheet = function() {
-    // Set the module to settings
+  window.showConnectSheet = function() {
     sessionStorage.setItem('lastModule', 'settings');
-    // Set a flag so boot sequence knows to go straight to settings
-    localStorage.setItem('wv_goto_settings', 'true');
-    // Navigate without reload
     window.location.hash = 'settings';
-    // Hide login UI and show app
-    document.getElementById('main-content').innerHTML = '';
-    // Trigger the module load directly
-    if (window.showModule) {
-      window.showModule('settings');
+    
+    if (typeof window.WorkVoltPages !== 'undefined' && window.WorkVoltPages['settings']) {
+      window.WorkVoltPages['settings'](document.getElementById('main-content'));
+    } else {
+      const script = document.createElement('script');
+      script.src = 'pages/settings.js';
+      script.onload = function() {
+        window.WorkVoltPages['settings'](document.getElementById('main-content'));
+      };
+      document.head.appendChild(script);
     }
   };
   
   window.disconnectSheet = function() {
     localStorage.removeItem('wv_gas_url');
     localStorage.removeItem('wv_api_secret');
+    localStorage.removeItem('wv_user');
+    localStorage.removeItem('wv_demo_mode');
     savedUrl = '';
     savedSecret = '';
     mode = 'demo';
@@ -330,11 +330,10 @@ window.WorkVoltPages['login'] = function(container) {
       
       if (data.error) throw new Error(data.error);
       
-      // Auto-login
       await doLoginWithCreds(email, password);
       
-    } catch(e) {
-      status.innerHTML = `<div class="mb-3 px-3 py-2 bg-red-50 text-red-600 text-xs rounded-lg"><i class="fas fa-exclamation-circle mr-1"></i>${e.message}</div>`;
+    } catch (e) {
+      status.innerHTML = '<div class="mb-3 px-3 py-2 bg-red-50 text-red-600 text-xs rounded-lg"><i class="fas fa-exclamation-circle mr-1"></i>' + e.message + '</div>';
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-user-plus text-sm"></i> Create Admin & Login';
     }
@@ -357,16 +356,15 @@ window.WorkVoltPages['login'] = function(container) {
     
     try {
       await doLoginWithCreds(email, password, remember);
-    } catch(e) {
-      status.innerHTML = `<div class="mb-3 px-3 py-2 bg-red-50 text-red-600 text-xs rounded-lg"><i class="fas fa-exclamation-circle mr-1"></i>${e.message}</div>`;
+    } catch (e) {
+      status.innerHTML = '<div class="mb-3 px-3 py-2 bg-red-50 text-red-600 text-xs rounded-lg"><i class="fas fa-exclamation-circle mr-1"></i>' + e.message + '</div>';
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-sign-in-alt text-sm"></i> Sign In';
     }
   };
   
-      async function doLoginWithCreds(email, password, remember) {
+  async function doLoginWithCreds(email, password, remember) {
     const hash = await sha256(password);
-    console.log('Login attempt:', email, 'Hash:', hash);
     
     const url = new URL(savedUrl);
     url.searchParams.set('path', 'users/login');
@@ -374,12 +372,8 @@ window.WorkVoltPages['login'] = function(container) {
     url.searchParams.set('email', email);
     url.searchParams.set('password_hash', hash);
     
-    console.log('Login URL:', url.toString());
-    
     const res = await fetch(url.toString(), { cache: 'no-cache' });
     const data = await res.json();
-    
-    console.log('Login response:', data);
     
     if (data.error) throw new Error(data.error);
     if (!data.success || !data.user) throw new Error('Login failed');
@@ -388,33 +382,6 @@ window.WorkVoltPages['login'] = function(container) {
     localStorage.setItem('wv_user', JSON.stringify(data.user));
     localStorage.setItem('wv_token', data.token || 'session-token');
     if (remember) localStorage.setItem('wv_remember', 'true');
-    
-    window.location.reload();
-  }
-    } catch(e) {
-      // Fall back to client-side check
-    }
-    
-    // Fallback: fetch all users and match (for older backends without login endpoint)
-    const url = new URL(savedUrl);
-    url.searchParams.set('path', 'users/list');
-    url.searchParams.set('token', savedSecret);
-    
-    const res = await fetch(url.toString(), { cache: 'no-cache' });
-    const data = await res.json();
-    
-    const user = (data.rows || []).find(u => 
-      u.email.toLowerCase() === email.toLowerCase() && 
-      u.password_hash === hash &&
-      String(u.active) === 'true'
-    );
-    
-    if (!user) throw new Error('Invalid email or password');
-    
-    localStorage.removeItem('wv_demo_mode');
-    localStorage.setItem('wv_user', JSON.stringify(user));
-    localStorage.setItem('wv_token', remember ? 'persistent-token' : 'session-token');
-    localStorage.setItem('wv_last_login', new Date().toISOString());
     
     window.location.reload();
   }
@@ -429,16 +396,15 @@ window.WorkVoltPages['login'] = function(container) {
   window.showForgotPassword = function() {
     const email = document.getElementById('login-email').value.trim();
     if (!email) {
-      showToast('Enter your email first', 'warning');
+      alert('Enter your email first');
       return;
     }
-    // Trigger reset token
     const url = new URL(savedUrl);
     url.searchParams.set('path', 'users/reset-token');
     url.searchParams.set('token', savedSecret);
     url.searchParams.set('email', email);
-    fetch(url.toString()).then(() => {
-      showToast('If account exists, reset instructions sent', 'info');
+    fetch(url.toString()).then(function() {
+      alert('If account exists, reset instructions sent');
     });
   };
   
@@ -446,7 +412,9 @@ window.WorkVoltPages['login'] = function(container) {
   async function sha256(str) {
     const buf = new TextEncoder().encode(str);
     const hash = await crypto.subtle.digest('SHA-256', buf);
-    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return Array.from(new Uint8Array(hash)).map(function(b) { 
+      return b.toString(16).padStart(2, '0'); 
+    }).join('');
   }
   
   // ── Boot ───────────────────────────────────────────────────────
