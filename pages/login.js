@@ -356,10 +356,33 @@ window.WorkVoltPages['login'] = function(container) {
     }
   };
   
-  async function doLoginWithCreds(email, password, remember) {
-    // Hash password same way as backend
+    async function doLoginWithCreds(email, password, remember) {
     const hash = await sha256(password);
     
+    // Try the dedicated login endpoint first
+    try {
+      const loginUrl = new URL(savedUrl);
+      loginUrl.searchParams.set('path', 'users/login');
+      loginUrl.searchParams.set('token', savedSecret);
+      loginUrl.searchParams.set('email', email);
+      loginUrl.searchParams.set('password_hash', hash);
+      
+      const loginRes = await fetch(loginUrl.toString(), { cache: 'no-cache' });
+      const loginData = await loginRes.json();
+      
+      if (loginData.success && loginData.user) {
+        localStorage.removeItem('wv_demo_mode');
+        localStorage.setItem('wv_user', JSON.stringify(loginData.user));
+        localStorage.setItem('wv_token', loginData.token || 'session-token');
+        if (remember) localStorage.setItem('wv_remember', 'true');
+        window.location.reload();
+        return;
+      }
+    } catch(e) {
+      // Fall back to client-side check
+    }
+    
+    // Fallback: fetch all users and match (for older backends without login endpoint)
     const url = new URL(savedUrl);
     url.searchParams.set('path', 'users/list');
     url.searchParams.set('token', savedSecret);
@@ -370,12 +393,11 @@ window.WorkVoltPages['login'] = function(container) {
     const user = (data.rows || []).find(u => 
       u.email.toLowerCase() === email.toLowerCase() && 
       u.password_hash === hash &&
-      u.active === 'true'
+      String(u.active) === 'true'
     );
     
     if (!user) throw new Error('Invalid email or password');
     
-    // Store session
     localStorage.removeItem('wv_demo_mode');
     localStorage.setItem('wv_user', JSON.stringify(user));
     localStorage.setItem('wv_token', remember ? 'persistent-token' : 'session-token');
