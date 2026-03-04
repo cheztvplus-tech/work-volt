@@ -364,28 +364,33 @@ window.WorkVoltPages['login'] = function(container) {
     }
   };
   
-    async function doLoginWithCreds(email, password, remember) {
+      async function doLoginWithCreds(email, password, remember) {
     const hash = await sha256(password);
+    console.log('Login attempt:', email, 'Hash:', hash);
     
-    // Try the dedicated login endpoint first
-    try {
-      const loginUrl = new URL(savedUrl);
-      loginUrl.searchParams.set('path', 'users/login');
-      loginUrl.searchParams.set('token', savedSecret);
-      loginUrl.searchParams.set('email', email);
-      loginUrl.searchParams.set('password_hash', hash);
-      
-      const loginRes = await fetch(loginUrl.toString(), { cache: 'no-cache' });
-      const loginData = await loginRes.json();
-      
-      if (loginData.success && loginData.user) {
-        localStorage.removeItem('wv_demo_mode');
-        localStorage.setItem('wv_user', JSON.stringify(loginData.user));
-        localStorage.setItem('wv_token', loginData.token || 'session-token');
-        if (remember) localStorage.setItem('wv_remember', 'true');
-        window.location.reload();
-        return;
-      }
+    const url = new URL(savedUrl);
+    url.searchParams.set('path', 'users/login');
+    url.searchParams.set('token', savedSecret);
+    url.searchParams.set('email', email);
+    url.searchParams.set('password_hash', hash);
+    
+    console.log('Login URL:', url.toString());
+    
+    const res = await fetch(url.toString(), { cache: 'no-cache' });
+    const data = await res.json();
+    
+    console.log('Login response:', data);
+    
+    if (data.error) throw new Error(data.error);
+    if (!data.success || !data.user) throw new Error('Login failed');
+    
+    localStorage.removeItem('wv_demo_mode');
+    localStorage.setItem('wv_user', JSON.stringify(data.user));
+    localStorage.setItem('wv_token', data.token || 'session-token');
+    if (remember) localStorage.setItem('wv_remember', 'true');
+    
+    window.location.reload();
+  }
     } catch(e) {
       // Fall back to client-side check
     }
