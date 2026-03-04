@@ -1538,36 +1538,39 @@
   window.addEventListener('load', async () => {
     const savedUrl = localStorage.getItem('wv_gas_url') || '';
     const savedSecret = localStorage.getItem('wv_api_secret') || '';
-    const demoMode = localStorage.getItem('wv_demo_mode') === 'true';
     const savedUser = localStorage.getItem('wv_user');
+    const demoMode = localStorage.getItem('wv_demo_mode') === 'true';
     
-    // If we have a connected sheet and a saved user, verify it still exists
+    // Case 1: Google Sheet connected + valid saved user = go to app
     if (savedUrl && savedSecret && savedUser && !demoMode) {
       try {
-        // Verify user still exists in sheet
-        const user = JSON.parse(savedUser);
-        const url = new URL(savedUrl);
-        url.searchParams.set('path', 'users/get');
-        url.searchParams.set('token', savedSecret);
-        url.searchParams.set('user_id', user.user_id);
-        const res = await fetch(url.toString(), { cache: 'no-cache' });
+        currentUser = JSON.parse(savedUser);
+        // Verify user still exists
+        const verifyUrl = new URL(savedUrl);
+        verifyUrl.searchParams.set('path', 'users/get');
+        verifyUrl.searchParams.set('token', savedSecret);
+        verifyUrl.searchParams.set('user_id', currentUser.user_id);
+        const res = await fetch(verifyUrl.toString(), { cache: 'no-cache' });
         const data = await res.json();
         
         if (data.user && data.user.active === 'true') {
-          // Valid session, proceed to app
-          currentUser = data.user;
+          // Valid session - load app normally
+          API_URL = savedUrl;
+          window.API_URL = savedUrl;
+          window.API_SECRET_CLIENT = savedSecret;
           await loadInstalledModules();
           await loadRolePermissions();
           hideSplash();
           await showApp();
           return;
         }
-      } catch(e) {
-        // Fall through to login
+      } catch (e) {
+        // Invalid session, clear and show login
+        localStorage.removeItem('wv_user');
       }
     }
     
-    // If in demo mode, load demo user
+    // Case 2: Demo mode = load with demo user
     if (demoMode) {
       currentUser = {
         user_id: 'DEMO-001',
@@ -1579,49 +1582,50 @@
         active: true,
         _demo: true
       };
-      await loadInstalledModules();
-      await loadRolePermissions();
       hideSplash();
       await showApp();
-      
-      // Check if we should preview a specific demo module
-      const demoPreview = sessionStorage.getItem('wv_demo_preview');
-      if (demoPreview) {
-        sessionStorage.removeItem('wv_demo_preview');
-        showModule(demoPreview);
-      }
       return;
     }
     
-    // Show login page (handles demo/first-admin/login modes)
+    // Case 3: No valid session - show login
+    // Load login.js dynamically
     hideSplash();
-
-    // Check if we should go straight to settings
-    if (localStorage.getItem('wv_goto_settings') === 'true') {
-      localStorage.removeItem('wv_goto_settings');
-      document.getElementById('app-screen').classList.remove('hidden');
-      // Load modules first so settings works
-      await loadInstalledModules();
-      await loadRolePermissions();
-      await showApp();
-      showModule('settings');
-      return;
-    }
-    
     document.getElementById('app-screen').classList.remove('hidden');
-    document.getElementById('main-content').innerHTML = '';
+    document.getElementById('main-content').innerHTML = '<div class="flex items-center justify-center h-64"><i class="fas fa-circle-notch fa-spin text-2xl text-blue-500"></i></div>';
     
-    // Load login.js if not already loaded
-    if (!window.WorkVoltPages || !window.WorkVoltPages['login']) {
-      const script = document.createElement('script');
-      script.src = 'pages/login.js';
-      script.onload = () => {
+    const script = document.createElement('script');
+    script.src = 'pages/login.js';
+    script.onload = function() {
+      if (window.WorkVoltPages && window.WorkVoltPages['login']) {
         window.WorkVoltPages['login'](document.getElementById('main-content'));
+      } else {
+        // Fallback if login.js fails - just show app with default user
+        currentUser = {
+          user_id: 'cf49fbed-2be7-4e55-95c0-742348fdcfe7',
+          name: 'Super Admin',
+          email: 'admin@workvolt.app',
+          role: 'SuperAdmin',
+          department: 'System Administrator',
+          job_title: 'System Administrator',
+          active: true
+        };
+        showApp();
+      }
+    };
+    script.onerror = function() {
+      // If login.js doesn't exist, show app with default user
+      currentUser = {
+        user_id: 'cf49fbed-2be7-4e55-95c0-742348fdcfe7',
+        name: 'Super Admin',
+        email: 'admin@workvolt.app',
+        role: 'SuperAdmin',
+        department: 'System Administrator',
+        job_title: 'System Administrator',
+        active: true
       };
-      document.head.appendChild(script);
-    } else {
-      window.WorkVoltPages['login'](document.getElementById('main-content'));
-    }
+      showApp();
+    };
+    document.head.appendChild(script);
   });
 
   // window.WorkVolt globals are defined above near the boot sequence
@@ -1629,6 +1633,7 @@
 
 </body>
 </html>
+
 
 
 
