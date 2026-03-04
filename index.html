@@ -564,25 +564,23 @@
   // ─── Connect / Setup / Login screens removed — added later ───
 
 
-  function handleLogout() {
-    forceLogout();
+    function handleLogout() {
+    // Clear all auth data
+    localStorage.removeItem('wv_user');
+    localStorage.removeItem('wv_token');
+    localStorage.removeItem('wv_demo_mode');
+    localStorage.removeItem('wv_last_login');
+    currentToken = '';
+    stopNotificationPolling();
+    location.reload();
   }
 
   function forceLogout(msg) {
-    currentToken = 'demo-token';
-    currentUser  = {
-      user_id:    'cf49fbed-2be7-4e55-95c0-742348fdcfe7',
-      name:       'Super Admin',
-      email:      'admin@workvolt.app',
-      role:       'SuperAdmin',
-      department: 'System Administrator',
-      job_title:  'System Administrator',
-      active:     true,
-    };
+    localStorage.removeItem('wv_user');
+    localStorage.removeItem('wv_token');
+    localStorage.removeItem('wv_demo_mode');
     stopNotificationPolling();
-    document.getElementById('app-screen').classList.add('hidden');
     if (msg) showToast(msg, 'error');
-    // Login screen will be added later — for now just reload
     location.reload();
   }
 
@@ -1534,15 +1532,50 @@
     renderNav();
   };
 
-  // ─────────────────────────────────────────────
+   // ─────────────────────────────────────────────
   //  BOOT SEQUENCE
   // ─────────────────────────────────────────────
   window.addEventListener('load', async () => {
-    // Go straight to app — login & Google Sheet will be connected later
-    await loadInstalledModules(); // no-op until Sheet connected; swaps for apiCall later
-    await loadRolePermissions();  // load custom role permissions from config/localStorage
+    // Check if logged in
+    const demoMode = localStorage.getItem('wv_demo_mode') === 'true';
+    const savedUser = localStorage.getItem('wv_user');
+    
+    if (!demoMode && !savedUser) {
+      // Show login page
+      hideSplash();
+      document.getElementById('app-screen').classList.remove('hidden');
+      document.getElementById('main-content').innerHTML = '';
+      window.WorkVoltPages['login'](document.getElementById('main-content'));
+      return;
+    }
+    
+    // Load user from storage
+    if (savedUser) {
+      currentUser = JSON.parse(savedUser);
+    } else if (demoMode) {
+      currentUser = {
+        user_id: 'DEMO-001',
+        email: 'demo@workvolt.app',
+        name: 'Demo User',
+        role: 'SuperAdmin',
+        department: 'Demonstration',
+        job_title: 'Demo Administrator',
+        active: true,
+        _demo: true
+      };
+    }
+    
+    await loadInstalledModules();
+    await loadRolePermissions();
     hideSplash();
     await showApp();
+    
+    // Check if we should preview a demo module
+    const demoPreview = sessionStorage.getItem('wv_demo_preview');
+    if (demoPreview) {
+      sessionStorage.removeItem('wv_demo_preview');
+      showModule(demoPreview);
+    }
   });
 
   // window.WorkVolt globals are defined above near the boot sequence
@@ -1550,3 +1583,4 @@
 
 </body>
 </html>
+
