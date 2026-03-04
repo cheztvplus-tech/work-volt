@@ -446,24 +446,13 @@
   window.INSTALLED_MODULES = INSTALLED_MODULES;
 
 
-  // Saves active modules — persists to localStorage (or GAS when Sheet is connected)
+  // Saves active modules — swap for apiCall('config/save-modules') when Sheet is ready.
+  // Until then, changes are in-memory only (all users see whatever is uncommented above).
   function saveInstalledModules() {
-    // Save to localStorage for persistence across page reloads
-    try {
-      localStorage.setItem('wv_installed_modules', JSON.stringify(INSTALLED_MODULES));
-    } catch(e) {
-      console.warn('Could not save modules to localStorage:', e.message);
-    }
-    
-    // TODO: When Sheet is connected, also sync to GAS:
-    // const gasUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
-    // const secret = window.API_SECRET_CLIENT || localStorage.getItem('wv_api_secret') || '';
-    // if (gasUrl && secret) {
-    //   await apiCall('config/save-modules', { modules: JSON.stringify(INSTALLED_MODULES) });
-    // }
+    // TODO: await apiCall('config/save-modules', { modules: JSON.stringify(INSTALLED_MODULES) });
   }
 
-  // Loads installed modules — from GAS if connected, else from localStorage
+  // Loads installed modules — from GAS if connected, else uses in-memory list
   async function loadInstalledModules() {
     const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
     const savedSecret = localStorage.getItem('wv_api_secret') || '';
@@ -472,35 +461,19 @@
     if (savedUrl)    { API_URL = savedUrl;  window.API_URL = savedUrl; }
     if (savedSecret) { window.API_SECRET_CLIENT = savedSecret; }
 
-    if (savedUrl && savedSecret) {
-      // Connected to Sheet — load from GAS
-      try {
-        const url = new URL(savedUrl);
-        url.searchParams.set('path',  'config/modules');
-        url.searchParams.set('token', savedSecret);
-        const res  = await fetch(url.toString(), { cache: 'no-cache' });
-        const data = await res.json();
-        if (data.modules) {
-          INSTALLED_MODULES = data.modules;
-          window.INSTALLED_MODULES = INSTALLED_MODULES;
-        }
-      } catch(e) {
-        console.warn('Could not load modules from Sheet, trying localStorage:', e.message);
-        // Fall through to localStorage
-      }
-    }
-    
-    // If not connected OR GAS load failed, try localStorage
-    if (!INSTALLED_MODULES || INSTALLED_MODULES.length === 0) {
-      try {
-        const saved = localStorage.getItem('wv_installed_modules');
-        if (saved) {
-          INSTALLED_MODULES = JSON.parse(saved);
-          window.INSTALLED_MODULES = INSTALLED_MODULES;
-        }
-      } catch(e) {
-        console.warn('Could not load modules from localStorage:', e.message);
-      }
+    if (!savedUrl || !savedSecret) return; // not connected yet
+
+    try {
+      const url = new URL(savedUrl);
+      url.searchParams.set('path',  'config/modules');
+      url.searchParams.set('token', savedSecret);
+      const res  = await fetch(url.toString(), { cache: 'no-cache' });
+      const data = await res.json();
+      if (data.modules) {
+        INSTALLED_MODULES = data.modules;
+        window.INSTALLED_MODULES = INSTALLED_MODULES;
+      }    } catch(e) {
+      console.warn('Could not load modules from Sheet:', e.message);
     }
   }
 
@@ -636,7 +609,7 @@
       </a>`;
 
     // ── Installed add-on modules filtered by role + permission overrides ──
-    let addons = (window.INSTALLED_MODULES || []).filter(m => {
+    let addons = INSTALLED_MODULES.filter(m => {
       if (!canAccessModule(m.id)) return false;
       return true;
     });
@@ -1504,6 +1477,233 @@
 
 
   // ─────────────────────────────────────────────
+  //  LOGIN SYSTEM
+  // ─────────────────────────────────────────────
+  const LoginSystem = {
+    isSheetConnected() {
+      return !!(window.API_URL && window.API_SECRET_CLIENT);
+    },
+
+    restoreSession() {
+      const savedUser = sessionStorage.getItem('wv_current_user');
+      const savedToken = sessionStorage.getItem('wv_current_token');
+      if (savedUser && savedToken) {
+        currentUser = JSON.parse(savedUser);
+        currentToken = savedToken;
+      }
+    },
+
+    async showLoginForm() {
+      // Check if admins exist
+      try {
+        const users = await apiCall('users/list');
+        const hasAdmins = users.users && users.users.some(u => u.role === 'Admin' || u.role === 'SuperAdmin');
+        
+        if (!hasAdmins) {
+          return this.showAdminProvisionForm();
+        }
+      } catch (e) {
+        console.error('[LOGIN] Error checking admins:', e);
+      }
+
+      return this.showLoginFormOverlay();
+    },
+
+    showLoginFormOverlay() {
+      return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.id = 'login-overlay';
+        overlay.className = 'fixed inset-0 z-[1000] bg-slate-900/80 flex items-center justify-center';
+        overlay.innerHTML = `
+          <div class="w-full max-w-md">
+            <div class="bg-white rounded-2xl shadow-2xl p-8 space-y-6">
+              <div class="text-center space-y-2">
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full">
+                  <i class="fas fa-bolt text-blue-600 text-2xl"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-slate-900">Work Volt</h1>
+                <p class="text-slate-500 text-sm">Sign in to your account</p>
+              </div>
+
+              <form id="login-form" class="space-y-4">
+                <div>
+                  <label for="login-email" class="block text-sm font-medium text-slate-700 mb-2">Email</label>
+                  <input type="email" id="login-email" class="field w-full" placeholder="your@email.com" required />
+                </div>
+                <div>
+                  <label for="login-password" class="block text-sm font-medium text-slate-700 mb-2">Password</label>
+                  <input type="password" id="login-password" class="field w-full" placeholder="••••••••" required />
+                </div>
+                <div id="login-error" class="hidden bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600"></div>
+                <button type="submit" id="login-submit" class="btn-primary w-full">
+                  <i class="fas fa-sign-in-alt"></i> Sign In
+                </button>
+              </form>
+            </div>
+          </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          const email = document.getElementById('login-email').value.trim();
+          const password = document.getElementById('login-password').value;
+          const errorEl = document.getElementById('login-error');
+          const submitBtn = document.getElementById('login-submit');
+
+          if (!email || !password) {
+            errorEl.textContent = 'Email and password required';
+            errorEl.classList.remove('hidden');
+            return;
+          }
+
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<i class="fas fa-spinner animate-spin"></i> Signing in...';
+
+          try {
+            const result = await apiCall('users/login', { email, password });
+
+            if (!result.user || !result.token) {
+              throw new Error('Login failed');
+            }
+
+            currentUser = result.user;
+            currentToken = result.token;
+
+            sessionStorage.setItem('wv_current_user', JSON.stringify(currentUser));
+            sessionStorage.setItem('wv_current_token', currentToken);
+
+            overlay.remove();
+            showToast(`Welcome, ${currentUser.name}!`, 'success');
+            resolve();
+
+          } catch (error) {
+            errorEl.textContent = error.message || 'Login failed';
+            errorEl.classList.remove('hidden');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In';
+          }
+        });
+
+        document.getElementById('login-email').focus();
+      });
+    },
+
+    showAdminProvisionForm() {
+      return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.id = 'provision-overlay';
+        overlay.className = 'fixed inset-0 z-[1000] bg-slate-900/80 flex items-center justify-center';
+        overlay.innerHTML = `
+          <div class="w-full max-w-md">
+            <div class="bg-white rounded-2xl shadow-2xl p-8 space-y-6">
+              <div class="text-center space-y-2">
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full">
+                  <i class="fas fa-shield-halved text-purple-600 text-2xl"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-slate-900">Create Admin Account</h1>
+                <p class="text-slate-600 text-sm">First-time setup: create your admin account</p>
+              </div>
+
+              <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+                <i class="fas fa-info-circle mr-2"></i>
+                This creates the first admin. You can add more users after login.
+              </div>
+
+              <form id="provision-form" class="space-y-4">
+                <div>
+                  <label for="provision-name" class="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
+                  <input type="text" id="provision-name" class="field w-full" placeholder="Your name" required />
+                </div>
+                <div>
+                  <label for="provision-email" class="block text-sm font-medium text-slate-700 mb-2">Email</label>
+                  <input type="email" id="provision-email" class="field w-full" placeholder="admin@company.com" required />
+                </div>
+                <div>
+                  <label for="provision-password" class="block text-sm font-medium text-slate-700 mb-2">Password</label>
+                  <input type="password" id="provision-password" class="field w-full" placeholder="••••••••" required minlength="8" />
+                  <p class="text-xs text-slate-500 mt-1">At least 8 characters</p>
+                </div>
+                <div>
+                  <label for="provision-confirm" class="block text-sm font-medium text-slate-700 mb-2">Confirm Password</label>
+                  <input type="password" id="provision-confirm" class="field w-full" placeholder="••••••••" required />
+                </div>
+                <div id="provision-error" class="hidden bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600"></div>
+                <button type="submit" id="provision-submit" class="btn-primary w-full">
+                  <i class="fas fa-user-plus"></i> Create Admin Account
+                </button>
+              </form>
+            </div>
+          </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        document.getElementById('provision-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          const name = document.getElementById('provision-name').value.trim();
+          const email = document.getElementById('provision-email').value.trim();
+          const password = document.getElementById('provision-password').value;
+          const confirm = document.getElementById('provision-confirm').value;
+          const errorEl = document.getElementById('provision-error');
+          const submitBtn = document.getElementById('provision-submit');
+
+          if (!name || !email || !password) {
+            errorEl.textContent = 'All fields are required';
+            errorEl.classList.remove('hidden');
+            return;
+          }
+
+          if (password.length < 8) {
+            errorEl.textContent = 'Password must be at least 8 characters';
+            errorEl.classList.remove('hidden');
+            return;
+          }
+
+          if (password !== confirm) {
+            errorEl.textContent = 'Passwords do not match';
+            errorEl.classList.remove('hidden');
+            return;
+          }
+
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<i class="fas fa-spinner animate-spin"></i> Creating...';
+
+          try {
+            const result = await apiCall('users/provision', { name, email, password });
+
+            if (!result.user || !result.token) {
+              throw new Error('Provision failed');
+            }
+
+            currentUser = result.user;
+            currentToken = result.token;
+
+            sessionStorage.setItem('wv_current_user', JSON.stringify(currentUser));
+            sessionStorage.setItem('wv_current_token', currentToken);
+
+            overlay.remove();
+            showToast(`Admin account created! Welcome, ${currentUser.name}!`, 'success');
+            resolve();
+
+          } catch (error) {
+            errorEl.textContent = error.message || 'Failed to create admin account';
+            errorEl.classList.remove('hidden');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-user-plus"></i> Create Admin Account';
+          }
+        });
+
+        document.getElementById('provision-name').focus();
+      });
+    }
+  };
+
+
+  // ─────────────────────────────────────────────
   //  CLOSE DROPDOWNS ON OUTSIDE CLICK
   // ─────────────────────────────────────────────
   document.addEventListener('click', e => {
@@ -1535,12 +1735,21 @@
   };
 
   // ─────────────────────────────────────────────
-  //  BOOT SEQUENCE
+  //  BOOT SEQUENCE WITH LOGIN SYSTEM
   // ─────────────────────────────────────────────
   window.addEventListener('load', async () => {
-    // Go straight to app — login & Google Sheet will be connected later
+    // Restore session if exists
+    LoginSystem.restoreSession();
+
+    // Load modules and permissions
     await loadInstalledModules(); // no-op until Sheet connected; swaps for apiCall later
     await loadRolePermissions();  // load custom role permissions from config/localStorage
+    
+    // Check if sheet connected - if yes, show login
+    if (LoginSystem.isSheetConnected() && !currentUser) {
+      await LoginSystem.showLoginForm();
+    }
+    
     hideSplash();
     await showApp();
   });
@@ -1550,4 +1759,3 @@
 
 </body>
 </html>
-
