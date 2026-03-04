@@ -268,11 +268,19 @@ window.WorkVoltPages['login'] = function(container) {
     enterDemoMode();
   };
   
-  window.showConnectSheet = function() {
-    // Redirect to settings
+    window.showConnectSheet = function() {
+    // Set the module to settings
     sessionStorage.setItem('lastModule', 'settings');
+    // Set a flag so boot sequence knows to go straight to settings
+    localStorage.setItem('wv_goto_settings', 'true');
+    // Navigate without reload
     window.location.hash = 'settings';
-    window.location.reload();
+    // Hide login UI and show app
+    document.getElementById('main-content').innerHTML = '';
+    // Trigger the module load directly
+    if (window.showModule) {
+      window.showModule('settings');
+    }
   };
   
   window.disconnectSheet = function() {
