@@ -2,16 +2,28 @@ window.WorkVoltPages = window.WorkVoltPages || {};
 
 window.WorkVoltPages['login'] = function(container) {
   
-  const WORK_VOLT_CREDS = {
-    email: 'sadmin@workvolt.app',
-    password: 'Avecmoi1535!'
-  };
-  
   let savedUrl = localStorage.getItem('wv_gas_url') || '';
   let savedSecret = localStorage.getItem('wv_api_secret') || '';
+  let setupCode = '';
   
-  // Check if we need to create first admin
+  // Fetch setup code from config
+  async function loadSetupCode() {
+    if (!savedUrl || !savedSecret) return;
+    try {
+      const url = new URL(savedUrl);
+      url.searchParams.set('path', 'config/get-all');
+      url.searchParams.set('token', savedSecret);
+      const res = await fetch(url.toString(), { cache: 'no-cache' });
+      const data = await res.json();
+      setupCode = (data.settings && data.settings.setup_code) || '';
+    } catch (e) {
+      setupCode = '';
+    }
+  }
+  
   async function checkFirstTimeSetup() {
+    await loadSetupCode();
+    
     if (!savedUrl || !savedSecret) {
       renderNoConnection();
       return;
@@ -26,7 +38,6 @@ window.WorkVoltPages['login'] = function(container) {
       const data = await res.json();
       const users = data.rows || [];
       
-      // Check if any admin exists
       const hasAdmin = users.some(u => u.role === 'SuperAdmin' || u.role === 'Admin');
       
       if (hasAdmin) {
@@ -57,6 +68,8 @@ window.WorkVoltPages['login'] = function(container) {
   }
   
   function renderFirstTimeSetup() {
+    const showCodeField = setupCode ? '' : 'hidden';
+    
     container.innerHTML = `
       <div class="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div class="max-w-md w-full bg-white rounded-2xl shadow-lg p-6">
@@ -71,9 +84,9 @@ window.WorkVoltPages['login'] = function(container) {
           <div id="setup-error" class="hidden mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg"></div>
           
           <div class="space-y-4">
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Work Volt Access Code</label>
-              <input id="wv-code" type="password" placeholder="Enter Work Volt code" class="field text-sm">
+            <div class="${showCodeField}">
+              <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Setup Access Code</label>
+              <input id="wv-code" type="password" placeholder="Enter setup code" class="field text-sm">
               <p class="text-xs text-slate-400 mt-1">Required for first setup</p>
             </div>
             
@@ -102,16 +115,16 @@ window.WorkVoltPages['login'] = function(container) {
   }
   
   function renderLogin(users) {
-    // Check if current user is already logged in
     const savedUser = localStorage.getItem('wv_user');
     if (savedUser) {
-      const user = JSON.parse(savedUser);
-      const stillExists = users.some(u => u.user_id === user.user_id && u.active === 'true');
-      if (stillExists) {
-        // Already logged in, go to dashboard
-        window.location.hash = 'dashboard';
-        return;
-      }
+      try {
+        const user = JSON.parse(savedUser);
+        const stillExists = users.some(u => u.user_id === user.user_id && u.active === 'true');
+        if (stillExists) {
+          window.location.hash = 'dashboard';
+          return;
+        }
+      } catch (e) {}
     }
     
     container.innerHTML = `
@@ -162,14 +175,13 @@ window.WorkVoltPages['login'] = function(container) {
   window.createFirstAdmin = async function() {
     const btn = document.getElementById('setup-btn');
     const error = document.getElementById('setup-error');
-    const code = document.getElementById('wv-code').value;
+    const code = setupCode ? (document.getElementById('wv-code')?.value || '') : '';
     const email = document.getElementById('admin-email').value.trim();
     const name = document.getElementById('admin-name').value.trim();
     const password = document.getElementById('admin-pass').value;
     
-    // Verify Work Volt code
-    if (code !== WORK_VOLT_CREDS.password) {
-      error.textContent = 'Invalid Work Volt access code';
+    if (setupCode && code !== setupCode) {
+      error.textContent = 'Invalid setup code';
       error.classList.remove('hidden');
       return;
     }
@@ -197,7 +209,6 @@ window.WorkVoltPages['login'] = function(container) {
       
       if (data.error) throw new Error(data.error);
       
-      // Auto login
       await doLoginWithCreds(email, password);
       
     } catch (e) {
@@ -234,13 +245,11 @@ window.WorkVoltPages['login'] = function(container) {
   };
   
   async function doLoginWithCreds(email, password) {
-    // Hash password
     const msgBuffer = new TextEncoder().encode(password);
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     
-    // Try login endpoint first
     try {
       const loginUrl = new URL(savedUrl);
       loginUrl.searchParams.set('path', 'users/login');
@@ -257,11 +266,8 @@ window.WorkVoltPages['login'] = function(container) {
         window.location.reload();
         return;
       }
-    } catch (e) {
-      // Fallback to client-side check
-    }
+    } catch (e) {}
     
-    // Fallback: fetch all users and match
     const url = new URL(savedUrl);
     url.searchParams.set('path', 'users/list');
     url.searchParams.set('token', savedSecret);
@@ -282,6 +288,5 @@ window.WorkVoltPages['login'] = function(container) {
     window.location.reload();
   }
   
-  // Start
   checkFirstTimeSetup();
 };
