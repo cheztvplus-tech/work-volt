@@ -1595,6 +1595,19 @@
     
     // Show login page (handles demo/first-admin/login modes)
     hideSplash();
+
+    // Check if we should go straight to settings
+    if (localStorage.getItem('wv_goto_settings') === 'true') {
+      localStorage.removeItem('wv_goto_settings');
+      document.getElementById('app-screen').classList.remove('hidden');
+      // Load modules first so settings works
+      await loadInstalledModules();
+      await loadRolePermissions();
+      await showApp();
+      showModule('settings');
+      return;
+    }
+    
     document.getElementById('app-screen').classList.remove('hidden');
     document.getElementById('main-content').innerHTML = '';
     
@@ -1616,5 +1629,6 @@
 
 </body>
 </html>
+
 
 
