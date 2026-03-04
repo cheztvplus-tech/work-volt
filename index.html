@@ -636,7 +636,7 @@
       </a>`;
 
     // ── Installed add-on modules filtered by role + permission overrides ──
-    let addons = INSTALLED_MODULES.filter(m => {
+    let addons = (window.INSTALLED_MODULES || []).filter(m => {
       if (!canAccessModule(m.id)) return false;
       return true;
     });
@@ -1550,3 +1550,4 @@
 
 </body>
 </html>
+
