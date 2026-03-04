@@ -274,6 +274,31 @@ window.WorkVoltPages['store'] = function(container) {
 
     if (gasUrl && secret) {
       // ── Connected: provision sheet via GAS ──────────────────
+      // IMPORTANT: Add module to sidebar IMMEDIATELY for better UX,
+      // then sync with GAS in the background
+      
+      // First, add the module to sidebar right away with complete data
+      window.INSTALLED_MODULES = window.INSTALLED_MODULES || [];
+      const newModule = {
+        id: mod.id,
+        label: mod.label,
+        icon: mod.icon,
+        version: mod.version,
+        category: mod.category,
+        description: mod.description,
+        gradient: mod.gradient,
+        color: mod.color,
+        author: mod.author,
+        tags: mod.tags || [],
+        featured: mod.featured || false
+      };
+      
+      window.INSTALLED_MODULES.push(newModule);
+      if (typeof saveInstalledModules === 'function') saveInstalledModules();
+      if (typeof renderNav === 'function') renderNav();
+      render();
+      
+      // Now sync with GAS in the background
       try {
         const url = new URL(gasUrl);
         url.searchParams.set('path',   'module/install');
@@ -283,17 +308,16 @@ window.WorkVoltPages['store'] = function(container) {
         const data = await res.json();
         if (data.error) throw new Error(data.error);
 
-        // Success — update local registry from server response
+        // Successfully installed on GAS — refresh module list from server
         const cfgUrl = new URL(gasUrl);
         cfgUrl.searchParams.set('path',  'config/modules');
         cfgUrl.searchParams.set('token', secret);
         const cfgRes  = await fetch(cfgUrl.toString(), { cache: 'no-cache' });
         const cfgData = await cfgRes.json();
         
-        // Ensure complete module data is stored
+        // Update with server-provided data if available
         if (cfgData.modules && Array.isArray(cfgData.modules)) {
-          window.INSTALLED_MODULES = cfgData.modules.map(m => {
-            // Find the original module from CATALOGUE to get complete metadata
+          let enhancedModules = cfgData.modules.map(m => {
             const catalogueModule = CATALOGUE.find(cat => cat.id === m.id);
             return {
               id: m.id || catalogueModule?.id,
@@ -309,15 +333,17 @@ window.WorkVoltPages['store'] = function(container) {
               featured: m.featured !== undefined ? m.featured : (catalogueModule?.featured || false)
             };
           });
+          
+          window.INSTALLED_MODULES.length = 0;
+          window.INSTALLED_MODULES.push(...enhancedModules);
+          if (typeof saveInstalledModules === 'function') saveInstalledModules();
         }
-
-        if (typeof saveInstalledModules === 'function') saveInstalledModules();
-        if (typeof renderNav === 'function') renderNav();
-        render();
+        
         window.WorkVolt?.toast(`${mod.label} installed! Sheet tabs created in your Google Sheet.`, 'success');
         return;
       } catch(e) {
-        window.WorkVolt?.toast(`Install failed: ${e.message}`, 'error');
+        // GAS sync failed, but module is already on sidebar
+        window.WorkVolt?.toast(`${mod.label} added to sidebar, but Sheet sync failed: ${e.message}`, 'warning');
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download text-xs"></i> Install'; }
         return;
       }
