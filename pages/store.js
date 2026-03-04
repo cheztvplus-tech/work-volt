@@ -304,9 +304,32 @@ window.WorkVoltPages['store'] = function(container) {
 
     // ── Not connected: in-memory only ───────────────────────────
     window.INSTALLED_MODULES = window.INSTALLED_MODULES || [];
-    window.INSTALLED_MODULES.push({ id: mod.id, label: mod.label, icon: mod.icon, version: mod.version });
+    
+    // Store COMPLETE module data, not just basic fields
+    // This ensures sidebar nav has all info needed for display (icon, version, category, etc.)
+    const newModule = {
+      id: mod.id,
+      label: mod.label,
+      icon: mod.icon,
+      version: mod.version,        // This is '1.0.0' from CATALOGUE
+      category: mod.category,
+      description: mod.description,
+      gradient: mod.gradient,
+      color: mod.color,
+      author: mod.author,
+      tags: mod.tags || [],
+      featured: mod.featured || false
+    };
+    
+    window.INSTALLED_MODULES.push(newModule);
+    
+    // Save to localStorage for persistence
     if (typeof saveInstalledModules === 'function') saveInstalledModules();
-    if (typeof renderNav === 'function') renderNav();
+    
+    // Re-render sidebar AND store view immediately
+    if (typeof renderNav === 'function') {
+      renderNav();
+    }
     render();
     window.WorkVolt?.toast(`${mod.label} added (connect Google Sheet to provision its data tabs).`, 'info');
   }
@@ -326,10 +349,18 @@ window.WorkVoltPages['store'] = function(container) {
       } catch(e) { /* Silent — still remove locally */ }
     }
 
+    // Remove from INSTALLED_MODULES array immediately
     window.INSTALLED_MODULES = (window.INSTALLED_MODULES || []).filter(m => m.id !== id);
+    
+    // Persist removal to localStorage
     if (typeof saveInstalledModules === 'function') saveInstalledModules();
+    
+    // Immediately re-render sidebar (removes module from nav)
     if (typeof renderNav === 'function') renderNav();
+    
+    // Immediately re-render store (shows install button again)
     render();
+    
     window.WorkVolt?.toast('Module removed. Sheet data preserved in Google Sheet.', 'info');
   }
 
