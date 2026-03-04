@@ -270,6 +270,23 @@ window.WorkVoltPages['crm'] = function(container) {
       });
     });
 
+    // Inline lead stage change
+    container.querySelectorAll('.crm-lead-stage-select').forEach(function(sel) {
+      sel.addEventListener('change', function() {
+        var id = sel.dataset.id;
+        var newStage = sel.value;
+        // Optimistic update in state
+        var lead = state.leads.find(function(l) { return l.id === id; });
+        if (lead) lead.stage = newStage;
+        api('crm/leads/update', { id: id, stage: newStage })
+          .then(function() { toast('Stage updated', 'success'); })
+          .catch(function(err) {
+            toast('Failed to update stage: ' + err.message, 'error');
+            loadAll(); // revert on failure
+          });
+      });
+    });
+
     // Deal card → view
     container.querySelectorAll('.crm-deal-card').forEach(function(card) {
       card.addEventListener('click', function() {
@@ -369,6 +386,40 @@ window.WorkVoltPages['crm'] = function(container) {
     if (cancelBtn) cancelBtn.addEventListener('click', function() {
       state.modalType = null; state.editRecord = null; render();
     });
+
+    // Lead modal: contact link auto-fill + dupe warning
+    var contactLink = container.querySelector('#crm-lead-contact-link');
+    if (contactLink) {
+      contactLink.addEventListener('change', function() {
+        var sel = contactLink.options[contactLink.selectedIndex];
+        if (!sel || !sel.value) return;
+        var fields = ['email','phone','company','job_title'];
+        fields.forEach(function(f) {
+          var inp = container.querySelector('#crm-lead-' + f);
+          if (inp && sel.dataset[f]) inp.value = sel.dataset[f];
+        });
+        // Also fill name from option text (strip company/email suffix)
+        var nameInp = container.querySelector('#crm-lead-name');
+        if (nameInp) {
+          var c = state.contacts.find(function(x) { return x.id === sel.value; });
+          if (c) nameInp.value = c.name;
+        }
+        container.querySelector('#crm-lead-dupe-warn').classList.add('hidden');
+      });
+    }
+    // Dupe warning on email blur
+    var leadEmailInp = container.querySelector('#crm-lead-email');
+    if (leadEmailInp) {
+      leadEmailInp.addEventListener('blur', function() {
+        var val = leadEmailInp.value.trim().toLowerCase();
+        if (!val) return;
+        var linked = container.querySelector('#crm-lead-contact-link');
+        if (linked && linked.value) return; // already linked, no warning needed
+        var exists = state.contacts.find(function(c) { return c.email && c.email.toLowerCase() === val; });
+        var warn = container.querySelector('#crm-lead-dupe-warn');
+        if (warn) warn.classList.toggle('hidden', !exists);
+      });
+    }
 
     // Modal form submit
     var form = container.querySelector('#crm-modal-form');
@@ -558,14 +609,16 @@ window.WorkVoltPages['crm'] = function(container) {
     }
     if (state.filterStage) rows = rows.filter(function(r) { return r.stage === state.filterStage; });
 
+    var LEAD_STAGES = ['New','Contacted','Qualified','Proposal','Negotiation'];
+
     return '<div class="max-w-6xl mx-auto">' +
       '<div class="flex flex-wrap gap-3 mb-5">' +
         '<div class="relative flex-1 min-w-48">' +
           '<i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>' +
-          '<input class="crm-search w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm outline-none bg-white" type="text" placeholder="Search leads…" value="' + esc(state.search) + '"></div>' +
+          '<input class="crm-search w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm outline-none bg-white" type="text" placeholder="Search leads\u2026" value="' + esc(state.search) + '"></div>' +
         '<select class="crm-filter-stage border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-600">' +
           '<option value="">All Stages</option>' +
-          ['New','Contacted','Qualified','Proposal','Negotiation'].map(function(s) {
+          LEAD_STAGES.map(function(s) {
             return '<option value="' + s + '" ' + (state.filterStage===s?'selected':'') + '>' + s + '</option>';
           }).join('') +
         '</select>' +
@@ -574,7 +627,7 @@ window.WorkVoltPages['crm'] = function(container) {
       '<div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">' +
         '<table class="w-full"><thead><tr class="bg-slate-50 border-b border-slate-200">' +
           '<th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Lead</th>' +
-          '<th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Company</th>' +
+          '<th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Linked Contact</th>' +
           '<th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Stage</th>' +
           '<th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Score</th>' +
           '<th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Value</th>' +
@@ -582,16 +635,28 @@ window.WorkVoltPages['crm'] = function(container) {
         '</tr></thead><tbody>' +
           (rows.length ? rows.map(function(l) {
             var sc = parseFloat(l.lead_score||0);
+            var linkedContact = null;
+            if (l.contact_id) linkedContact = state.contacts.find(function(c) { return c.id === l.contact_id; });
+            if (!linkedContact && l.email) linkedContact = state.contacts.find(function(c) { return c.email && c.email.toLowerCase() === l.email.toLowerCase(); });
             return '<tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">' +
               '<td class="px-4 py-3"><div class="flex items-center gap-3">' +
                 '<div class="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">' + esc((l.name||'?').charAt(0).toUpperCase()) + '</div>' +
-                '<div><p class="font-medium text-slate-800 text-sm">' + esc(l.name) + '</p><p class="text-xs text-slate-400">' + esc(l.source||'') + '</p></div></div></td>' +
-              '<td class="px-4 py-3 text-sm text-slate-600 hidden md:table-cell">' + esc(l.company||'—') + '</td>' +
-              '<td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-xs font-medium ' + (PILL[l.stage]||'bg-slate-100 text-slate-600') + '">' + esc(l.stage||'New') + '</span></td>' +
+                '<div><p class="font-medium text-slate-800 text-sm">' + esc(l.name) + '</p>' +
+                '<p class="text-xs text-slate-400">' + esc(l.email||l.source||'') + '</p></div></div></td>' +
+              '<td class="px-4 py-3 text-sm hidden md:table-cell">' +
+                (linkedContact
+                  ? '<span class=\"inline-flex items-center gap-1.5 px-2 py-0.5 bg-green-50 border border-green-200 rounded-full text-xs text-green-700\"><i class=\"fas fa-link\" style=\"font-size:9px\"></i> ' + esc(linkedContact.name) + '</span>'
+                  : '<span class=\"text-slate-400 text-xs italic\">No contact linked</span>') +
+              '</td>' +
+              '<td class="px-4 py-3">' +
+                '<select class="crm-lead-stage-select crm-input" style="width:auto;padding:.2rem .5rem;font-size:.75rem" data-id="' + esc(l.id) + '">' +
+                  LEAD_STAGES.map(function(s) { return '<option value="' + s + '" ' + (l.stage===s?'selected':'') + '>' + s + '</option>'; }).join('') +
+                '</select>' +
+              '</td>' +
               '<td class="px-4 py-3"><div class="flex items-center gap-2">' +
                 '<div class="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full rounded-full ' + (sc>=70?'bg-green-500':sc>=40?'bg-amber-400':'bg-slate-300') + '" style="width:' + Math.min(sc,100) + '%"></div></div>' +
                 '<span class="text-xs font-bold ' + scoreColor(l.lead_score) + '">' + (l.lead_score||0) + '</span></div></td>' +
-              '<td class="px-4 py-3 text-sm text-slate-600 hidden md:table-cell">' + (l.deal_value ? fmt$(l.deal_value) : '—') + '</td>' +
+              '<td class="px-4 py-3 text-sm text-slate-600 hidden md:table-cell">' + (l.deal_value ? fmt$(l.deal_value) : '\u2014') + '</td>' +
               '<td class="px-4 py-3 text-right">' +
                 '<button class="crm-convert-lead text-xs text-indigo-500 hover:text-indigo-700 mr-2 font-medium" data-id="' + esc(l.id) + '">Convert</button>' +
                 '<button class="crm-delete-lead text-slate-400 hover:text-red-500 text-xs" data-id="' + esc(l.id) + '"><i class="fas fa-trash"></i></button>' +
@@ -725,13 +790,30 @@ window.WorkVoltPages['crm'] = function(container) {
 
     if (t === 'add-lead') {
       title = 'Add Lead';
+      // Build contact options for linking
+      var contactOpts = '<option value="">— New lead (no existing contact) —</option>' +
+        state.contacts.map(function(c) {
+          return '<option value="' + esc(c.id) + '" data-email="' + esc(c.email||'') + '" data-phone="' + esc(c.phone||'') + '" data-company="' + esc(c.company||'') + '" data-job_title="' + esc(c.job_title||'') + '">' +
+            esc(c.name) + (c.company ? ' — ' + esc(c.company) : '') + (c.email ? ' (' + esc(c.email) + ')' : '') +
+          '</option>';
+        }).join('');
       body =
         '<div class="grid grid-cols-2 gap-3">' +
-          '<div class="col-span-2"><label class="crm-label">Name *</label><input name="name" class="crm-input" placeholder="John Doe" required></div>' +
-          '<div><label class="crm-label">Email</label><input name="email" type="email" class="crm-input"></div>' +
-          '<div><label class="crm-label">Phone</label><input name="phone" class="crm-input"></div>' +
-          '<div><label class="crm-label">Company</label><input name="company" class="crm-input"></div>' +
-          '<div><label class="crm-label">Job Title</label><input name="job_title" class="crm-input"></div>' +
+          '<div class="col-span-2">' +
+            '<label class="crm-label">Link to Existing Contact</label>' +
+            '<select id="crm-lead-contact-link" name="contact_id" class="crm-input">' + contactOpts + '</select>' +
+            '<p class="text-xs text-slate-400 mt-1">Selecting a contact auto-fills the fields below and avoids duplicates.</p>' +
+          '</div>' +
+          '<div id="crm-lead-dupe-warn" class="col-span-2 hidden">' +
+            '<div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">' +
+              '<i class="fas fa-exclamation-triangle mr-1"></i> A contact with this email already exists. Consider linking above instead.' +
+            '</div>' +
+          '</div>' +
+          '<div class="col-span-2"><label class="crm-label">Name *</label><input id="crm-lead-name" name="name" class="crm-input" placeholder="John Doe" required></div>' +
+          '<div><label class="crm-label">Email</label><input id="crm-lead-email" name="email" type="email" class="crm-input"></div>' +
+          '<div><label class="crm-label">Phone</label><input id="crm-lead-phone" name="phone" class="crm-input"></div>' +
+          '<div><label class="crm-label">Company</label><input id="crm-lead-company" name="company" class="crm-input"></div>' +
+          '<div><label class="crm-label">Job Title</label><input id="crm-lead-job_title" name="job_title" class="crm-input"></div>' +
           '<div><label class="crm-label">Stage</label><select name="stage" class="crm-input">' +
             ['New','Contacted','Qualified','Proposal','Negotiation'].map(function(s) { return '<option>' + s + '</option>'; }).join('') +
           '</select></div>' +
