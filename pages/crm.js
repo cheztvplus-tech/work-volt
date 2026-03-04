@@ -53,19 +53,22 @@ window.WorkVoltPages['crm'] = function(container) {
   const fmt$ = v => '$' + (parseFloat(v)||0).toLocaleString(undefined,{maximumFractionDigits:0});
 
   // ── API helpers ────────────────────────────────────────────────
-  const api = (path, params = {}) => window.apiCall ? apiCall(path, params) : Promise.resolve({ rows: [], error: 'not_connected' });
+  const api = (path, params = {}) => {
+    if (typeof window.apiCall === 'function') return window.apiCall(path, params);
+    return Promise.resolve({ rows: [], error: 'not_connected' });
+  };
 
   // ── Load data ──────────────────────────────────────────────────
   async function loadAll() {
     state.loading = true; render();
     try {
       const [db, contacts, leads, deals, stages, acts] = await Promise.all([
-        api('crm/dashboard'),
-        api('crm/contacts/list'),
-        api('crm/leads/list', { converted: 'false' }),
-        api('crm/deals/list'),
-        api('crm/stages/list'),
-        api('crm/activities/list', { limit: '50' }),
+        api('crm/dashboard').catch(() => ({})),
+        api('crm/contacts/list').catch(() => ({ rows: [] })),
+        api('crm/leads/list', { converted: 'false' }).catch(() => ({ rows: [] })),
+        api('crm/deals/list').catch(() => ({ rows: [] })),
+        api('crm/stages/list').catch(() => ({ rows: [] })),
+        api('crm/activities/list', { limit: '50' }).catch(() => ({ rows: [] })),
       ]);
       state.dashboard  = db;
       state.contacts   = contacts.rows  || [];
@@ -822,7 +825,9 @@ window.WorkVoltPages['crm'] = function(container) {
     e.preventDefault();
     const form = document.getElementById('crm-form');
     const data = {};
-    new FormData(form).forEach((v, k) => { data[k] = v; });
+    form.querySelectorAll('input[name], select[name], textarea[name]').forEach(el => {
+      data[el.name] = el.value;
+    });
     const user = window.currentUser || {};
     data.created_by = user.user_id || '';
 
