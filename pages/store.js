@@ -289,8 +289,29 @@ window.WorkVoltPages['store'] = function(container) {
         cfgUrl.searchParams.set('token', secret);
         const cfgRes  = await fetch(cfgUrl.toString(), { cache: 'no-cache' });
         const cfgData = await cfgRes.json();
-        window.INSTALLED_MODULES = cfgData.modules || [];
+        
+        // Ensure complete module data is stored
+        if (cfgData.modules && Array.isArray(cfgData.modules)) {
+          window.INSTALLED_MODULES = cfgData.modules.map(m => {
+            // Find the original module from CATALOGUE to get complete metadata
+            const catalogueModule = CATALOGUE.find(cat => cat.id === m.id);
+            return {
+              id: m.id || catalogueModule?.id,
+              label: m.label || catalogueModule?.label,
+              icon: m.icon || catalogueModule?.icon,
+              version: m.version || catalogueModule?.version || '1.0.0',
+              category: m.category || catalogueModule?.category,
+              description: m.description || catalogueModule?.description,
+              gradient: m.gradient || catalogueModule?.gradient,
+              color: m.color || catalogueModule?.color,
+              author: m.author || catalogueModule?.author || 'Work Volt',
+              tags: m.tags || catalogueModule?.tags || [],
+              featured: m.featured !== undefined ? m.featured : (catalogueModule?.featured || false)
+            };
+          });
+        }
 
+        if (typeof saveInstalledModules === 'function') saveInstalledModules();
         if (typeof renderNav === 'function') renderNav();
         render();
         window.WorkVolt?.toast(`${mod.label} installed! Sheet tabs created in your Google Sheet.`, 'success');
