@@ -472,6 +472,7 @@
     if (savedUrl)    { API_URL = savedUrl;  window.API_URL = savedUrl; }
     if (savedSecret) { window.API_SECRET_CLIENT = savedSecret; }
 
+    // Only load modules if connected to a Google Sheet
     if (savedUrl && savedSecret) {
       // Connected to Sheet — load from GAS
       try {
@@ -485,22 +486,13 @@
           window.INSTALLED_MODULES = INSTALLED_MODULES;
         }
       } catch(e) {
-        console.warn('Could not load modules from Sheet, trying localStorage:', e.message);
-        // Fall through to localStorage
+        console.warn('Could not load modules from Sheet:', e.message);
+        // Don't fall back to localStorage - keep modules empty if GAS fails
       }
-    }
-    
-    // If not connected OR GAS load failed, try localStorage
-    if (!INSTALLED_MODULES || INSTALLED_MODULES.length === 0) {
-      try {
-        const saved = localStorage.getItem('wv_installed_modules');
-        if (saved) {
-          INSTALLED_MODULES = JSON.parse(saved);
-          window.INSTALLED_MODULES = INSTALLED_MODULES;
-        }
-      } catch(e) {
-        console.warn('Could not load modules from localStorage:', e.message);
-      }
+    } else {
+      // Not connected - clear INSTALLED_MODULES
+      INSTALLED_MODULES = [];
+      window.INSTALLED_MODULES = [];
     }
   }
 
@@ -1811,5 +1803,3 @@
 
 </body>
 </html>
-
-
