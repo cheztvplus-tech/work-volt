@@ -27,20 +27,17 @@ window.WorkVoltPages['settings'] = function(container) {
     connectionMode = mode;
     var loginBtn = document.getElementById('mode-login');
     var setupBtn = document.getElementById('mode-setup');
-    var secretField = document.getElementById('secret-field');
     
     if (mode === 'login') {
       loginBtn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
       loginBtn.classList.remove('bg-slate-100', 'text-slate-600', 'border-slate-200');
       setupBtn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
       setupBtn.classList.add('bg-slate-100', 'text-slate-600', 'border-slate-200', 'hover:border-blue-300');
-      secretField.classList.add('hidden');
     } else {
       setupBtn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
       setupBtn.classList.remove('bg-slate-100', 'text-slate-600', 'border-slate-200', 'hover:border-blue-300');
       loginBtn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
       loginBtn.classList.add('bg-slate-100', 'text-slate-600', 'border-slate-200');
-      secretField.classList.remove('hidden');
     }
   };
 
@@ -253,18 +250,6 @@ window.WorkVoltPages['settings'] = function(container) {
               <input id="settings-gas-url" type="url" placeholder="https://script.google.com/macros/s/.../exec"
                 value="${savedUrl}" class="field font-mono text-xs">
               <p class="text-xs text-slate-400 mt-1.5">Deploy your <code class="bg-slate-100 px-1 rounded">Code.gs</code> as a Web App and paste the URL here.</p>
-            </div>
-            
-            <div id="secret-field" class="hidden">
-              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">API Secret</label>
-              <div class="relative">
-                <input id="settings-secret" type="password" placeholder="Your API_SECRET from Code.gs"
-                  value="${savedSecret}" class="field font-mono text-xs pr-10">
-                <button onclick="toggleSecretVis()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  <i id="secret-eye" class="fas fa-eye text-sm"></i>
-                </button>
-              </div>
-              <p class="text-xs text-slate-400 mt-1.5">Must match <code class="bg-slate-100 px-1 rounded">API_SECRET</code> in your <code class="bg-slate-100 px-1 rounded">Code.gs</code>.</p>
             </div>
             
             <div class="flex gap-3 pt-1">
@@ -1681,40 +1666,28 @@ window.WorkVoltPages['settings'] = function(container) {
   };
 
   window.settingsSave = function() {
-    var url    = document.getElementById('settings-gas-url').value.trim();
-    var secret = document.getElementById('settings-secret').value.trim();
+    var url = document.getElementById('settings-gas-url').value.trim();
     if (!url) return window.WorkVolt?.toast('Please enter the GAS URL', 'warning');
     
-    // In setup mode, API secret is required
-    if (connectionMode === 'setup' && !secret) {
-      return window.WorkVolt?.toast('Please enter the API Secret for first-time setup', 'warning');
-    }
-    
     localStorage.setItem('wv_gas_url', url);
-    if (secret) {
-      localStorage.setItem('wv_api_secret', secret);
-    }
-    savedUrl    = url;
-    savedSecret = secret;
+    savedUrl = url;
     window.API_URL = url;
-    window.API_SECRET_CLIENT = secret;
     render({ ok: true, message: 'Settings saved. Testing connection…' });
     setTimeout(function() { window.settingsTestConnection(); }, 400);
   };
 
   window.settingsTestConnection = async function() {
-    var url    = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
-    var secret = (document.getElementById('settings-secret')?.value  || '').trim() || savedSecret;
-    var btn    = document.getElementById('settings-test-btn');
+    var url = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
+    var btn = document.getElementById('settings-test-btn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Testing…'; }
     try {
       var pingUrl = new URL(url);
       pingUrl.searchParams.set('path', 'ping');
-      var pingRes  = await fetch(pingUrl.toString(), { cache: 'no-cache' });
+      var pingRes = await fetch(pingUrl.toString(), { cache: 'no-cache' });
       var pingData = await pingRes.json();
       if (pingData.status !== 'ok') throw new Error('Unexpected response from server');
 
-      // In Login mode, just save and redirect
+      // In Login mode, just save and redirect to login
       if (connectionMode === 'login') {
         localStorage.setItem('wv_gas_url', url);
         savedUrl = url;
@@ -1727,37 +1700,10 @@ window.WorkVoltPages['settings'] = function(container) {
         return;
       }
       
-      // In Setup mode, check if admin exists
-      var usersUrl = new URL(url);
-      usersUrl.searchParams.set('path', 'users/list');
-      if (secret) {
-        usersUrl.searchParams.set('token', secret);
-      }
-      var usersRes = await fetch(usersUrl.toString(), { cache: 'no-cache' });
-      var usersData = await usersRes.json();
-      var hasAdmin = (usersData.rows || []).some(function(u) { return u.role === 'SuperAdmin' || u.role === 'Admin'; });
-      
-      // If setup mode and no admin, we need the API secret
-      if (!secret) {
-        render({ ok: false, message: 'API Secret required for setup (to create admin account).' });
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
-        return;
-      }
-
-      var provUrl = new URL(url);
-      provUrl.searchParams.set('path',  'setup/provision');
-      provUrl.searchParams.set('token', secret);
-      var provRes  = await fetch(provUrl.toString(), { cache: 'no-cache' });
-      var provData = await provRes.json();
-      if (provData.error) throw new Error(provData.error);
-
-      // Show admin creation form
+      // In Setup mode, try to create first admin (backend uses its own API Secret)
       localStorage.setItem('wv_gas_url', url);
-      localStorage.setItem('wv_api_secret', secret);
       savedUrl = url;
-      savedSecret = secret;
       window.API_URL = url;
-      window.API_SECRET_CLIENT = secret;
       renderAdminSetupForm();
       
     } catch(e) {
@@ -1829,12 +1775,11 @@ window.WorkVoltPages['settings'] = function(container) {
       return;
     }
     
-    if (!savedUrl || !savedSecret) return;
+    if (!savedUrl) return;
     
     try {
       var apiUrl = new URL(savedUrl);
       apiUrl.searchParams.set('path', 'users/create');
-      apiUrl.searchParams.set('token', savedSecret);
       apiUrl.searchParams.set('email', email);
       apiUrl.searchParams.set('password', pass);
       apiUrl.searchParams.set('role', 'Admin');
