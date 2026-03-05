@@ -11,6 +11,9 @@ window.WorkVoltPages['settings'] = function(container) {
   
   // Only initialize modulesCache from global state if connected
   let modulesCache = (savedUrl && savedSecret && window.INSTALLED_MODULES) ? (Array.isArray(window.INSTALLED_MODULES) ? window.INSTALLED_MODULES : []) : [];
+  
+  // Connection mode: 'existing' or 'setup'
+  let connectionMode = 'existing';
 
   if (savedUrl)    window.API_URL = savedUrl;
   if (savedSecret) window.API_SECRET_CLIENT = savedSecret;
@@ -19,6 +22,27 @@ window.WorkVoltPages['settings'] = function(container) {
   if (!savedUrl || !savedSecret) {
     modulesCache = [];
   }
+  
+  window.setConnectionMode = function(mode) {
+    connectionMode = mode;
+    var existingBtn = document.getElementById('mode-existing');
+    var setupBtn = document.getElementById('mode-setup');
+    var secretField = document.getElementById('secret-field');
+    
+    if (mode === 'existing') {
+      existingBtn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+      existingBtn.classList.remove('bg-slate-100', 'text-slate-600', 'border-slate-200');
+      setupBtn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+      setupBtn.classList.add('bg-slate-100', 'text-slate-600', 'border-slate-200', 'hover:border-blue-300');
+      secretField.classList.add('hidden');
+    } else {
+      setupBtn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+      setupBtn.classList.remove('bg-slate-100', 'text-slate-600', 'border-slate-200', 'hover:border-blue-300');
+      existingBtn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+      existingBtn.classList.add('bg-slate-100', 'text-slate-600', 'border-slate-200');
+      secretField.classList.remove('hidden');
+    }
+  };
 
 
   // ================================================================
@@ -214,13 +238,24 @@ window.WorkVoltPages['settings'] = function(container) {
           </div>
           <div class="px-6 py-5 space-y-4">
             ${renderStatus(status)}
+            
+            <div class="flex gap-2 mb-4">
+              <button onclick="setConnectionMode('existing')" id="mode-existing" class="flex-1 px-3 py-2 rounded-lg font-semibold text-sm border-2 transition-colors bg-blue-600 text-white border-blue-600">
+                <i class="fas fa-sign-in-alt mr-2"></i>Login
+              </button>
+              <button onclick="setConnectionMode('setup')" id="mode-setup" class="flex-1 px-3 py-2 rounded-lg font-semibold text-sm border-2 transition-colors bg-slate-100 text-slate-600 border-slate-200 hover:border-blue-300">
+                <i class="fas fa-plus mr-2"></i>First Setup
+              </button>
+            </div>
+            
             <div>
               <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">GAS Web App URL</label>
               <input id="settings-gas-url" type="url" placeholder="https://script.google.com/macros/s/.../exec"
                 value="${savedUrl}" class="field font-mono text-xs">
               <p class="text-xs text-slate-400 mt-1.5">Deploy your <code class="bg-slate-100 px-1 rounded">Code.gs</code> as a Web App and paste the URL here.</p>
             </div>
-            <div>
+            
+            <div id="secret-field" class="hidden">
               <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">API Secret</label>
               <div class="relative">
                 <input id="settings-secret" type="password" placeholder="Your API_SECRET from Code.gs"
@@ -231,6 +266,7 @@ window.WorkVoltPages['settings'] = function(container) {
               </div>
               <p class="text-xs text-slate-400 mt-1.5">Must match <code class="bg-slate-100 px-1 rounded">API_SECRET</code> in your <code class="bg-slate-100 px-1 rounded">Code.gs</code>.</p>
             </div>
+            
             <div class="flex gap-3 pt-1">
               <button onclick="settingsTestConnection()" id="settings-test-btn" class="btn-secondary flex-1">
                 <i class="fas fa-vial text-sm"></i> Test Connection
@@ -1647,10 +1683,17 @@ window.WorkVoltPages['settings'] = function(container) {
   window.settingsSave = function() {
     var url    = document.getElementById('settings-gas-url').value.trim();
     var secret = document.getElementById('settings-secret').value.trim();
-    if (!url)    return window.WorkVolt?.toast('Please enter the GAS URL', 'warning');
-    if (!secret) return window.WorkVolt?.toast('Please enter the API Secret', 'warning');
-    localStorage.setItem('wv_gas_url',    url);
-    localStorage.setItem('wv_api_secret', secret);
+    if (!url) return window.WorkVolt?.toast('Please enter the GAS URL', 'warning');
+    
+    // In setup mode, API secret is required
+    if (connectionMode === 'setup' && !secret) {
+      return window.WorkVolt?.toast('Please enter the API Secret for first-time setup', 'warning');
+    }
+    
+    localStorage.setItem('wv_gas_url', url);
+    if (secret) {
+      localStorage.setItem('wv_api_secret', secret);
+    }
     savedUrl    = url;
     savedSecret = secret;
     window.API_URL = url;
@@ -1671,6 +1714,33 @@ window.WorkVoltPages['settings'] = function(container) {
       var pingData = await pingRes.json();
       if (pingData.status !== 'ok') throw new Error('Unexpected response from server');
 
+      // Check if admin exists (no secret needed for this)
+      var usersUrl = new URL(url);
+      usersUrl.searchParams.set('path', 'users/list');
+      if (secret) {
+        usersUrl.searchParams.set('token', secret);
+      }
+      var usersRes = await fetch(usersUrl.toString(), { cache: 'no-cache' });
+      var usersData = await usersRes.json();
+      var hasAdmin = (usersData.rows || []).some(function(u) { return u.role === 'SuperAdmin' || u.role === 'Admin'; });
+      
+      // If admin exists, no need for API secret - just save URL
+      if (hasAdmin) {
+        localStorage.setItem('wv_gas_url', url);
+        savedUrl = url;
+        window.API_URL = url;
+        render({ ok: true, message: '✓ Connected successfully! Admins already set up. You can now login.' });
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
+        return;
+      }
+      
+      // If no admin, we need the API secret for setup
+      if (!secret) {
+        render({ ok: false, message: 'API Secret required for first-time setup (to create admin accounts).' });
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
+        return;
+      }
+
       var provUrl = new URL(url);
       provUrl.searchParams.set('path',  'setup/provision');
       provUrl.searchParams.set('token', secret);
@@ -1678,31 +1748,11 @@ window.WorkVoltPages['settings'] = function(container) {
       var provData = await provRes.json();
       if (provData.error) throw new Error(provData.error);
 
-      if (provData.provisioned) {
+      if (provData.provisioned || !hasAdmin) {
         // First time setup - show admin creation form
-        if (!provData.has_admin) {
-          renderAdminSetupForm();
-        } else {
-          render({ ok: true, message: '✓ Connected! USERS sheet created.', provision: provData });
-        }
+        renderAdminSetupForm();
       } else {
-        // Check if we need first admin setup
-        try {
-          var usersUrl = new URL(url);
-          usersUrl.searchParams.set('path', 'users/list');
-          usersUrl.searchParams.set('token', secret);
-          var usersRes = await fetch(usersUrl.toString(), { cache: 'no-cache' });
-          var usersData = await usersRes.json();
-          var hasAdmin = (usersData.rows || []).some(function(u) { return u.role === 'SuperAdmin' || u.role === 'Admin'; });
-          
-          if (!hasAdmin) {
-            renderAdminSetupForm();
-          } else {
-            render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
-          }
-        } catch(e) {
-          render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
-        }
+        render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
       }
     } catch(e) {
       render({ ok: false, message: 'Connection failed: ' + e.message + '. Check the URL and try again.' });
