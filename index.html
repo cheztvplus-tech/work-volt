@@ -565,12 +565,8 @@
 
 
   function handleLogout() {
-  localStorage.removeItem('wv_user');
-  localStorage.removeItem('wv_token');
-  localStorage.removeItem('wv_demo_mode');
-  stopNotificationPolling();
-  location.reload(); // This will show login page
-}
+    forceLogout();
+  }
 
   function forceLogout(msg) {
     currentToken = 'demo-token';
@@ -1216,37 +1212,46 @@
   let _mimicking  = false;
 
   function renderUserDropdown() {
-  const inner = document.getElementById('user-dropdown-inner');
-  if (!inner) return;
+    const inner = document.getElementById('user-dropdown-inner');
+    if (!inner) return;
 
-  const isSuperAdmin = (currentUser?.role === 'SuperAdmin');
-  const hasRealSession = localStorage.getItem('wv_user') && !localStorage.getItem('wv_demo_mode');
+    const isSuperAdmin = (currentUser?.role === 'SuperAdmin');
+    const mimicBanner  = _mimicking
+      ? `<div style="background:#7c3aed;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem">
+           <i class="fas fa-user-secret" style="color:#fff;font-size:.7rem"></i>
+           <span style="color:#fff;font-size:.7rem;font-weight:700">Viewing as ${currentUser?.name||'user'}</span>
+         </div>`
+      : '';
 
-  inner.innerHTML = `
-    <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-      <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Account</p>
-    </div>
-    <button onclick="openProfileModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-      <i class="fas fa-user-circle text-slate-400 w-4"></i>My Profile
-    </button>
-    <button onclick="openSecurityModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-      <i class="fas fa-shield-alt text-slate-400 w-4"></i>Security & Password
-    </button>
-    
-    ${isSuperAdmin ? `
-    <div class="border-t border-slate-100"></div>
-    <button onclick="openMimicModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-violet-700 hover:bg-violet-50 flex items-center gap-2.5 transition-colors">
-      <i class="fas fa-user-secret text-violet-400 w-4"></i>Mimic Profile
-      <span class="ml-auto text-[10px] text-violet-400 bg-violet-50 border border-violet-200 rounded px-1 font-bold">SA</span>
-    </button>` : ''}
-    
-    <!-- LOGIN / LOGOUT BUTTON -->
-    <div class="border-t border-slate-100"></div>
-    <button onclick="handleLogout()" class="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors">
-      <i class="fas fa-sign-out-alt text-red-400 w-4"></i>Logout
-    </button>
-  `;
-}
+    inner.innerHTML = `
+      ${mimicBanner}
+      <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Account</p>
+        ${_mimicking ? `<span class="text-[10px] font-bold text-violet-600 bg-violet-50 px-1.5 py-px rounded border border-violet-200">Mimicking</span>` : ''}
+      </div>
+      <button onclick="openProfileModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+        <i class="fas fa-user-circle text-slate-400 w-4"></i>My Profile
+      </button>
+      <button onclick="openSecurityModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+        <i class="fas fa-shield-alt text-slate-400 w-4"></i>Security & Password
+      </button>
+      ${isSuperAdmin && !_mimicking ? `
+      <div class="border-t border-slate-100"></div>
+      <button onclick="openMimicModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-violet-700 hover:bg-violet-50 flex items-center gap-2.5 transition-colors">
+        <i class="fas fa-user-secret text-violet-400 w-4"></i>Mimic Profile
+        <span class="ml-auto text-[10px] text-violet-400 bg-violet-50 border border-violet-200 rounded px-1 font-bold">SA</span>
+      </button>` : ''}
+      ${_mimicking ? `
+      <div class="border-t border-slate-100"></div>
+      <button onclick="stopMimicking(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-violet-700 hover:bg-violet-50 flex items-center gap-2.5 transition-colors font-semibold">
+        <i class="fas fa-sign-out-alt text-violet-500 w-4"></i>Stop Mimicking
+        <span class="ml-auto text-[10px] text-violet-400">${_realUser?.name||''}</span>
+      </button>` : ''}
+      <div class="border-t border-slate-100"></div>
+      <button onclick="handleLogout()" class="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors">
+        <i class="fas fa-sign-out-alt text-red-400 w-4"></i>Logout
+      </button>`;
+  }
 
   function toggleUserMenu(e) {
     e?.stopPropagation();
@@ -1529,287 +1534,19 @@
     renderNav();
   };
 
-  // ── LOGIN PAGE ─────────────────────────────────────────────
-  function renderLoginPage(container) {
-    const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
-    
-    // Check connection and admin status
-    checkLoginStatus(savedUrl, savedSecret).then(function(status) {
-      
-      var html = '<div class="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 flex items-center justify-center p-4">';
-      html += '<div class="w-full max-w-md">';
-      
-      // Logo
-      html += '<div class="flex flex-col items-center mb-8">';
-      html += '<div class="w-16 h-16 bg-white/15 border border-white/30 rounded-2xl flex items-center justify-center mb-4 backdrop-blur-sm">';
-      html += '<i class="fas fa-bolt text-white text-3xl"></i></div>';
-      html += '<h1 class="text-3xl font-extrabold text-white tracking-tight">Work Volt</h1>';
-      html += '<p class="text-blue-200 mt-1 text-sm font-medium">Power your operations</p></div>';
-      
-      // Content based on status
-      if (!status.connected) {
-        // No Google Sheet connected - show demo option
-        html += renderDemoLogin();
-      } else if (status.needsFirstAdmin) {
-        // Connected but no admin - create first admin
-        html += renderFirstAdminSetup(savedUrl, savedSecret);
-      } else {
-        // Normal login
-        html += renderNormalLogin(savedUrl, savedSecret);
-      }
-      
-      html += '</div></div>';
-      container.innerHTML = html;
-    });
-  }
-  
-  async function checkLoginStatus(url, secret) {
-    if (!url || !secret) {
-      return { connected: false };
-    }
-    
-    try {
-      // Test connection
-      var pingUrl = new URL(url);
-      pingUrl.searchParams.set('path', 'ping');
-      var res = await fetch(pingUrl.toString(), { cache: 'no-cache' });
-      var data = await res.json();
-      
-      if (data.status !== 'ok') return { connected: false };
-      
-      // Check for admin
-      var adminUrl = new URL(url);
-      adminUrl.searchParams.set('path', 'users/list');
-      adminUrl.searchParams.set('token', secret);
-      var adminRes = await fetch(adminUrl.toString(), { cache: 'no-cache' });
-      var adminData = await adminRes.json();
-      
-      var hasAdmin = (adminData.rows || []).some(function(u) { 
-        return u.role === 'SuperAdmin' || u.role === 'Admin'; 
-      });
-      
-      return { connected: true, needsFirstAdmin: !hasAdmin };
-      
-    } catch (e) {
-      return { connected: false };
-    }
-  }
-  
-  function renderDemoLogin() {
-    return '<div class="bg-white rounded-2xl shadow-2xl overflow-hidden">' +
-      '<div class="bg-amber-50 border-b border-amber-100 px-6 py-3 flex items-center gap-2">' +
-      '<i class="fas fa-flask text-amber-500"></i>' +
-      '<span class="text-xs font-bold text-amber-700 uppercase tracking-wide">Demo Mode</span></div>' +
-      '<div class="p-6 text-center">' +
-      '<p class="text-sm text-slate-600 mb-4">Experience Work Volt without connecting a Google Sheet</p>' +
-      '<button onclick="enterDemoMode()" class="btn-primary w-full mb-3">' +
-      '<i class="fas fa-play text-sm mr-2"></i>Enter Demo Mode</button>' +
-      '<button onclick="goToSettingsFromLogin()" class="text-xs text-blue-600 hover:text-blue-800 font-semibold">' +
-      '<i class="fas fa-plug mr-1"></i>Connect Google Sheet</button>' +
-      '</div></div>';
-  }
-  
-  function renderFirstAdminSetup(url, secret) {
-    return '<div class="bg-white rounded-2xl shadow-2xl overflow-hidden">' +
-      '<div class="bg-green-50 border-b border-green-100 px-6 py-3 flex items-center gap-2">' +
-      '<i class="fas fa-seedling text-green-500"></i>' +
-      '<span class="text-xs font-bold text-green-700 uppercase tracking-wide">First Time Setup</span></div>' +
-      '<div class="p-6">' +
-      '<p class="text-sm text-slate-600 mb-4">Create your first admin account</p>' +
-      '<div id="setup-error" class="hidden mb-3 p-2 bg-red-50 text-red-600 text-xs rounded"></div>' +
-      '<div class="space-y-3">' +
-      '<input id="setup-email" type="email" value="admin@workvolt.app" class="field text-sm" placeholder="Email">' +
-      '<input id="setup-name" type="text" class="field text-sm" placeholder="Full Name">' +
-      '<input id="setup-pass" type="password" class="field text-sm" placeholder="Password">' +
-      '</div>' +
-      '<button onclick="createFirstAdminFromLogin()" class="btn-primary w-full mt-4">' +
-      '<i class="fas fa-user-plus text-sm mr-2"></i>Create Admin</button>' +
-      '</div></div>';
-  }
-  
-  function renderNormalLogin(url, secret) {
-    return '<div class="bg-white rounded-2xl shadow-2xl overflow-hidden p-6">' +
-      '<div class="text-center mb-6">' +
-      '<div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">' +
-      '<i class="fas fa-lock text-blue-600 text-lg"></i></div>' +
-      '<h2 class="text-lg font-bold text-slate-800">Sign In</h2></div>' +
-      '<div id="login-error" class="hidden mb-3 p-2 bg-red-50 text-red-600 text-xs rounded"></div>' +
-      '<div class="space-y-3">' +
-      '<input id="login-email" type="email" class="field text-sm" placeholder="Email">' +
-      '<input id="login-pass" type="password" class="field text-sm" placeholder="Password">' +
-      '</div>' +
-      '<button onclick="doLoginFromLogin()" class="btn-primary w-full mt-4">' +
-      '<i class="fas fa-sign-in-alt text-sm mr-2"></i>Sign In</button>' +
-      '<div class="mt-3 text-center">' +
-      '<button onclick="enterDemoMode()" class="text-xs text-slate-400 hover:text-slate-600 mr-3">Demo Mode</button>' +
-      '<button onclick="goToSettingsFromLogin()" class="text-xs text-slate-400 hover:text-slate-600">Connect Sheet</button>' +
-      '</div></div>';
-  }
-  
-  // ── LOGIN ACTIONS ───────────────────────────────────────────
-  window.enterDemoMode = function() {
-    var demoUser = {
-      user_id: 'DEMO-001',
-      email: 'demo@workvolt.app',
-      name: 'Demo User',
-      role: 'SuperAdmin',
-      department: 'Demonstration',
-      job_title: 'Demo Administrator',
-      active: true,
-      _demo: true
-    };
-    localStorage.setItem('wv_demo_mode', 'true');
-    localStorage.setItem('wv_user', JSON.stringify(demoUser));
-    location.reload();
-  };
-  
-  window.goToSettingsFromLogin = function() {
-    // Set minimal user to access settings
-    currentUser = {
-      user_id: 'TEMP-001',
-      name: 'Setup User',
-      email: 'setup@workvolt.app',
-      role: 'SuperAdmin',
-      active: true
-    };
-    localStorage.setItem('wv_user', JSON.stringify(currentUser));
-    sessionStorage.setItem('lastModule', 'settings');
-    location.hash = 'settings';
-    location.reload();
-  };
-  
-  window.createFirstAdminFromLogin = async function() {
-    var email = document.getElementById('setup-email').value.trim();
-    var name = document.getElementById('setup-name').value.trim();
-    var pass = document.getElementById('setup-pass').value;
-    var error = document.getElementById('setup-error');
-    
-    if (!email || !pass || !name) {
-      error.textContent = 'Please fill in all fields';
-      error.classList.remove('hidden');
-      return;
-    }
-    
-    var url = localStorage.getItem('wv_gas_url');
-    var secret = localStorage.getItem('wv_api_secret');
-    
-    try {
-      var apiUrl = new URL(url);
-      apiUrl.searchParams.set('path', 'users/create');
-      apiUrl.searchParams.set('token', secret);
-      apiUrl.searchParams.set('email', email);
-      apiUrl.searchParams.set('password', pass);
-      apiUrl.searchParams.set('role', 'Admin');
-      apiUrl.searchParams.set('name', name);
-      
-      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
-      var data = await res.json();
-      
-      if (data.error) throw new Error(data.error);
-      
-      // Auto login
-      await loginWithCredentials(email, pass);
-      
-    } catch (e) {
-      error.textContent = e.message;
-      error.classList.remove('hidden');
-    }
-  };
-  
-  window.doLoginFromLogin = async function() {
-    var email = document.getElementById('login-email').value.trim();
-    var pass = document.getElementById('login-pass').value;
-    var error = document.getElementById('login-error');
-    
-    if (!email || !pass) {
-      error.textContent = 'Please enter email and password';
-      error.classList.remove('hidden');
-      return;
-    }
-    
-    try {
-      await loginWithCredentials(email, pass);
-    } catch (e) {
-      error.textContent = e.message;
-      error.classList.remove('hidden');
-    }
-  };
-  
-  async function loginWithCredentials(email, password) {
-    var url = localStorage.getItem('wv_gas_url');
-    var secret = localStorage.getItem('wv_api_secret');
-    
-    // Hash password
-    var msgBuffer = new TextEncoder().encode(password);
-    var hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-    var hashArray = Array.from(new Uint8Array(hashBuffer));
-    var hashHex = hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
-    
-    // Try to login
-    var apiUrl = new URL(url);
-    apiUrl.searchParams.set('path', 'users/login');
-    apiUrl.searchParams.set('token', secret);
-    apiUrl.searchParams.set('email', email);
-    apiUrl.searchParams.set('password_hash', hashHex);
-    
-    var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
-    var data = await res.json();
-    
-    if (data.error) throw new Error(data.error);
-    if (!data.success || !data.user) throw new Error('Login failed');
-    
-    localStorage.removeItem('wv_demo_mode');
-    localStorage.setItem('wv_user', JSON.stringify(data.user));
-    localStorage.setItem('wv_token', data.token || 'token');
-    location.reload();
-  }
-    // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────
   //  BOOT SEQUENCE
   // ─────────────────────────────────────────────
   window.addEventListener('load', async () => {
-    
-    const savedUser = localStorage.getItem('wv_user');
-    const demoMode = localStorage.getItem('wv_demo_mode') === 'true';
-    const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
-    
-    // CASE 1: User is logged in (real user or demo) - load app normally
-    if (savedUser || demoMode) {
-      if (savedUser) {
-        currentUser = JSON.parse(savedUser);
-      } else {
-        // Demo mode
-        currentUser = {
-          user_id: 'DEMO-001',
-          email: 'demo@workvolt.app',
-          name: 'Demo User',
-          role: 'SuperAdmin',
-          department: 'Demonstration',
-          job_title: 'Demo Administrator',
-          active: true,
-          _demo: true
-        };
-      }
-      
-      await loadInstalledModules();
-      await loadRolePermissions();
-      hideSplash();
-      await showApp();
-      return;
-    }
-    
-    // CASE 2: No user logged in - show login page
+    // Go straight to app — login & Google Sheet will be connected later
+    await loadInstalledModules(); // no-op until Sheet connected; swaps for apiCall later
+    await loadRolePermissions();  // load custom role permissions from config/localStorage
     hideSplash();
-    document.getElementById('app-screen').classList.remove('hidden');
-    renderLoginPage(document.getElementById('main-content'));
+    await showApp();
   });
 
   // window.WorkVolt globals are defined above near the boot sequence
-  
   </script>
 
 </body>
 </html>
-
-
