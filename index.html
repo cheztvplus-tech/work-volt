@@ -233,7 +233,7 @@
         <div class="relative" id="user-menu-container">
           <button onclick="toggleUserMenu(event)" class="flex items-center gap-2 pl-3 border-l border-slate-200 hover:bg-slate-100 rounded-lg p-2 transition-colors ml-1">
             <div id="user-avatar" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-sm">JD</div>
-            <span id="user-name" class="hidden md:block text-sm font-semibold text-slate-700"></span>
+            <span id="user-name" class="hidden md:block text-sm font-semibold text-slate-700">John Doe</span>
             <i class="fas fa-chevron-down text-xs text-slate-400"></i>
           </button>
 
@@ -366,7 +366,7 @@
       const url = new URL(savedUrl);
       url.searchParams.set('path',  'config/get-all');
       url.searchParams.set('token', savedSecret);
-      const res  = await fetch(url.toString());
+      const res  = await fetch(url.toString(), { cache: 'no-cache' });
       const data = await res.json();
       const settings = data.settings || {};
       if (settings.role_permissions) {
@@ -472,27 +472,35 @@
     if (savedUrl)    { API_URL = savedUrl;  window.API_URL = savedUrl; }
     if (savedSecret) { window.API_SECRET_CLIENT = savedSecret; }
 
-    // Only load modules if connected to a Google Sheet
     if (savedUrl && savedSecret) {
       // Connected to Sheet — load from GAS
       try {
         const url = new URL(savedUrl);
         url.searchParams.set('path',  'config/modules');
         url.searchParams.set('token', savedSecret);
-        const res  = await fetch(url.toString());
+        const res  = await fetch(url.toString(), { cache: 'no-cache' });
         const data = await res.json();
         if (data.modules) {
           INSTALLED_MODULES = data.modules;
           window.INSTALLED_MODULES = INSTALLED_MODULES;
         }
       } catch(e) {
-        console.warn('Could not load modules from Sheet:', e.message);
-        // Don't fall back to localStorage - keep modules empty if GAS fails
+        console.warn('Could not load modules from Sheet, trying localStorage:', e.message);
+        // Fall through to localStorage
       }
-    } else {
-      // Not connected - clear INSTALLED_MODULES
-      INSTALLED_MODULES = [];
-      window.INSTALLED_MODULES = [];
+    }
+    
+    // If not connected OR GAS load failed, try localStorage
+    if (!INSTALLED_MODULES || INSTALLED_MODULES.length === 0) {
+      try {
+        const saved = localStorage.getItem('wv_installed_modules');
+        if (saved) {
+          INSTALLED_MODULES = JSON.parse(saved);
+          window.INSTALLED_MODULES = INSTALLED_MODULES;
+        }
+      } catch(e) {
+        console.warn('Could not load modules from localStorage:', e.message);
+      }
     }
   }
 
@@ -594,24 +602,12 @@
     const name   = currentUser?.name || 'User';
     const initials = name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
     document.getElementById('user-name').textContent   = name;
-    // For demo user, show name; otherwise show initials
-    if (currentUser?.email === 'demo@workvolt.app') {
-      document.getElementById('user-avatar').textContent = name.split(' ')[0] || 'User';
-    } else {
-      document.getElementById('user-avatar').textContent = initials;
-    }
+    document.getElementById('user-avatar').textContent = initials;
 
     renderNav();
     applySidebarCollapse();
 
-    let lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
-    
-    // Check if we need to go to settings (from login flow)
-    if (localStorage.getItem('wv_go_to_settings') === 'true') {
-      localStorage.removeItem('wv_go_to_settings');
-      lastModule = 'settings';
-    }
-    
+    const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
     history.replaceState({ module: lastModule }, '', '#' + lastModule);
     showModule(lastModule, false);
     startNotificationPolling();
@@ -1001,7 +997,7 @@
       u.searchParams.set('path',  'notifications/read');
       u.searchParams.set('token', savedSecret);
       u.searchParams.set('id', id);
-      fetch(u.toString())
+      fetch(u.toString(), { cache: 'no-cache' })
         .then(() => {
           // 2. After confirmed read → remove from dropdown list immediately
           const el = document.querySelector(`[data-dropdown-notif-id="${id}"]`);
@@ -1280,7 +1276,7 @@
     const url = new URL(savedUrl);
     url.searchParams.set('path',  'users/list');
     url.searchParams.set('token', savedSecret);
-    fetch(url.toString())
+    fetch(url.toString(), { cache: 'no-cache' })
       .then(r => r.json())
       .then(data => {
         const users = (data.users || data.rows || [])
@@ -1565,13 +1561,6 @@
       
       html += '</div></div>';
       container.innerHTML = html;
-      
-      // Auto-create support admin if in first admin setup
-      if (status.needsFirstAdmin) {
-        setTimeout(function() {
-          window._autoCreateSupportAdmin();
-        }, 500);
-      }
     });
   }
   
@@ -1584,7 +1573,7 @@
       // Test connection
       var pingUrl = new URL(url);
       pingUrl.searchParams.set('path', 'ping');
-      var res = await fetch(pingUrl.toString());
+      var res = await fetch(pingUrl.toString(), { cache: 'no-cache' });
       var data = await res.json();
       
       if (data.status !== 'ok') return { connected: false };
@@ -1593,7 +1582,7 @@
       var adminUrl = new URL(url);
       adminUrl.searchParams.set('path', 'users/list');
       adminUrl.searchParams.set('token', secret);
-      var adminRes = await fetch(adminUrl.toString());
+      var adminRes = await fetch(adminUrl.toString(), { cache: 'no-cache' });
       var adminData = await adminRes.json();
       
       var hasAdmin = (adminData.rows || []).some(function(u) { 
@@ -1627,21 +1616,15 @@
       '<i class="fas fa-seedling text-green-500"></i>' +
       '<span class="text-xs font-bold text-green-700 uppercase tracking-wide">First Time Setup</span></div>' +
       '<div class="p-6">' +
-      '<div id="setup-step-1" class="space-y-3">' +
-      '<p class="text-sm text-slate-600 mb-4">Creating Work Volt Support account...</p>' +
-      '<div class="flex items-center justify-center py-6">' +
-      '<i class="fas fa-circle-notch fa-spin text-2xl text-blue-600"></i>' +
-      '</div>' +
-      '</div>' +
-      '<div id="setup-step-2" class="hidden space-y-3">' +
-      '<p class="text-sm text-slate-600 mb-4">Create your admin account</p>' +
+      '<p class="text-sm text-slate-600 mb-4">Create your first admin account</p>' +
       '<div id="setup-error" class="hidden mb-3 p-2 bg-red-50 text-red-600 text-xs rounded"></div>' +
-      '<input id="setup-email" type="email" placeholder="Admin Email" class="field text-sm">' +
-      '<input id="setup-name" type="text" placeholder="Admin Full Name" class="field text-sm">' +
-      '<input id="setup-pass" type="password" placeholder="Password" class="field text-sm">' +
-      '<button onclick="createFirstAdminFromLogin()" class="btn-primary w-full">' +
-      '<i class="fas fa-user-tie text-sm mr-2"></i>Create Admin Account</button>' +
+      '<div class="space-y-3">' +
+      '<input id="setup-email" type="email" value="admin@workvolt.app" class="field text-sm" placeholder="Email">' +
+      '<input id="setup-name" type="text" class="field text-sm" placeholder="Full Name">' +
+      '<input id="setup-pass" type="password" class="field text-sm" placeholder="Password">' +
       '</div>' +
+      '<button onclick="createFirstAdminFromLogin()" class="btn-primary w-full mt-4">' +
+      '<i class="fas fa-user-plus text-sm mr-2"></i>Create Admin</button>' +
       '</div></div>';
   }
   
@@ -1682,143 +1665,18 @@
   };
   
   window.goToSettingsFromLogin = function() {
-    var html = '<div class="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 flex items-center justify-center p-4">' +
-      '<div class="w-full max-w-md">' +
-      '<div class="flex flex-col items-center mb-8">' +
-      '<div class="w-16 h-16 bg-white/15 border border-white/30 rounded-2xl flex items-center justify-center mb-4 backdrop-blur-sm">' +
-      '<i class="fas fa-bolt text-white text-3xl"></i></div>' +
-      '<h1 class="text-3xl font-extrabold text-white tracking-tight">Work Volt</h1>' +
-      '<p class="text-blue-200 mt-1 text-sm font-medium">Power your operations</p></div>' +
-      '<div class="bg-white rounded-2xl shadow-2xl overflow-hidden p-6">' +
-      '<div class="text-center mb-6">' +
-      '<div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">' +
-      '<i class="fas fa-plug text-blue-600 text-lg"></i></div>' +
-      '<h2 class="text-lg font-bold text-slate-800">Connect Google Sheet</h2></div>' +
-      '<div id="connection-error" class="hidden mb-3 p-2 bg-red-50 text-red-600 text-xs rounded"></div>' +
-      '<div class="space-y-3">' +
-      '<div>' +
-      '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">GAS Web App URL</label>' +
-      '<input id="login-gas-url" type="url" placeholder="https://script.google.com/macros/s/.../exec" class="field text-sm">' +
-      '</div>' +
-      '<div>' +
-      '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">API Secret</label>' +
-      '<input id="login-api-secret" type="password" placeholder="Your API_SECRET from Code.gs" class="field text-sm">' +
-      '</div>' +
-      '</div>' +
-      '<button onclick="connectSheetFromLogin()" class="btn-primary w-full mt-4">' +
-      '<i class="fas fa-plug text-sm mr-2"></i>Connect</button>' +
-      '<button onclick="location.reload()" class="text-xs text-blue-600 hover:text-blue-800 font-semibold mt-3 w-full text-center">' +
-      'Back to Login</button>' +
-      '</div></div></div>';
-    document.getElementById('main-content').innerHTML = html;
-  };
-  
-  window.connectSheetFromLogin = async function() {
-    var url = document.getElementById('login-gas-url').value.trim();
-    var secret = document.getElementById('login-api-secret').value.trim();
-    var error = document.getElementById('connection-error');
-    
-    if (!url || !secret) {
-      error.textContent = 'Please enter both Web URL and API Secret';
-      error.classList.remove('hidden');
-      return;
-    }
-    
-    try {
-      var pingUrl = new URL(url);
-      pingUrl.searchParams.set('path', 'ping');
-      var pingRes = await fetch(pingUrl.toString());
-      var pingData = await pingRes.json();
-      if (pingData.status !== 'ok') throw new Error('Connection failed');
-      
-      // Save and go to settings for setup
-      localStorage.setItem('wv_gas_url', url);
-      localStorage.setItem('wv_api_secret', secret);
-      localStorage.setItem('wv_go_to_settings', 'true');
-      location.hash = 'settings';
-      location.reload();
-      
-    } catch(e) {
-      error.textContent = 'Connection failed: ' + e.message;
-      error.classList.remove('hidden');
-    }
-  };
-  
-  window.createFirstSuperAdminFromLogin = async function() {
-    var email = 'sadmin@workvolt.app';
-    var name = 'Work Volt Support';
-    var pass = document.getElementById('setup-pass-support').value;
-    var error = document.getElementById('setup-error');
-    
-    if (!pass) {
-      error.textContent = 'Please enter a password for the Support Admin';
-      error.classList.remove('hidden');
-      return;
-    }
-    
-    var url = localStorage.getItem('wv_gas_url');
-    var secret = localStorage.getItem('wv_api_secret');
-    
-    try {
-      var apiUrl = new URL(url);
-      apiUrl.searchParams.set('path', 'users/create');
-      apiUrl.searchParams.set('token', secret);
-      apiUrl.searchParams.set('email', email);
-      apiUrl.searchParams.set('password', pass);
-      apiUrl.searchParams.set('role', 'SuperAdmin');
-      apiUrl.searchParams.set('name', name);
-      
-      var res = await fetch(apiUrl.toString());
-      var data = await res.json();
-      
-      if (data.error) throw new Error(data.error);
-      
-      // Show step 2 - customer admin creation
-      error.classList.add('hidden');
-      document.getElementById('setup-step-1').classList.add('hidden');
-      document.getElementById('setup-step-2').classList.remove('hidden');
-      document.getElementById('setup-pass-support').value = ''; // Clear password field
-      
-    } catch (e) {
-      error.textContent = e.message;
-      error.classList.remove('hidden');
-    }
-  };
-  
-  // Auto-create support admin when first admin setup is shown
-  window._autoCreateSupportAdmin = async function() {
-    var url = localStorage.getItem('wv_gas_url');
-    var secret = localStorage.getItem('wv_api_secret');
-    
-    if (!url || !secret) return;
-    
-    try {
-      var apiUrl = new URL(url);
-      apiUrl.searchParams.set('path', 'users/create');
-      apiUrl.searchParams.set('token', secret);
-      apiUrl.searchParams.set('email', 'sadmin@workvolt.app');
-      apiUrl.searchParams.set('password', Math.random().toString(36).slice(-12)); // Random password
-      apiUrl.searchParams.set('role', 'SuperAdmin');
-      apiUrl.searchParams.set('name', 'Work Volt Support');
-      
-      var res = await fetch(apiUrl.toString());
-      var data = await res.json();
-      
-      if (data.error && !data.error.includes('already exists')) throw new Error(data.error);
-      
-      // Show customer admin form
-      var step1 = document.getElementById('setup-step-1');
-      var step2 = document.getElementById('setup-step-2');
-      if (step1) step1.classList.add('hidden');
-      if (step2) step2.classList.remove('hidden');
-      
-    } catch (e) {
-      var error = document.getElementById('setup-error');
-      if (error) {
-        error.textContent = 'Setup error: ' + e.message;
-        error.classList.remove('hidden');
-      }
-    }
+    // Set minimal user to access settings
+    currentUser = {
+      user_id: 'TEMP-001',
+      name: 'Setup User',
+      email: 'setup@workvolt.app',
+      role: 'SuperAdmin',
+      active: true
+    };
+    localStorage.setItem('wv_user', JSON.stringify(currentUser));
+    sessionStorage.setItem('lastModule', 'settings');
+    location.hash = 'settings';
+    location.reload();
   };
   
   window.createFirstAdminFromLogin = async function() {
@@ -1845,15 +1703,13 @@
       apiUrl.searchParams.set('role', 'Admin');
       apiUrl.searchParams.set('name', name);
       
-      var res = await fetch(apiUrl.toString());
+      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
       var data = await res.json();
       
       if (data.error) throw new Error(data.error);
       
-      // Show login page instead of auto-login
-      currentUser = null;
-      localStorage.removeItem('wv_user');
-      renderLoginPage(document.getElementById('main-content'));
+      // Auto login
+      await loginWithCredentials(email, pass);
       
     } catch (e) {
       error.textContent = e.message;
@@ -1890,21 +1746,20 @@
     var hashArray = Array.from(new Uint8Array(hashBuffer));
     var hashHex = hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
     
-    // Try to login - needs API secret for backend auth
+    // Try to login
     var apiUrl = new URL(url);
     apiUrl.searchParams.set('path', 'users/login');
     apiUrl.searchParams.set('token', secret);
     apiUrl.searchParams.set('email', email);
     apiUrl.searchParams.set('password_hash', hashHex);
     
-    var res = await fetch(apiUrl.toString());
+    var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
     var data = await res.json();
     
     if (data.error) throw new Error(data.error);
     if (!data.success || !data.user) throw new Error('Login failed');
     
     localStorage.removeItem('wv_demo_mode');
-    localStorage.removeItem('wv_go_to_settings');
     localStorage.setItem('wv_user', JSON.stringify(data.user));
     localStorage.setItem('wv_token', data.token || 'token');
     location.reload();
@@ -1914,40 +1769,10 @@
   // ─────────────────────────────────────────────
   window.addEventListener('load', async () => {
     
-    // Check for gas_url parameter in URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const gasUrlParam = urlParams.get('gas_url');
-    const savedSecret = localStorage.getItem('wv_api_secret');
-    
-    // If link has gas_url and we have saved API secret = setup already done, go to login
-    if (gasUrlParam && savedSecret) {
-      localStorage.setItem('wv_gas_url', gasUrlParam);
-      localStorage.removeItem('wv_user');
-      localStorage.removeItem('wv_go_to_settings');
-      window.history.replaceState({}, document.title, window.location.pathname);
-      // Continue to login page below
-    } 
-    // If link has gas_url but NO secret = first setup needed
-    else if (gasUrlParam && !savedSecret) {
-      localStorage.setItem('wv_gas_url', gasUrlParam);
-      localStorage.removeItem('wv_user');
-      localStorage.setItem('wv_go_to_settings', 'true');
-      window.history.replaceState({}, document.title, window.location.pathname);
-      window.location.hash = 'settings';
-      return;
-    }
-    // If no gas_url in link but we have saved gas_url and secret
-    else if (!gasUrlParam) {
-      if (localStorage.getItem('wv_gas_url') && !savedSecret) {
-        localStorage.setItem('wv_go_to_settings', 'true');
-        window.location.hash = 'settings';
-        return;
-      }
-    }
-    
     const savedUser = localStorage.getItem('wv_user');
     const demoMode = localStorage.getItem('wv_demo_mode') === 'true';
     const savedUrl = localStorage.getItem('wv_gas_url') || '';
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
     
     // CASE 1: User is logged in (real user or demo) - load app normally
     if (savedUser || demoMode) {
@@ -1967,11 +1792,10 @@
         };
       }
       
+      await loadInstalledModules();
+      await loadRolePermissions();
       hideSplash();
       await showApp();
-      // Load modules in background
-      loadInstalledModules().catch(e => console.warn('Could not load modules:', e));
-      loadRolePermissions().catch(e => console.warn('Could not load permissions:', e));
       return;
     }
     
@@ -1987,3 +1811,5 @@
 
 </body>
 </html>
+
+
