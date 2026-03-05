@@ -1882,6 +1882,7 @@
   
   async function loginWithCredentials(email, password) {
     var url = localStorage.getItem('wv_gas_url');
+    var secret = localStorage.getItem('wv_api_secret');
     
     // Hash password
     var msgBuffer = new TextEncoder().encode(password);
@@ -1889,9 +1890,10 @@
     var hashArray = Array.from(new Uint8Array(hashBuffer));
     var hashHex = hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
     
-    // Try to login - no API secret needed for user login
+    // Try to login - needs API secret for backend auth
     var apiUrl = new URL(url);
     apiUrl.searchParams.set('path', 'users/login');
+    apiUrl.searchParams.set('token', secret);
     apiUrl.searchParams.set('email', email);
     apiUrl.searchParams.set('password_hash', hashHex);
     
