@@ -599,7 +599,14 @@
     renderNav();
     applySidebarCollapse();
 
-    const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
+    let lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
+    
+    // Check if we need to go to settings (from login flow)
+    if (localStorage.getItem('wv_go_to_settings') === 'true') {
+      localStorage.removeItem('wv_go_to_settings');
+      lastModule = 'settings';
+    }
+    
     history.replaceState({ module: lastModule }, '', '#' + lastModule);
     showModule(lastModule, false);
     startNotificationPolling();
@@ -1666,7 +1673,7 @@
       active: true
     };
     localStorage.setItem('wv_user', JSON.stringify(currentUser));
-    sessionStorage.setItem('lastModule', 'settings');
+    localStorage.setItem('wv_go_to_settings', 'true');
     location.hash = 'settings';
     location.reload();
   };
