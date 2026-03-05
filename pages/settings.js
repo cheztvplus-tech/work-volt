@@ -8,10 +8,17 @@ window.WorkVoltPages['settings'] = function(container) {
   let activeTab   = 'connection';
   let usersCache  = [];
   let editingUser = null;
-  let modulesCache = [];
+  
+  // Only initialize modulesCache from global state if connected
+  let modulesCache = (savedUrl && savedSecret && window.INSTALLED_MODULES) ? (Array.isArray(window.INSTALLED_MODULES) ? window.INSTALLED_MODULES : []) : [];
 
   if (savedUrl)    window.API_URL = savedUrl;
   if (savedSecret) window.API_SECRET_CLIENT = savedSecret;
+  
+  // CRITICAL: If not connected, ALWAYS keep modulesCache empty regardless of global state
+  if (!savedUrl || !savedSecret) {
+    modulesCache = [];
+  }
 
 
   // ================================================================
@@ -1495,6 +1502,10 @@ window.WorkVoltPages['settings'] = function(container) {
   }
 
   window.modulesInstall = async function(moduleId) {
+    if (!savedUrl || !savedSecret) {
+      setModuleStatus('You must connect your Google Sheet first to install modules.', false);
+      return;
+    }
     var btn = document.getElementById('install-btn-' + moduleId);
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Installing…'; }
     setModuleStatus('', false);
@@ -1589,6 +1600,10 @@ window.WorkVoltPages['settings'] = function(container) {
   };
 
   window.modulesUninstall = async function(moduleId) {
+    if (!savedUrl || !savedSecret) {
+      setModuleStatus('You must connect your Google Sheet first to uninstall modules.', false);
+      return;
+    }
     if (!confirm('Uninstall ' + (ADDON_CATALOGUE[moduleId]?.label || moduleId) + '? The sheet data will be kept but the module will be removed from the menu.')) return;
     setModuleStatus('', false);
     try {
