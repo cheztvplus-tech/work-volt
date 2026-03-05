@@ -236,6 +236,18 @@ window.WorkVoltPages['settings'] = function(container) {
               <p class="text-xs text-slate-400 mt-1.5">Deploy your <code class="bg-slate-100 px-1 rounded">Code.gs</code> as a Web App and paste the URL here.</p>
             </div>
             
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">API Secret</label>
+              <div class="relative">
+                <input id="settings-secret" type="password" placeholder="Your API_SECRET from Code.gs"
+                  value="${savedSecret}" class="field font-mono text-xs pr-10">
+                <button onclick="toggleSecretVis()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <i id="secret-eye" class="fas fa-eye text-sm"></i>
+                </button>
+              </div>
+              <p class="text-xs text-slate-400 mt-1.5">Must match <code class="bg-slate-100 px-1 rounded">API_SECRET</code> in your <code class="bg-slate-100 px-1 rounded">Code.gs</code>.</p>
+            </div>
+            
             <div class="flex gap-3 pt-1">
               <button onclick="settingsTestConnection()" id="settings-test-btn" class="btn-secondary flex-1">
                 <i class="fas fa-vial text-sm"></i> Test Connection
@@ -1650,19 +1662,24 @@ window.WorkVoltPages['settings'] = function(container) {
   };
 
   window.settingsSave = function() {
-    var url = document.getElementById('settings-gas-url').value.trim();
-    if (!url) return window.WorkVolt?.toast('Please enter the GAS URL', 'warning');
-    
-    localStorage.setItem('wv_gas_url', url);
-    savedUrl = url;
+    var url    = document.getElementById('settings-gas-url').value.trim();
+    var secret = document.getElementById('settings-secret').value.trim();
+    if (!url)    return window.WorkVolt?.toast('Please enter the GAS URL', 'warning');
+    if (!secret) return window.WorkVolt?.toast('Please enter the API Secret', 'warning');
+    localStorage.setItem('wv_gas_url',    url);
+    localStorage.setItem('wv_api_secret', secret);
+    savedUrl    = url;
+    savedSecret = secret;
     window.API_URL = url;
+    window.API_SECRET_CLIENT = secret;
     render({ ok: true, message: 'Settings saved. Testing connection…' });
     setTimeout(function() { window.settingsTestConnection(); }, 400);
   };
 
   window.settingsTestConnection = async function() {
-    var url = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
-    var btn = document.getElementById('settings-test-btn');
+    var url    = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
+    var secret = (document.getElementById('settings-secret')?.value  || '').trim() || savedSecret;
+    var btn    = document.getElementById('settings-test-btn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Testing…'; }
     try {
       var pingUrl = new URL(url);
@@ -1671,10 +1688,13 @@ window.WorkVoltPages['settings'] = function(container) {
       var pingData = await pingRes.json();
       if (pingData.status !== 'ok') throw new Error('Unexpected response from server');
 
-      // Save URL and show admin setup form
+      // Show admin setup form
       localStorage.setItem('wv_gas_url', url);
+      localStorage.setItem('wv_api_secret', secret);
       savedUrl = url;
+      savedSecret = secret;
       window.API_URL = url;
+      window.API_SECRET_CLIENT = secret;
       renderAdminSetupForm();
       
     } catch(e) {
