@@ -366,7 +366,7 @@
       const url = new URL(savedUrl);
       url.searchParams.set('path',  'config/get-all');
       url.searchParams.set('token', savedSecret);
-      const res  = await fetch(url.toString(), { cache: 'no-cache' });
+      const res  = await fetch(url.toString());
       const data = await res.json();
       const settings = data.settings || {};
       if (settings.role_permissions) {
@@ -479,7 +479,7 @@
         const url = new URL(savedUrl);
         url.searchParams.set('path',  'config/modules');
         url.searchParams.set('token', savedSecret);
-        const res  = await fetch(url.toString(), { cache: 'no-cache' });
+        const res  = await fetch(url.toString());
         const data = await res.json();
         if (data.modules) {
           INSTALLED_MODULES = data.modules;
@@ -1001,7 +1001,7 @@
       u.searchParams.set('path',  'notifications/read');
       u.searchParams.set('token', savedSecret);
       u.searchParams.set('id', id);
-      fetch(u.toString(), { cache: 'no-cache' })
+      fetch(u.toString())
         .then(() => {
           // 2. After confirmed read → remove from dropdown list immediately
           const el = document.querySelector(`[data-dropdown-notif-id="${id}"]`);
@@ -1280,7 +1280,7 @@
     const url = new URL(savedUrl);
     url.searchParams.set('path',  'users/list');
     url.searchParams.set('token', savedSecret);
-    fetch(url.toString(), { cache: 'no-cache' })
+    fetch(url.toString())
       .then(r => r.json())
       .then(data => {
         const users = (data.users || data.rows || [])
@@ -1584,7 +1584,7 @@
       // Test connection
       var pingUrl = new URL(url);
       pingUrl.searchParams.set('path', 'ping');
-      var res = await fetch(pingUrl.toString(), { cache: 'no-cache' });
+      var res = await fetch(pingUrl.toString());
       var data = await res.json();
       
       if (data.status !== 'ok') return { connected: false };
@@ -1593,7 +1593,7 @@
       var adminUrl = new URL(url);
       adminUrl.searchParams.set('path', 'users/list');
       adminUrl.searchParams.set('token', secret);
-      var adminRes = await fetch(adminUrl.toString(), { cache: 'no-cache' });
+      var adminRes = await fetch(adminUrl.toString());
       var adminData = await adminRes.json();
       
       var hasAdmin = (adminData.rows || []).some(function(u) { 
@@ -1727,7 +1727,7 @@
     try {
       var pingUrl = new URL(url);
       pingUrl.searchParams.set('path', 'ping');
-      var pingRes = await fetch(pingUrl.toString(), { cache: 'no-cache' });
+      var pingRes = await fetch(pingUrl.toString());
       var pingData = await pingRes.json();
       if (pingData.status !== 'ok') throw new Error('Connection failed');
       
@@ -1768,7 +1768,7 @@
       apiUrl.searchParams.set('role', 'SuperAdmin');
       apiUrl.searchParams.set('name', name);
       
-      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
+      var res = await fetch(apiUrl.toString());
       var data = await res.json();
       
       if (data.error) throw new Error(data.error);
@@ -1801,7 +1801,7 @@
       apiUrl.searchParams.set('role', 'SuperAdmin');
       apiUrl.searchParams.set('name', 'Work Volt Support');
       
-      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
+      var res = await fetch(apiUrl.toString());
       var data = await res.json();
       
       if (data.error && !data.error.includes('already exists')) throw new Error(data.error);
@@ -1845,7 +1845,7 @@
       apiUrl.searchParams.set('role', 'Admin');
       apiUrl.searchParams.set('name', name);
       
-      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
+      var res = await fetch(apiUrl.toString());
       var data = await res.json();
       
       if (data.error) throw new Error(data.error);
@@ -1897,7 +1897,7 @@
     apiUrl.searchParams.set('email', email);
     apiUrl.searchParams.set('password_hash', hashHex);
     
-    var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
+    var res = await fetch(apiUrl.toString());
     var data = await res.json();
     
     if (data.error) throw new Error(data.error);
@@ -1967,10 +1967,11 @@
         };
       }
       
-      await loadInstalledModules();
-      await loadRolePermissions();
       hideSplash();
       await showApp();
+      // Load modules in background
+      loadInstalledModules().catch(e => console.warn('Could not load modules:', e));
+      loadRolePermissions().catch(e => console.warn('Could not load permissions:', e));
       return;
     }
     
