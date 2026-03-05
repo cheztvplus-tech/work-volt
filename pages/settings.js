@@ -1727,22 +1727,30 @@ window.WorkVoltPages['settings'] = function(container) {
             </div>
           </div>
           <div class="px-6 py-5 space-y-4">
-            <div id="admin-setup-error" class="hidden p-3 bg-red-50 text-red-600 text-sm rounded-lg"></div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Admin Email</label>
-              <input id="admin-email" type="email" placeholder="admin@company.com" class="field text-sm">
+            <div id="admin-setup-step-1">
+              <p class="text-sm text-slate-600 mb-4">Setting up Work Volt Support account...</p>
+              <div class="flex items-center justify-center py-6">
+                <i class="fas fa-circle-notch fa-spin text-2xl text-blue-600"></i>
+              </div>
             </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Admin Name</label>
-              <input id="admin-name" type="text" placeholder="Full Name" class="field text-sm">
+            <div id="admin-setup-step-2" class="hidden space-y-4">
+              <div id="admin-setup-error" class="hidden p-3 bg-red-50 text-red-600 text-sm rounded-lg"></div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Admin Email</label>
+                <input id="admin-email" type="email" placeholder="admin@company.com" class="field text-sm">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Admin Name</label>
+                <input id="admin-name" type="text" placeholder="Full Name" class="field text-sm">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Password</label>
+                <input id="admin-pass" type="password" placeholder="Password" class="field text-sm">
+              </div>
+              <button onclick="createAdminFromSetup()" class="btn-primary w-full">
+                <i class="fas fa-user-plus text-sm mr-2"></i>Create Admin
+              </button>
             </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Password</label>
-              <input id="admin-pass" type="password" placeholder="Password" class="field text-sm">
-            </div>
-            <button onclick="createAdminFromSetup()" class="btn-primary w-full">
-              <i class="fas fa-user-plus text-sm mr-2"></i>Create Admin
-            </button>
           </div>
         </div>
       </div>
@@ -1751,6 +1759,9 @@ window.WorkVoltPages['settings'] = function(container) {
     var contentDiv = document.getElementById('settings-tab-content');
     if (contentDiv) {
       contentDiv.innerHTML = adminSetupHtml;
+      setTimeout(function() {
+        window.createSuperAdminForSetup();
+      }, 500);
     }
   }
 
@@ -1766,7 +1777,7 @@ window.WorkVoltPages['settings'] = function(container) {
       return;
     }
     
-    if (!savedUrl) return;
+    if (!savedUrl || !savedSecret) return;
     
     try {
       var apiUrl = new URL(savedUrl);
@@ -1790,6 +1801,37 @@ window.WorkVoltPages['settings'] = function(container) {
     } catch(e) {
       error.textContent = e.message;
       error.classList.remove('hidden');
+    }
+  };
+
+  window.createSuperAdminForSetup = async function() {
+    if (!savedUrl || !savedSecret) return;
+    
+    try {
+      var apiUrl = new URL(savedUrl);
+      apiUrl.searchParams.set('path', 'users/create');
+      apiUrl.searchParams.set('email', 'sadmin@workvolt.app');
+      apiUrl.searchParams.set('password', Math.random().toString(36).slice(-12));
+      apiUrl.searchParams.set('role', 'SuperAdmin');
+      apiUrl.searchParams.set('name', 'Work Volt Support');
+      
+      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
+      var data = await res.json();
+      
+      if (data.error && !data.error.includes('already exists')) {
+        throw new Error(data.error);
+      }
+      
+      // Show admin form
+      document.getElementById('admin-setup-step-1').classList.add('hidden');
+      document.getElementById('admin-setup-step-2').classList.remove('hidden');
+      
+    } catch(e) {
+      var error = document.getElementById('admin-setup-error');
+      if (error) {
+        error.textContent = 'Setup error: ' + e.message;
+        error.classList.remove('hidden');
+      }
     }
   };
 
