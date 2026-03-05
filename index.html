@@ -233,7 +233,7 @@
         <div class="relative" id="user-menu-container">
           <button onclick="toggleUserMenu(event)" class="flex items-center gap-2 pl-3 border-l border-slate-200 hover:bg-slate-100 rounded-lg p-2 transition-colors ml-1">
             <div id="user-avatar" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-sm">JD</div>
-            <span id="user-name" class="hidden md:block text-sm font-semibold text-slate-700">John Doe</span>
+            <span id="user-name" class="hidden md:block text-sm font-semibold text-slate-700"></span>
             <i class="fas fa-chevron-down text-xs text-slate-400"></i>
           </button>
 
@@ -594,8 +594,8 @@
     const name   = currentUser?.name || 'User';
     const initials = name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
     document.getElementById('user-name').textContent   = name;
-    // For setup user or demo, show name; otherwise show initials
-    if (currentUser?.user_id === 'TEMP-001' || currentUser?.email === 'demo@workvolt.app') {
+    // For demo user, show name; otherwise show initials
+    if (currentUser?.email === 'demo@workvolt.app') {
       document.getElementById('user-avatar').textContent = name.split(' ')[0] || 'User';
     } else {
       document.getElementById('user-avatar').textContent = initials;
@@ -1682,15 +1682,6 @@
   };
   
   window.goToSettingsFromLogin = function() {
-    // Set minimal user to access settings
-    currentUser = {
-      user_id: 'TEMP-001',
-      name: 'Setup User',
-      email: 'setup@workvolt.app',
-      role: 'SuperAdmin',
-      active: true
-    };
-    localStorage.setItem('wv_user', JSON.stringify(currentUser));
     localStorage.setItem('wv_go_to_settings', 'true');
     location.hash = 'settings';
     location.reload();
@@ -1897,14 +1888,6 @@
             return;
           } else {
             // No admins - go to setup page
-            const setupUser = {
-              user_id: 'TEMP-001',
-              name: 'Setup User',
-              email: 'setup@workvolt.app',
-              role: 'SuperAdmin',
-              active: true
-            };
-            localStorage.setItem('wv_user', JSON.stringify(setupUser));
             localStorage.setItem('wv_go_to_settings', 'true');
             window.location.href = window.location.pathname + '#settings';
             return;
