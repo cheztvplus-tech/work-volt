@@ -1863,6 +1863,58 @@
   // ─────────────────────────────────────────────
   window.addEventListener('load', async () => {
     
+    // Check for gas_url parameter in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const gasUrlParam = urlParams.get('gas_url');
+    
+    if (gasUrlParam) {
+      // Save the gas_url from parameter
+      localStorage.setItem('wv_gas_url', gasUrlParam);
+      
+      // Check if admins exist
+      try {
+        const pingUrl = new URL(gasUrlParam);
+        pingUrl.searchParams.set('path', 'ping');
+        const pingRes = await fetch(pingUrl.toString(), { cache: 'no-cache' });
+        const pingData = await pingRes.json();
+        
+        if (pingData.status === 'ok') {
+          // Check for admin accounts
+          const usersUrl = new URL(gasUrlParam);
+          usersUrl.searchParams.set('path', 'users/list');
+          const usersRes = await fetch(usersUrl.toString(), { cache: 'no-cache' });
+          const usersData = await usersRes.json();
+          const hasAdmin = (usersData.rows || []).some(function(u) { 
+            return u.role === 'SuperAdmin' || u.role === 'Admin'; 
+          });
+          
+          if (hasAdmin) {
+            // Admins exist - go to login page
+            // Clean up any setup data
+            localStorage.removeItem('wv_user');
+            localStorage.removeItem('wv_go_to_settings');
+            window.location.href = window.location.pathname;
+            return;
+          } else {
+            // No admins - go to setup page
+            const setupUser = {
+              user_id: 'TEMP-001',
+              name: 'Setup User',
+              email: 'setup@workvolt.app',
+              role: 'SuperAdmin',
+              active: true
+            };
+            localStorage.setItem('wv_user', JSON.stringify(setupUser));
+            localStorage.setItem('wv_go_to_settings', 'true');
+            window.location.href = window.location.pathname + '#settings';
+            return;
+          }
+        }
+      } catch(e) {
+        console.warn('Could not check admin status:', e.message);
+      }
+    }
+    
     const savedUser = localStorage.getItem('wv_user');
     const demoMode = localStorage.getItem('wv_demo_mode') === 'true';
     const savedUrl = localStorage.getItem('wv_gas_url') || '';
