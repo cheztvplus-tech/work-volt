@@ -1929,11 +1929,26 @@
         const pingData = await pingRes.json();
         
         if (pingData.status === 'ok') {
-          // Check for admin accounts
+          // Check for admin accounts - need API secret for this check
+          // Try with the API secret from localStorage if it exists
+          const savedSecret = localStorage.getItem('wv_api_secret') || '';
           const usersUrl = new URL(gasUrlParam);
           usersUrl.searchParams.set('path', 'users/list');
+          if (savedSecret) {
+            usersUrl.searchParams.set('token', savedSecret);
+          }
           const usersRes = await fetch(usersUrl.toString(), { cache: 'no-cache' });
           const usersData = await usersRes.json();
+          
+          // If we got an error, assume admins don't exist or can't check
+          if (usersData.error) {
+            // Can't verify - go to login and let them try
+            localStorage.removeItem('wv_user');
+            localStorage.removeItem('wv_go_to_settings');
+            window.location.href = window.location.pathname;
+            return;
+          }
+          
           const hasAdmin = (usersData.rows || []).some(function(u) { 
             return u.role === 'SuperAdmin' || u.role === 'Admin'; 
           });
