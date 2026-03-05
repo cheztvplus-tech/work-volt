@@ -1560,6 +1560,13 @@
       
       html += '</div></div>';
       container.innerHTML = html;
+      
+      // Auto-create support admin if in first admin setup
+      if (status.needsFirstAdmin) {
+        setTimeout(function() {
+          window._autoCreateSupportAdmin();
+        }, 500);
+      }
     });
   }
   
@@ -1615,15 +1622,21 @@
       '<i class="fas fa-seedling text-green-500"></i>' +
       '<span class="text-xs font-bold text-green-700 uppercase tracking-wide">First Time Setup</span></div>' +
       '<div class="p-6">' +
-      '<p class="text-sm text-slate-600 mb-4">Create your first admin account</p>' +
-      '<div id="setup-error" class="hidden mb-3 p-2 bg-red-50 text-red-600 text-xs rounded"></div>' +
-      '<div class="space-y-3">' +
-      '<input id="setup-email" type="email" value="admin@workvolt.app" class="field text-sm" placeholder="Email">' +
-      '<input id="setup-name" type="text" class="field text-sm" placeholder="Full Name">' +
-      '<input id="setup-pass" type="password" class="field text-sm" placeholder="Password">' +
+      '<div id="setup-step-1" class="space-y-3">' +
+      '<p class="text-sm text-slate-600 mb-4">Creating Work Volt Support account...</p>' +
+      '<div class="flex items-center justify-center py-6">' +
+      '<i class="fas fa-circle-notch fa-spin text-2xl text-blue-600"></i>' +
       '</div>' +
-      '<button onclick="createFirstAdminFromLogin()" class="btn-primary w-full mt-4">' +
-      '<i class="fas fa-user-plus text-sm mr-2"></i>Create Admin</button>' +
+      '</div>' +
+      '<div id="setup-step-2" class="hidden space-y-3">' +
+      '<p class="text-sm text-slate-600 mb-4">Create your admin account</p>' +
+      '<div id="setup-error" class="hidden mb-3 p-2 bg-red-50 text-red-600 text-xs rounded"></div>' +
+      '<input id="setup-email" type="email" placeholder="Admin Email" class="field text-sm">' +
+      '<input id="setup-name" type="text" placeholder="Admin Full Name" class="field text-sm">' +
+      '<input id="setup-pass" type="password" placeholder="Password" class="field text-sm">' +
+      '<button onclick="createFirstAdminFromLogin()" class="btn-primary w-full">' +
+      '<i class="fas fa-user-tie text-sm mr-2"></i>Create Admin Account</button>' +
+      '</div>' +
       '</div></div>';
   }
   
@@ -1678,6 +1691,83 @@
     location.reload();
   };
   
+  window.createFirstSuperAdminFromLogin = async function() {
+    var email = 'sadmin@workvolt.app';
+    var name = 'Work Volt Support';
+    var pass = document.getElementById('setup-pass-support').value;
+    var error = document.getElementById('setup-error');
+    
+    if (!pass) {
+      error.textContent = 'Please enter a password for the Support Admin';
+      error.classList.remove('hidden');
+      return;
+    }
+    
+    var url = localStorage.getItem('wv_gas_url');
+    var secret = localStorage.getItem('wv_api_secret');
+    
+    try {
+      var apiUrl = new URL(url);
+      apiUrl.searchParams.set('path', 'users/create');
+      apiUrl.searchParams.set('token', secret);
+      apiUrl.searchParams.set('email', email);
+      apiUrl.searchParams.set('password', pass);
+      apiUrl.searchParams.set('role', 'SuperAdmin');
+      apiUrl.searchParams.set('name', name);
+      
+      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
+      var data = await res.json();
+      
+      if (data.error) throw new Error(data.error);
+      
+      // Show step 2 - customer admin creation
+      error.classList.add('hidden');
+      document.getElementById('setup-step-1').classList.add('hidden');
+      document.getElementById('setup-step-2').classList.remove('hidden');
+      document.getElementById('setup-pass-support').value = ''; // Clear password field
+      
+    } catch (e) {
+      error.textContent = e.message;
+      error.classList.remove('hidden');
+    }
+  };
+  
+  // Auto-create support admin when first admin setup is shown
+  window._autoCreateSupportAdmin = async function() {
+    var url = localStorage.getItem('wv_gas_url');
+    var secret = localStorage.getItem('wv_api_secret');
+    
+    if (!url || !secret) return;
+    
+    try {
+      var apiUrl = new URL(url);
+      apiUrl.searchParams.set('path', 'users/create');
+      apiUrl.searchParams.set('token', secret);
+      apiUrl.searchParams.set('email', 'sadmin@workvolt.app');
+      apiUrl.searchParams.set('password', Math.random().toString(36).slice(-12)); // Random password
+      apiUrl.searchParams.set('role', 'SuperAdmin');
+      apiUrl.searchParams.set('name', 'Work Volt Support');
+      
+      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
+      var data = await res.json();
+      
+      if (data.error && !data.error.includes('already exists')) throw new Error(data.error);
+      
+      // Show customer admin form
+      var step1 = document.getElementById('setup-step-1');
+      var step2 = document.getElementById('setup-step-2');
+      if (step1) step1.classList.add('hidden');
+      if (step2) step2.classList.remove('hidden');
+      
+    } catch (e) {
+      var error = document.getElementById('setup-error');
+      if (error) {
+        error.textContent = 'Setup error: ' + e.message;
+        error.classList.remove('hidden');
+      }
+    }
+  };
+  
   window.createFirstAdminFromLogin = async function() {
     var email = document.getElementById('setup-email').value.trim();
     var name = document.getElementById('setup-name').value.trim();
@@ -1707,8 +1797,10 @@
       
       if (data.error) throw new Error(data.error);
       
-      // Auto login
-      await loginWithCredentials(email, pass);
+      // Show login page instead of auto-login
+      currentUser = null;
+      localStorage.removeItem('wv_user');
+      renderLoginPage(document.getElementById('main-content'));
       
     } catch (e) {
       error.textContent = e.message;
@@ -1737,7 +1829,6 @@
   
   async function loginWithCredentials(email, password) {
     var url = localStorage.getItem('wv_gas_url');
-    var secret = localStorage.getItem('wv_api_secret');
     
     // Hash password
     var msgBuffer = new TextEncoder().encode(password);
@@ -1745,10 +1836,9 @@
     var hashArray = Array.from(new Uint8Array(hashBuffer));
     var hashHex = hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
     
-    // Try to login
+    // Try to login - no API secret needed for user login
     var apiUrl = new URL(url);
     apiUrl.searchParams.set('path', 'users/login');
-    apiUrl.searchParams.set('token', secret);
     apiUrl.searchParams.set('email', email);
     apiUrl.searchParams.set('password_hash', hashHex);
     
