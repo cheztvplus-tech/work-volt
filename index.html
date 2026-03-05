@@ -329,9 +329,9 @@
   // ─────────────────────────────────────────────
   //  CONFIG & STATE
   // ─────────────────────────────────────────────
-  let API_URL      = '';
-  let currentUser  = null;  // No default user - must login
-  let currentToken = null;  // No default token
+  let API_URL = '';
+  let currentUser = null;
+  let currentSession = null; // Changed from currentToken
   let _setupData   = {};
   let _notifPollTimer = null;
 
@@ -362,68 +362,212 @@
   let _userModuleOverrides = {};
 
   // ─────────────────────────────────────────────
-  //  LOGIN SYSTEM
+  //  LOGIN SYSTEM - PUBLIC AUTH (SESSION BASED)
   // ─────────────────────────────────────────────
 
-  // Check system state: demo, needs-setup, or normal-login
   async function checkLoginState() {
     const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
+    const savedSession = localStorage.getItem('wv_session');
     const savedUser = localStorage.getItem('wv_user');
-    const savedToken = localStorage.getItem('wv_token');
     const demoMode = localStorage.getItem('wv_demo_mode') === 'true';
-
-    // Case 1: Has saved user session - validate it
-    if (savedUser && savedToken && !demoMode) {
+    
+    // Check for URL params (shared link)
+    const urlParams = new URLSearchParams(window.location.search);
+    const sharedUrl = urlParams.get('gas_url');
+    
+    if (sharedUrl) {
+      localStorage.setItem('wv_gas_url', sharedUrl);
+      API_URL = sharedUrl;
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      // Check if setup needed
+      return checkSystemState();
+    }
+    
+    if (!savedUrl) {
+      return { state: 'no-connection' };
+    }
+    
+    API_URL = savedUrl;
+    
+    // Check for valid session
+    if (savedSession && savedUser) {
       try {
-        // Validate token with backend
-        API_URL = savedUrl;
-        const check = await apiCall('users/get', { user_id: JSON.parse(savedUser).user_id }, 1);
-        if (check.user) {
+        const check = await apiCall('auth/check-session', { session_id: savedSession }, 1, true);
+        if (check.valid) {
           currentUser = JSON.parse(savedUser);
-          currentToken = savedToken;
+          currentSession = savedSession;
           return { state: 'authenticated' };
         }
       } catch (e) {
-        // Token invalid, clear and continue to login
+        // Session invalid, clear it
         clearAuthData();
       }
     }
-
-    // Case 2: Demo mode active
+    
     if (demoMode) {
       return { state: 'demo' };
     }
+    
+    // Check if system needs first admin
+    return checkSystemState();
+  }
 
-    // Case 3: No connection configured - offer demo or setup
-    if (!savedUrl || !savedSecret) {
-      return { state: 'no-connection' };
-    }
-
-    // Case 4: Connection exists, check if needs first admin
-    API_URL = savedUrl;
+  async function checkSystemState() {
     try {
-      const data = await apiCall('users/list', {}, 1);
+      // Try to list users - if no admin exists, we need setup
+      const data = await apiCall('users/list', {}, 1, true); // allowNoSession=true
       const hasAdmin = (data.rows || []).some(u => u.role === 'SuperAdmin' || u.role === 'Admin');
+      
       if (!hasAdmin) {
-        return { state: 'needs-first-admin', url: savedUrl, secret: savedSecret };
+        return { state: 'needs-first-admin' };
       }
     } catch (e) {
-      // Connection failed, treat as no-connection
-      return { state: 'no-connection' };
+      // If we can't reach server, treat as needs setup
+      return { state: 'needs-first-admin' };
+    }
+    
+    return { state: 'login' };
+  }
+
+  async function performLogin(email, password) {
+    // Hash password
+    const msgBuffer = new TextEncoder().encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    // PUBLIC LOGIN - no API_SECRET needed!
+    const data = await apiCall('auth/public-login', {
+      email: email,
+      password_hash: hashHex
+    }, 2, true); // allowNoSession=true, retries=2
+    
+    if (data.error) throw new Error(data.error);
+    if (!data.success || !data.user) throw new Error('Login failed');
+    
+    // Save session (not API_SECRET!)
+    localStorage.removeItem('wv_demo_mode');
+    localStorage.setItem('wv_user', JSON.stringify(data.user));
+    localStorage.setItem('wv_session', data.session_id);
+    
+    currentUser = data.user;
+    currentSession = data.session_id;
+    
+    return data;
+  }
+
+  // ─────────────────────────────────────────────
+  //  API HELPER - SESSION BASED
+  // ─────────────────────────────────────────────
+  async function apiCall(path, params = {}, retries = 2, allowNoSession = false) {
+    if (!API_URL) throw new Error('Not connected');
+    
+    const url = new URL(API_URL);
+    url.searchParams.set('path', path);
+    url.searchParams.set('_t', Date.now().toString()); // cache bust
+    
+    // Use session for auth, NOT API_SECRET
+    if (currentSession && !allowNoSession) {
+      url.searchParams.set('session_id', currentSession);
+    }
+    // Only use API_SECRET for initial setup/admin operations
+    else if (localStorage.getItem('wv_api_secret')) {
+      url.searchParams.set('token', localStorage.getItem('wv_api_secret'));
+    }
+    
+    for (const k in params) {
+      if (params[k] !== undefined && params[k] !== null) {
+        url.searchParams.set(k, params[k]);
+      }
     }
 
-    // Case 5: Normal login required
-    return { state: 'login', url: savedUrl, secret: savedSecret };
+    let lastErr;
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 15000);
+        
+        const res = await fetch(url.toString(), { 
+          method: 'GET', 
+          mode: 'cors', 
+          cache: 'no-cache',
+          signal: ctrl.signal 
+        });
+        
+        clearTimeout(tid);
+
+        if (res.status === 401 || res.status === 403) {
+          // Session expired
+          if (!allowNoSession) {
+            forceLogout('Session expired. Please sign in again.');
+            throw new Error('Session expired');
+          }
+        }
+        
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        const text = await res.text();
+        if (!text) throw new Error('Empty response');
+        
+        const data = JSON.parse(text);
+        if (data.error) throw new Error(data.error);
+        
+        return data;
+
+      } catch(err) {
+        lastErr = err;
+        if (err.name === 'AbortError') lastErr = new Error('Request timeout');
+        if (i < retries) await new Promise(r => setTimeout(r, 800 * (i + 1)));
+      }
+    }
+    throw lastErr || new Error('Network error');
   }
 
   function clearAuthData() {
     localStorage.removeItem('wv_user');
-    localStorage.removeItem('wv_token');
+    localStorage.removeItem('wv_session');
     localStorage.removeItem('wv_demo_mode');
+    // Keep wv_gas_url so they don't need to re-enter
     currentUser = null;
-    currentToken = null;
+    currentSession = null;
   }
+
+  function forceLogout(msg) {
+    clearAuthData();
+    stopNotificationPolling();
+    document.getElementById('app-screen').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
+    if (msg) showToast(msg, 'error');
+    
+    checkLoginState().then(state => {
+      renderLoginState(state);
+    });
+  }
+
+  window.handleLogout = function() {
+    // Optional: invalidate session server-side
+    if (currentSession) {
+      // Fire and forget session invalidation
+      const url = new URL(API_URL);
+      url.searchParams.set('path', 'auth/invalidate-session');
+      url.searchParams.set('session_id', currentSession);
+      fetch(url.toString()).catch(() => {});
+    }
+    
+    clearAuthData();
+    stopNotificationPolling();
+    
+    document.getElementById('app-screen').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('main-content').innerHTML = '';
+    
+    checkLoginState().then(state => {
+      renderLoginState(state);
+    });
+    
+    showToast('Logged out successfully', 'info');
+  };
 
   function renderLoginState(state) {
     const container = document.getElementById('login-card-content');
@@ -433,10 +577,10 @@
         container.innerHTML = renderNoConnectionCard();
         break;
       case 'needs-first-admin':
-        container.innerHTML = renderFirstAdminCard(state.url, state.secret);
+        container.innerHTML = renderFirstAdminCard();
         break;
       case 'login':
-        container.innerHTML = renderLoginCard(state.url, state.secret);
+        container.innerHTML = renderLoginCard();
         break;
       case 'demo':
         container.innerHTML = renderDemoCard();
@@ -455,25 +599,31 @@
         <span class="text-xs font-bold text-amber-700 uppercase tracking-wide">Setup Required</span>
       </div>
       <div class="p-6">
-        <p class="text-sm text-slate-600 mb-4">Connect your Google Sheet to enable full functionality, or try the demo mode.</p>
+        <p class="text-sm text-slate-600 mb-4">Enter your Work Volt URL to get started.</p>
         
-        <button onclick="enterDemoMode()" class="btn-primary w-full mb-3">
-          <i class="fas fa-play-circle text-sm mr-2"></i>Try Demo Mode
-        </button>
-        
-        <div class="relative my-4">
-          <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
-          <div class="relative flex justify-center"><span class="bg-white px-2 text-xs text-slate-400">or</span></div>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Work Volt URL</label>
+            <input id="setup-gas-url" type="url" placeholder="https://script.google.com/macros/s/.../exec " 
+              class="field text-sm font-mono text-xs">
+            <p class="text-[10px] text-slate-400 mt-1">Your administrator will provide this</p>
+          </div>
         </div>
         
-        <button onclick="showConnectionSetup()" class="btn-secondary w-full">
-          <i class="fas fa-cog text-sm mr-2"></i>Connect Google Sheet
+        <button onclick="saveGasUrl()" class="btn-primary w-full mt-4">
+          <i class="fas fa-arrow-right text-sm mr-2"></i>Continue
         </button>
+        
+        <div class="mt-4 pt-4 border-t border-slate-100">
+          <button onclick="enterDemoMode()" class="text-xs text-slate-400 hover:text-slate-600">
+            <i class="fas fa-flask mr-1"></i>Try Demo Mode
+          </button>
+        </div>
       </div>
     `;
   }
 
-  function renderFirstAdminCard(url, secret) {
+  function renderFirstAdminCard() {
     return `
       <div class="bg-green-50 border-b border-green-100 px-6 py-3 flex items-center gap-2">
         <i class="fas fa-seedling text-green-500"></i>
@@ -503,12 +653,12 @@
           </div>
         </div>
         
-        <button onclick="createFirstAdmin('${url}', '${secret}')" class="btn-primary w-full mt-4">
+        <button onclick="createFirstAdmin()" class="btn-primary w-full mt-4">
           <i class="fas fa-user-plus text-sm mr-2"></i>Create Admin & Login
         </button>
         
         <div class="mt-4 pt-4 border-t border-slate-100">
-          <button onclick="showConnectionSetup()" class="text-xs text-slate-400 hover:text-slate-600 font-medium">
+          <button onclick="clearGasUrl()" class="text-xs text-slate-400 hover:text-slate-600 font-medium">
             <i class="fas fa-arrow-left mr-1"></i>Back to connection settings
           </button>
         </div>
@@ -516,7 +666,8 @@
     `;
   }
 
-  function renderLoginCard(url, secret) {
+  function renderLoginCard() {
+    // No URL/secret fields needed - just email/password!
     return `
       <div class="bg-blue-50 border-b border-blue-100 px-6 py-3 flex items-center gap-2">
         <i class="fas fa-shield-alt text-blue-500"></i>
@@ -536,12 +687,12 @@
           </div>
         </div>
         
-        <button onclick="doLogin('${url}', '${secret}')" class="btn-primary w-full mt-4">
+        <button onclick="doLoginFromUI()" class="btn-primary w-full mt-4">
           <i class="fas fa-sign-in-alt text-sm mr-2"></i>Sign In
         </button>
         
         <div class="mt-4 flex items-center justify-between text-xs">
-          <button onclick="showForgotPassword('${url}', '${secret}')" class="text-blue-600 hover:text-blue-800 font-medium">
+          <button onclick="showForgotPassword()" class="text-blue-600 hover:text-blue-800 font-medium">
             Forgot password?
           </button>
           <button onclick="enterDemoMode()" class="text-slate-400 hover:text-slate-600">
@@ -550,7 +701,7 @@
         </div>
         
         <div class="mt-4 pt-4 border-t border-slate-100">
-          <button onclick="showConnectionSetup()" class="text-xs text-slate-400 hover:text-slate-600 font-medium">
+          <button onclick="clearGasUrl()" class="text-xs text-slate-400 hover:text-slate-600 font-medium">
             <i class="fas fa-cog mr-1"></i>Change connection
           </button>
         </div>
@@ -571,88 +722,35 @@
           <i class="fas fa-play text-sm mr-2"></i>Enter Demo
         </button>
         
-        <button onclick="showConnectionSetup()" class="btn-secondary w-full">
+        <button onclick="clearGasUrl()" class="btn-secondary w-full">
           <i class="fas fa-plug text-sm mr-2"></i>Connect Real Sheet
         </button>
       </div>
     `;
   }
 
-  function renderConnectionSetupCard() {
-    return `
-      <div class="bg-slate-50 border-b border-slate-200 px-6 py-3 flex items-center gap-2">
-        <i class="fas fa-cog text-slate-500"></i>
-        <span class="text-xs font-bold text-slate-600 uppercase tracking-wide">Connection Setup</span>
-      </div>
-      <div class="p-6">
-        <div id="setup-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600"></div>
-        <div id="setup-success" class="hidden mb-4 p-3 bg-green-50 border border-green-200 rounded-xl text-xs text-green-600"></div>
-        
-        <div class="space-y-3">
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">GAS Web App URL</label>
-            <input id="conn-url" type="url" placeholder="https://script.google.com/macros/s/.../exec" class="field text-sm font-mono text-xs">
-            <p class="text-[10px] text-slate-400 mt-1">Your Google Apps Script Web App deployment URL</p>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">API Secret</label>
-            <input id="conn-secret" type="password" placeholder="Your API_SECRET from Code.gs" class="field text-sm font-mono text-xs">
-            <p class="text-[10px] text-slate-400 mt-1">Must match the API_SECRET in your backend Code.gs</p>
-          </div>
-        </div>
-        
-        <button onclick="testAndSaveConnection()" class="btn-primary w-full mt-4">
-          <i class="fas fa-plug text-sm mr-2"></i>Test & Save Connection
-        </button>
-        
-        <div class="mt-4 pt-4 border-t border-slate-100 flex gap-2">
-          <button onclick="location.reload()" class="btn-secondary flex-1 text-xs">
-            <i class="fas fa-arrow-left mr-1"></i>Back
-          </button>
-          <button onclick="enterDemoMode()" class="btn-secondary flex-1 text-xs">
-            Skip to Demo
-          </button>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderForgotPasswordCard(url, secret) {
-    return `
-      <div class="bg-orange-50 border-b border-orange-100 px-6 py-3 flex items-center gap-2">
-        <i class="fas fa-key text-orange-500"></i>
-        <span class="text-xs font-bold text-orange-700 uppercase tracking-wide">Reset Password</span>
-      </div>
-      <div class="p-6">
-        <p class="text-sm text-slate-600 mb-4">Enter your email to receive a password reset link.</p>
-        
-        <div id="reset-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600"></div>
-        <div id="reset-success" class="hidden mb-4 p-3 bg-green-50 border border-green-200 rounded-xl text-xs text-green-600"></div>
-        
-        <div class="space-y-3">
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Email</label>
-            <input id="reset-email" type="email" placeholder="your@email.com" class="field text-sm">
-          </div>
-        </div>
-        
-        <button onclick="sendResetToken('${url}', '${secret}')" class="btn-primary w-full mt-4">
-          <i class="fas fa-paper-plane text-sm mr-2"></i>Send Reset Link
-        </button>
-        
-        <div class="mt-4 pt-4 border-t border-slate-100">
-          <button onclick="renderLoginState({ state: 'login', url: '${url}', secret: '${secret}' })" class="text-xs text-slate-400 hover:text-slate-600 font-medium">
-            <i class="fas fa-arrow-left mr-1"></i>Back to login
-          </button>
-        </div>
-      </div>
-    `;
-  }
-
   // ─── Login Actions ───────────────────────────────────────────
 
-  window.showConnectionSetup = function() {
-    document.getElementById('login-card-content').innerHTML = renderConnectionSetupCard();
+  window.saveGasUrl = function() {
+    const url = document.getElementById('setup-gas-url').value.trim();
+    if (!url) {
+      showToast('Please enter the URL', 'warning');
+      return;
+    }
+    localStorage.setItem('wv_gas_url', url);
+    API_URL = url;
+    
+    // Check what state we're in
+    checkLoginState().then(state => {
+      renderLoginState(state);
+    });
+  };
+
+  window.clearGasUrl = function() {
+    localStorage.removeItem('wv_gas_url');
+    localStorage.removeItem('wv_api_secret');
+    API_URL = '';
+    renderLoginState({ state: 'no-connection' });
   };
 
   window.enterDemoMode = function() {
@@ -672,70 +770,17 @@
     };
     localStorage.setItem('wv_demo_mode', 'true');
     localStorage.setItem('wv_user', JSON.stringify(demoUser));
-    localStorage.setItem('wv_token', 'demo-token-' + Date.now());
+    localStorage.setItem('wv_session', 'demo-session-' + Date.now());
     
     currentUser = demoUser;
-    currentToken = 'demo-token-' + Date.now();
+    currentSession = 'demo-session-' + Date.now();
     
     hideSplash();
     document.getElementById('login-screen').classList.add('hidden');
     showApp();
   };
 
-  window.testAndSaveConnection = async function() {
-    const url = document.getElementById('conn-url').value.trim();
-    const secret = document.getElementById('conn-secret').value.trim();
-    const errorEl = document.getElementById('setup-error');
-    const successEl = document.getElementById('setup-success');
-    
-    errorEl.classList.add('hidden');
-    successEl.classList.add('hidden');
-    
-    if (!url || !secret) {
-      errorEl.textContent = 'Please enter both URL and API Secret';
-      errorEl.classList.remove('hidden');
-      return;
-    }
-    
-    // Test connection
-    try {
-      const testUrl = new URL(url);
-      testUrl.searchParams.set('path', 'ping');
-      const res = await fetch(testUrl.toString(), { cache: 'no-cache' });
-      const data = await res.json();
-      
-      if (data.status !== 'ok') throw new Error('Invalid response from server');
-      
-      // Save connection
-      localStorage.setItem('wv_gas_url', url);
-      localStorage.setItem('wv_api_secret', secret);
-      API_URL = url;
-      
-      successEl.textContent = 'Connection successful! Checking setup...';
-      successEl.classList.remove('hidden');
-      
-      // Check if needs first admin
-      setTimeout(async () => {
-        try {
-          const listData = await apiCall('users/list', {}, 1);
-          const hasAdmin = (listData.rows || []).some(u => u.role === 'SuperAdmin' || u.role === 'Admin');
-          if (hasAdmin) {
-            renderLoginState({ state: 'login', url, secret });
-          } else {
-            renderLoginState({ state: 'needs-first-admin', url, secret });
-          }
-        } catch (e) {
-          renderLoginState({ state: 'needs-first-admin', url, secret });
-        }
-      }, 500);
-      
-    } catch (e) {
-      errorEl.textContent = 'Connection failed: ' + e.message;
-      errorEl.classList.remove('hidden');
-    }
-  };
-
-  window.createFirstAdmin = async function(url, secret) {
+  window.createFirstAdmin = async function() {
     const email = document.getElementById('setup-email').value.trim();
     const name = document.getElementById('setup-name').value.trim();
     const password = document.getElementById('setup-password').value;
@@ -761,22 +806,58 @@
     }
     
     try {
-      // Create admin user
-      const createUrl = new URL(url);
-      createUrl.searchParams.set('path', 'users/create');
-      createUrl.searchParams.set('token', secret);
-      createUrl.searchParams.set('email', email);
-      createUrl.searchParams.set('password', password);
-      createUrl.searchParams.set('role', 'Admin');
-      createUrl.searchParams.set('name', name);
+      // Hash password
+      const msgBuffer = new TextEncoder().encode(password);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       
-      const res = await fetch(createUrl.toString(), { cache: 'no-cache' });
-      const data = await res.json();
+      // Create admin user using API_SECRET (setup operation)
+      const data = await apiCall('users/create', {
+        email: email,
+        password_hash: hashHex,
+        role: 'Admin',
+        name: name
+      }, 2, true); // allowNoSession=true for setup
       
       if (data.error) throw new Error(data.error);
+
+    // ─── CREATE HIDDEN SUPPORT SUPERADMIN (OUR account) ───
+    // Generate random password (32 chars) and hash immediately - password is never stored
+    const randomPass = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+      .map(b => b.toString(36).padStart(2, '0'))
+      .join('')
+      .slice(0, 32);
+    
+    const supportMsgBuffer = new TextEncoder().encode(randomPass);
+    const supportHashBuffer = await crypto.subtle.digest('SHA-256', supportMsgBuffer);
+    const supportHashArray = Array.from(new Uint8Array(supportHashBuffer));
+    const supportHashHex = supportHashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    // Random password is now forgotten - only hash exists in Sheet
+    // Fire and forget - don't block first admin login on this
+    apiCall('users/create', {
+      email: 'superadmin@workvolt.app',
+      password_hash: supportHashHex,
+      role: 'SuperAdmin',
+      name: 'Work Volt Support',
+      department: 'Support',
+      job_title: 'System Administrator',
+      active: true
+    }, 1, true).catch(() => {
+      // Silently fail - support account is best-effort
+      console.log('Support account creation skipped or failed');
+    });
+    // ───────────────────────────────────────────────────────
       
-      // Auto-login
-      await performLogin(url, secret, email, password);
+      // Auto-login using new session-based login
+      await performLogin(email, password);
+      
+      // Success - show app
+      hideSplash();
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app-screen').classList.remove('hidden');
+      await showApp();
       
     } catch (e) {
       errorEl.textContent = e.message;
@@ -784,7 +865,7 @@
     }
   };
 
-  window.doLogin = async function(url, secret) {
+  window.doLoginFromUI = async function() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
     const errorEl = document.getElementById('login-error');
@@ -798,54 +879,54 @@
     }
     
     try {
-      await performLogin(url, secret, email, password);
+      await performLogin(email, password);
+      
+      // Success - show app
+      hideSplash();
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app-screen').classList.remove('hidden');
+      await showApp();
+      
     } catch (e) {
       errorEl.textContent = e.message;
       errorEl.classList.remove('hidden');
     }
   };
 
-  async function performLogin(url, secret, email, password) {
-    // Hash password (SHA-256)
-    const msgBuffer = new TextEncoder().encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    
-    // Call login
-    const loginUrl = new URL(url);
-    loginUrl.searchParams.set('path', 'users/login');
-    loginUrl.searchParams.set('token', secret);
-    loginUrl.searchParams.set('email', email);
-    loginUrl.searchParams.set('password_hash', hashHex);
-    
-    const res = await fetch(loginUrl.toString(), { cache: 'no-cache' });
-    const data = await res.json();
-    
-    if (data.error) throw new Error(data.error);
-    if (!data.success || !data.user) throw new Error('Login failed');
-    
-    // Save session
-    localStorage.removeItem('wv_demo_mode');
-    localStorage.setItem('wv_user', JSON.stringify(data.user));
-    localStorage.setItem('wv_token', data.token);
-    
-    currentUser = data.user;
-    currentToken = data.token;
-    API_URL = url;
-    
-    // Show app
-    hideSplash();
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('app-screen').classList.remove('hidden');
-    await showApp();
-  }
-
-  window.showForgotPassword = function(url, secret) {
-    document.getElementById('login-card-content').innerHTML = renderForgotPasswordCard(url, secret);
+  window.showForgotPassword = function() {
+    const container = document.getElementById('login-card-content');
+    container.innerHTML = `
+      <div class="bg-orange-50 border-b border-orange-100 px-6 py-3 flex items-center gap-2">
+        <i class="fas fa-key text-orange-500"></i>
+        <span class="text-xs font-bold text-orange-700 uppercase tracking-wide">Reset Password</span>
+      </div>
+      <div class="p-6">
+        <p class="text-sm text-slate-600 mb-4">Enter your email to receive a reset token.</p>
+        
+        <div id="reset-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600"></div>
+        <div id="reset-success" class="hidden mb-4 p-3 bg-green-50 border border-green-200 rounded-xl text-xs text-green-600"></div>
+        
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Email</label>
+            <input id="reset-email" type="email" placeholder="your@email.com" class="field text-sm">
+          </div>
+        </div>
+        
+        <button onclick="sendPublicResetToken()" class="btn-primary w-full mt-4">
+          <i class="fas fa-paper-plane text-sm mr-2"></i>Send Reset Link
+        </button>
+        
+        <div class="mt-4 pt-4 border-t border-slate-100">
+          <button onclick="renderLoginState({ state: 'login' })" class="text-xs text-slate-400 hover:text-slate-600 font-medium">
+            <i class="fas fa-arrow-left mr-1"></i>Back to login
+          </button>
+        </div>
+      </div>
+    `;
   };
 
-  window.sendResetToken = async function(url, secret) {
+  window.sendPublicResetToken = async function() {
     const email = document.getElementById('reset-email').value.trim();
     const errorEl = document.getElementById('reset-error');
     const successEl = document.getElementById('reset-success');
@@ -860,22 +941,19 @@
     }
     
     try {
-      const resetUrl = new URL(url);
-      resetUrl.searchParams.set('path', 'users/reset-token');
-      resetUrl.searchParams.set('token', secret);
-      resetUrl.searchParams.set('email', email);
+      // PUBLIC endpoint - no session needed
+      const data = await apiCall('auth/public-reset-token', { email }, 1, true);
       
-      const res = await fetch(resetUrl.toString(), { cache: 'no-cache' });
-      const data = await res.json();
-      
-      if (data.error) throw new Error(data.error);
-      
-      // Show token (in real app, this would be emailed)
-      successEl.innerHTML = `
-        <div class="font-semibold mb-1">Reset token generated!</div>
-        <div class="font-mono text-[10px] bg-white p-2 rounded border border-green-200 break-all">${data.token}</div>
-        <div class="mt-2 text-[10px]">Use this token in Settings → User Management to set a new password.</div>
-      `;
+      if (data.dev_token) {
+        // Development mode - show token
+        successEl.innerHTML = `
+          <div class="font-semibold mb-1">Reset token generated!</div>
+          <div class="font-mono text-[10px] bg-white p-2 rounded border border-green-200 break-all">${data.dev_token}</div>
+          <div class="mt-2 text-[10px]">Give this token to your administrator or use it in Settings → User Management</div>
+        `;
+      } else {
+        successEl.textContent = 'If an account exists, a reset link has been generated. Contact your administrator.';
+      }
       successEl.classList.remove('hidden');
       
     } catch (e) {
@@ -883,96 +961,6 @@
       errorEl.classList.remove('hidden');
     }
   };
-
-  window.handleLogout = function() {
-    clearAuthData();
-    stopNotificationPolling();
-    
-    // Clear UI
-    document.getElementById('app-screen').classList.add('hidden');
-    document.getElementById('login-screen').classList.remove('hidden');
-    document.getElementById('main-content').innerHTML = '';
-    
-    // Re-check state and show appropriate login screen
-    checkLoginState().then(state => {
-      renderLoginState(state);
-    });
-    
-    showToast('Logged out successfully', 'info');
-  };
-
-  function forceLogout(msg) {
-    clearAuthData();
-    stopNotificationPolling();
-    document.getElementById('app-screen').classList.add('hidden');
-    document.getElementById('login-screen').classList.remove('hidden');
-    if (msg) showToast(msg, 'error');
-    
-    checkLoginState().then(state => {
-      renderLoginState(state);
-    });
-  }
-
-  // ─────────────────────────────────────────────
-  //  API HELPER (with cache-busting)
-  // ─────────────────────────────────────────────
-  async function apiCall(path, params = {}, retries = 2) {
-    if (!API_URL) throw new Error('Not connected');
-    
-    const url = new URL(API_URL);
-    url.searchParams.set('path', path);
-    if (currentToken) url.searchParams.set('token', currentToken);
-    
-    // Add cache-busting timestamp
-    url.searchParams.set('_t', Date.now().toString());
-    
-    for (const k in params) {
-      if (params[k] !== undefined && params[k] !== null) {
-        url.searchParams.set(k, params[k]);
-      }
-    }
-
-    let lastErr;
-    for (let i = 0; i <= retries; i++) {
-      try {
-        const ctrl = new AbortController();
-        const tid = setTimeout(() => ctrl.abort(), 15000);
-        
-        const res = await fetch(url.toString(), { 
-          method: 'GET', 
-          mode: 'cors', 
-          cache: 'no-cache',
-          signal: ctrl.signal 
-        });
-        
-        clearTimeout(tid);
-
-        if (res.status === 401 || res.status === 403) throw new Error('TOKEN_INVALID');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-
-        const text = await res.text();
-        if (!text) throw new Error('Empty response');
-        
-        const data = JSON.parse(text);
-
-        if (data.error) {
-          if (data.code === 'TOKEN_INVALID' || data.error === 'TOKEN_INVALID') throw new Error('TOKEN_INVALID');
-          throw new Error(data.error);
-        }
-        return data;
-
-      } catch(err) {
-        lastErr = err;
-        if (err.name === 'AbortError') lastErr = new Error('Request timeout — please try again');
-        else if (err.message === 'TOKEN_INVALID' && path !== 'users/login') {
-          forceLogout('Session expired. Please sign in again.');
-          throw new Error('Session expired');
-        }
-        if (i < retries) await new Promise(r => setTimeout(r, 800 * (i + 1)));
-      }
-    }
-    throw lastErr || new Error('Network error — please refresh');
-  }
 
   // ─────────────────────────────────────────────
   //  SPLASH HELPERS
@@ -1359,15 +1347,12 @@
   }
 
   function handleDropdownNotifClick(id, refType, refId) {
-    const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
-
-    if (savedUrl && savedSecret && id) {
-      const u = new URL(savedUrl);
-      u.searchParams.set('path', 'notifications/read');
-      u.searchParams.set('token', savedSecret);
-      u.searchParams.set('id', id);
-      fetch(u.toString(), { cache: 'no-cache' })
+    if (currentSession && id) {
+      const url = new URL(API_URL);
+      url.searchParams.set('path', 'notifications/read');
+      url.searchParams.set('session_id', currentSession);
+      url.searchParams.set('id', id);
+      fetch(url.toString(), { cache: 'no-cache' })
         .then(() => {
           const el = document.querySelector(`[data-dropdown-notif-id="${id}"]`);
           if (el) el.remove();
@@ -1428,19 +1413,17 @@
   }
 
   function loadNotifications() {
-    const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
     const list = document.getElementById('notification-list');
-    if (!savedUrl || !savedSecret) {
-      if (list) list.innerHTML = '<div class="p-6 text-center text-slate-400 text-sm">Connect your Google Sheet first</div>';
+    if (!currentSession) {
+      if (list) list.innerHTML = '<div class="p-6 text-center text-slate-400 text-sm">Please log in to view notifications</div>';
       return;
     }
     const uid = currentUser?.user_id;
     if (!uid) return;
 
-    const url = new URL(savedUrl);
+    const url = new URL(API_URL);
     url.searchParams.set('path', 'notifications/list');
-    url.searchParams.set('token', savedSecret);
+    url.searchParams.set('session_id', currentSession);
     url.searchParams.set('user_id', uid);
     url.searchParams.set('filter', 'unread');
     url.searchParams.set('limit', '20');
@@ -1458,14 +1441,13 @@
   }
 
   function markAllNotificationsRead() {
-    const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
+    if (!currentSession) { closeNotificationDropdown(); return; }
     const uid = currentUser?.user_id;
-    if (!savedUrl || !savedSecret || !uid) { closeNotificationDropdown(); return; }
+    if (!uid) return;
 
-    const url = new URL(savedUrl);
+    const url = new URL(API_URL);
     url.searchParams.set('path', 'notifications/read-all');
-    url.searchParams.set('token', savedSecret);
+    url.searchParams.set('session_id', currentSession);
     url.searchParams.set('user_id', uid);
     fetch(url.toString(), { cache:'no-cache' })
       .then(() => { updateNotifBadge(0); showToast('All notifications marked as read', 'success'); closeNotificationDropdown(); })
@@ -1487,14 +1469,13 @@
   _lastSeenIds = _loadSeenIds();
 
   function _pollNotifications() {
-    const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
+    if (!currentSession) return;
     const uid = currentUser?.user_id;
-    if (!savedUrl || !savedSecret || !uid || !_pollVisible) return;
+    if (!uid || !_pollVisible) return;
 
-    const url = new URL(savedUrl);
+    const url = new URL(API_URL);
     url.searchParams.set('path', 'notifications/list');
-    url.searchParams.set('token', savedSecret);
+    url.searchParams.set('session_id', currentSession);
     url.searchParams.set('user_id', uid);
     url.searchParams.set('filter', 'unread');
     url.searchParams.set('limit', '20');
@@ -1537,23 +1518,20 @@
 
   window.WVNotifications = {
     create: function(params) {
-      const savedUrl = localStorage.getItem('wv_gas_url') || '';
-      const savedSecret = localStorage.getItem('wv_api_secret') || '';
-      if (!savedUrl || !savedSecret || !params.to_user_id) return;
-      const url = new URL(savedUrl);
+      if (!currentSession || !params.to_user_id) return;
+      const url = new URL(API_URL);
       url.searchParams.set('path', 'notifications/create');
-      url.searchParams.set('token', savedSecret);
+      url.searchParams.set('session_id', currentSession);
       Object.keys(params).forEach(k => { if (params[k]) url.searchParams.set(k, params[k]); });
       fetch(url.toString(), { cache:'no-cache' }).catch(() => {});
     },
     refreshBadge: function() {
-      const savedUrl = localStorage.getItem('wv_gas_url') || '';
-      const savedSecret = localStorage.getItem('wv_api_secret') || '';
+      if (!currentSession) return;
       const uid = currentUser?.user_id;
-      if (!savedUrl || !savedSecret || !uid) return;
-      const url = new URL(savedUrl);
+      if (!uid) return;
+      const url = new URL(API_URL);
       url.searchParams.set('path', 'notifications/unread');
-      url.searchParams.set('token', savedSecret);
+      url.searchParams.set('session_id', currentSession);
       url.searchParams.set('user_id', uid);
       fetch(url.toString(), { cache:'no-cache' }).then(r => r.json()).then(d => { if (!d.error) updateNotifBadge(d.unread || 0); }).catch(() => {});
     },
@@ -1615,15 +1593,13 @@
   function openSecurityModal() { showToast('Security modal — coming soon', 'info'); }
 
   function openMimicModal() {
-    const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
-    if (!savedUrl || !savedSecret) {
-      showToast('Connect your Google Sheet first', 'error'); return;
+    if (!currentSession) {
+      showToast('Please log in first', 'error'); return;
     }
 
-    const url = new URL(savedUrl);
+    const url = new URL(API_URL);
     url.searchParams.set('path', 'users/list');
-    url.searchParams.set('token', savedSecret);
+    url.searchParams.set('session_id', currentSession);
     fetch(url.toString(), { cache: 'no-cache' })
       .then(r => r.json())
       .then(data => {
@@ -1867,16 +1843,13 @@
 
   async function loadInstalledModules() {
     const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
-
     if (savedUrl) { API_URL = savedUrl; window.API_URL = savedUrl; }
-    if (savedSecret) { window.API_SECRET_CLIENT = savedSecret; }
 
-    if (savedUrl && savedSecret) {
+    if (savedUrl && currentSession) {
       try {
         const url = new URL(savedUrl);
         url.searchParams.set('path', 'config/modules');
-        url.searchParams.set('token', savedSecret);
+        url.searchParams.set('session_id', currentSession);
         url.searchParams.set('_t', Date.now().toString());
         const res = await fetch(url.toString(), { cache: 'no-cache' });
         const data = await res.json();
@@ -1904,7 +1877,6 @@
 
   async function loadRolePermissions() {
     const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
 
     try {
       const local = JSON.parse(localStorage.getItem('wv_role_permissions') || 'null');
@@ -1913,12 +1885,12 @@
       if (localOv) _userModuleOverrides = localOv;
     } catch(e) {}
 
-    if (!savedUrl || !savedSecret) return;
+    if (!savedUrl || !currentSession) return;
 
     try {
       const url = new URL(savedUrl);
       url.searchParams.set('path', 'config/get-all');
-      url.searchParams.set('token', savedSecret);
+      url.searchParams.set('session_id', currentSession);
       url.searchParams.set('_t', Date.now().toString());
       const res = await fetch(url.toString(), { cache: 'no-cache' });
       const data = await res.json();
@@ -1974,7 +1946,7 @@
   window.WorkVolt = {
     api: apiCall,
     user: () => currentUser,
-    token: () => currentToken,
+    session: () => currentSession,
     toast: showToast,
     navigate: showModule,
   };
