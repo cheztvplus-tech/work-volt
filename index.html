@@ -1947,7 +1947,6 @@
     const savedUser = localStorage.getItem('wv_user');
     const demoMode = localStorage.getItem('wv_demo_mode') === 'true';
     const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSecret = localStorage.getItem('wv_api_secret') || '';
     
     // CASE 1: User is logged in (real user or demo) - load app normally
     if (savedUser || demoMode) {
