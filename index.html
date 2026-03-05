@@ -594,7 +594,12 @@
     const name   = currentUser?.name || 'User';
     const initials = name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
     document.getElementById('user-name').textContent   = name;
-    document.getElementById('user-avatar').textContent = initials;
+    // For setup user or demo, show name; otherwise show initials
+    if (currentUser?.user_id === 'TEMP-001' || currentUser?.email === 'demo@workvolt.app') {
+      document.getElementById('user-avatar').textContent = name.split(' ')[0] || 'User';
+    } else {
+      document.getElementById('user-avatar').textContent = initials;
+    }
 
     renderNav();
     applySidebarCollapse();
