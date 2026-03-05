@@ -24,21 +24,8 @@ window.WorkVoltPages['settings'] = function(container) {
   }
   
   window.setConnectionMode = function(mode) {
-    connectionMode = mode;
-    var loginBtn = document.getElementById('mode-login');
-    var setupBtn = document.getElementById('mode-setup');
-    
-    if (mode === 'login') {
-      loginBtn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
-      loginBtn.classList.remove('bg-slate-100', 'text-slate-600', 'border-slate-200');
-      setupBtn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
-      setupBtn.classList.add('bg-slate-100', 'text-slate-600', 'border-slate-200', 'hover:border-blue-300');
-    } else {
-      setupBtn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
-      setupBtn.classList.remove('bg-slate-100', 'text-slate-600', 'border-slate-200', 'hover:border-blue-300');
-      loginBtn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
-      loginBtn.classList.add('bg-slate-100', 'text-slate-600', 'border-slate-200');
-    }
+    connectionMode = 'setup';
+    // Just a placeholder function now since we only have setup mode
   };
 
 
@@ -236,11 +223,8 @@ window.WorkVoltPages['settings'] = function(container) {
           <div class="px-6 py-5 space-y-4">
             ${renderStatus(status)}
             
-            <div class="flex gap-2 mb-4">
-              <button onclick="setConnectionMode('login')" id="mode-login" class="flex-1 px-3 py-2 rounded-lg font-semibold text-sm border-2 transition-colors bg-blue-600 text-white border-blue-600">
-                <i class="fas fa-sign-in-alt mr-2"></i>Login
-              </button>
-              <button onclick="setConnectionMode('setup')" id="mode-setup" class="flex-1 px-3 py-2 rounded-lg font-semibold text-sm border-2 transition-colors bg-slate-100 text-slate-600 border-slate-200 hover:border-blue-300">
+            <div class="mb-4">
+              <button onclick="setConnectionMode('setup')" id="mode-setup" class="w-full px-3 py-2 rounded-lg font-semibold text-sm border-2 transition-colors bg-blue-600 text-white border-blue-600">
                 <i class="fas fa-plus mr-2"></i>Setup
               </button>
             </div>
@@ -1687,20 +1671,7 @@ window.WorkVoltPages['settings'] = function(container) {
       var pingData = await pingRes.json();
       if (pingData.status !== 'ok') throw new Error('Unexpected response from server');
 
-      // In Login mode, just save and redirect to login
-      if (connectionMode === 'login') {
-        localStorage.setItem('wv_gas_url', url);
-        savedUrl = url;
-        window.API_URL = url;
-        // Redirect to login
-        currentUser = null;
-        localStorage.removeItem('wv_user');
-        localStorage.removeItem('wv_go_to_settings');
-        window.location.reload();
-        return;
-      }
-      
-      // In Setup mode, try to create first admin (backend uses its own API Secret)
+      // Save URL and show admin setup form
       localStorage.setItem('wv_gas_url', url);
       savedUrl = url;
       window.API_URL = url;
