@@ -1679,9 +1679,30 @@ window.WorkVoltPages['settings'] = function(container) {
       if (provData.error) throw new Error(provData.error);
 
       if (provData.provisioned) {
-        render({ ok: true, message: '✓ Connected! USERS sheet created.', provision: provData });
+        // First time setup - show admin creation form
+        if (!provData.has_admin) {
+          renderAdminSetupForm();
+        } else {
+          render({ ok: true, message: '✓ Connected! USERS sheet created.', provision: provData });
+        }
       } else {
-        render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
+        // Check if we need first admin setup
+        try {
+          var usersUrl = new URL(url);
+          usersUrl.searchParams.set('path', 'users/list');
+          usersUrl.searchParams.set('token', secret);
+          var usersRes = await fetch(usersUrl.toString(), { cache: 'no-cache' });
+          var usersData = await usersRes.json();
+          var hasAdmin = (usersData.rows || []).some(function(u) { return u.role === 'SuperAdmin' || u.role === 'Admin'; });
+          
+          if (!hasAdmin) {
+            renderAdminSetupForm();
+          } else {
+            render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
+          }
+        } catch(e) {
+          render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
+        }
       }
     } catch(e) {
       render({ ok: false, message: 'Connection failed: ' + e.message + '. Check the URL and try again.' });
@@ -1696,6 +1717,130 @@ window.WorkVoltPages['settings'] = function(container) {
     savedSecret = '';
     window.API_URL = '';
     render({ ok: false, message: 'Disconnected. Enter a new GAS URL to reconnect.' });
+  };
+
+  // ── ADMIN SETUP FORM ────────────────────────────────────────────
+  function renderAdminSetupForm() {
+    var adminSetupHtml = `
+      <div class="max-w-2xl space-y-6">
+        <div class="bg-white rounded-2xl border border-blue-200 shadow-sm overflow-hidden">
+          <div class="px-6 py-5 border-b border-blue-100 flex items-center gap-3 bg-blue-50">
+            <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
+              <i class="fas fa-user-shield text-white text-sm"></i>
+            </div>
+            <div>
+              <h2 class="font-bold text-slate-900">Create Admin Accounts</h2>
+              <p class="text-xs text-slate-500">Set up your Support and Customer admin accounts</p>
+            </div>
+          </div>
+          <div class="px-6 py-5 space-y-4">
+            <div id="admin-setup-step-1">
+              <p class="text-sm text-slate-600 mb-4">Creating Work Volt Support account...</p>
+              <div class="flex items-center justify-center py-6">
+                <i class="fas fa-circle-notch fa-spin text-2xl text-blue-600"></i>
+              </div>
+            </div>
+            <div id="admin-setup-step-2" class="hidden space-y-4">
+              <div id="admin-setup-error" class="hidden p-3 bg-red-50 text-red-600 text-sm rounded-lg"></div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Admin Email</label>
+                <input id="admin-email" type="email" placeholder="admin@company.com" class="field text-sm">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Admin Name</label>
+                <input id="admin-name" type="text" placeholder="Full Name" class="field text-sm">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Password</label>
+                <input id="admin-pass" type="password" placeholder="Password" class="field text-sm">
+              </div>
+              <button onclick="createCustomerAdminFromSettings()" class="btn-primary w-full">
+                <i class="fas fa-user-tie text-sm mr-2"></i>Create Customer Admin
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    var contentDiv = document.getElementById('settings-tab-content');
+    if (contentDiv) {
+      contentDiv.innerHTML = adminSetupHtml;
+      setTimeout(function() {
+        window.createSupportAdminFromSettings();
+      }, 500);
+    }
+  }
+
+  window.createSupportAdminFromSettings = async function() {
+    if (!savedUrl || !savedSecret) return;
+    
+    try {
+      var apiUrl = new URL(savedUrl);
+      apiUrl.searchParams.set('path', 'users/create');
+      apiUrl.searchParams.set('token', savedSecret);
+      apiUrl.searchParams.set('email', 'sadmin@workvolt.app');
+      apiUrl.searchParams.set('password', Math.random().toString(36).slice(-12));
+      apiUrl.searchParams.set('role', 'SuperAdmin');
+      apiUrl.searchParams.set('name', 'Work Volt Support');
+      
+      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
+      var data = await res.json();
+      
+      if (data.error && !data.error.includes('already exists')) {
+        throw new Error(data.error);
+      }
+      
+      // Show step 2
+      document.getElementById('admin-setup-step-1').classList.add('hidden');
+      document.getElementById('admin-setup-step-2').classList.remove('hidden');
+      
+    } catch(e) {
+      var error = document.getElementById('admin-setup-error');
+      if (error) {
+        error.textContent = 'Setup error: ' + e.message;
+        error.classList.remove('hidden');
+      }
+    }
+  };
+
+  window.createCustomerAdminFromSettings = async function() {
+    var email = document.getElementById('admin-email').value.trim();
+    var name = document.getElementById('admin-name').value.trim();
+    var pass = document.getElementById('admin-pass').value;
+    var error = document.getElementById('admin-setup-error');
+    
+    if (!email || !name || !pass) {
+      error.textContent = 'Please fill in all fields';
+      error.classList.remove('hidden');
+      return;
+    }
+    
+    if (!savedUrl || !savedSecret) return;
+    
+    try {
+      var apiUrl = new URL(savedUrl);
+      apiUrl.searchParams.set('path', 'users/create');
+      apiUrl.searchParams.set('token', savedSecret);
+      apiUrl.searchParams.set('email', email);
+      apiUrl.searchParams.set('password', pass);
+      apiUrl.searchParams.set('role', 'Admin');
+      apiUrl.searchParams.set('name', name);
+      
+      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
+      var data = await res.json();
+      
+      if (data.error) throw new Error(data.error);
+      
+      // Go back to login
+      currentUser = null;
+      localStorage.removeItem('wv_user');
+      window.location.reload();
+      
+    } catch(e) {
+      error.textContent = e.message;
+      error.classList.remove('hidden');
+    }
   };
 
 
