@@ -1394,6 +1394,7 @@ window.WorkVoltPages['settings'] = function(container) {
 
   async function loadModules() {
     if (!savedUrl || !savedSecret) {
+      modulesCache = []; // Clear cache when not connected
       var ins = document.getElementById('modules-installed');
       var avl = document.getElementById('modules-available');
       var msg = '<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm text-slate-500 bg-slate-50 border border-slate-200"><i class="fas fa-plug text-slate-400"></i><span>Connect your Google Sheet first to manage modules.</span></div>';
@@ -1413,6 +1414,11 @@ window.WorkVoltPages['settings'] = function(container) {
   }
 
   function renderModuleLists() {
+    // If not connected, don't render anything (loadModules should have already set the message)
+    if (!savedUrl || !savedSecret) {
+      return;
+    }
+    
     var installedEl  = document.getElementById('modules-installed');
     var availableEl  = document.getElementById('modules-available');
     if (!installedEl || !availableEl) return;
