@@ -1916,15 +1916,32 @@
     // Check for gas_url parameter in URL
     const urlParams = new URLSearchParams(window.location.search);
     const gasUrlParam = urlParams.get('gas_url');
+    const savedSecret = localStorage.getItem('wv_api_secret');
     
-    if (gasUrlParam) {
-      // Save the gas_url from parameter
+    // If link has gas_url and we have saved API secret = setup already done, go to login
+    if (gasUrlParam && savedSecret) {
       localStorage.setItem('wv_gas_url', gasUrlParam);
-      // Clean up any old user/setup data
       localStorage.removeItem('wv_user');
       localStorage.removeItem('wv_go_to_settings');
-      // Remove the query param from URL
       window.history.replaceState({}, document.title, window.location.pathname);
+      // Continue to login page below
+    } 
+    // If link has gas_url but NO secret = first setup needed
+    else if (gasUrlParam && !savedSecret) {
+      localStorage.setItem('wv_gas_url', gasUrlParam);
+      localStorage.removeItem('wv_user');
+      localStorage.setItem('wv_go_to_settings', 'true');
+      window.history.replaceState({}, document.title, window.location.pathname);
+      window.location.hash = 'settings';
+      return;
+    }
+    // If no gas_url in link but we have saved gas_url and secret
+    else if (!gasUrlParam) {
+      if (localStorage.getItem('wv_gas_url') && !savedSecret) {
+        localStorage.setItem('wv_go_to_settings', 'true');
+        window.location.hash = 'settings';
+        return;
+      }
     }
     
     const savedUser = localStorage.getItem('wv_user');
