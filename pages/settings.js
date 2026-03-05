@@ -8,25 +8,10 @@ window.WorkVoltPages['settings'] = function(container) {
   let activeTab   = 'connection';
   let usersCache  = [];
   let editingUser = null;
-  
-  // Only initialize modulesCache from global state if connected
-  let modulesCache = (savedUrl && savedSecret && window.INSTALLED_MODULES) ? (Array.isArray(window.INSTALLED_MODULES) ? window.INSTALLED_MODULES : []) : [];
-  
-  // Connection mode: 'existing' or 'setup'
-  let connectionMode = 'existing';
+  let modulesCache = [];
 
   if (savedUrl)    window.API_URL = savedUrl;
   if (savedSecret) window.API_SECRET_CLIENT = savedSecret;
-  
-  // CRITICAL: If not connected, ALWAYS keep modulesCache empty regardless of global state
-  if (!savedUrl || !savedSecret) {
-    modulesCache = [];
-  }
-  
-  window.setConnectionMode = function(mode) {
-    connectionMode = 'setup';
-    // Just a placeholder function now since we only have setup mode
-  };
 
 
   // ================================================================
@@ -222,20 +207,12 @@ window.WorkVoltPages['settings'] = function(container) {
           </div>
           <div class="px-6 py-5 space-y-4">
             ${renderStatus(status)}
-            
-            <div class="mb-4">
-              <button onclick="setConnectionMode('setup')" id="mode-setup" class="w-full px-3 py-2 rounded-lg font-semibold text-sm border-2 transition-colors bg-blue-600 text-white border-blue-600">
-                <i class="fas fa-plus mr-2"></i>Setup
-              </button>
-            </div>
-            
             <div>
               <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">GAS Web App URL</label>
               <input id="settings-gas-url" type="url" placeholder="https://script.google.com/macros/s/.../exec"
                 value="${savedUrl}" class="field font-mono text-xs">
               <p class="text-xs text-slate-400 mt-1.5">Deploy your <code class="bg-slate-100 px-1 rounded">Code.gs</code> as a Web App and paste the URL here.</p>
             </div>
-            
             <div>
               <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">API Secret</label>
               <div class="relative">
@@ -247,7 +224,6 @@ window.WorkVoltPages['settings'] = function(container) {
               </div>
               <p class="text-xs text-slate-400 mt-1.5">Must match <code class="bg-slate-100 px-1 rounded">API_SECRET</code> in your <code class="bg-slate-100 px-1 rounded">Code.gs</code>.</p>
             </div>
-            
             <div class="flex gap-3 pt-1">
               <button onclick="settingsTestConnection()" id="settings-test-btn" class="btn-secondary flex-1">
                 <i class="fas fa-vial text-sm"></i> Test Connection
@@ -1418,7 +1394,6 @@ window.WorkVoltPages['settings'] = function(container) {
 
   async function loadModules() {
     if (!savedUrl || !savedSecret) {
-      modulesCache = []; // Clear cache when not connected
       var ins = document.getElementById('modules-installed');
       var avl = document.getElementById('modules-available');
       var msg = '<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm text-slate-500 bg-slate-50 border border-slate-200"><i class="fas fa-plug text-slate-400"></i><span>Connect your Google Sheet first to manage modules.</span></div>';
@@ -1438,11 +1413,6 @@ window.WorkVoltPages['settings'] = function(container) {
   }
 
   function renderModuleLists() {
-    // If not connected, don't render anything (loadModules should have already set the message)
-    if (!savedUrl || !savedSecret) {
-      return;
-    }
-    
     var installedEl  = document.getElementById('modules-installed');
     var availableEl  = document.getElementById('modules-available');
     if (!installedEl || !availableEl) return;
@@ -1519,10 +1489,6 @@ window.WorkVoltPages['settings'] = function(container) {
   }
 
   window.modulesInstall = async function(moduleId) {
-    if (!savedUrl || !savedSecret) {
-      setModuleStatus('You must connect your Google Sheet first to install modules.', false);
-      return;
-    }
     var btn = document.getElementById('install-btn-' + moduleId);
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Installing…'; }
     setModuleStatus('', false);
@@ -1617,10 +1583,6 @@ window.WorkVoltPages['settings'] = function(container) {
   };
 
   window.modulesUninstall = async function(moduleId) {
-    if (!savedUrl || !savedSecret) {
-      setModuleStatus('You must connect your Google Sheet first to uninstall modules.', false);
-      return;
-    }
     if (!confirm('Uninstall ' + (ADDON_CATALOGUE[moduleId]?.label || moduleId) + '? The sheet data will be kept but the module will be removed from the menu.')) return;
     setModuleStatus('', false);
     try {
@@ -1684,19 +1646,22 @@ window.WorkVoltPages['settings'] = function(container) {
     try {
       var pingUrl = new URL(url);
       pingUrl.searchParams.set('path', 'ping');
-      var pingRes = await fetch(pingUrl.toString(), { cache: 'no-cache' });
+      var pingRes  = await fetch(pingUrl.toString(), { cache: 'no-cache' });
       var pingData = await pingRes.json();
       if (pingData.status !== 'ok') throw new Error('Unexpected response from server');
 
-      // Show admin setup form
-      localStorage.setItem('wv_gas_url', url);
-      localStorage.setItem('wv_api_secret', secret);
-      savedUrl = url;
-      savedSecret = secret;
-      window.API_URL = url;
-      window.API_SECRET_CLIENT = secret;
-      renderAdminSetupForm();
-      
+      var provUrl = new URL(url);
+      provUrl.searchParams.set('path',  'setup/provision');
+      provUrl.searchParams.set('token', secret);
+      var provRes  = await fetch(provUrl.toString(), { cache: 'no-cache' });
+      var provData = await provRes.json();
+      if (provData.error) throw new Error(provData.error);
+
+      if (provData.provisioned) {
+        render({ ok: true, message: '✓ Connected! USERS sheet created.', provision: provData });
+      } else {
+        render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
+      }
     } catch(e) {
       render({ ok: false, message: 'Connection failed: ' + e.message + '. Check the URL and try again.' });
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
@@ -1710,129 +1675,6 @@ window.WorkVoltPages['settings'] = function(container) {
     savedSecret = '';
     window.API_URL = '';
     render({ ok: false, message: 'Disconnected. Enter a new GAS URL to reconnect.' });
-  };
-
-  // ── ADMIN SETUP FORM ────────────────────────────────────────────
-  function renderAdminSetupForm() {
-    var adminSetupHtml = `
-      <div class="max-w-2xl space-y-6">
-        <div class="bg-white rounded-2xl border border-blue-200 shadow-sm overflow-hidden">
-          <div class="px-6 py-5 border-b border-blue-100 flex items-center gap-3 bg-blue-50">
-            <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
-              <i class="fas fa-user-tie text-white text-sm"></i>
-            </div>
-            <div>
-              <h2 class="font-bold text-slate-900">Create Admin Account</h2>
-              <p class="text-xs text-slate-500">Set up your first admin account</p>
-            </div>
-          </div>
-          <div class="px-6 py-5 space-y-4">
-            <div id="admin-setup-step-1">
-              <p class="text-sm text-slate-600 mb-4">Setting up Work Volt Support account...</p>
-              <div class="flex items-center justify-center py-6">
-                <i class="fas fa-circle-notch fa-spin text-2xl text-blue-600"></i>
-              </div>
-            </div>
-            <div id="admin-setup-step-2" class="hidden space-y-4">
-              <div id="admin-setup-error" class="hidden p-3 bg-red-50 text-red-600 text-sm rounded-lg"></div>
-              <div>
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Admin Email</label>
-                <input id="admin-email" type="email" placeholder="admin@company.com" class="field text-sm">
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Admin Name</label>
-                <input id="admin-name" type="text" placeholder="Full Name" class="field text-sm">
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Password</label>
-                <input id="admin-pass" type="password" placeholder="Password" class="field text-sm">
-              </div>
-              <button onclick="createAdminFromSetup()" class="btn-primary w-full">
-                <i class="fas fa-user-plus text-sm mr-2"></i>Create Admin
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-    
-    var contentDiv = document.getElementById('settings-tab-content');
-    if (contentDiv) {
-      contentDiv.innerHTML = adminSetupHtml;
-      setTimeout(function() {
-        window.createSuperAdminForSetup();
-      }, 500);
-    }
-  }
-
-  window.createAdminFromSetup = async function() {
-    var email = document.getElementById('admin-email').value.trim();
-    var name = document.getElementById('admin-name').value.trim();
-    var pass = document.getElementById('admin-pass').value;
-    var error = document.getElementById('admin-setup-error');
-    
-    if (!email || !name || !pass) {
-      error.textContent = 'Please fill in all fields';
-      error.classList.remove('hidden');
-      return;
-    }
-    
-    if (!savedUrl || !savedSecret) return;
-    
-    try {
-      var apiUrl = new URL(savedUrl);
-      apiUrl.searchParams.set('path', 'users/create');
-      apiUrl.searchParams.set('email', email);
-      apiUrl.searchParams.set('password', pass);
-      apiUrl.searchParams.set('role', 'Admin');
-      apiUrl.searchParams.set('name', name);
-      
-      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
-      var data = await res.json();
-      
-      if (data.error) throw new Error(data.error);
-      
-      // Go to login screen
-      currentUser = null;
-      localStorage.removeItem('wv_user');
-      localStorage.removeItem('wv_go_to_settings');
-      window.location.reload();
-      
-    } catch(e) {
-      error.textContent = e.message;
-      error.classList.remove('hidden');
-    }
-  };
-
-  window.createSuperAdminForSetup = async function() {
-    if (!savedUrl || !savedSecret) return;
-    
-    try {
-      var apiUrl = new URL(savedUrl);
-      apiUrl.searchParams.set('path', 'users/create');
-      apiUrl.searchParams.set('email', 'sadmin@workvolt.app');
-      apiUrl.searchParams.set('password', Math.random().toString(36).slice(-12));
-      apiUrl.searchParams.set('role', 'SuperAdmin');
-      apiUrl.searchParams.set('name', 'Work Volt Support');
-      
-      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
-      var data = await res.json();
-      
-      if (data.error && !data.error.includes('already exists')) {
-        throw new Error(data.error);
-      }
-      
-      // Show admin form
-      document.getElementById('admin-setup-step-1').classList.add('hidden');
-      document.getElementById('admin-setup-step-2').classList.remove('hidden');
-      
-    } catch(e) {
-      var error = document.getElementById('admin-setup-error');
-      if (error) {
-        error.textContent = 'Setup error: ' + e.message;
-        error.classList.remove('hidden');
-      }
-    }
   };
 
 
