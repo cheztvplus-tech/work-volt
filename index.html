@@ -1904,6 +1904,7 @@
     if (!data.success || !data.user) throw new Error('Login failed');
     
     localStorage.removeItem('wv_demo_mode');
+    localStorage.removeItem('wv_go_to_settings');
     localStorage.setItem('wv_user', JSON.stringify(data.user));
     localStorage.setItem('wv_token', data.token || 'token');
     location.reload();
