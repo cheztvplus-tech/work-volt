@@ -1920,56 +1920,11 @@
     if (gasUrlParam) {
       // Save the gas_url from parameter
       localStorage.setItem('wv_gas_url', gasUrlParam);
-      
-      // Check if admins exist
-      try {
-        const pingUrl = new URL(gasUrlParam);
-        pingUrl.searchParams.set('path', 'ping');
-        const pingRes = await fetch(pingUrl.toString(), { cache: 'no-cache' });
-        const pingData = await pingRes.json();
-        
-        if (pingData.status === 'ok') {
-          // Check for admin accounts - need API secret for this check
-          // Try with the API secret from localStorage if it exists
-          const savedSecret = localStorage.getItem('wv_api_secret') || '';
-          const usersUrl = new URL(gasUrlParam);
-          usersUrl.searchParams.set('path', 'users/list');
-          if (savedSecret) {
-            usersUrl.searchParams.set('token', savedSecret);
-          }
-          const usersRes = await fetch(usersUrl.toString(), { cache: 'no-cache' });
-          const usersData = await usersRes.json();
-          
-          // If we got an error, assume admins don't exist or can't check
-          if (usersData.error) {
-            // Can't verify - go to login and let them try
-            localStorage.removeItem('wv_user');
-            localStorage.removeItem('wv_go_to_settings');
-            window.location.href = window.location.pathname;
-            return;
-          }
-          
-          const hasAdmin = (usersData.rows || []).some(function(u) { 
-            return u.role === 'SuperAdmin' || u.role === 'Admin'; 
-          });
-          
-          if (hasAdmin) {
-            // Admins exist - go to login page
-            // Clean up any setup data
-            localStorage.removeItem('wv_user');
-            localStorage.removeItem('wv_go_to_settings');
-            window.location.href = window.location.pathname;
-            return;
-          } else {
-            // No admins - go to setup page
-            localStorage.setItem('wv_go_to_settings', 'true');
-            window.location.href = window.location.pathname + '#settings';
-            return;
-          }
-        }
-      } catch(e) {
-        console.warn('Could not check admin status:', e.message);
-      }
+      // Clean up any old user/setup data
+      localStorage.removeItem('wv_user');
+      localStorage.removeItem('wv_go_to_settings');
+      // Remove the query param from URL
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
     
     const savedUser = localStorage.getItem('wv_user');
