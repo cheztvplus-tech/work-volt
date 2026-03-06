@@ -304,10 +304,18 @@
   // ─────────────────────────────────────────────
   //  CONFIG & STATE
   // ─────────────────────────────────────────────
-  let API_URL         = '';
-  let currentUser     = null;
-  let currentSession  = null;
-  let _setupData      = {};
+  let API_URL      = ''; // Will be set when Google Sheet is connected
+  let currentUser  = {
+    user_id:    'cf49fbed-2be7-4e55-95c0-742348fdcfe7',
+    name:       'Super Admin',
+    email:      'admin@workvolt.app',
+    role:       'SuperAdmin',
+    department: 'System Administrator',
+    job_title:  'System Administrator',
+    active:     true,
+  };
+  let currentToken = 'demo-token';
+  let _setupData   = {};
   let _notifPollTimer = null;
 
   // Module → allowed roles
@@ -342,7 +350,7 @@
   // Load custom role permissions saved by the Roles module
   async function loadRolePermissions() {
     const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
-    
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
 
     // Try localStorage fallback first (works even without Sheet)
     try {
@@ -352,12 +360,12 @@
       if (localOv) _userModuleOverrides = localOv;
     } catch(e) {}
 
-    if (!savedUrl || !currentSession) return;
+    if (!savedUrl || !savedSecret) return;
 
     try {
       const url = new URL(savedUrl);
-      url.searchParams.set('path', 'config/get-all');
-      url.searchParams.set('session_id', currentSession);
+      url.searchParams.set('path',  'config/get-all');
+      url.searchParams.set('token', savedSecret);
       const res  = await fetch(url.toString(), { cache: 'no-cache' });
       const data = await res.json();
       const settings = data.settings || {};
@@ -438,54 +446,34 @@
   window.INSTALLED_MODULES = INSTALLED_MODULES;
 
 
-  // Saves active modules — persists to localStorage (or GAS when Sheet is connected)
+  // Saves active modules — swap for apiCall('config/save-modules') when Sheet is ready.
+  // Until then, changes are in-memory only (all users see whatever is uncommented above).
   function saveInstalledModules() {
-    // Save to localStorage for persistence across page reloads
-    try {
-      localStorage.setItem('wv_installed_modules', JSON.stringify(INSTALLED_MODULES));
-    } catch(e) {
-      console.warn('Could not save modules to localStorage:', e.message);
-    }
-    
-    // TODO: When Sheet is connected, also sync to GAS:
-    // const gasUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
-    // const secret = window.API_SECRET_CLIENT || currentSession || '';
-    // if (gasUrl && secret) {
-    //   await apiCall('config/save-modules', { modules: JSON.stringify(INSTALLED_MODULES) });
-    // }
+    // TODO: await apiCall('config/save-modules', { modules: JSON.stringify(INSTALLED_MODULES) });
   }
 
-  // Loads installed modules — from GAS if connected, else from localStorage
+  // Loads installed modules — from GAS if connected, else uses in-memory list
   async function loadInstalledModules() {
-    const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    if (savedUrl) { API_URL = savedUrl; window.API_URL = savedUrl; }
+    const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
 
-    if (savedUrl && currentSession) {
-      try {
-        const url = new URL(savedUrl);
-        url.searchParams.set('path', 'config/modules');
-        url.searchParams.set('session_id', currentSession);
-        const res  = await fetch(url.toString(), { cache: 'no-cache' });
-        const data = await res.json();
-        if (data.modules) {
-          INSTALLED_MODULES = data.modules;
-          window.INSTALLED_MODULES = INSTALLED_MODULES;
-        }
-      } catch(e) {
-        console.warn('Could not load modules from Sheet, trying localStorage:', e.message);
-      }
-    }
+    // Restore connection into global state
+    if (savedUrl)    { API_URL = savedUrl;  window.API_URL = savedUrl; }
+    if (savedSecret) { window.API_SECRET_CLIENT = savedSecret; }
 
-    if (!INSTALLED_MODULES || INSTALLED_MODULES.length === 0) {
-      try {
-        const saved = localStorage.getItem('wv_installed_modules');
-        if (saved) {
-          INSTALLED_MODULES = JSON.parse(saved);
-          window.INSTALLED_MODULES = INSTALLED_MODULES;
-        }
-      } catch(e) {
-        console.warn('Could not load modules from localStorage:', e.message);
-      }
+    if (!savedUrl || !savedSecret) return; // not connected yet
+
+    try {
+      const url = new URL(savedUrl);
+      url.searchParams.set('path',  'config/modules');
+      url.searchParams.set('token', savedSecret);
+      const res  = await fetch(url.toString(), { cache: 'no-cache' });
+      const data = await res.json();
+      if (data.modules) {
+        INSTALLED_MODULES = data.modules;
+        window.INSTALLED_MODULES = INSTALLED_MODULES;
+      }    } catch(e) {
+      console.warn('Could not load modules from Sheet:', e.message);
     }
   }
 
@@ -496,8 +484,7 @@
   async function apiCall(path, params = {}, retries = 2) {
     const url = new URL(API_URL);
     url.searchParams.set('path', path);
-    url.searchParams.set('_t', Date.now().toString());
-    if (currentSession) url.searchParams.set('session_id', currentSession);
+    if (currentToken) url.searchParams.set('token', currentToken);
     for (const k in params) {
       if (params[k] !== undefined && params[k] !== null)
         url.searchParams.set(k, params[k]);
@@ -551,22 +538,24 @@
 
 
   function handleLogout() {
-    localStorage.removeItem('wv_user');
-    localStorage.removeItem('wv_session');
-    localStorage.removeItem('wv_demo_mode');
-    currentUser = null;
-    currentSession = null;
-    stopNotificationPolling();
-    location.reload();
+    forceLogout();
   }
 
   function forceLogout(msg) {
-    localStorage.removeItem('wv_user');
-    localStorage.removeItem('wv_session');
-    currentUser = null;
-    currentSession = null;
+    currentToken = 'demo-token';
+    currentUser  = {
+      user_id:    'cf49fbed-2be7-4e55-95c0-742348fdcfe7',
+      name:       'Super Admin',
+      email:      'admin@workvolt.app',
+      role:       'SuperAdmin',
+      department: 'System Administrator',
+      job_title:  'System Administrator',
+      active:     true,
+    };
     stopNotificationPolling();
+    document.getElementById('app-screen').classList.add('hidden');
     if (msg) showToast(msg, 'error');
+    // Login screen will be added later — for now just reload
     location.reload();
   }
 
@@ -620,7 +609,7 @@
       </a>`;
 
     // ── Installed add-on modules filtered by role + permission overrides ──
-    let addons = (window.INSTALLED_MODULES || []).filter(m => {
+    let addons = INSTALLED_MODULES.filter(m => {
       if (!canAccessModule(m.id)) return false;
       return true;
     });
@@ -969,13 +958,13 @@
 
   function handleDropdownNotifClick(id, refType, refId) {
     const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
-    
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
 
     // 1. Mark as read in backend
-    if (savedUrl && currentSession && id) {
+    if (savedUrl && savedSecret && id) {
       const u = new URL(savedUrl);
       u.searchParams.set('path',  'notifications/read');
-      u.searchParams.set('session_id', currentSession);
+      u.searchParams.set('token', savedSecret);
       u.searchParams.set('id', id);
       fetch(u.toString(), { cache: 'no-cache' })
         .then(() => {
@@ -1048,9 +1037,9 @@
   // ─── Load into dropdown ──────────────────────────────────────
   function loadNotifications() {
     const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
-    
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
     const list = document.getElementById('notification-list');
-    if (!savedUrl || !currentSession) {
+    if (!savedUrl || !savedSecret) {
       if (list) list.innerHTML = '<div class="p-6 text-center text-slate-400 text-sm">Connect your Google Sheet first</div>';
       return;
     }
@@ -1059,7 +1048,7 @@
 
     const url = new URL(savedUrl);
     url.searchParams.set('path',  'notifications/list');
-    url.searchParams.set('session_id', currentSession);
+    url.searchParams.set('token', savedSecret);
     url.searchParams.set('user_id', uid);
     url.searchParams.set('filter', 'unread');
     url.searchParams.set('limit', '20');
@@ -1078,13 +1067,13 @@
 
   function markAllNotificationsRead() {
     const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
-    
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
     const uid = currentUser?.user_id;
-    if (!savedUrl || !currentSession || !uid) { closeNotificationDropdown(); return; }
+    if (!savedUrl || !savedSecret || !uid) { closeNotificationDropdown(); return; }
 
     const url = new URL(savedUrl);
     url.searchParams.set('path',  'notifications/read-all');
-    url.searchParams.set('session_id', currentSession);
+    url.searchParams.set('token', savedSecret);
     url.searchParams.set('user_id', uid);
     fetch(url.toString(), { cache:'no-cache' })
       .then(() => { updateNotifBadge(0); showToast('All notifications marked as read', 'success'); closeNotificationDropdown(); })
@@ -1108,13 +1097,13 @@
 
   function _pollNotifications() {
     const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
-    
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
     const uid = currentUser?.user_id;
-    if (!savedUrl || !currentSession || !uid || !_pollVisible) return;
+    if (!savedUrl || !savedSecret || !uid || !_pollVisible) return;
 
     const url = new URL(savedUrl);
     url.searchParams.set('path',  'notifications/list');
-    url.searchParams.set('session_id', currentSession);
+    url.searchParams.set('token', savedSecret);
     url.searchParams.set('user_id', uid);
     url.searchParams.set('filter', 'unread');
     url.searchParams.set('limit', '20');
@@ -1163,23 +1152,23 @@
     // Create a notification (fire-and-forget)
     create: function(params) {
       const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
-      
-      if (!savedUrl || !currentSession || !params.to_user_id) return;
+      const savedSecret = localStorage.getItem('wv_api_secret') || '';
+      if (!savedUrl || !savedSecret || !params.to_user_id) return;
       const url = new URL(savedUrl);
       url.searchParams.set('path',  'notifications/create');
-      url.searchParams.set('session_id', currentSession);
+      url.searchParams.set('token', savedSecret);
       Object.keys(params).forEach(k => { if (params[k]) url.searchParams.set(k, params[k]); });
       fetch(url.toString(), { cache:'no-cache' }).catch(() => {});
     },
     // Refresh badge count (called after marking read)
     refreshBadge: function() {
       const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
-      
+      const savedSecret = localStorage.getItem('wv_api_secret') || '';
       const uid = currentUser?.user_id;
-      if (!savedUrl || !currentSession || !uid) return;
+      if (!savedUrl || !savedSecret || !uid) return;
       const url = new URL(savedUrl);
       url.searchParams.set('path',  'notifications/unread');
-      url.searchParams.set('session_id', currentSession);
+      url.searchParams.set('token', savedSecret);
       url.searchParams.set('user_id', uid);
       fetch(url.toString(), { cache:'no-cache' }).then(r => r.json()).then(d => { if (!d.error) updateNotifBadge(d.unread || 0); }).catch(() => {});
     },
@@ -1196,37 +1185,46 @@
   let _mimicking  = false;
 
   function renderUserDropdown() {
-  const inner = document.getElementById('user-dropdown-inner');
-  if (!inner) return;
+    const inner = document.getElementById('user-dropdown-inner');
+    if (!inner) return;
 
-  const isSuperAdmin = (currentUser?.role === 'SuperAdmin');
-  const hasRealSession = !!currentSession;
+    const isSuperAdmin = (currentUser?.role === 'SuperAdmin');
+    const mimicBanner  = _mimicking
+      ? `<div style="background:#7c3aed;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem">
+           <i class="fas fa-user-secret" style="color:#fff;font-size:.7rem"></i>
+           <span style="color:#fff;font-size:.7rem;font-weight:700">Viewing as ${currentUser?.name||'user'}</span>
+         </div>`
+      : '';
 
-  inner.innerHTML = `
-    <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-      <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Account</p>
-    </div>
-    <button onclick="openProfileModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-      <i class="fas fa-user-circle text-slate-400 w-4"></i>My Profile
-    </button>
-    <button onclick="openSecurityModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-      <i class="fas fa-shield-alt text-slate-400 w-4"></i>Security & Password
-    </button>
-    
-    ${isSuperAdmin ? `
-    <div class="border-t border-slate-100"></div>
-    <button onclick="openMimicModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-violet-700 hover:bg-violet-50 flex items-center gap-2.5 transition-colors">
-      <i class="fas fa-user-secret text-violet-400 w-4"></i>Mimic Profile
-      <span class="ml-auto text-[10px] text-violet-400 bg-violet-50 border border-violet-200 rounded px-1 font-bold">SA</span>
-    </button>` : ''}
-    
-    <!-- LOGIN / LOGOUT BUTTON -->
-    <div class="border-t border-slate-100"></div>
-    <button onclick="handleLogout()" class="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors">
-      <i class="fas fa-sign-out-alt text-red-400 w-4"></i>Logout
-    </button>
-  `;
-}
+    inner.innerHTML = `
+      ${mimicBanner}
+      <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Account</p>
+        ${_mimicking ? `<span class="text-[10px] font-bold text-violet-600 bg-violet-50 px-1.5 py-px rounded border border-violet-200">Mimicking</span>` : ''}
+      </div>
+      <button onclick="openProfileModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+        <i class="fas fa-user-circle text-slate-400 w-4"></i>My Profile
+      </button>
+      <button onclick="openSecurityModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+        <i class="fas fa-shield-alt text-slate-400 w-4"></i>Security & Password
+      </button>
+      ${isSuperAdmin && !_mimicking ? `
+      <div class="border-t border-slate-100"></div>
+      <button onclick="openMimicModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-violet-700 hover:bg-violet-50 flex items-center gap-2.5 transition-colors">
+        <i class="fas fa-user-secret text-violet-400 w-4"></i>Mimic Profile
+        <span class="ml-auto text-[10px] text-violet-400 bg-violet-50 border border-violet-200 rounded px-1 font-bold">SA</span>
+      </button>` : ''}
+      ${_mimicking ? `
+      <div class="border-t border-slate-100"></div>
+      <button onclick="stopMimicking(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-violet-700 hover:bg-violet-50 flex items-center gap-2.5 transition-colors font-semibold">
+        <i class="fas fa-sign-out-alt text-violet-500 w-4"></i>Stop Mimicking
+        <span class="ml-auto text-[10px] text-violet-400">${_realUser?.name||''}</span>
+      </button>` : ''}
+      <div class="border-t border-slate-100"></div>
+      <button onclick="handleLogout()" class="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors">
+        <i class="fas fa-sign-out-alt text-red-400 w-4"></i>Logout
+      </button>`;
+  }
 
   function toggleUserMenu(e) {
     e?.stopPropagation();
@@ -1247,15 +1245,15 @@
   function openMimicModal() {
     // Load all users so SuperAdmin can pick one
     const savedUrl    = localStorage.getItem('wv_gas_url')    || '';
-    
-    if (!savedUrl || !currentSession) {
+    const savedSecret = localStorage.getItem('wv_api_secret') || '';
+    if (!savedUrl || !savedSecret) {
       showToast('Connect your Google Sheet first', 'error'); return;
     }
 
     // Fetch users
     const url = new URL(savedUrl);
     url.searchParams.set('path',  'users/list');
-    url.searchParams.set('session_id', currentSession);
+    url.searchParams.set('token', savedSecret);
     fetch(url.toString(), { cache: 'no-cache' })
       .then(r => r.json())
       .then(data => {
@@ -1494,7 +1492,7 @@
   window.WorkVolt = {
     api: apiCall,
     user: () => currentUser,
-    session: () => currentSession,
+    token: () => currentToken,
     toast: showToast,
     navigate: showModule,
   };
@@ -1509,142 +1507,18 @@
     renderNav();
   };
 
-  // ── LOGIN PAGE ─────────────────────────────────────────────
-  function renderLoginPage(container) {
-    const savedUrl = localStorage.getItem('wv_gas_url') || '';
-
-    container.innerHTML = `
-      <div class="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 flex items-center justify-center p-4">
-        <div class="w-full max-w-md">
-          <div class="flex flex-col items-center mb-8">
-            <div class="w-16 h-16 bg-white/15 border border-white/30 rounded-2xl flex items-center justify-center mb-4 backdrop-blur-sm">
-              <i class="fas fa-bolt text-white text-3xl"></i>
-            </div>
-            <h1 class="text-3xl font-extrabold text-white tracking-tight">Work Volt</h1>
-            <p class="text-blue-200 mt-1 text-sm font-medium">Power your operations</p>
-          </div>
-
-          <div class="bg-white rounded-2xl shadow-2xl overflow-hidden">
-            <div class="bg-blue-50 border-b border-blue-100 px-6 py-3 flex items-center gap-2">
-              <i class="fas fa-shield-alt text-blue-500"></i>
-              <span class="text-xs font-bold text-blue-700 uppercase tracking-wide">Sign In</span>
-            </div>
-            <div class="p-6 space-y-4">
-              <div id="login-error" class="hidden p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600"></div>
-
-              ${!savedUrl ? `
-              <div>
-                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Work Volt URL</label>
-                <input id="login-url" type="url" class="field text-sm" placeholder="https://script.google.com/macros/s/.../exec">
-              </div>` : `<input id="login-url" type="hidden" value="${savedUrl}">`}
-
-              <div>
-                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Email</label>
-                <input id="login-email" type="email" class="field text-sm" placeholder="your@email.com">
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Password</label>
-                <input id="login-pass" type="password" class="field text-sm" placeholder="Your password">
-              </div>
-
-              <button onclick="doLogin()" class="btn-primary w-full">
-                <i class="fas fa-sign-in-alt text-sm"></i>Sign In
-              </button>
-
-              ${savedUrl ? `
-              <div class="text-center">
-                <button onclick="localStorage.removeItem('wv_gas_url');location.reload();" class="text-xs text-slate-400 hover:text-slate-600">
-                  <i class="fas fa-cog mr-1"></i>Change connection
-                </button>
-              </div>` : ''}
-            </div>
-          </div>
-        </div>
-      </div>`;
-
-    // Allow Enter key to submit
-    container.querySelector('#login-pass')?.addEventListener('keydown', e => {
-      if (e.key === 'Enter') doLogin();
-    });
-  }
-
-  window.doLogin = async function() {
-    const urlInput   = document.getElementById('login-url');
-    const emailInput = document.getElementById('login-email');
-    const passInput  = document.getElementById('login-pass');
-    const errorEl    = document.getElementById('login-error');
-
-    const gasUrl  = urlInput?.value?.trim();
-    const email   = emailInput?.value?.trim();
-    const password = passInput?.value;
-
-    errorEl.classList.add('hidden');
-
-    if (!gasUrl)    { errorEl.textContent = 'Please enter the Work Volt URL'; errorEl.classList.remove('hidden'); return; }
-    if (!email)     { errorEl.textContent = 'Please enter your email';        errorEl.classList.remove('hidden'); return; }
-    if (!password)  { errorEl.textContent = 'Please enter your password';     errorEl.classList.remove('hidden'); return; }
-
-    // Save URL
-    localStorage.setItem('wv_gas_url', gasUrl);
-    API_URL = gasUrl;
-
-    try {
-      // Hash password (Code.gs login expects password_hash)
-      const msgBuffer  = new TextEncoder().encode(password);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-      const hashHex    = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('');
-
-      const url = new URL(gasUrl);
-      url.searchParams.set('path', 'auth/public-login');
-      url.searchParams.set('email', email);
-      url.searchParams.set('password_hash', hashHex);
-      url.searchParams.set('_t', Date.now());
-
-      const res  = await fetch(url.toString(), { cache: 'no-cache' });
-      const data = await res.json();
-
-      if (data.error) throw new Error(data.error);
-      if (!data.success || !data.user) throw new Error('Login failed');
-
-      // Save session
-      localStorage.setItem('wv_user',    JSON.stringify(data.user));
-      localStorage.setItem('wv_session', data.session_id);
-
-      location.reload();
-
-    } catch(e) {
-      errorEl.textContent = e.message;
-      errorEl.classList.remove('hidden');
-    }
-  };
-
   // ─────────────────────────────────────────────
   //  BOOT SEQUENCE
   // ─────────────────────────────────────────────
   window.addEventListener('load', async () => {
-    const savedUser    = localStorage.getItem('wv_user');
-    const savedSession = localStorage.getItem('wv_session');
-    const savedUrl     = localStorage.getItem('wv_gas_url') || '';
-
-    // Not logged in — show login page
-    if (!savedUser || !savedSession || !savedUrl) {
-      hideSplash();
-      document.getElementById('app-screen').classList.remove('hidden');
-      renderLoginPage(document.getElementById('main-content'));
-      return;
-    }
-
-    // Restore state
-    API_URL        = savedUrl;
-    window.API_URL = savedUrl;
-    currentUser    = JSON.parse(savedUser);
-    currentSession = savedSession;
-
-    await loadInstalledModules();
-    await loadRolePermissions();
+    // Go straight to app — login & Google Sheet will be connected later
+    await loadInstalledModules(); // no-op until Sheet connected; swaps for apiCall later
+    await loadRolePermissions();  // load custom role permissions from config/localStorage
     hideSplash();
     await showApp();
   });
+
+  // window.WorkVolt globals are defined above near the boot sequence
   </script>
 
 </body>
