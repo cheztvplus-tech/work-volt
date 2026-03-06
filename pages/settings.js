@@ -20,7 +20,7 @@ window.WorkVoltPages['settings'] = function(container) {
   async function api(path, params) {
     const url = new URL(savedUrl);
     url.searchParams.set('path',  path);
-    url.searchParams.set('token', savedSecret);
+    url.searchParams.set('session_id', WorkVolt.session())
     if (params) {
       Object.entries(params).forEach(function(kv) {
         if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
