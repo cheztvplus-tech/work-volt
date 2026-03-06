@@ -19,8 +19,9 @@ window.WorkVoltPages['settings'] = function(container) {
   // ================================================================
   async function api(path, params) {
     const url = new URL(savedUrl);
-    url.searchParams.set('path',  path);
-    url.searchParams.set('session_id', WorkVolt.session())
+    url.searchParams.set('path', path);
+    url.searchParams.set('session_id', window.WorkVolt.session());
+    url.searchParams.set('_t', Date.now());
     if (params) {
       Object.entries(params).forEach(function(kv) {
         if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
