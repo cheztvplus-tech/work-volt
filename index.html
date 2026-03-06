@@ -27,10 +27,14 @@
     .btn-primary:active { transform:scale(.98); }
     .btn-primary:disabled { opacity:.6; cursor:not-allowed; }
     
+    .btn-warning { background:#f59e0b; }
+    .btn-warning:hover { background:#d97706; }
+    
     #toast-container { position:fixed; bottom:1.5rem; right:1.5rem; z-index:9999; display:flex; flex-direction:column; gap:.5rem; pointer-events:none; }
     .toast { display:flex; align-items:center; gap:.75rem; padding:.75rem 1.1rem; border-radius:12px; font-size:.875rem; font-weight:500; color:#fff; box-shadow:0 8px 24px rgba(0,0,0,.18); animation:toastIn .3s cubic-bezier(.16,1,.3,1); pointer-events:auto; max-width:360px; }
     .toast.success { background:#16a34a; }
     .toast.error { background:#dc2626; }
+    .toast.warning { background:#f59e0b; }
     @keyframes toastIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
     @keyframes toastOut { from{opacity:1} to{opacity:0;transform:translateY(12px)} }
     
@@ -45,6 +49,8 @@
     #sidebar.collapsed { width: 56px !important; }
     #sidebar.collapsed .nav-label, #sidebar.collapsed .nav-section-label, #sidebar.collapsed .sidebar-footer-text { display: none !important; }
     #sidebar.collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+    
+    .setup-banner { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
     
     @media (max-width: 768px) {
       #sidebar { position:fixed; top:0; left:0; height:100vh; z-index:50; transform:translateX(-100%); transition:transform .25s ease; }
@@ -72,7 +78,7 @@
     </div>
   </div>
 
-  <!-- Login Screen -->
+  <!-- Login Screen (shown when setup complete but not logged in) -->
   <div id="login-screen" class="hidden min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 flex items-center justify-center p-4">
     <div class="w-full max-w-md fade-in">
       <div class="flex flex-col items-center mb-8">
@@ -80,7 +86,7 @@
           <i class="fas fa-bolt text-white text-3xl"></i>
         </div>
         <h1 class="text-3xl font-extrabold text-white tracking-tight">Work Volt</h1>
-        <p class="text-blue-200 mt-1 text-sm font-medium" id="login-subtitle">Sign in to continue</p>
+        <p class="text-blue-200 mt-1 text-sm font-medium">Sign in to continue</p>
       </div>
 
       <div class="bg-white rounded-2xl shadow-2xl overflow-hidden">
@@ -90,16 +96,18 @@
         </div>
 
         <div class="p-6 space-y-4">
-          <!-- URL Input (shown only first time) -->
-          <div id="url-section" class="hidden">
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Work Volt URL</label>
-            <input id="login-url" type="url" class="field" placeholder="https://script.google.com/macros/s/.../exec">
-            <p class="text-xs text-slate-400 mt-1">Your Google Apps Script Web App URL</p>
+          <!-- Connection Info (read-only display) -->
+          <div class="bg-slate-50 rounded-xl p-3 border border-slate-200">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-500 uppercase">Connected to</span>
+              <button onclick="showSetupFromLogin()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Change</button>
+            </div>
+            <p id="login-connection-display" class="text-xs text-slate-600 truncate font-mono">...</p>
           </div>
 
           <div>
             <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Email</label>
-            <input id="login-email" type="email" class="field" placeholder="your@email.com">
+            <input id="login-email" type="email" class="field" placeholder="admin@yourcompany.com">
           </div>
           
           <div>
@@ -109,14 +117,68 @@
 
           <button id="login-btn" onclick="handleLogin()" class="btn-primary w-full">
             <i class="fas fa-sign-in-alt"></i>
-            <span id="login-btn-text">Sign In</span>
+            <span>Sign In</span>
           </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
-          <!-- Change URL link (shown when URL is saved) -->
-          <div id="change-url-section" class="hidden text-center">
-            <button onclick="showUrlInput()" class="text-xs text-slate-400 hover:text-slate-600">
-              <i class="fas fa-cog mr-1"></i>Change connection URL
+  <!-- Setup Screen (first time or changing connection) -->
+  <div id="setup-screen" class="hidden min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center p-4">
+    <div class="w-full max-w-lg fade-in">
+      <div class="bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+              <i class="fas fa-cog text-white text-lg"></i>
+            </div>
+            <h2 class="text-xl font-bold">Setup Work Volt</h2>
+          </div>
+          <p class="text-blue-100 text-sm">Connect your Google Sheet to get started</p>
+        </div>
+
+        <div class="p-6 space-y-4">
+          <div id="setup-error" class="hidden p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 flex items-center gap-2">
+            <i class="fas fa-exclamation-circle"></i>
+            <span id="setup-error-text"></span>
+          </div>
+
+          <div id="setup-step-1">
+            <h3 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+              <span class="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold">1</span>
+              Google Apps Script URL
+            </h3>
+            <input id="setup-url" type="url" class="field mb-2" placeholder="https://script.google.com/macros/s/.../exec">
+            <p class="text-xs text-slate-500">Deploy your Apps Script as a Web App and paste the URL here</p>
+          </div>
+
+          <div id="setup-step-2" class="opacity-50 pointer-events-none">
+            <h3 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+              <span class="w-6 h-6 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center text-xs font-bold">2</span>
+              Google Sheet ID
+            </h3>
+            <input id="setup-sheet-id" type="text" class="field mb-2" placeholder="1X2C0-cknczCcO0iaNseVQxVW1KHOH-PUqHKTibSxdUc">
+            <p class="text-xs text-slate-500">From your Google Sheet URL (the long string between /d/ and /edit)</p>
+          </div>
+
+          <div class="pt-4 border-t border-slate-100">
+            <button id="setup-test-btn" onclick="testConnection()" class="btn-primary w-full mb-3">
+              <i class="fas fa-plug"></i>
+              <span>Test Connection</span>
             </button>
+            
+            <button id="setup-save-btn" onclick="saveSetup()" class="btn-primary w-full hidden bg-green-600 hover:bg-green-700">
+              <i class="fas fa-check"></i>
+              <span>Save & Continue to Login</span>
+            </button>
+          </div>
+
+          <div id="setup-status" class="hidden p-3 bg-slate-50 rounded-lg">
+            <div class="flex items-center gap-2 text-sm">
+              <i id="setup-status-icon" class="fas fa-circle-notch fa-spin text-blue-500"></i>
+              <span id="setup-status-text" class="text-slate-600">Testing connection...</span>
+            </div>
           </div>
         </div>
       </div>
@@ -125,6 +187,28 @@
 
   <!-- Main App -->
   <div id="app-screen" class="hidden flex flex-col min-h-screen">
+    <!-- Setup Mode Banner (shown when no connection) -->
+    <div id="setup-banner" class="hidden setup-banner text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span class="text-sm font-medium">Setup Required: Configure your Google Sheet connection</span>
+      </div>
+      <button onclick="showSetup()" class="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
+        Open Setup
+      </button>
+    </div>
+
+    <!-- Login Required Banner (shown when connected but not logged in) -->
+    <div id="login-banner" class="hidden bg-blue-600 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <i class="fas fa-lock"></i>
+        <span class="text-sm font-medium">Login Required: Sign in to access your data</span>
+      </div>
+      <button onclick="showLoginScreen()" class="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
+        Sign In
+      </button>
+    </div>
+
     <header class="bg-white border-b border-slate-200 px-4 h-14 flex items-center gap-3 sticky top-0 z-30 flex-shrink-0">
       <button id="mobile-menu-btn" onclick="toggleMobileSidebar()" class="lg:hidden p-2 hover:bg-slate-100 rounded-lg">
         <i class="fas fa-bars text-slate-600"></i>
@@ -138,17 +222,8 @@
       </div>
 
       <div class="ml-auto flex items-center gap-1">
-        <div class="relative">
-          <button onclick="toggleNotificationDropdown()" class="relative p-2 hover:bg-slate-100 rounded-lg">
-            <i class="fas fa-bell text-slate-600 text-lg"></i>
-            <span id="notif-badge" class="hidden absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">0</span>
-          </button>
-          <div id="notification-dropdown" class="hidden absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 z-50">
-            <div class="p-4 text-center text-slate-400 text-sm">No notifications</div>
-          </div>
-        </div>
-
-        <div class="relative">
+        <!-- User menu (hidden in setup mode) -->
+        <div id="header-user-menu" class="hidden relative">
           <button onclick="toggleUserMenu()" class="flex items-center gap-2 pl-3 border-l border-slate-200 hover:bg-slate-100 rounded-lg p-2 ml-1">
             <div id="user-avatar" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-sm">--</div>
             <span id="user-name" class="hidden md:block text-sm font-semibold text-slate-700">--</span>
@@ -159,6 +234,9 @@
               <p class="text-xs text-slate-400">Signed in as</p>
               <p id="dropdown-email" class="text-sm font-medium text-slate-700 truncate">--</p>
             </div>
+            <button onclick="showSetup()" class="w-full px-4 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-colors">
+              <i class="fas fa-cog w-4"></i>Connection Settings
+            </button>
             <button onclick="handleLogout()" class="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors">
               <i class="fas fa-sign-out-alt w-4"></i>Logout
             </button>
@@ -188,16 +266,31 @@
   <div id="toast-container"></div>
 
   <script>
-  // ─── CONFIG & STATE ─────────────────────────────────────────
-  window.API_URL = '';
-window.currentUser = null;
-window.currentSession = null;
+  // ─── APP STATE MODES ─────────────────────────────────────────
+  // 1. SETUP_MODE: No connection configured (show setup banner/page)
+  // 2. CONNECTED_MODE: Connected but not logged in (show login banner/page)
+  // 3. LOGGED_IN_MODE: Fully authenticated (normal app usage)
+  
+  const AppMode = {
+    SETUP: 'setup',       // No URL/Sheet ID saved
+    CONNECTED: 'connected', // Has connection, no session
+    LOGGED_IN: 'logged_in'  // Has connection + session
+  };
+  
+  let currentAppMode = AppMode.SETUP;
 
-// Keep local references for convenience
-let API_URL = window.API_URL;
-let currentUser = window.currentUser;
-let currentSession = window.currentSession;
-let INSTALLED_MODULES = window.INSTALLED_MODULES
+  // ─── GLOBAL STATE ────────────────────────────────────────────
+  window.API_URL = '';
+  window.SHEET_ID = '';
+  window.currentUser = null;
+  window.currentSession = null;
+  window.INSTALLED_MODULES = [];
+  
+  let API_URL = window.API_URL;
+  let SHEET_ID = window.SHEET_ID;
+  let currentUser = window.currentUser;
+  let currentSession = window.currentSession;
+  let INSTALLED_MODULES = window.INSTALLED_MODULES;
 
   // ─── CORE FUNCTIONS ─────────────────────────────────────────
   
@@ -205,7 +298,7 @@ let INSTALLED_MODULES = window.INSTALLED_MODULES
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i><span>${msg}</span>`;
+    toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : type === 'warning' ? 'fa-exclamation-triangle' : 'fa-info-circle'}"></i><span>${msg}</span>`;
     container.appendChild(toast);
     setTimeout(() => {
       toast.style.animation = 'toastOut .3s ease forwards';
@@ -219,63 +312,177 @@ let INSTALLED_MODULES = window.INSTALLED_MODULES
     setTimeout(() => s.style.display = 'none', 450);
   }
 
-  function showLoginScreen() {
-    hideSplash();
-    document.getElementById('login-screen').classList.remove('hidden');
-    
+  // ─── MODE DETECTION ─────────────────────────────────────────
+  
+  function detectAppMode() {
     const savedUrl = localStorage.getItem('wv_gas_url');
-    const urlSection = document.getElementById('url-section');
-    const changeUrlSection = document.getElementById('change-url-section');
-    const subtitle = document.getElementById('login-subtitle');
+    const savedSheetId = localStorage.getItem('wv_sheet_id');
+    const savedUser = localStorage.getItem('wv_user');
+    const savedSession = localStorage.getItem('wv_session');
     
-    if (!savedUrl) {
-      // First time - show URL input
-      urlSection.classList.remove('hidden');
-      changeUrlSection.classList.add('hidden');
-      subtitle.textContent = 'Enter your Web App URL to connect';
-    } else {
-      // Returning user - hide URL input, show change link
-      urlSection.classList.add('hidden');
-      changeUrlSection.classList.remove('hidden');
-      subtitle.textContent = 'Sign in to continue';
-      API_URL = savedUrl;
+    if (!savedUrl || !savedSheetId) {
+      return AppMode.SETUP;
     }
     
-    // Auto-fill saved email
+    if (!savedUser || !savedSession) {
+      return AppMode.CONNECTED;
+    }
+    
+    return AppMode.LOGGED_IN;
+  }
+
+  // ─── SETUP SCREEN ────────────────────────────────────────────
+  
+  function showSetup() {
+    hideSplash();
+    document.getElementById('app-screen').classList.add('hidden');
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('setup-screen').classList.remove('hidden');
+    
+    // Pre-fill if exists
+    const savedUrl = localStorage.getItem('wv_gas_url');
+    const savedSheetId = localStorage.getItem('wv_sheet_id');
+    if (savedUrl) document.getElementById('setup-url').value = savedUrl;
+    if (savedSheetId) document.getElementById('setup-sheet-id').value = savedSheetId;
+  }
+
+  function showSetupFromLogin() {
+    // From login screen, go to setup to change connection
+    document.getElementById('login-screen').classList.add('hidden');
+    showSetup();
+  }
+
+  async function testConnection() {
+    const url = document.getElementById('setup-url').value.trim();
+    const sheetId = document.getElementById('setup-sheet-id').value.trim();
+    const errorDiv = document.getElementById('setup-error');
+    const errorText = document.getElementById('setup-error-text');
+    const statusDiv = document.getElementById('setup-status');
+    const statusIcon = document.getElementById('setup-status-icon');
+    const statusText = document.getElementById('setup-status-text');
+    const testBtn = document.getElementById('setup-test-btn');
+    const saveBtn = document.getElementById('setup-save-btn');
+    
+    if (!url) { showSetupError('Please enter Web App URL'); return; }
+    if (!sheetId) { showSetupError('Please enter Sheet ID'); return; }
+    
+    errorDiv.classList.add('hidden');
+    statusDiv.classList.remove('hidden');
+    statusIcon.className = 'fas fa-circle-notch fa-spin text-blue-500';
+    statusText.textContent = 'Testing connection...';
+    statusText.className = 'text-slate-600';
+    testBtn.disabled = true;
+    
+    try {
+      // Build test URL
+      let baseUrl = url;
+      if (!baseUrl.endsWith('/exec')) {
+        baseUrl = baseUrl.split('?')[0];
+        if (!baseUrl.endsWith('/exec')) baseUrl += '/exec';
+      }
+      
+      const testUrl = new URL(baseUrl);
+      testUrl.searchParams.set('path', 'setup/check');
+      testUrl.searchParams.set('sheet_id', sheetId);
+      testUrl.searchParams.set('_t', Date.now());
+      
+      const res = await fetch(testUrl.toString(), { cache: 'no-cache' });
+      const text = await res.text();
+      
+      if (!text) throw new Error('Empty response');
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch(e) {
+        throw new Error('Invalid response: ' + text.substring(0, 100));
+      }
+      
+      if (data.error) throw new Error(data.error);
+      
+      if (data.connected) {
+        // Success!
+        statusIcon.className = 'fas fa-check-circle text-green-500';
+        statusText.textContent = data.has_secret ? 'Connected successfully!' : 'Connected! (Remember to add api_secret to _wv_config sheet)';
+        statusText.className = 'text-green-600 font-medium';
+        
+        testBtn.classList.add('hidden');
+        saveBtn.classList.remove('hidden');
+        
+        // Store temporarily
+        window._tempUrl = baseUrl;
+        window._tempSheetId = sheetId;
+        
+        showToast('Connection successful!', 'success');
+      } else {
+        throw new Error(data.message || 'Connection failed');
+      }
+      
+    } catch(err) {
+      statusIcon.className = 'fas fa-times-circle text-red-500';
+      statusText.textContent = 'Connection failed: ' + err.message;
+      statusText.className = 'text-red-600';
+      testBtn.disabled = false;
+      showSetupError(err.message);
+    }
+    
+    function showSetupError(msg) {
+      errorText.textContent = msg;
+      errorDiv.classList.remove('hidden');
+    }
+  }
+
+  function saveSetup() {
+    // Save the tested connection
+    localStorage.setItem('wv_gas_url', window._tempUrl);
+    localStorage.setItem('wv_sheet_id', window._tempSheetId);
+    
+    // Clear any old session
+    localStorage.removeItem('wv_user');
+    localStorage.removeItem('wv_session');
+    
+    showToast('Setup complete! Please sign in.', 'success');
+    
+    // Go to login screen
+    document.getElementById('setup-screen').classList.add('hidden');
+    showLoginScreen();
+  }
+
+  // ─── LOGIN SCREEN ────────────────────────────────────────────
+  
+  function showLoginScreen() {
+    hideSplash();
+    document.getElementById('app-screen').classList.add('hidden');
+    document.getElementById('setup-screen').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
+    
+    // Show connection info
+    const savedUrl = localStorage.getItem('wv_gas_url');
+    const savedSheetId = localStorage.getItem('wv_sheet_id');
+    const display = document.getElementById('login-connection-display');
+    display.textContent = savedUrl ? `${savedUrl} (Sheet: ${savedSheetId})` : 'Not configured';
+    
+    // Auto-fill email
     const savedEmail = localStorage.getItem('wv_last_email') || '';
     if (savedEmail) document.getElementById('login-email').value = savedEmail;
   }
 
-  function showUrlInput() {
-    document.getElementById('url-section').classList.remove('hidden');
-    document.getElementById('change-url-section').classList.add('hidden');
-    document.getElementById('login-subtitle').textContent = 'Update your Web App URL';
-    document.getElementById('login-url').value = localStorage.getItem('wv_gas_url') || '';
-  }
-
   async function handleLogin() {
-    const urlInput = document.getElementById('login-url');
     const emailInput = document.getElementById('login-email');
     const passwordInput = document.getElementById('login-password');
     const btn = document.getElementById('login-btn');
-    const btnText = document.getElementById('login-btn-text');
     const errorDiv = document.getElementById('login-error');
     const errorText = document.getElementById('login-error-text');
     
-    const url = !document.getElementById('url-section').classList.contains('hidden') 
-      ? urlInput.value.trim() 
-      : (API_URL || localStorage.getItem('wv_gas_url') || '');
+    const url = localStorage.getItem('wv_gas_url');
+    const sheetId = localStorage.getItem('wv_sheet_id');
     const email = emailInput.value.trim();
     const password = passwordInput.value;
     
-    // Validation
-    if (!url) { showError('Please enter the Web App URL'); return; }
-    if (!email) { showError('Please enter your email'); return; }
-    if (!password) { showError('Please enter your password'); return; }
+    if (!email) { showError('Please enter email'); return; }
+    if (!password) { showError('Please enter password'); return; }
     
-    // UI loading state
     btn.disabled = true;
-    btnText.textContent = 'Signing in...';
     errorDiv.classList.add('hidden');
     
     try {
@@ -284,109 +491,104 @@ let INSTALLED_MODULES = window.INSTALLED_MODULES
       const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
       const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
       
-      // Build URL properly - handle both full URLs and partial
-      let baseUrl = url;
-      if (!baseUrl.endsWith('/exec')) {
-        // If user entered just the script ID or partial URL, try to fix it
-        if (baseUrl.includes('/macros/s/')) {
-          // Already has the path, just ensure it ends with /exec
-          if (!baseUrl.split('?')[0].endsWith('/exec')) {
-            baseUrl = baseUrl.split('?')[0] + '/exec';
-          }
-        }
-      }
-      
-      console.log('Logging in to:', baseUrl);
-      
-      const loginUrl = new URL(baseUrl);
+      const loginUrl = new URL(url);
       loginUrl.searchParams.set('path', 'auth/login');
+      loginUrl.searchParams.set('sheet_id', sheetId);
       loginUrl.searchParams.set('email', email);
       loginUrl.searchParams.set('password_hash', hashHex);
       loginUrl.searchParams.set('_t', Date.now());
       
       const res = await fetch(loginUrl.toString(), { cache: 'no-cache' });
       const text = await res.text();
-      console.log('Response:', text);
-      
-      if (!text) throw new Error('Empty response from server');
       
       let data;
       try {
         data = JSON.parse(text);
       } catch(e) {
-        throw new Error('Invalid JSON response: ' + text.substring(0, 100));
+        throw new Error('Invalid response');
       }
       
       if (data.error) throw new Error(data.error);
-      if (!data.success || !data.user) throw new Error('Login failed - no user data');
       
-      // Save to localStorage
-      localStorage.setItem('wv_gas_url', baseUrl);
+      // Save session
       localStorage.setItem('wv_last_email', email);
       localStorage.setItem('wv_user', JSON.stringify(data.user));
       localStorage.setItem('wv_session', data.session_id);
       
-      // Set global state (BOTH local and window globals)
-      API_URL = baseUrl;
-      currentUser = data.user;
-      currentSession = data.session_id;
-      
-      // ALSO set on window so pages can access them
-      window.API_URL = baseUrl;
+      // Set globals
+      window.API_URL = url;
+      window.SHEET_ID = sheetId;
       window.currentUser = data.user;
       window.currentSession = data.session_id;
       
+      API_URL = url;
+      SHEET_ID = sheetId;
+      currentUser = data.user;
+      currentSession = data.session_id;
+      
       // Show app
       document.getElementById('login-screen').classList.add('hidden');
+      currentAppMode = AppMode.LOGGED_IN;
       await initApp();
       
     } catch(err) {
-      console.error('Login error:', err);
-      showError(err.message || 'Login failed. Please check your credentials and URL.');
+      showError(err.message || 'Login failed');
       btn.disabled = false;
-      btnText.textContent = 'Sign In';
     }
     
     function showError(msg) {
       errorText.textContent = msg;
       errorDiv.classList.remove('hidden');
       btn.disabled = false;
-      btnText.textContent = 'Sign In';
     }
   }
 
   function handleLogout() {
-    // Clear session
     localStorage.removeItem('wv_user');
     localStorage.removeItem('wv_session');
-    localStorage.removeItem('wv_last_email');
-    // Keep wv_gas_url so they don't have to re-enter it
-    
+    window.currentUser = null;
+    window.currentSession = null;
     currentUser = null;
     currentSession = null;
     
-    // Reload to show login
-    location.reload();
+    showToast('Logged out', 'info');
+    showLoginScreen();
   }
 
+  // ─── MAIN APP ───────────────────────────────────────────────
+  
   async function initApp() {
-    window.API_URL = API_URL;
-    window.currentUser = currentUser;
-    window.currentSession = currentSession;
-    
     document.getElementById('app-screen').classList.remove('hidden');
     
-    // Set user info in header
-    const name = currentUser?.name || currentUser?.email || 'User';
-    const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-    document.getElementById('user-name').textContent = name;
-    document.getElementById('user-avatar').textContent = initials;
-    document.getElementById('dropdown-email').textContent = currentUser?.email || '--';
+    // Update UI based on mode
+    const setupBanner = document.getElementById('setup-banner');
+    const loginBanner = document.getElementById('login-banner');
+    const userMenu = document.getElementById('header-user-menu');
     
-    // Load modules
-    await loadInstalledModules();
+    if (currentAppMode === AppMode.SETUP) {
+      setupBanner.classList.remove('hidden');
+      loginBanner.classList.add('hidden');
+      userMenu.classList.add('hidden');
+    } else if (currentAppMode === AppMode.CONNECTED) {
+      setupBanner.classList.add('hidden');
+      loginBanner.classList.remove('hidden');
+      userMenu.classList.add('hidden');
+    } else {
+      // LOGGED_IN
+      setupBanner.classList.add('hidden');
+      loginBanner.classList.add('hidden');
+      userMenu.classList.remove('hidden');
+      
+      // Set user info
+      const name = window.currentUser?.name || window.currentUser?.email || 'User';
+      const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+      document.getElementById('user-name').textContent = name;
+      document.getElementById('user-avatar').textContent = initials;
+      document.getElementById('dropdown-email').textContent = window.currentUser?.email || '--';
+      
+      await loadInstalledModules();
+    }
     
-    // Render nav and show dashboard
     renderNav();
     showModule('dashboard');
   }
@@ -396,26 +598,24 @@ let INSTALLED_MODULES = window.INSTALLED_MODULES
       const data = await apiCall('config/modules');
       if (data.modules) {
         INSTALLED_MODULES = data.modules;
+        window.INSTALLED_MODULES = data.modules;
       }
     } catch(e) {
       console.warn('Could not load modules:', e);
-      // Try to load from localStorage as fallback
-      try {
-        const saved = localStorage.getItem('wv_installed_modules');
-        if (saved) {
-          INSTALLED_MODULES = JSON.parse(saved);
-        }
-      } catch(e2) {}
     }
   }
 
+  // ─── API CALLS ───────────────────────────────────────────────
   async function apiCall(path, params = {}) {
-    if (!API_URL) throw new Error('API URL not set');
+    if (!window.API_URL || !window.SHEET_ID) {
+      throw new Error('Not connected. Please complete setup first.');
+    }
     
-    const url = new URL(API_URL);
+    const url = new URL(window.API_URL);
     url.searchParams.set('path', path);
+    url.searchParams.set('sheet_id', window.SHEET_ID);
     url.searchParams.set('_t', Date.now().toString());
-    if (currentSession) url.searchParams.set('session_id', currentSession);
+    if (window.currentSession) url.searchParams.set('session_id', window.currentSession);
     
     for (const k in params) {
       if (params[k] !== undefined && params[k] !== null) {
@@ -423,12 +623,8 @@ let INSTALLED_MODULES = window.INSTALLED_MODULES
       }
     }
     
-    console.log('API Call:', path, url.toString());
-    
     const res = await fetch(url.toString(), { cache: 'no-cache' });
     const text = await res.text();
-    
-    console.log('API Response:', text.substring(0, 200));
     
     if (!text) throw new Error('Empty response');
     
@@ -436,13 +632,14 @@ let INSTALLED_MODULES = window.INSTALLED_MODULES
     try {
       data = JSON.parse(text);
     } catch(e) {
-      throw new Error('Invalid JSON: ' + text.substring(0, 100));
+      throw new Error('Invalid JSON');
     }
     
     if (data.error) {
       if (data.code === 'SESSION_EXPIRED') {
-        handleLogout();
-        throw new Error('Session expired');
+        currentAppMode = AppMode.CONNECTED;
+        showLoginScreen();
+        throw new Error('Session expired. Please sign in again.');
       }
       throw new Error(data.error);
     }
@@ -453,43 +650,40 @@ let INSTALLED_MODULES = window.INSTALLED_MODULES
   
   function renderNav() {
     const nav = document.getElementById('nav-menu');
-    const role = currentUser?.role || 'Employee';
+    const isLoggedIn = currentAppMode === AppMode.LOGGED_IN;
+    const role = isLoggedIn ? (window.currentUser?.role || 'Employee') : null;
     
-    // Core modules - ALWAYS show these
-    let html = `
-      <a href="#dashboard" onclick="showModule('dashboard'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium ${location.hash === '#dashboard' ? 'active' : ''}" data-module="dashboard">
+    let html = '';
+    
+    // Dashboard always visible
+    html += `
+      <a href="#dashboard" onclick="showModule('dashboard'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="dashboard">
         <i class="fas fa-th-large w-4 text-slate-400"></i>
         <span class="nav-label">Dashboard</span>
       </a>
     `;
     
-    // Installed modules
-    if (INSTALLED_MODULES.length > 0) {
-      html += `<div class="px-3 pt-4 pb-1"><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest nav-section-label">Modules</p></div>`;
-      INSTALLED_MODULES.forEach(m => {
-        html += `
-          <a href="#${m.id}" onclick="showModule('${m.id}'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="${m.id}">
-            <i class="fas ${m.icon || 'fa-circle'} w-4 text-slate-400"></i>
-            <span class="nav-label">${m.label}</span>
-          </a>
-        `;
-      });
-    }
+    // Settings always visible (for setup)
+    html += `
+      <a href="#settings" onclick="showModule('settings'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="settings">
+        <i class="fas fa-cog w-4 text-slate-400"></i>
+        <span class="nav-label">Settings</span>
+      </a>
+    `;
     
-    // Admin links - ALWAYS show for SuperAdmin/Admin
-    if (role === 'SuperAdmin' || role === 'Admin') {
-      html += `
-        <div class="border-t border-slate-100 mt-2 pt-2 space-y-0.5">
-          <a href="#settings" onclick="showModule('settings'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="settings">
-            <i class="fas fa-cog w-4 text-slate-400"></i>
-            <span class="nav-label">Settings</span>
-          </a>
-          <a href="#store" onclick="showModule('store'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="store">
-            <i class="fas fa-store w-4 text-slate-400"></i>
-            <span class="nav-label">Module Store</span>
-          </a>
-        </div>
-      `;
+    // Other modules only when logged in
+    if (isLoggedIn) {
+      if (INSTALLED_MODULES.length > 0) {
+        html += `<div class="px-3 pt-4 pb-1"><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest nav-section-label">Modules</p></div>`;
+        INSTALLED_MODULES.forEach(m => {
+          html += `
+            <a href="#${m.id}" onclick="showModule('${m.id}'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="${m.id}">
+              <i class="fas ${m.icon || 'fa-circle'} w-4 text-slate-400"></i>
+              <span class="nav-label">${m.label}</span>
+            </a>
+          `;
+        });
+      }
     }
     
     nav.innerHTML = html;
@@ -498,15 +692,37 @@ let INSTALLED_MODULES = window.INSTALLED_MODULES
   function showModule(name) {
     closeMobileSidebar();
     
-    // Highlight active
     document.querySelectorAll('.nav-item').forEach(el => {
       el.classList.toggle('active', el.dataset.module === name);
     });
     
     const main = document.getElementById('main-content');
+    
+    // Special handling for settings
+    if (name === 'settings') {
+      renderSettingsPage(main);
+      return;
+    }
+    
+    // For other pages, check if logged in
+    if (currentAppMode !== AppMode.LOGGED_IN && name !== 'dashboard') {
+      main.innerHTML = `
+        <div class="p-8 text-center">
+          <div class="inline-flex items-center justify-center w-16 h-16 bg-amber-100 rounded-2xl mb-4">
+            <i class="fas fa-lock text-amber-500 text-2xl"></i>
+          </div>
+          <h2 class="text-xl font-bold text-slate-800 mb-2">Login Required</h2>
+          <p class="text-slate-500 mb-4">Please sign in to access this feature.</p>
+          <button onclick="currentAppMode === AppMode.SETUP ? showSetup() : showLoginScreen()" class="btn-primary">
+            ${currentAppMode === AppMode.SETUP ? 'Complete Setup' : 'Sign In'}
+          </button>
+        </div>
+      `;
+      return;
+    }
+    
     main.innerHTML = `<div class="flex items-center justify-center h-64"><i class="fas fa-circle-notch fa-spin text-3xl text-blue-500 opacity-60"></i></div>`;
     
-    // Load page module
     if (window.WorkVoltPages && typeof window.WorkVoltPages[name] === 'function') {
       window.WorkVoltPages[name](main);
     } else {
@@ -514,8 +730,101 @@ let INSTALLED_MODULES = window.INSTALLED_MODULES
     }
   }
 
+  function renderSettingsPage(container) {
+    const isSetup = currentAppMode === AppMode.SETUP;
+    const isConnected = currentAppMode === AppMode.CONNECTED;
+    const isLoggedIn = currentAppMode === AppMode.LOGGED_IN;
+    
+    const savedUrl = localStorage.getItem('wv_gas_url') || '';
+    const savedSheetId = localStorage.getItem('wv_sheet_id') || '';
+    
+    container.innerHTML = `
+      <div class="p-6 md:p-8 fade-in max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold text-slate-800 mb-6">Settings</h1>
+        
+        <!-- Connection Status Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+              <i class="fas fa-plug text-blue-500"></i>
+              Google Sheet Connection
+            </h2>
+            <span class="px-3 py-1 rounded-full text-xs font-bold ${
+              isSetup ? 'bg-amber-100 text-amber-700' : 
+              isConnected ? 'bg-blue-100 text-blue-700' : 
+              'bg-green-100 text-green-700'
+            }">
+              ${isSetup ? 'Setup Required' : isConnected ? 'Connected' : 'Authenticated'}
+            </span>
+          </div>
+          
+          ${isSetup ? `
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+              <div class="flex items-start gap-3">
+                <i class="fas fa-exclamation-triangle text-amber-500 mt-0.5"></i>
+                <div>
+                  <p class="text-sm font-medium text-amber-800">Connection Required</p>
+                  <p class="text-xs text-amber-600 mt-1">Enter your Google Apps Script URL and Sheet ID to connect your data.</p>
+                </div>
+              </div>
+            </div>
+          ` : `
+            <div class="space-y-3 mb-4">
+              <div class="flex items-center justify-between py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-500">Web App URL</span>
+                <span class="text-sm font-mono text-slate-700 truncate max-w-xs">${savedUrl}</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-500">Sheet ID</span>
+                <span class="text-sm font-mono text-slate-700 truncate max-w-xs">${savedSheetId}</span>
+              </div>
+              <div class="flex items-center justify-between py-2">
+                <span class="text-sm text-slate-500">Status</span>
+                <span class="text-sm font-medium ${isLoggedIn ? 'text-green-600' : 'text-blue-600'}">
+                  ${isLoggedIn ? '✓ Authenticated' : 'Connected (Login Required)'}
+                </span>
+              </div>
+            </div>
+          `}
+          
+          <button onclick="showSetup()" class="btn-primary w-full sm:w-auto">
+            <i class="fas fa-${isSetup ? 'plug' : 'edit'}"></i>
+            ${isSetup ? 'Connect Google Sheet' : 'Change Connection'}
+          </button>
+        </div>
+        
+        ${isLoggedIn ? `
+          <!-- User Info Card -->
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <h2 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+              <i class="fas fa-user text-blue-500"></i>
+              User Information
+            </h2>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-500">Name</span>
+                <span class="text-sm font-medium text-slate-700">${window.currentUser?.name || '-'}</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-500">Email</span>
+                <span class="text-sm font-medium text-slate-700">${window.currentUser?.email || '-'}</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-slate-100">
+                <span class="text-sm text-slate-500">Role</span>
+                <span class="text-sm font-medium text-slate-700">${window.currentUser?.role || '-'}</span>
+              </div>
+              <div class="flex items-center justify-between py-2">
+                <span class="text-sm text-slate-500">User ID</span>
+                <span class="text-sm font-mono text-slate-700">${window.currentUser?.user_id || '-'}</span>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
   function loadPageScript(name, container) {
-    // Remove stale script
     const existing = document.querySelector(`script[data-page="${name}"]`);
     if (existing) existing.remove();
     
@@ -534,24 +843,13 @@ let INSTALLED_MODULES = window.INSTALLED_MODULES
   }
 
   function renderPlaceholder(name, container) {
-    const labels = {
-      dashboard: 'Dashboard',
-      settings: 'Settings',
-      store: 'Module Store'
-    };
-    const icons = {
-      dashboard: 'fa-th-large',
-      settings: 'fa-cog',
-      store: 'fa-store'
-    };
-    
     container.innerHTML = `
       <div class="p-6 md:p-8 fade-in">
         <div class="max-w-2xl mx-auto mt-16 text-center">
           <div class="inline-flex items-center justify-center w-20 h-20 bg-blue-50 rounded-2xl mb-6">
-            <i class="fas ${icons[name] || 'fa-layer-group'} text-blue-400 text-3xl"></i>
+            <i class="fas fa-layer-group text-blue-400 text-3xl"></i>
           </div>
-          <h2 class="text-2xl font-extrabold text-slate-800 mb-2">${labels[name] || name}</h2>
+          <h2 class="text-2xl font-extrabold text-slate-800 mb-2 capitalize">${name}</h2>
           <p class="text-slate-500 mb-6 text-sm">Create <code class="bg-slate-100 px-2 py-0.5 rounded text-blue-600 font-mono text-xs">pages/${name}.js</code> to build this module.</p>
         </div>
       </div>`;
@@ -580,51 +878,57 @@ let INSTALLED_MODULES = window.INSTALLED_MODULES
   // ─── BOOT SEQUENCE ──────────────────────────────────────────
   
   window.addEventListener('load', async () => {
-    const savedUser = localStorage.getItem('wv_user');
-    const savedSession = localStorage.getItem('wv_session');
-    const savedUrl = localStorage.getItem('wv_gas_url');
+    // Detect current mode
+    currentAppMode = detectAppMode();
+    console.log('App mode:', currentAppMode);
     
-    if (savedUser && savedSession && savedUrl) {
-      // Verify session is still valid
+    hideSplash();
+    
+    if (currentAppMode === AppMode.SETUP) {
+      // First time - show setup
+      showSetup();
+    } else if (currentAppMode === AppMode.CONNECTED) {
+      // Has connection, needs login
+      showLoginScreen();
+    } else {
+      // Try to validate session
+      const savedUrl = localStorage.getItem('wv_gas_url');
+      const savedSheetId = localStorage.getItem('wv_sheet_id');
+      const savedSession = localStorage.getItem('wv_session');
+      
+      window.API_URL = savedUrl;
+      window.SHEET_ID = savedSheetId;
+      API_URL = savedUrl;
+      SHEET_ID = savedSheetId;
+      
       try {
-        API_URL = savedUrl;
-        const checkUrl = new URL(API_URL);
+        const checkUrl = new URL(savedUrl);
         checkUrl.searchParams.set('path', 'auth/check-session');
+        checkUrl.searchParams.set('sheet_id', savedSheetId);
         checkUrl.searchParams.set('session_id', savedSession);
         checkUrl.searchParams.set('_t', Date.now());
         
-        console.log('Checking session...');
         const res = await fetch(checkUrl.toString(), { cache: 'no-cache' });
-        const text = await res.text();
-        console.log('Session check response:', text);
-        
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch(e) {
-          throw new Error('Invalid session check response');
-        }
+        const data = await res.json();
         
         if (data.valid && data.user) {
+          window.currentUser = data.user;
+          window.currentSession = savedSession;
           currentUser = data.user;
           currentSession = savedSession;
-          hideSplash();
           await initApp();
-          return;
+        } else {
+          throw new Error('Invalid session');
         }
       } catch(e) {
-        console.log('Session check failed:', e);
-        // Clear invalid session
-        localStorage.removeItem('wv_user');
-        localStorage.removeItem('wv_session');
+        // Session invalid, go to login
+        currentAppMode = AppMode.CONNECTED;
+        showLoginScreen();
       }
     }
-    
-    // Show login screen
-    showLoginScreen();
   });
 
-  // Enter key on password field submits login
+  // Enter key submits login
   document.addEventListener('DOMContentLoaded', () => {
     const passField = document.getElementById('login-password');
     if (passField) {
@@ -634,16 +938,16 @@ let INSTALLED_MODULES = window.INSTALLED_MODULES
     }
   });
 
-  // Global namespace for pages
+  // Global namespace
   window.WorkVoltPages = window.WorkVoltPages || {};
   window.WorkVolt = {
-  api: apiCall,
-  user: () => window.currentUser,
-  session: () => window.currentSession,  // <-- Now it works!
-  toast: showToast,
-  navigate: showModule
-};
+    api: apiCall,
+    user: () => window.currentUser,
+    session: () => window.currentSession,
+    toast: showToast,
+    navigate: showModule,
+    mode: () => currentAppMode
+  };
   </script>
 </body>
 </html>
-
