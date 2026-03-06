@@ -405,19 +405,35 @@ async function checkLoginState() {
 
 async function checkSystemState() {
   try {
-    // Try to list users - if no admin exists, we need setup
-    const data = await apiCall('users/list', {}, 1, true);
-    const hasAdmin = (data.rows || []).some(u => u.role === 'SuperAdmin' || u.role === 'Admin');
+    // First, try to check if we can reach the server at all
+    const ping = await apiCall('ping', {}, 1, true);
     
-    if (!hasAdmin) {
-      return { state: 'needs-first-admin' };
+    // Now try to list users - this will fail with 401 if no API_SECRET provided
+    // but that's OK - we can infer from the error type
+    try {
+      const data = await apiCall('users/list', {}, 1, true);
+      const hasAdmin = (data.rows || []).some(u => u.role === 'SuperAdmin' || u.role === 'Admin');
+      
+      if (!hasAdmin) {
+        return { state: 'needs-first-admin' };
+      }
+    } catch (listErr) {
+      // If we got a 401/403, it likely means no users exist yet (so no session possible)
+      // or the API_SECRET wasn't provided. Either way, we need setup.
+      if (listErr.message.includes('401') || listErr.message.includes('403') || 
+          listErr.message.includes('Session') || listErr.message.includes('expired')) {
+        // Try to determine if it's truly "needs first admin" or just "needs login"
+        // We'll assume needs-first-admin if we can't list users without auth
+        return { state: 'needs-first-admin' };
+      }
+      throw listErr;
     }
+    
+    return { state: 'login' };
   } catch (e) {
-    // If we can't reach server, treat as needs setup
+    // If we can't even ping, treat as needs setup
     return { state: 'needs-first-admin' };
   }
-  
-  return { state: 'login' };
 }
 
 async function performLogin(email, password) {
@@ -1901,3 +1917,4 @@ async function showApp() {
   </script>
 </body>
 </html>
+
