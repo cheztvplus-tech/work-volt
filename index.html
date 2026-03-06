@@ -798,20 +798,20 @@
       return;
     }
     
-    try {
-      // Hash password
-      const msgBuffer = new TextEncoder().encode(password);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      
-      // Create admin user using API_SECRET (setup operation)
+     try {
+      // Store API secret temporarily so apiCall can authenticate this setup call
+      localStorage.setItem('wv_api_secret', 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b');
+
+      // Create admin user — send plain password, Code.gs hashes it internally
       const data = await apiCall('users/create', {
         email: email,
-        password_hash: hashHex,
+        password: password,
         role: 'Admin',
         name: name
       }, 2, true); // allowNoSession=true for setup
+
+      // Clean up — secret no longer needed after setup
+      localStorage.removeItem('wv_api_secret');
       
       if (data.error) throw new Error(data.error);
 
@@ -1976,5 +1976,6 @@
   </script>
 </body>
 </html>
+
 
 
