@@ -1642,35 +1642,7 @@ window.WorkVoltPages['settings'] = function(container) {
     setTimeout(function() { window.settingsTestConnection(); }, 400);
   };
 
-  window.settingsTestConnection = async function() {
-    var url    = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
-    var secret = (document.getElementById('settings-secret')?.value  || '').trim() || savedSecret;
-    var btn    = document.getElementById('settings-test-btn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Testing…'; }
-    try {
-      var pingUrl = new URL(url);
-      pingUrl.searchParams.set('path', 'ping');
-      var pingRes  = await fetch(pingUrl.toString(), { cache: 'no-cache' });
-      var pingData = await pingRes.json();
-      if (pingData.status !== 'ok') throw new Error('Unexpected response from server');
 
-      var provUrl = new URL(url);
-      provUrl.searchParams.set('path',  'setup/provision');
-      provUrl.searchParams.set('token', secret);
-      var provRes  = await fetch(provUrl.toString(), { cache: 'no-cache' });
-      var provData = await provRes.json();
-      if (provData.error) throw new Error(provData.error);
-
-      if (provData.provisioned) {
-        render({ ok: true, message: '✓ Connected! USERS sheet created.', provision: provData });
-      } else {
-        render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
-      }
-    } catch(e) {
-      render({ ok: false, message: 'Connection failed: ' + e.message + '. Check the URL and try again.' });
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
-    }
-  };
 
   window.settingsDisconnect = function() {
     localStorage.removeItem('wv_gas_url');
