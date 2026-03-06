@@ -664,8 +664,11 @@ window.WorkVoltPages['settings'] = function(container) {
     try {
       var user = usersCache.find(function(u) { return u.user_id === userId; });
       if (!user) throw new Error('User not found');
+      var msgBuffer  = new TextEncoder().encode(newPass);
+      var hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      var hashHex    = Array.from(new Uint8Array(hashBuffer)).map(function(b) { return b.toString(16).padStart(2,'0'); }).join('');
       var tokenData = await api('users/reset-token', { email: user.email });
-      await api('users/set-password', { token: tokenData.token, password: newPass });
+      await api('users/set-password', { token: tokenData.token, password_hash: hashHex });
       setFormStatus('Password updated successfully.', true);
       setTimeout(function() { window.usersCloseModal(); }, 900);
     } catch(e) {
