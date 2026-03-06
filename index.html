@@ -1538,15 +1538,13 @@
                 <p class="text-xs text-slate-400 mt-1">Your GAS Web App deployment URL</p>
               </div>
 
-              <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">API Secret</label>
-                <input id="setup-secret" type="password" class="field text-sm" placeholder="wv_xxxxxxxxxxxx">
-                <p class="text-xs text-slate-400 mt-1">The API_SECRET from your Code.gs</p>
-              </div>
-
               <button onclick="doSetup()" class="btn-primary w-full">
                 <i class="fas fa-check text-sm"></i>Save & Continue
               </button>
+
+              <p class="text-xs text-slate-400 text-center mt-2">
+                🔒 The API secret will be stored securely in your Google Sheet. You only need to share this URL with new users.
+              </p>
             </div>
           </div>
         </div>
@@ -1607,12 +1605,10 @@
 
   window.doSetup = async function() {
     const urlInput = document.getElementById('setup-gas-url');
-    const secretInput = document.getElementById('setup-secret');
     const errorEl = document.getElementById('setup-error');
     const infoEl = document.getElementById('setup-info');
 
     const gasUrl = urlInput?.value?.trim();
-    const secret = secretInput?.value?.trim();
 
     errorEl.classList.add('hidden');
     infoEl.classList.add('hidden');
@@ -1622,22 +1618,19 @@
       errorEl.classList.remove('hidden'); 
       return; 
     }
-    if (!secret) { 
-      errorEl.textContent = 'Please enter the API secret'; 
-      errorEl.classList.remove('hidden'); 
-      return; 
-    }
 
     // Save the connection
     localStorage.setItem('wv_gas_url', gasUrl);
-    localStorage.setItem('wv_api_secret', secret);
     API_URL = gasUrl;
 
     try {
-      // Test connection by calling provision
+      // Generate a temporary token for first setup (will be stored as api_secret)
+      const tempSecret = 'wv_' + Math.random().toString(36).slice(2, 20);
+      
+      // Test connection by calling provision with the temp token
       const url = new URL(gasUrl);
       url.searchParams.set('path', 'setup/provision');
-      url.searchParams.set('token', secret);
+      url.searchParams.set('token', tempSecret);
       url.searchParams.set('_t', Date.now());
 
       const res = await fetch(url.toString(), { cache: 'no-cache' });
@@ -1650,9 +1643,15 @@
       if (data.already_provisioned) {
         infoEl.innerHTML = '✓ Backend already set up. Ready to login.';
         infoEl.classList.remove('hidden');
+        
+        // Don't store secret if already provisioned
+        localStorage.removeItem('wv_api_secret');
       } else if (data.provisioned) {
         infoEl.innerHTML = `✓ First admin created!<br><strong>Email:</strong> ${data.admin_email}<br><strong>Temp Password:</strong> ${data.temp_password}`;
         infoEl.classList.remove('hidden');
+        
+        // Store the secret that was used (server saved it)
+        localStorage.setItem('wv_api_secret', tempSecret);
       }
 
       setTimeout(() => {
