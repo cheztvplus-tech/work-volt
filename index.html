@@ -189,10 +189,15 @@
 
   <script>
   // ─── CONFIG & STATE ─────────────────────────────────────────
-  let API_URL = '';
-  let currentUser = null;
-  let currentSession = null;
-  let INSTALLED_MODULES = [];
+  window.API_URL = '';
+window.currentUser = null;
+window.currentSession = null;
+
+// Keep local references for convenience
+let API_URL = window.API_URL;
+let currentUser = window.currentUser;
+let currentSession = window.currentSession;
+let INSTALLED_MODULES = window.INSTALLED_MODULES
 
   // ─── CORE FUNCTIONS ─────────────────────────────────────────
   
@@ -321,10 +326,15 @@
       localStorage.setItem('wv_user', JSON.stringify(data.user));
       localStorage.setItem('wv_session', data.session_id);
       
-      // Set global state
+      // Set global state (BOTH local and window globals)
       API_URL = baseUrl;
       currentUser = data.user;
       currentSession = data.session_id;
+      
+      // ALSO set on window so pages can access them
+      window.API_URL = baseUrl;
+      window.currentUser = data.user;
+      window.currentSession = data.session_id;
       
       // Show app
       document.getElementById('login-screen').classList.add('hidden');
@@ -360,6 +370,10 @@
   }
 
   async function initApp() {
+    window.API_URL = API_URL;
+    window.currentUser = currentUser;
+    window.currentSession = currentSession;
+    
     document.getElementById('app-screen').classList.remove('hidden');
     
     // Set user info in header
@@ -623,11 +637,13 @@
   // Global namespace for pages
   window.WorkVoltPages = window.WorkVoltPages || {};
   window.WorkVolt = {
-    api: apiCall,
-    user: () => currentUser,
-    toast: showToast,
-    navigate: showModule
-  };
+  api: apiCall,
+  user: () => window.currentUser,
+  session: () => window.currentSession,  // <-- Now it works!
+  toast: showToast,
+  navigate: showModule
+};
   </script>
 </body>
 </html>
+
