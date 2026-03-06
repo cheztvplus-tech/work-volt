@@ -415,19 +415,12 @@
 
   async function checkSystemState() {
     try {
-      // Try to list users - if no admin exists, we need setup
-      const data = await apiCall('users/list', {}, 1, true); // allowNoSession=true
-      const hasAdmin = (data.rows || []).some(u => u.role === 'SuperAdmin' || u.role === 'Admin');
-      
-      if (!hasAdmin) {
-        return { state: 'needs-first-admin' };
-      }
+      const ping = await apiCall('ping', {}, 1, true);
+      if (ping.status === 'ok') return { state: 'login' };
     } catch (e) {
-      // If we can't reach server, treat as needs setup
-      return { state: 'needs-first-admin' };
+      // Server unreachable
     }
-    
-    return { state: 'login' };
+    return { state: 'needs-first-admin' };
   }
 
   async function performLogin(email, password) {
@@ -1983,4 +1976,5 @@
   </script>
 </body>
 </html>
+
 
