@@ -706,7 +706,7 @@ window.WorkVoltPages['assets'] = function(container) {
             + '<input id="f-assigned_to_name" type="text" autocomplete="off" placeholder="Type to search users..." class="field"'
             + ' value="' + esc((function(){ var u = state.users.find(function(u){ return (u.user_id||u.id||'') === a.assigned_to; }); return u ? (u.name||u.email||'') : ''; })()) + '">'
             + '<input type="hidden" id="f-assigned_to" value="' + esc(a.assigned_to||'') + '">'
-            + '<div id="user-dropdown" class="hidden absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto"></div>'
+            + '<div id="user-dropdown" class="hidden fixed z-[9999] bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto" style="min-width:200px"></div>'
             + '</div>',
             ''
           )
@@ -734,7 +734,7 @@ window.WorkVoltPages['assets'] = function(container) {
         + '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Assign To <span class="text-red-500">*</span></label>'
         + '<input id="f-assigned_to_name" type="text" autocomplete="off" placeholder="Type to search users..." class="field">'
         + '<input type="hidden" id="f-assigned_to" value="">'
-        + '<div id="user-dropdown" class="hidden absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto"></div>'
+        + '<div id="user-dropdown" class="hidden fixed z-[9999] bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto" style="min-width:200px"></div>'
         + '</div>'
         + field('assigned_date','Assigned Date',new Date().toISOString().split('T')[0],'date')
         + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Condition Given</label>'
@@ -1157,9 +1157,16 @@ window.WorkVoltPages['assets'] = function(container) {
         }
         dropEl.classList.remove('hidden');
       }
-      nameEl.addEventListener('focus', function() { showUserDrop(this.value); });
+      function positionDrop() {
+        var rect = nameEl.getBoundingClientRect();
+        dropEl.style.top   = (rect.bottom + 4) + 'px';
+        dropEl.style.left  = rect.left + 'px';
+        dropEl.style.width = rect.width + 'px';
+      }
+      nameEl.addEventListener('focus', function() { positionDrop(); showUserDrop(this.value); });
       nameEl.addEventListener('input', function() {
         if (!this.value) hiddenEl.value = '';
+        positionDrop();
         showUserDrop(this.value);
       });
       nameEl.addEventListener('blur', function() {
