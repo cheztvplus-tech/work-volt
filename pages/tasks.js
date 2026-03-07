@@ -1361,7 +1361,7 @@ window.WorkVoltPages['tasks'] = function(container) {
                 }).join(' '))
               : '') +
             (projectsInstalled() && task.project_id
-              ? meta('Project', '<span class="bg-purple-50 text-purple-700 px-1.5 py-px rounded font-semibold text-xs">' + esc(projectName(task.project_id)) + '</span>')
+              ? meta('Project', '<button data-action="open-project" data-pid="' + esc(task.project_id) + '" class="bg-purple-50 text-purple-700 px-1.5 py-px rounded font-semibold text-xs hover:bg-purple-100 transition-colors border-none cursor-pointer">' + esc(projectName(task.project_id)) + ' <i class="fas fa-external-link-alt text-[9px] ml-0.5"></i></button>')
               : '') +
             meta('Created', fmtDate(task.created_at) || '<span class="text-slate-300">—</span>') +
 
@@ -1449,6 +1449,23 @@ window.WorkVoltPages['tasks'] = function(container) {
       document.getElementById('td-log-btn').addEventListener('click', function() { closeModal(); openLogHoursModal(task); });
       document.getElementById('td-note-btn').addEventListener('click', function() { closeModal(); openLogNoteModal(task); });
       document.getElementById('td-edit-btn').addEventListener('click', function() { closeModal(); openTaskForm(task); });
+
+      // Wire "open project" link in task detail
+      var openProjBtn = document.querySelector('[data-action="open-project"]');
+      if (openProjBtn) {
+        openProjBtn.addEventListener('click', function() {
+          var pid = this.dataset.pid;
+          if (!pid) return;
+          closeModal();
+          window._wvDeepLink = { module: 'projects', id: pid };
+          if (typeof showModule === 'function') {
+            showModule('projects');
+          } else {
+            var navLink = document.querySelector('[data-module="projects"]');
+            if (navLink) navLink.click();
+          }
+        });
+      }
       // If task is closed and user is not admin, grey out and block the edit button
       var tdEditBtn = document.getElementById('td-edit-btn');
       if (tdEditBtn && (task.status === 'Done' || task.status === 'Cancelled') && !isAdmin()) {
