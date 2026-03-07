@@ -125,12 +125,12 @@ window.WorkVoltPages['assets'] = function(container) {
 
     // Install sheets if missing, then load all data — each call isolated
     var [assets, cats, types, alerts, dash, usersRes] = await Promise.all([
-      api('assets/list').catch(function(){ return {}; }),
-      api('assets/categories').catch(function(){ return {}; }),
-      api('assets/types').catch(function(){ return {}; }),
-      api('assets/alerts').catch(function(){ return {}; }),
-      api('assets/dashboard').catch(function(){ return {}; }),
-      api('users/list').catch(function(){ return {}; }),
+      api('assets/list').catch(function(e){ if (e.message === 'Session expired') throw e; return {}; }),
+      api('assets/categories').catch(function(e){ if (e.message === 'Session expired') throw e; return {}; }),
+      api('assets/types').catch(function(e){ if (e.message === 'Session expired') throw e; return {}; }),
+      api('assets/alerts').catch(function(e){ if (e.message === 'Session expired') throw e; return {}; }),
+      api('assets/dashboard').catch(function(e){ if (e.message === 'Session expired') throw e; return {}; }),
+      api('users/list').catch(function(e){ if (e.message === 'Session expired') throw e; return {}; }),
     ]);
 
     state.assets    = assets.rows   || [];
@@ -703,10 +703,10 @@ window.WorkVoltPages['assets'] = function(container) {
         + row2(
             '<div class="relative">'
             + '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Assigned To</label>'
-            + '<input id="f-assigned_to_name" type="text" autocomplete="off" placeholder="Type to search users..." class="field"'
+            + '<input id="f-assigned_to_name" type="text" autocomplete="off" placeholder="Search by name..." class="field"'
             + ' value="' + esc((function(){ var u = state.users.find(function(u){ return (u.user_id||u.id||'') === a.assigned_to; }); return u ? (u.name||u.email||'') : ''; })()) + '">'
             + '<input type="hidden" id="f-assigned_to" value="' + esc(a.assigned_to||'') + '">'
-            + '<div id="user-dropdown" class="hidden fixed z-[9999] bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto" style="min-width:200px"></div>'
+            + '<div id="asset-user-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 z-[9999] bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto"></div>'
             + '</div>',
             ''
           )
@@ -732,9 +732,9 @@ window.WorkVoltPages['assets'] = function(container) {
         + '<i class="fas fa-box-open mr-2"></i>Asset: <strong>' + esc(m.assetId||'') + '</strong></div>'
         + '<div class="relative">'
         + '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Assign To <span class="text-red-500">*</span></label>'
-        + '<input id="f-assigned_to_name" type="text" autocomplete="off" placeholder="Type to search users..." class="field">'
+        + '<input id="f-assigned_to_name" type="text" autocomplete="off" placeholder="Search by name..." class="field">'
         + '<input type="hidden" id="f-assigned_to" value="">'
-        + '<div id="user-dropdown" class="hidden fixed z-[9999] bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto" style="min-width:200px"></div>'
+        + '<div id="asset-user-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 z-[9999] bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto"></div>'
         + '</div>'
         + field('assigned_date','Assigned Date',new Date().toISOString().split('T')[0],'date')
         + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Condition Given</label>'
@@ -1128,23 +1128,30 @@ window.WorkVoltPages['assets'] = function(container) {
     // Assigned To — searchable autocomplete
     var nameEl   = document.getElementById('f-assigned_to_name');
     var hiddenEl = document.getElementById('f-assigned_to');
-    var dropEl   = document.getElementById('user-dropdown');
+    var dropEl   = document.getElementById('asset-user-dropdown');
     if (nameEl && hiddenEl && dropEl) {
       function showUserDrop(query) {
+        var trimmed = (query || '').trim().toLowerCase();
         var list = state.users.filter(function(u) {
-          var name = (u.name || u.email || '').toLowerCase();
-          return !query || name.includes(query.toLowerCase());
+          var uname = (u.name || u.email || '').toLowerCase();
+          return !trimmed || uname.includes(trimmed);
         });
         if (!list.length) {
-          dropEl.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 italic">No users found</div>';
+          dropEl.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 italic">'
+            + (state.users.length === 0 ? 'No users loaded — check permissions' : 'No matching users found')
+            + '</div>';
         } else {
           dropEl.innerHTML = list.map(function(u) {
             var uid  = u.user_id || u.id || '';
-            var name = u.name || u.email || uid;
-            return '<button type="button" data-uid="'+esc(uid)+'" data-name="'+esc(name)+'"'
-              + ' class="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">'
-              + '<i class="fas fa-user text-slate-300 text-xs"></i>' + esc(name)
-              + '</button>';
+            var uname = u.name || u.email || uid;
+            var role  = u.role  || '';
+            return '<button type="button" data-uid="' + esc(uid) + '" data-name="' + esc(uname) + '"'
+              + ' class="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2.5 transition-colors">'
+              + '<div class="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center flex-shrink-0">'
+              + '<span class="text-[10px] font-bold text-white">' + esc((uname[0]||'U').toUpperCase()) + '</span></div>'
+              + '<div class="flex-1 min-w-0"><div class="font-medium truncate">' + esc(uname) + '</div>'
+              + (role ? '<div class="text-[10px] text-slate-400">' + esc(role) + '</div>' : '')
+              + '</div></button>';
           }).join('');
           dropEl.querySelectorAll('button').forEach(function(btn) {
             btn.addEventListener('mousedown', function(ev) {
@@ -1157,21 +1164,18 @@ window.WorkVoltPages['assets'] = function(container) {
         }
         dropEl.classList.remove('hidden');
       }
-      function positionDrop() {
-        var rect = nameEl.getBoundingClientRect();
-        dropEl.style.top   = (rect.bottom + 4) + 'px';
-        dropEl.style.left  = rect.left + 'px';
-        dropEl.style.width = rect.width + 'px';
-      }
-      nameEl.addEventListener('focus', function() { positionDrop(); showUserDrop(this.value); });
+      nameEl.addEventListener('focus', function() { showUserDrop(this.value); });
       nameEl.addEventListener('input', function() {
         if (!this.value) hiddenEl.value = '';
-        positionDrop();
         showUserDrop(this.value);
       });
       nameEl.addEventListener('blur', function() {
         setTimeout(function() { dropEl.classList.add('hidden'); }, 200);
       });
+      // Show all users immediately when the field is rendered and users are loaded
+      if (state.users.length && nameEl === document.activeElement) {
+        showUserDrop('');
+      }
     }
   }
 
