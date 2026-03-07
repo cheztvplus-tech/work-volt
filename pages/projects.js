@@ -1146,12 +1146,12 @@ window.WorkVoltPages['projects'] = function(container) {
         e.stopPropagation();
         var id  = actionBtn.dataset.taskId;
         var act = actionBtn.dataset.taskAction;
-        if (act === 'edit') openEditTaskForm(tasksCache[id]);
+        if (act === 'edit') openTaskInModule(tasksCache[id]);
         if (act === 'done') quickUpdateTask(id, 'Done');
         return;
       }
       var row = e.target.closest('[data-task-id]');
-      if (row) openEditTaskForm(tasksCache[row.dataset.taskId]);
+      if (row) openTaskInModule(tasksCache[row.dataset.taskId]);
     });
 
     // Add member button
@@ -1170,6 +1170,9 @@ window.WorkVoltPages['projects'] = function(container) {
         if (lp) { lp.innerHTML = renderLeftPanel(); wireLeftPanel(); }
       });
     });
+    // Wire Add Member button (may be in left panel after refresh)
+    var amBtn = document.getElementById('btn-add-member');
+    if (amBtn) amBtn.addEventListener('click', openAddMemberModal);
   }
 
   function refreshCenter() {
@@ -1473,7 +1476,13 @@ window.WorkVoltPages['projects'] = function(container) {
     var html =
       '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
         '<h3 class="font-extrabold text-slate-900">' + (isEdit ? 'Edit Task' : 'New Task') + '</h3>' +
+        '<div class="flex items-center gap-2">' +
+        (isEdit && tasksInstalled()
+          ? '<button id="tf-open-in-tasks" class="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors cursor-pointer" title="Open full task view">' +
+            '<i class="fas fa-external-link-alt text-[10px]"></i>Open in Tasks</button>'
+          : '') +
         '<button id="tf-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer text-base">✕</button>' +
+        '</div>' +
       '</div>' +
       '<div class="px-6 py-5 flex flex-col gap-4">' +
         '<div id="pm-status"></div>' +
@@ -1523,6 +1532,15 @@ window.WorkVoltPages['projects'] = function(container) {
     showModal(html, '520px');
     document.getElementById('tf-close').addEventListener('click', closeModal);
     document.getElementById('tf-cancel').addEventListener('click', closeModal);
+
+    // Open in Tasks module button
+    var openInTasksBtn = document.getElementById('tf-open-in-tasks');
+    if (openInTasksBtn) {
+      openInTasksBtn.addEventListener('click', function() {
+        closeModal();
+        openTaskInModule(task);
+      });
+    }
 
     // Clear assignee button
     var clearAssigneeBtn = document.getElementById('tf-clear-assignee');
@@ -1604,6 +1622,28 @@ window.WorkVoltPages['projects'] = function(container) {
         btn.innerHTML = '<i class="fas fa-' + (isEdit?'save':'plus') + ' text-xs mr-1"></i>' + (isEdit?'Save Changes':'Create Task');
       });
     });
+  }
+
+  // ── Open task in the Tasks module ───────────────────────────────
+  function openTaskInModule(task) {
+    if (!task) return;
+    // Set the deep-link so the Tasks module opens this task on load
+    window._wvDeepLink = { module: 'tasks', id: task.id };
+    // Navigate to the Tasks module
+    if (typeof showModule === 'function') {
+      showModule('tasks');
+    } else if (window.WorkVolt && typeof window.WorkVolt.navigate === 'function') {
+      window.WorkVolt.navigate('tasks');
+    } else {
+      // Fallback: click the tasks nav item if it exists
+      var navLink = document.querySelector('[data-module="tasks"]');
+      if (navLink) {
+        navLink.click();
+      } else {
+        // Last resort: open edit modal locally
+        openEditTaskForm(task);
+      }
+    }
   }
 
   // ── Add member modal ────────────────────────────────────────────
