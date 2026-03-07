@@ -673,6 +673,16 @@
       </a>
     `;
     
+    // Module Store - visible when logged in as Admin/SuperAdmin
+    if (isLoggedIn && (role === 'SuperAdmin' || role === 'Admin')) {
+      html += `
+        <a href="#store" onclick="showModule('store'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="store">
+          <i class="fas fa-store w-4 text-slate-400"></i>
+          <span class="nav-label">Module Store</span>
+        </a>
+      `;
+    }
+    
     // Other modules only when logged in
     if (isLoggedIn) {
       if (INSTALLED_MODULES.length > 0) {
@@ -953,4 +963,5 @@
   </script>
 </body>
 </html>
+
 
