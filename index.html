@@ -650,14 +650,18 @@
 
   // ─── NAVIGATION ─────────────────────────────────────────────
   
-  function renderNav() {
+    function renderNav() {
     const nav = document.getElementById('nav-menu');
     const isLoggedIn = currentAppMode === AppMode.LOGGED_IN;
     const role = isLoggedIn ? (window.currentUser?.role || 'Employee') : null;
     
     let html = '';
     
-    // Dashboard always visible
+    // ═══════════════════════════════════════════════════════════
+    //  CORE PAGES (Always Visible)
+    // ═══════════════════════════════════════════════════════════
+    
+    // Dashboard
     html += `
       <a href="#dashboard" onclick="showModule('dashboard'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="dashboard">
         <i class="fas fa-th-large w-4 text-slate-400"></i>
@@ -665,7 +669,7 @@
       </a>
     `;
     
-    // Settings always visible (for setup)
+    // Settings
     html += `
       <a href="#settings" onclick="showModule('settings'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="settings">
         <i class="fas fa-cog w-4 text-slate-400"></i>
@@ -673,8 +677,32 @@
       </a>
     `;
     
-    // Module Store - visible when logged in as Admin/SuperAdmin
+    // ═══════════════════════════════════════════════════════════
+    //  ADMIN SECTION (Only when logged in as Admin/SuperAdmin)
+    // ═══════════════════════════════════════════════════════════
+    
     if (isLoggedIn && (role === 'SuperAdmin' || role === 'Admin')) {
+      
+      // Section header
+      html += `<div class="px-3 pt-4 pb-1"><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest nav-section-label">Administration</p></div>`;
+      
+      // User Management
+      html += `
+        <a href="#users" onclick="showModule('users'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="users">
+          <i class="fas fa-users w-4 text-slate-400"></i>
+          <span class="nav-label">User Management</span>
+        </a>
+      `;
+      
+      // Role Management
+      html += `
+        <a href="#roles" onclick="showModule('roles'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="roles">
+          <i class="fas fa-shield-alt w-4 text-slate-400"></i>
+          <span class="nav-label">Role Permissions</span>
+        </a>
+      `;
+      
+      // Module Store
       html += `
         <a href="#store" onclick="showModule('store'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="store">
           <i class="fas fa-store w-4 text-slate-400"></i>
@@ -683,19 +711,20 @@
       `;
     }
     
-    // Other modules only when logged in
-    if (isLoggedIn) {
-      if (INSTALLED_MODULES.length > 0) {
-        html += `<div class="px-3 pt-4 pb-1"><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest nav-section-label">Modules</p></div>`;
-        INSTALLED_MODULES.forEach(m => {
-          html += `
-            <a href="#${m.id}" onclick="showModule('${m.id}'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="${m.id}">
-              <i class="fas ${m.icon || 'fa-circle'} w-4 text-slate-400"></i>
-              <span class="nav-label">${m.label}</span>
-            </a>
-          `;
-        });
-      }
+    // ═══════════════════════════════════════════════════════════
+    //  INSTALLED MODULES (Only when logged in)
+    // ═══════════════════════════════════════════════════════════
+    
+    if (isLoggedIn && INSTALLED_MODULES.length > 0) {
+      html += `<div class="px-3 pt-4 pb-1"><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest nav-section-label">Modules</p></div>`;
+      INSTALLED_MODULES.forEach(m => {
+        html += `
+          <a href="#${m.id}" onclick="showModule('${m.id}'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="${m.id}">
+            <i class="fas ${m.icon || 'fa-circle'} w-4 text-slate-400"></i>
+            <span class="nav-label">${m.label}</span>
+          </a>
+        `;
+      });
     }
     
     nav.innerHTML = html;
@@ -963,5 +992,6 @@
   </script>
 </body>
 </html>
+
 
 
