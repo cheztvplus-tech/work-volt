@@ -72,9 +72,12 @@ window.WorkVoltPages['roles'] = function(container) {
   // ── API helper ─────────────────────────────────────────────────
   async function api(path, params = {}) {
     if (!isConnected) throw new Error('Not connected');
+    const savedSheetId = localStorage.getItem('wv_sheet_id') || '';
     const url = new URL(savedUrl);
     url.searchParams.set('path', path);
     url.searchParams.set('token', savedSecret);
+    url.searchParams.set('sheet_id', savedSheetId);
+    url.searchParams.set('session_id', window.WorkVolt?.session() || '');
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null) url.searchParams.set(k, v);
     });
