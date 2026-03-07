@@ -18,9 +18,11 @@ window.WorkVoltPages['settings'] = function(container) {
   //  API HELPER
   // ================================================================
   async function api(path, params) {
+    const savedSheetId = localStorage.getItem('wv_sheet_id') || '';
     const url = new URL(savedUrl);
     url.searchParams.set('path', path);
     url.searchParams.set('session_id', window.WorkVolt.session());
+    url.searchParams.set('sheet_id', savedSheetId);
     url.searchParams.set('_t', Date.now());
     if (params) {
       Object.entries(params).forEach(function(kv) {
