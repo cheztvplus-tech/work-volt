@@ -22,6 +22,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
     { id: 'final', label: 'Final Round', icon: 'fa-handshake', color: 'bg-amber-50', borderColor: 'border-amber-200', bgDot: 'bg-amber-500', description: 'Executive/team interview', passCriteria: 'Culture fit score ≥ 3', timeframe: '5 days' },
     { id: 'offer', label: 'Offer', icon: 'fa-file-contract', color: 'bg-orange-50', borderColor: 'border-orange-200', bgDot: 'bg-orange-500', description: 'Offer extended', passCriteria: 'Reference check passed', timeframe: '3 days' },
     { id: 'hired', label: 'Hired', icon: 'fa-check-circle', color: 'bg-green-50', borderColor: 'border-green-200', bgDot: 'bg-green-600', description: 'Hired & onboarded', passCriteria: 'Offer accepted', timeframe: '1 day' },
+    { id: 'rejected', label: 'Rejected', icon: 'fa-times', color: 'bg-red-50', borderColor: 'border-red-200', bgDot: 'bg-red-500', description: 'Not selected', passCriteria: 'N/A', timeframe: '—' },
   ];
 
   const REJECTION_REASON = [
@@ -312,6 +313,25 @@ window.WorkVoltPages['recruiting'] = function(container) {
     candidates = candidates.filter(c => c.id !== id);
     saveData();
   }
+
+  function rejectCandidate(id, reason) {
+  if (isConnected) {
+    api('recruitment/reject/candidate', { 
+      id, 
+      rejectionReason: reason || ''
+    }).catch(err => {
+      showToast('error', 'Failed to reject: ' + err.message);
+    });
+    return;
+  }
+  
+  const now = new Date().toISOString();
+  updateCandidate(id, {
+    stage: 'rejected',
+    currentStageAt: now,
+    rejectionReason: reason || ''
+  });
+}
 
   // ── Views ────────────────────────────────────────────────────────
 
@@ -1182,7 +1202,8 @@ window.WorkVoltPages['recruiting'] = function(container) {
     moveCandidate(candId, stage);
 
     if (notes) {
-      cand.interviewNotes.push({
+      const notes = JSON.parse(cand.interviewNotes || '[]');
+      notes.push({
         timestamp: Date.now(),
         stage: stage,
         text: notes
@@ -1202,7 +1223,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
     const feedback = document.getElementById('rejectFeedback').value;
 
     const cand = candidates.find(c => c.id === candId);
-    rejectCandidate(candId, reason);
+    moveCandidate(candId, 'rejected', reason);
 
     if (feedback) {
       updateCandidate(candId, { notes: (cand.notes ? cand.notes + '\n\n' : '') + `Rejection Feedback: ${feedback}` });
