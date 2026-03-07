@@ -232,7 +232,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
     if (isConnected) {
       api('recruitment/create/candidate', data).then(() => {
         loadData().then(() => renderBoard());
-      }).catch(err => showToast('error', 'Failed to create candidate: ' + err.message));
+      }).catch(err => showToast('Failed to create candidate: ' + err.message, 'error'));
       return;
     }
     
@@ -264,7 +264,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
   function updateCandidate(id, updates) {
     if (isConnected) {
       api('recruitment/update/candidate', { id, ...updates }).catch(err => {
-        showToast('error', 'Failed to update: ' + err.message);
+        showToast('Failed to update: ' + err.message, 'error');
       });
       return;
     }
@@ -283,7 +283,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
         stage: newStage,
         rejectionReason: rejectionReason || ''
       }).catch(err => {
-        showToast('error', 'Failed to move: ' + err.message);
+        showToast('Failed to move: ' + err.message, 'error');
       });
       return;
     }
@@ -300,7 +300,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
     if (isConnected) {
       api('recruitment/delete/candidate', { id }).then(() => {
         loadData().then(() => renderBoard());
-      }).catch(err => showToast('error', 'Failed to delete: ' + err.message));
+      }).catch(err => showToast('Failed to delete: ' + err.message, 'error'));
       return;
     }
     
