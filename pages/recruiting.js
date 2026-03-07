@@ -64,8 +64,13 @@ window.WorkVoltPages['recruiting'] = function(container) {
     url.searchParams.set('path', path);
     url.searchParams.set('token', savedSecret);
     Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && String(v) !== '') url.searchParams.set(k, String(v));  // ✅ FIXED
+      if (v !== undefined && v !== null && String(v) !== '') url.searchParams.set(k, String(v));
     });
+    const res = await fetch(url.toString(), { cache: 'no-cache' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+  }
 
   // ── State ────────────────────────────────────────────────────────
   let candidates = []; // All candidate objects
