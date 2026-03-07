@@ -91,11 +91,18 @@ window.WorkVoltPages['tasks'] = function(container) {
   }
 
   // ── API ────────────────────────────────────────────────────────
-  function api(path, params) {
+    function api(path, params) {
     if (!savedUrl || !savedSecret) return Promise.reject(new Error('Google Sheet not connected'));
+    var savedSheetId = localStorage.getItem('wv_sheet_id') || '';
+    var sessionId = '';
+    try { sessionId = window.WorkVolt.session() || ''; } catch(e) {}
+    
     var url = new URL(savedUrl);
     url.searchParams.set('path',  path);
     url.searchParams.set('token', savedSecret);
+    url.searchParams.set('sheet_id', savedSheetId);
+    url.searchParams.set('session_id', sessionId);
+    
     if (params) Object.keys(params).forEach(function(k) {
       if (params[k] !== undefined && params[k] !== null && String(params[k]) !== '')
         url.searchParams.set(k, String(params[k]));
