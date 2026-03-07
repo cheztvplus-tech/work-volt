@@ -80,26 +80,73 @@ window.WorkVoltPages['assets'] = function(container) {
       + label + '</button>';
   }
 
+  // ── Category / Type seed data (fallback if sheets not ready) ──
+  var CAT_SEEDS = [
+    'Computers','Vehicles','Office Equipment','Furniture',
+    'Consumables','Tools','Networking','Electronics','Studio Equipment','Other'
+  ];
+  var TYPE_SEEDS = [
+    {category:'Computers',        type:'Laptop'},
+    {category:'Computers',        type:'Desktop'},
+    {category:'Computers',        type:'Monitor'},
+    {category:'Computers',        type:'Tablet'},
+    {category:'Vehicles',         type:'Car'},
+    {category:'Vehicles',         type:'Truck'},
+    {category:'Vehicles',         type:'Forklift'},
+    {category:'Vehicles',         type:'Van'},
+    {category:'Office Equipment', type:'Printer'},
+    {category:'Office Equipment', type:'Phone'},
+    {category:'Office Equipment', type:'Scanner'},
+    {category:'Furniture',        type:'Desk'},
+    {category:'Furniture',        type:'Chair'},
+    {category:'Furniture',        type:'Cabinet'},
+    {category:'Consumables',      type:'Pen'},
+    {category:'Consumables',      type:'Paper'},
+    {category:'Consumables',      type:'Toner'},
+    {category:'Tools',            type:'Power Drill'},
+    {category:'Networking',       type:'Router'},
+    {category:'Networking',       type:'Switch'},
+    {category:'Electronics',      type:'Cell Phone'},
+    {category:'Electronics',      type:'TV'},
+    {category:'Electronics',      type:'Headphones'},
+    {category:'Electronics',      type:'Keyboard'},
+    {category:'Studio Equipment', type:'Microphone'},
+    {category:'Studio Equipment', type:'Camera'},
+    {category:'Studio Equipment', type:'Audio Interface'},
+    {category:'Studio Equipment', type:'Lighting'},
+    {category:'Studio Equipment', type:'Speaker'},
+    {category:'Other',            type:'Other'},
+  ];
+
   // ── Data loaders ───────────────────────────────────────────────
   async function loadAll() {
     state.loading = true;
     render();
-    try {
-      var [assets, cats, types, alerts, dash, usersRes] = await Promise.all([
-        api('assets/list'),
-        api('assets/categories'),
-        api('assets/types'),
-        api('assets/alerts'),
-        api('assets/dashboard'),
-        api('users/list').catch(function(){ return {}; }),
-      ]);
-      state.assets     = assets.rows       || [];
-      state.categories = cats.rows         || [];
-      state.types      = types.rows        || [];
-      state.alerts     = alerts.alerts     || [];
-      state.dashboard  = dash              || {};
-      state.users      = usersRes.users    || usersRes.rows || [];
-    } catch(e) { toast(e.message, 'error'); }
+
+    // Install sheets if missing, then load all data — each call isolated
+    var [assets, cats, types, alerts, dash, usersRes] = await Promise.all([
+      api('assets/list').catch(function(){ return {}; }),
+      api('assets/categories').catch(function(){ return {}; }),
+      api('assets/types').catch(function(){ return {}; }),
+      api('assets/alerts').catch(function(){ return {}; }),
+      api('assets/dashboard').catch(function(){ return {}; }),
+      api('users/list').catch(function(){ return {}; }),
+    ]);
+
+    state.assets    = assets.rows   || [];
+    state.alerts    = alerts.alerts || [];
+    state.dashboard = dash          || {};
+    state.users     = usersRes.users || usersRes.rows || [];
+
+    // Use sheet data if available, otherwise use hardcoded seeds
+    state.categories = (cats.rows && cats.rows.length)
+      ? cats.rows
+      : CAT_SEEDS.map(function(c, i) { return { category_id: 'CAT' + String(i+1).padStart(3,'0'), category: c }; });
+
+    state.types = (types.rows && types.rows.length)
+      ? types.rows
+      : TYPE_SEEDS;
+
     state.loading = false;
     render();
   }
@@ -180,6 +227,7 @@ window.WorkVoltPages['assets'] = function(container) {
       +     '<div class="flex items-center gap-2">'
       +       (alertCount ? '<button onclick="assetTab(\'dashboard\')" class="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-xl hover:bg-amber-100 transition-colors">'
       +         '<i class="fas fa-triangle-exclamation"></i>' + alertCount + ' Alert' + (alertCount > 1 ? 's' : '') + '</button>' : '')
+      +       '<button onclick="assetRunSetup()" class="flex items-center gap-1.5 px-3 py-1.5 bg-violet-50 border border-violet-200 text-violet-700 text-xs font-bold rounded-xl hover:bg-violet-100 transition-colors"><i class="fas fa-database mr-1"></i>Setup Sheets</button>'
       +       '<button onclick="assetOpenModal(\'asset\',null)" class="btn-primary"><i class="fas fa-plus text-xs"></i>Add Asset</button>'
       +     '</div>'
       +   '</div>'
@@ -1067,6 +1115,16 @@ window.WorkVoltPages['assets'] = function(container) {
       });
     }
   }
+
+  // ── Setup Sheets ───────────────────────────────────────────────
+  window.assetRunSetup = async function() {
+    try {
+      toast('Creating sheets...', 'info');
+      await api('module/install', { module: 'assets' });
+      toast('Sheets created!', 'success');
+      await loadAll();
+    } catch(e) { toast('Setup failed: ' + e.message, 'error'); }
+  };
 
   // ── Boot ───────────────────────────────────────────────────────
   loadAll();
