@@ -633,7 +633,12 @@ window.WorkVoltPages['assets'] = function(container) {
 
       inner = modalHeader(isEdit ? 'Edit Asset' : 'Add Asset', 'fa-box-open')
         + '<div class="p-5 overflow-y-auto flex-1 space-y-4">'
-        + row2(field('asset_name','Asset Name',a.asset_name,'text','e.g. MacBook Pro 16"',true), field('serial_number','Serial Number',a.serial_number,'text','SN123456'))
+        + row2(field('asset_name','Asset Name',a.asset_name,'text','e.g. MacBook Pro 16"',true),
+          '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Serial Number' +
+          (a.category === 'Vehicles' ? ' <span class="text-slate-400 font-normal">(License Plate)</span>' : '') +
+          '</label><input id="f-serial_number" type="text" value="' + esc(a.serial_number||'') + '" placeholder="' +
+          (a.category === 'Vehicles' ? 'e.g. ABC-1234' : 'SN123456') + '" class="field"></div>'
+        )
         + row2(
             '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Category</label><select id="f-category" class="field"><option value="">— Select —</option>' + catOpts + '</select></div>',
             '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Asset Type</label><select id="f-asset_type" class="field"><option value="">— Select —</option>' + typeOpts + '</select></div>'
