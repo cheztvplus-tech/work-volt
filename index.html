@@ -56,6 +56,13 @@
           <p class="text-xs text-slate-400 mt-1">Your Google Apps Script Web App URL</p>
         </div>
 
+        <!-- Sheet ID (shown if not saved) -->
+        <div id="sheet-field">
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Google Sheet ID</label>
+          <input id="sheet-id" type="text" class="field" placeholder="1X2C0-cknczCcO0iaNseVQxVW1KHOH-PUqHKTibSxdUc">
+          <p class="text-xs text-slate-400 mt-1">Found in your Sheet URL between /d/ and /edit</p>
+        </div>
+
         <!-- Username -->
         <div>
           <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Username (Email)</label>
@@ -107,24 +114,31 @@
     //  LOGIN LOGIC
     // ─────────────────────────────────────────────
     
-    // Check for saved URL on load
+    // Check for saved credentials on load
     const savedUrl = localStorage.getItem('wv_gas_url');
+    const savedSheetId = localStorage.getItem('wv_sheet_id');
+    
     if (savedUrl) {
       document.getElementById('url-field').classList.add('hidden');
       document.getElementById('gas-url').value = savedUrl;
+    }
+    if (savedSheetId) {
+      document.getElementById('sheet-field').classList.add('hidden');
+      document.getElementById('sheet-id').value = savedSheetId;
     }
 
     // Check for existing session
     const savedSession = localStorage.getItem('wv_session');
     const savedUser = localStorage.getItem('wv_user');
-    if (savedSession && savedUser && savedUrl) {
+    if (savedSession && savedUser && savedUrl && savedSheetId) {
       // Validate session before redirecting
-      validateSession(savedUrl, savedSession);
+      validateSession(savedUrl, savedSheetId, savedSession);
     }
 
     // Parse URL parameters for auto-fill
     const params = new URLSearchParams(window.location.search);
     if (params.get('gas_url')) document.getElementById('gas-url').value = params.get('gas_url');
+    if (params.get('sheet_id')) document.getElementById('sheet-id').value = params.get('sheet_id');
     if (params.get('username')) document.getElementById('username').value = params.get('username');
     if (params.get('password')) document.getElementById('password').value = params.get('password');
 
@@ -157,10 +171,11 @@
       document.getElementById('reset-hint').classList.toggle('hidden');
     }
 
-    async function validateSession(url, sessionId) {
+    async function validateSession(url, sheetId, sessionId) {
       try {
         const validateUrl = new URL(url);
         validateUrl.searchParams.set('path', 'auth/check-session');
+        validateUrl.searchParams.set('sheet_id', sheetId);
         validateUrl.searchParams.set('session_id', sessionId);
         
         const res = await fetch(validateUrl.toString(), { cache: 'no-cache' });
@@ -182,6 +197,7 @@
     async function doLogin() {
       const btn = document.getElementById('login-btn');
       const url = document.getElementById('gas-url').value.trim();
+      const sheetId = document.getElementById('sheet-id').value.trim();
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
       const rememberMe = document.getElementById('remember-me').checked;
@@ -190,6 +206,7 @@
 
       // Validation
       if (!url) return showError('Please enter your Work Volt URL');
+      if (!sheetId) return showError('Please enter your Google Sheet ID');
       if (!username) return showError('Please enter your username (email)');
       if (!password) return showError('Please enter your password');
 
@@ -206,9 +223,10 @@
           .map(b => b.toString(16).padStart(2, '0'))
           .join('');
 
-        // Call GAS login endpoint
+        // Call GAS login endpoint WITH sheet_id
         const loginUrl = new URL(url);
         loginUrl.searchParams.set('path', 'auth/login');
+        loginUrl.searchParams.set('sheet_id', sheetId);
         loginUrl.searchParams.set('email', username);
         loginUrl.searchParams.set('password_hash', passwordHash);
 
@@ -226,6 +244,7 @@
         // Save credentials if remember me
         if (rememberMe) {
           localStorage.setItem('wv_gas_url', url);
+          localStorage.setItem('wv_sheet_id', sheetId);
         }
         
         // Always save session and user
