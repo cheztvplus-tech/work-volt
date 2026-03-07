@@ -49,18 +49,18 @@
           <span id="error-text"></span>
         </div>
 
-        <!-- GAS URL Input (shown if not saved) -->
-        <div id="url-field">
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Work Volt URL</label>
+        <!-- GAS URL -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Work Volt URL (GAS)</label>
           <input id="gas-url" type="url" class="field" placeholder="https://script.google.com/macros/s/.../exec">
           <p class="text-xs text-slate-400 mt-1">Your Google Apps Script Web App URL</p>
         </div>
 
-        <!-- Sheet ID (shown if not saved) -->
-        <div id="sheet-field">
+        <!-- Sheet ID -->
+        <div>
           <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Google Sheet ID</label>
           <input id="sheet-id" type="text" class="field" placeholder="1X2C0-cknczCcO0iaNseVQxVW1KHOH-PUqHKTibSxdUc">
-          <p class="text-xs text-slate-400 mt-1">Found in your Sheet URL between /d/ and /edit</p>
+          <p class="text-xs text-slate-400 mt-1">From Sheet URL: .../d/<strong>SHEET_ID</strong>/edit...</p>
         </div>
 
         <!-- Username -->
@@ -98,7 +98,7 @@
         <!-- Hint -->
         <div id="reset-hint" class="hidden mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
           <i class="fas fa-info-circle mr-1"></i>
-          Contact your SuperAdmin to reset your password. They can generate a reset token from the Users section.
+          Contact your SuperAdmin to reset your password.
         </div>
       </div>
     </div>
@@ -118,29 +118,21 @@
     const savedUrl = localStorage.getItem('wv_gas_url');
     const savedSheetId = localStorage.getItem('wv_sheet_id');
     
-    if (savedUrl) {
-      document.getElementById('url-field').classList.add('hidden');
-      document.getElementById('gas-url').value = savedUrl;
-    }
-    if (savedSheetId) {
-      document.getElementById('sheet-field').classList.add('hidden');
-      document.getElementById('sheet-id').value = savedSheetId;
-    }
+    if (savedUrl) document.getElementById('gas-url').value = savedUrl;
+    if (savedSheetId) document.getElementById('sheet-id').value = savedSheetId;
 
     // Check for existing session
     const savedSession = localStorage.getItem('wv_session');
     const savedUser = localStorage.getItem('wv_user');
     if (savedSession && savedUser && savedUrl && savedSheetId) {
-      // Validate session before redirecting
       validateSession(savedUrl, savedSheetId, savedSession);
     }
 
-    // Parse URL parameters for auto-fill
+    // Parse URL parameters - ONLY for gas_url and sheet_id (NOT username/password)
     const params = new URLSearchParams(window.location.search);
     if (params.get('gas_url')) document.getElementById('gas-url').value = params.get('gas_url');
     if (params.get('sheet_id')) document.getElementById('sheet-id').value = params.get('sheet_id');
-    if (params.get('username')) document.getElementById('username').value = params.get('username');
-    if (params.get('password')) document.getElementById('password').value = params.get('password');
+    // NOTE: username and password are NOT auto-filled from URL for security
 
     function togglePassword() {
       const input = document.getElementById('password');
@@ -182,10 +174,8 @@
         const data = await res.json();
         
         if (data.valid) {
-          // Session is good, redirect to app
           window.location.href = 'main.html';
         } else {
-          // Clear invalid session
           localStorage.removeItem('wv_session');
           localStorage.removeItem('wv_user');
         }
@@ -204,26 +194,24 @@
 
       hideError();
 
-      // Validation
       if (!url) return showError('Please enter your Work Volt URL');
       if (!sheetId) return showError('Please enter your Google Sheet ID');
       if (!username) return showError('Please enter your username (email)');
       if (!password) return showError('Please enter your password');
 
-      // UI Loading State
       btn.disabled = true;
       const originalContent = btn.innerHTML;
       btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Signing in...</span>';
 
       try {
-        // Hash password (SHA-256) - matches Users.gs hashPassword
+        // Hash password (SHA-256)
         const msgBuffer = new TextEncoder().encode(password);
         const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
         const passwordHash = Array.from(new Uint8Array(hashBuffer))
           .map(b => b.toString(16).padStart(2, '0'))
           .join('');
 
-        // Call GAS login endpoint WITH sheet_id
+        // Call GAS login endpoint
         const loginUrl = new URL(url);
         loginUrl.searchParams.set('path', 'auth/login');
         loginUrl.searchParams.set('sheet_id', sheetId);
@@ -233,25 +221,18 @@
         const res = await fetch(loginUrl.toString(), { cache: 'no-cache' });
         const data = await res.json();
 
-        if (data.error) {
-          throw new Error(data.error);
-        }
+        if (data.error) throw new Error(data.error);
+        if (!data.success || !data.user) throw new Error('Login failed');
 
-        if (!data.success || !data.user) {
-          throw new Error('Login failed');
-        }
-
-        // Save credentials if remember me
+        // Save credentials
         if (rememberMe) {
           localStorage.setItem('wv_gas_url', url);
           localStorage.setItem('wv_sheet_id', sheetId);
         }
         
-        // Always save session and user
         localStorage.setItem('wv_session', data.session_id);
         localStorage.setItem('wv_user', JSON.stringify(data.user));
 
-        // Redirect to main app
         window.location.href = 'main.html';
 
       } catch(e) {
@@ -264,9 +245,6 @@
     // Allow Enter key to submit
     document.getElementById('password')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') doLogin();
-    });
-    document.getElementById('username')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') document.getElementById('password').focus();
     });
   </script>
 </body>
