@@ -145,6 +145,14 @@
         </div>
       </div>
 
+        <!-- Notifications Bell -->
+        <div id="header-notif-bell" class="hidden relative">
+          <button onclick="showModule('notifications')" class="p-2 hover:bg-slate-100 rounded-lg transition-colors relative">
+            <i class="fas fa-bell text-slate-600"></i>
+            <span id="header-notif-badge" class="hidden absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+          </button>
+        </div>
+
       <div class="ml-auto flex items-center gap-1">
 
         <!-- User menu -->
@@ -466,12 +474,45 @@
     document.getElementById('user-avatar').textContent = initials;
 
     renderNav();
+    updateNotificationBell();
     applySidebarCollapse();
 
     const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
     history.replaceState({ module: lastModule }, '', '#' + lastModule);
     showModule(lastModule, false);
     updateBackButton();
+  }
+
+      function updateNotificationBell() {
+    const bell = document.getElementById('header-notif-bell');
+    const badge = document.getElementById('header-notif-badge');
+    if (!bell) return;
+    
+    if (canAccessModule('notifications')) {
+      bell.classList.remove('hidden');
+      // Poll for unread count every 30 seconds
+      pollNotifBadge();
+      setInterval(pollNotifBadge, 30000);
+    } else {
+      bell.classList.add('hidden');
+    }
+  }
+
+  async function pollNotifBadge() {
+    const badge = document.getElementById('header-notif-badge');
+    if (!badge || badge.parentElement.classList.contains('hidden')) return;
+    
+    try {
+      const data = await window.WorkVolt.api('notifications/unread', { user_id: currentUser?.user_id || '' });
+      if (data.unread > 0) {
+        badge.classList.remove('hidden');
+        badge.title = data.unread + ' unread';
+      } else {
+        badge.classList.add('hidden');
+      }
+    } catch(e) {
+      // Silent fail - don't spam errors if module not ready
+    }
   }
 
   function _navOrderKey() {
