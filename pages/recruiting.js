@@ -58,18 +58,25 @@ window.WorkVoltPages['recruiting'] = function(container) {
   const savedSecret = localStorage.getItem('wv_api_secret') || '';
   const isConnected = !!(savedUrl && savedSecret);
 
-  async function api(path, params = {}) {
-    if (!isConnected) throw new Error('Not connected to backend');
-    const url = new URL(savedUrl);
-    url.searchParams.set('path', path);
+    function api(path, params) {
+    if (!savedUrl || !savedSecret) return Promise.reject(new Error('Google Sheet not connected'));
+    var savedSheetId = localStorage.getItem('wv_sheet_id') || '';
+    var sessionId = '';
+    try { sessionId = window.WorkVolt.session() || ''; } catch(e) {}
+    
+    var url = new URL(savedUrl);
+    url.searchParams.set('path',  path);
     url.searchParams.set('token', savedSecret);
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) url.searchParams.set(k, JSON.stringify(v));
+    url.searchParams.set('sheet_id', savedSheetId);
+    url.searchParams.set('session_id', sessionId);
+    
+    if (params) Object.keys(params).forEach(function(k) {
+      if (params[k] !== undefined && params[k] !== null && String(params[k]) !== '')
+        url.searchParams.set(k, String(params[k]));
     });
-    const res = await fetch(url.toString(), { cache: 'no-cache' });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data;
+    return fetch(url.toString(), { cache: 'no-cache' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) { if (d.error) throw new Error(d.error); return d; });
   }
 
   // ── State ────────────────────────────────────────────────────────
