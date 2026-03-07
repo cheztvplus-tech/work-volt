@@ -8,6 +8,7 @@ window.WorkVoltPages['assets'] = function(container) {
     assets:       [],
     categories:   [],
     types:        [],
+    users:        [],
     assignments:  [],
     maintenance:  [],
     consumables:  [],
@@ -84,18 +85,20 @@ window.WorkVoltPages['assets'] = function(container) {
     state.loading = true;
     render();
     try {
-      var [assets, cats, types, alerts, dash] = await Promise.all([
+      var [assets, cats, types, alerts, dash, usersRes] = await Promise.all([
         api('assets/list'),
         api('assets/categories'),
         api('assets/types'),
         api('assets/alerts'),
         api('assets/dashboard'),
+        api('users/list').catch(function(){ return {}; }),
       ]);
       state.assets     = assets.rows       || [];
       state.categories = cats.rows         || [];
       state.types      = types.rows        || [];
       state.alerts     = alerts.alerts     || [];
       state.dashboard  = dash              || {};
+      state.users      = usersRes.users    || usersRes.rows || [];
     } catch(e) { toast(e.message, 'error'); }
     state.loading = false;
     render();
@@ -622,23 +625,32 @@ window.WorkVoltPages['assets'] = function(container) {
       var condOpts = ['New','Good','Fair','Damaged']
         .map(function(c){ return '<option value="' + c + '" ' + (a.condition===c?'selected':'') + '>' + c + '</option>'; }).join('');
 
+      var userOpts = state.users.map(function(u) {
+        var uid  = u.user_id || u.id || '';
+        var name = u.name || u.email || uid;
+        return '<option value="' + esc(uid) + '" ' + (a.assigned_to === uid ? 'selected' : '') + '>' + esc(name) + '</option>';
+      }).join('');
+
       inner = modalHeader(isEdit ? 'Edit Asset' : 'Add Asset', 'fa-box-open')
         + '<div class="p-5 overflow-y-auto flex-1 space-y-4">'
         + row2(field('asset_name','Asset Name',a.asset_name,'text','e.g. MacBook Pro 16"',true), field('serial_number','Serial Number',a.serial_number,'text','SN123456'))
         + row2(
-            '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Category</label><select id="f-category" class="field"><option value="">— Select —</option>' + catOpts + '</select>',
-            '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Asset Type</label><select id="f-asset_type" class="field"><option value="">— Select —</option>' + typeOpts + '</select>'
+            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Category</label><select id="f-category" class="field"><option value="">— Select —</option>' + catOpts + '</select></div>',
+            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Asset Type</label><select id="f-asset_type" class="field"><option value="">— Select —</option>' + typeOpts + '</select></div>'
           )
         + row2(field('brand','Brand',a.brand,'text','e.g. Apple'), field('model','Model',a.model,'text','e.g. M1'))
         + row2(field('purchase_date','Purchase Date',a.purchase_date,'date'), field('purchase_price','Purchase Price',a.purchase_price,'number','0.00'))
         + row2(field('supplier','Supplier',a.supplier,'text'), field('location','Location',a.location,'text','e.g. NY Office'))
         + row2(
-            '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Status</label><select id="f-status" class="field">' + statusOpts + '</select>',
-            '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Condition</label><select id="f-condition" class="field">' + condOpts + '</select>'
+            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Status</label><select id="f-status" class="field">' + statusOpts + '</select></div>',
+            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Condition</label><select id="f-condition" class="field">' + condOpts + '</select></div>'
           )
         + row2(field('warranty_expiry','Warranty Expiry',a.warranty_expiry,'date'),
-            '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Lifecycle Stage</label><select id="f-lifecycle_stage" class="field">' + lcOpts + '</select>')
-        + row2(field('assigned_to','Assigned To (Employee ID)',a.assigned_to,'text','EMP-001'), '')
+            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Lifecycle Stage</label><select id="f-lifecycle_stage" class="field">' + lcOpts + '</select></div>')
+        + row2(
+            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Assigned To</label><select id="f-assigned_to" class="field"><option value="">— Unassigned —</option>' + userOpts + '</select></div>',
+            ''
+          )
         + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Notes</label>'
         + '<textarea id="f-notes" rows="2" class="field resize-none">' + esc(a.notes||'') + '</textarea></div>'
         + '</div>'
@@ -650,11 +662,17 @@ window.WorkVoltPages['assets'] = function(container) {
     }
 
     else if (m.type === 'assign') {
+      var assignUserOpts = state.users.map(function(u) {
+        var uid  = u.user_id || u.id || '';
+        var name = u.name || u.email || uid;
+        return '<option value="' + esc(uid) + '">' + esc(name) + '</option>';
+      }).join('');
       inner = modalHeader('Assign Asset','fa-user-tag')
         + '<div class="p-5 overflow-y-auto flex-1 space-y-4">'
         + '<div class="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700 font-medium">'
         + '<i class="fas fa-box-open mr-2"></i>Asset: <strong>' + esc(m.assetId||'') + '</strong></div>'
-        + field('assigned_to','Assign To (Employee ID or Name)','','text','EMP-001',true)
+        + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Assign To <span class="text-red-500">*</span></label>'
+        + '<select id="f-assigned_to" class="field"><option value="">— Select User —</option>' + assignUserOpts + '</select></div>'
         + field('assigned_date','Assigned Date',new Date().toISOString().split('T')[0],'date')
         + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Condition Given</label>'
         + '<select id="f-condition_given" class="field"><option value="">— Select —</option>'
