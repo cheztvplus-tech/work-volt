@@ -701,7 +701,13 @@ window.WorkVoltPages['assets'] = function(container) {
         + row2(field('warranty_expiry','Warranty Expiry',a.warranty_expiry,'date'),
             '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Lifecycle Stage</label><select id="f-lifecycle_stage" class="field">' + lcOpts + '</select></div>')
         + row2(
-            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Assigned To</label><select id="f-assigned_to" class="field"><option value="">— Unassigned —</option>' + userOpts + '</select></div>',
+            '<div class="relative">'
+            + '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Assigned To</label>'
+            + '<input id="f-assigned_to_name" type="text" autocomplete="off" placeholder="Type to search users..." class="field"'
+            + ' value="' + esc((function(){ var u = state.users.find(function(u){ return (u.user_id||u.id||'') === a.assigned_to; }); return u ? (u.name||u.email||'') : ''; })()) + '">'
+            + '<input type="hidden" id="f-assigned_to" value="' + esc(a.assigned_to||'') + '">'
+            + '<div id="user-dropdown" class="hidden absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto"></div>'
+            + '</div>',
             ''
           )
         + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Notes</label>'
@@ -724,8 +730,12 @@ window.WorkVoltPages['assets'] = function(container) {
         + '<div class="p-5 overflow-y-auto flex-1 space-y-4">'
         + '<div class="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700 font-medium">'
         + '<i class="fas fa-box-open mr-2"></i>Asset: <strong>' + esc(m.assetId||'') + '</strong></div>'
-        + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Assign To <span class="text-red-500">*</span></label>'
-        + '<select id="f-assigned_to" class="field"><option value="">— Select User —</option>' + assignUserOpts + '</select></div>'
+        + '<div class="relative">'
+        + '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Assign To <span class="text-red-500">*</span></label>'
+        + '<input id="f-assigned_to_name" type="text" autocomplete="off" placeholder="Type to search users..." class="field">'
+        + '<input type="hidden" id="f-assigned_to" value="">'
+        + '<div id="user-dropdown" class="hidden absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto"></div>'
+        + '</div>'
         + field('assigned_date','Assigned Date',new Date().toISOString().split('T')[0],'date')
         + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Condition Given</label>'
         + '<select id="f-condition_given" class="field"><option value="">— Select —</option>'
@@ -1112,6 +1122,48 @@ window.WorkVoltPages['assets'] = function(container) {
               .map(function(t){ return '<option value="'+esc(t.type)+'">'+esc(t.type)+'</option>'; }).join('');
           typeSel.innerHTML = opts;
         }
+      });
+    }
+
+    // Assigned To — searchable autocomplete
+    var nameEl   = document.getElementById('f-assigned_to_name');
+    var hiddenEl = document.getElementById('f-assigned_to');
+    var dropEl   = document.getElementById('user-dropdown');
+    if (nameEl && hiddenEl && dropEl) {
+      function showUserDrop(query) {
+        var list = state.users.filter(function(u) {
+          var name = (u.name || u.email || '').toLowerCase();
+          return !query || name.includes(query.toLowerCase());
+        });
+        if (!list.length) {
+          dropEl.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 italic">No users found</div>';
+        } else {
+          dropEl.innerHTML = list.map(function(u) {
+            var uid  = u.user_id || u.id || '';
+            var name = u.name || u.email || uid;
+            return '<button type="button" data-uid="'+esc(uid)+'" data-name="'+esc(name)+'"'
+              + ' class="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">'
+              + '<i class="fas fa-user text-slate-300 text-xs"></i>' + esc(name)
+              + '</button>';
+          }).join('');
+          dropEl.querySelectorAll('button').forEach(function(btn) {
+            btn.addEventListener('mousedown', function(ev) {
+              ev.preventDefault();
+              hiddenEl.value = btn.dataset.uid;
+              nameEl.value   = btn.dataset.name;
+              dropEl.classList.add('hidden');
+            });
+          });
+        }
+        dropEl.classList.remove('hidden');
+      }
+      nameEl.addEventListener('focus', function() { showUserDrop(this.value); });
+      nameEl.addEventListener('input', function() {
+        if (!this.value) hiddenEl.value = '';
+        showUserDrop(this.value);
+      });
+      nameEl.addEventListener('blur', function() {
+        setTimeout(function() { dropEl.classList.add('hidden'); }, 200);
       });
     }
   }
