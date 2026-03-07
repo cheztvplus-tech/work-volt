@@ -6,46 +6,36 @@
   <title>Work Volt</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; }
-    
     .fade-in { animation: fadeIn 0.25s ease both; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    
     #splash-screen { transition: opacity 0.4s ease, visibility 0.4s ease; }
     #splash-screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-    
     .field { width:100%; padding:.6rem .875rem; border:1.5px solid #e2e8f0; border-radius:10px; font-size:.875rem; outline:none; transition:border-color .15s, box-shadow .15s; font-family:inherit; }
     .field:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
-    
     .btn-primary { display:flex; align-items:center; justify-content:center; gap:.5rem; padding:.65rem 1.25rem; background:#2563eb; color:#fff; border:none; border-radius:10px; font-size:.875rem; font-weight:600; cursor:pointer; transition:background .15s, transform .1s; font-family:inherit; }
     .btn-primary:hover { background:#1d4ed8; }
     .btn-primary:active { transform:scale(.98); }
     .btn-primary:disabled { opacity:.6; cursor:not-allowed; }
-    
     #toast-container { position:fixed; bottom:1.5rem; right:1.5rem; z-index:9999; display:flex; flex-direction:column; gap:.5rem; pointer-events:none; }
     .toast { display:flex; align-items:center; gap:.75rem; padding:.75rem 1.1rem; border-radius:12px; font-size:.875rem; font-weight:500; color:#fff; box-shadow:0 8px 24px rgba(0,0,0,.18); animation:toastIn .3s cubic-bezier(.16,1,.3,1); pointer-events:auto; max-width:360px; }
     .toast.success { background:#16a34a; }
     .toast.error { background:#dc2626; }
     @keyframes toastIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
     @keyframes toastOut { from{opacity:1} to{opacity:0;transform:translateY(12px)} }
-    
     .nav-item { transition: background 0.15s, color 0.15s; }
     .nav-item.active { background: #eff6ff; color: #1d4ed8; font-weight: 600; }
     .nav-item.active i { color: #2563eb; }
-    
     .thin-scroll::-webkit-scrollbar { width:4px; }
     .thin-scroll::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:4px; }
-    
     #sidebar { transition: width .22s cubic-bezier(.4,0,.2,1); }
     #sidebar.collapsed { width: 56px !important; }
     #sidebar.collapsed .nav-label, #sidebar.collapsed .nav-section-label, #sidebar.collapsed .sidebar-footer-text { display: none !important; }
     #sidebar.collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
-    
     @media (max-width: 768px) {
       #sidebar { position:fixed; top:0; left:0; height:100vh; z-index:50; transform:translateX(-100%); transition:transform .25s ease; }
       #sidebar.open { transform:translateX(0); }
@@ -80,7 +70,7 @@
           <i class="fas fa-bolt text-white text-3xl"></i>
         </div>
         <h1 class="text-3xl font-extrabold text-white tracking-tight">Work Volt</h1>
-        <p class="text-blue-200 mt-1 text-sm font-medium" id="login-subtitle">Sign in to continue</p>
+        <p class="text-blue-200 mt-1 text-sm font-medium" id="login-subtitle">Connect your Google Sheet</p>
       </div>
 
       <div class="bg-white rounded-2xl shadow-2xl overflow-hidden">
@@ -90,16 +80,38 @@
         </div>
 
         <div class="p-6 space-y-4">
-          <!-- URL Input (shown only for first setup) -->
-          <div id="url-section">
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Work Volt URL</label>
-            <input id="login-url" type="url" class="field" placeholder="https://script.google.com/macros/s/.../exec">
-            <p class="text-xs text-slate-400 mt-1">Your Google Apps Script web app URL</p>
+          <!-- Connection Fields -->
+          <div id="connection-section">
+            <div class="pb-2 border-b border-slate-100 mb-4">
+              <h3 class="text-sm font-bold text-slate-700">Connection Settings</h3>
+            </div>
+            
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Web App URL</label>
+                <input id="login-url" type="url" class="field" placeholder="https://script.google.com/macros/s/.../exec">
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Google Sheet ID</label>
+                <input id="login-sheet-id" type="text" class="field" placeholder="1X2C0-cknczCcO0iaNseVQxVW1KHOH-PUqHKTibSxdUc">
+              </div>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="relative py-2">
+            <div class="absolute inset-0 flex items-center">
+              <div class="w-full border-t border-slate-200"></div>
+            </div>
+            <div class="relative flex justify-center">
+              <span class="bg-white px-2 text-xs text-slate-400">Login Credentials</span>
+            </div>
           </div>
 
           <div>
             <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Email</label>
-            <input id="login-email" type="email" class="field" placeholder="admin@workvolt.app">
+            <input id="login-email" type="email" class="field" placeholder="admin@yourcompany.com">
           </div>
           
           <div>
@@ -109,11 +121,14 @@
 
           <button id="login-btn" onclick="handleLogin()" class="btn-primary w-full">
             <i class="fas fa-sign-in-alt"></i>
-            <span id="login-btn-text">Sign In</span>
+            <span id="login-btn-text">Connect & Sign In</span>
           </button>
 
-          <div id="setup-note" class="hidden text-center">
-            <p class="text-xs text-slate-400">First time setup: Enter your Google Apps Script URL above</p>
+          <!-- Change Connection link -->
+          <div id="change-connection-section" class="hidden text-center pt-2">
+            <button onclick="showConnectionFields()" class="text-xs text-slate-400 hover:text-slate-600">
+              <i class="fas fa-cog mr-1"></i>Change connection settings
+            </button>
           </div>
         </div>
       </div>
@@ -168,30 +183,37 @@
       <div id="sidebar-overlay" onclick="closeMobileSidebar()" class="hidden fixed inset-0 bg-black/40 z-40"></div>
       
       <aside id="sidebar" class="w-64 bg-white border-r border-slate-200 flex-shrink-0 flex flex-col lg:translate-x-0">
-        <nav class="flex-1 overflow-y-auto thin-scroll p-3 space-y-0.5" id="nav-menu">
-          <!-- Populated by renderNav() -->
-        </nav>
+        <nav class="flex-1 overflow-y-auto thin-scroll p-3 space-y-0.5" id="nav-menu"></nav>
         <div class="p-3 border-t border-slate-100 flex items-center justify-between">
           <p class="text-[10px] text-slate-400 font-medium sidebar-footer-text">Work Volt</p>
         </div>
       </aside>
 
-      <main class="flex-1 overflow-y-auto bg-slate-50" id="main-content">
-        <!-- Page modules load here -->
-      </main>
+      <main class="flex-1 overflow-y-auto bg-slate-50" id="main-content"></main>
     </div>
   </div>
 
   <div id="toast-container"></div>
 
   <script>
-  // ─── CONFIG & STATE ─────────────────────────────────────────
-  let API_URL = '';
-  let currentUser = null;
-  let currentSession = null;
-  let INSTALLED_MODULES = [];
+  // ════════════════════════════════════════════════════════════
+  //  GLOBAL STATE
+  // ════════════════════════════════════════════════════════════
+  window.API_URL = '';
+  window.SHEET_ID = '';
+  window.currentUser = null;
+  window.currentSession = null;
+  window.INSTALLED_MODULES = [];
+  
+  let API_URL = window.API_URL;
+  let SHEET_ID = window.SHEET_ID;
+  let currentUser = window.currentUser;
+  let currentSession = window.currentSession;
+  let INSTALLED_MODULES = window.INSTALLED_MODULES;
 
-  // ─── CORE FUNCTIONS ─────────────────────────────────────────
+  // ════════════════════════════════════════════════════════════
+  //  CORE FUNCTIONS
+  // ════════════════════════════════════════════════════════════
   
   function showToast(msg, type = 'info') {
     const container = document.getElementById('toast-container');
@@ -211,32 +233,45 @@
     setTimeout(() => s.style.display = 'none', 450);
   }
 
-  function showLoginScreen(isFirstTime = false) {
+  function showLoginScreen() {
     hideSplash();
     document.getElementById('login-screen').classList.remove('hidden');
     
-    const urlSection = document.getElementById('url-section');
-    const setupNote = document.getElementById('setup-note');
     const savedUrl = localStorage.getItem('wv_gas_url');
+    const savedSheetId = localStorage.getItem('wv_sheet_id');
+    const connSection = document.getElementById('connection-section');
+    const changeConnSection = document.getElementById('change-connection-section');
+    const subtitle = document.getElementById('login-subtitle');
+    const btnText = document.getElementById('login-btn-text');
     
-    if (isFirstTime || !savedUrl) {
-      urlSection.classList.remove('hidden');
-      setupNote.classList.remove('hidden');
-      document.getElementById('login-subtitle').textContent = 'First time setup';
+    if (savedUrl && savedSheetId) {
+      connSection.classList.add('hidden');
+      changeConnSection.classList.remove('hidden');
+      subtitle.textContent = 'Sign in to continue';
+      btnText.textContent = 'Sign In';
+      document.getElementById('login-url').value = savedUrl;
+      document.getElementById('login-sheet-id').value = savedSheetId;
     } else {
-      urlSection.classList.add('hidden');
-      setupNote.classList.add('hidden');
-      document.getElementById('login-subtitle').textContent = 'Sign in to continue';
-      API_URL = savedUrl;
+      connSection.classList.remove('hidden');
+      changeConnSection.classList.add('hidden');
+      subtitle.textContent = 'Connect your Google Sheet';
+      btnText.textContent = 'Connect & Sign In';
     }
     
-    // Auto-fill saved email
     const savedEmail = localStorage.getItem('wv_last_email') || '';
     if (savedEmail) document.getElementById('login-email').value = savedEmail;
   }
 
+  function showConnectionFields() {
+    document.getElementById('connection-section').classList.remove('hidden');
+    document.getElementById('change-connection-section').classList.add('hidden');
+    document.getElementById('login-subtitle').textContent = 'Update connection settings';
+    document.getElementById('login-btn-text').textContent = 'Connect & Sign In';
+  }
+
   async function handleLogin() {
     const urlInput = document.getElementById('login-url');
+    const sheetIdInput = document.getElementById('login-sheet-id');
     const emailInput = document.getElementById('login-email');
     const passwordInput = document.getElementById('login-password');
     const btn = document.getElementById('login-btn');
@@ -244,95 +279,118 @@
     const errorDiv = document.getElementById('login-error');
     const errorText = document.getElementById('login-error-text');
     
-    const url = urlInput && !urlInput.parentElement.classList.contains('hidden') ? urlInput.value.trim() : (API_URL || localStorage.getItem('wv_gas_url') || '');
+    const url = !document.getElementById('connection-section').classList.contains('hidden') 
+      ? urlInput.value.trim() 
+      : (localStorage.getItem('wv_gas_url') || '');
+    const sheetId = !document.getElementById('connection-section').classList.contains('hidden')
+      ? sheetIdInput.value.trim()
+      : (localStorage.getItem('wv_sheet_id') || '');
     const email = emailInput.value.trim();
     const password = passwordInput.value;
     
-    // Validation
-    if (!url) { showError('Please enter the Work Volt URL'); return; }
-    if (!email) { showError('Please enter your email'); return; }
-    if (!password) { showError('Please enter your password'); return; }
+    if (!url) { showError('Please enter Web App URL'); return; }
+    if (!sheetId) { showError('Please enter Sheet ID'); return; }
+    if (!email) { showError('Please enter email'); return; }
+    if (!password) { showError('Please enter password'); return; }
     
-    // UI loading state
     btn.disabled = true;
-    btnText.textContent = 'Signing in...';
+    btnText.textContent = 'Connecting...';
     errorDiv.classList.add('hidden');
     
     try {
-      // Hash password
       const msgBuffer = new TextEncoder().encode(password);
       const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
       const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
       
-      const loginUrl = new URL(url);
+      let baseUrl = url;
+      if (!baseUrl.endsWith('/exec')) {
+        baseUrl = baseUrl.split('?')[0];
+        if (!baseUrl.endsWith('/exec')) baseUrl += '/exec';
+      }
+      
+      const loginUrl = new URL(baseUrl);
       loginUrl.searchParams.set('path', 'auth/login');
+      loginUrl.searchParams.set('sheet_id', sheetId);
       loginUrl.searchParams.set('email', email);
       loginUrl.searchParams.set('password_hash', hashHex);
       loginUrl.searchParams.set('_t', Date.now());
       
       const res = await fetch(loginUrl.toString(), { cache: 'no-cache' });
-      const data = await res.json();
+      const text = await res.text();
+      
+      if (!text) throw new Error('Empty response');
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch(e) {
+        throw new Error('Invalid response: ' + text.substring(0, 100));
+      }
       
       if (data.error) throw new Error(data.error);
-      if (!data.success || !data.user) throw new Error('Login failed');
       
-      // Save to localStorage
-      localStorage.setItem('wv_gas_url', url);
+      localStorage.setItem('wv_gas_url', baseUrl);
+      localStorage.setItem('wv_sheet_id', sheetId);
       localStorage.setItem('wv_last_email', email);
       localStorage.setItem('wv_user', JSON.stringify(data.user));
       localStorage.setItem('wv_session', data.session_id);
       
-      // Set global state
-      API_URL = url;
+      window.API_URL = baseUrl;
+      window.SHEET_ID = sheetId;
+      window.currentUser = data.user;
+      window.currentSession = data.session_id;
+      
+      API_URL = baseUrl;
+      SHEET_ID = sheetId;
       currentUser = data.user;
       currentSession = data.session_id;
       
-      // Show app
       document.getElementById('login-screen').classList.add('hidden');
       await initApp();
       
     } catch(err) {
-      showError(err.message || 'Login failed. Please check your credentials.');
+      showError(err.message || 'Login failed');
       btn.disabled = false;
-      btnText.textContent = 'Sign In';
+      btnText.textContent = document.getElementById('connection-section').classList.contains('hidden') ? 'Sign In' : 'Connect & Sign In';
     }
     
     function showError(msg) {
       errorText.textContent = msg;
       errorDiv.classList.remove('hidden');
       btn.disabled = false;
-      btnText.textContent = 'Sign In';
+      btnText.textContent = document.getElementById('connection-section').classList.contains('hidden') ? 'Sign In' : 'Connect & Sign In';
     }
   }
 
   function handleLogout() {
-    // Clear storage
     localStorage.removeItem('wv_user');
     localStorage.removeItem('wv_session');
     localStorage.removeItem('wv_last_email');
-    // Keep wv_gas_url so they don't have to re-enter it
-    
+    window.currentUser = null;
+    window.currentSession = null;
     currentUser = null;
     currentSession = null;
-    
-    // Reload to show login
     location.reload();
   }
 
   async function initApp() {
     document.getElementById('app-screen').classList.remove('hidden');
     
-    // Set user info in header
-    const name = currentUser?.name || currentUser?.email || 'User';
+    window.API_URL = API_URL || localStorage.getItem('wv_gas_url');
+    window.SHEET_ID = SHEET_ID || localStorage.getItem('wv_sheet_id');
+    window.currentUser = currentUser;
+    window.currentSession = currentSession;
+    
+    API_URL = window.API_URL;
+    SHEET_ID = window.SHEET_ID;
+    
+    const name = window.currentUser?.name || window.currentUser?.email || 'User';
     const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
     document.getElementById('user-name').textContent = name;
     document.getElementById('user-avatar').textContent = initials;
-    document.getElementById('dropdown-email').textContent = currentUser?.email || '--';
+    document.getElementById('dropdown-email').textContent = window.currentUser?.email || '--';
     
-    // Load modules
     await loadInstalledModules();
-    
-    // Render nav and show dashboard
     renderNav();
     showModule('dashboard');
   }
@@ -342,6 +400,7 @@
       const data = await apiCall('config/modules');
       if (data.modules) {
         INSTALLED_MODULES = data.modules;
+        window.INSTALLED_MODULES = data.modules;
       }
     } catch(e) {
       console.warn('Could not load modules:', e);
@@ -349,24 +408,29 @@
   }
 
   async function apiCall(path, params = {}) {
-    if (!API_URL) throw new Error('API URL not set');
+    if (!window.API_URL || !window.SHEET_ID) throw new Error('Not connected');
     
-    const url = new URL(API_URL);
+    const url = new URL(window.API_URL);
     url.searchParams.set('path', path);
+    url.searchParams.set('sheet_id', window.SHEET_ID);
     url.searchParams.set('_t', Date.now().toString());
-    if (currentSession) url.searchParams.set('session_id', currentSession);
+    if (window.currentSession) url.searchParams.set('session_id', window.currentSession);
     
     for (const k in params) {
-      if (params[k] !== undefined && params[k] !== null) {
-        url.searchParams.set(k, params[k]);
-      }
+      if (params[k] !== undefined && params[k] !== null) url.searchParams.set(k, params[k]);
     }
     
     const res = await fetch(url.toString(), { cache: 'no-cache' });
     const text = await res.text();
     if (!text) throw new Error('Empty response');
     
-    const data = JSON.parse(text);
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch(e) {
+      throw new Error('Invalid JSON');
+    }
+    
     if (data.error) {
       if (data.code === 'SESSION_EXPIRED') {
         handleLogout();
@@ -377,21 +441,43 @@
     return data;
   }
 
-  // ─── NAVIGATION ─────────────────────────────────────────────
-  
   function renderNav() {
     const nav = document.getElementById('nav-menu');
-    const role = currentUser?.role || 'Employee';
+    const role = window.currentUser?.role || 'Employee';
     
-    // Core modules
     let html = `
       <a href="#dashboard" onclick="showModule('dashboard'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="dashboard">
         <i class="fas fa-th-large w-4 text-slate-400"></i>
         <span class="nav-label">Dashboard</span>
       </a>
+      
+      <a href="#settings" onclick="showModule('settings'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="settings">
+        <i class="fas fa-cog w-4 text-slate-400"></i>
+        <span class="nav-label">Settings</span>
+      </a>
     `;
     
-    // Installed modules
+    if (role === 'SuperAdmin' || role === 'Admin') {
+      html += `<div class="px-3 pt-4 pb-1"><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest nav-section-label">Administration</p></div>`;
+      
+      html += `
+        <a href="#users" onclick="showModule('users'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="users">
+          <i class="fas fa-users w-4 text-slate-400"></i>
+          <span class="nav-label">User Management</span>
+        </a>
+        
+        <a href="#roles" onclick="showModule('roles'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="roles">
+          <i class="fas fa-shield-alt w-4 text-slate-400"></i>
+          <span class="nav-label">Role Permissions</span>
+        </a>
+        
+        <a href="#store" onclick="showModule('store'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="store">
+          <i class="fas fa-store w-4 text-slate-400"></i>
+          <span class="nav-label">Module Store</span>
+        </a>
+      `;
+    }
+    
     if (INSTALLED_MODULES.length > 0) {
       html += `<div class="px-3 pt-4 pb-1"><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest nav-section-label">Modules</p></div>`;
       INSTALLED_MODULES.forEach(m => {
@@ -404,25 +490,11 @@
       });
     }
     
-    // Admin links
-    if (role === 'SuperAdmin' || role === 'Admin') {
-      html += `
-        <div class="border-t border-slate-100 mt-2 pt-2 space-y-0.5">
-          <a href="#settings" onclick="showModule('settings'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="settings">
-            <i class="fas fa-cog w-4 text-slate-400"></i>
-            <span class="nav-label">Settings</span>
-          </a>
-        </div>
-      `;
-    }
-    
     nav.innerHTML = html;
   }
 
   function showModule(name) {
     closeMobileSidebar();
-    
-    // Highlight active
     document.querySelectorAll('.nav-item').forEach(el => {
       el.classList.toggle('active', el.dataset.module === name);
     });
@@ -430,7 +502,6 @@
     const main = document.getElementById('main-content');
     main.innerHTML = `<div class="flex items-center justify-center h-64"><i class="fas fa-circle-notch fa-spin text-3xl text-blue-500 opacity-60"></i></div>`;
     
-    // Load page module
     if (window.WorkVoltPages && typeof window.WorkVoltPages[name] === 'function') {
       window.WorkVoltPages[name](main);
     } else {
@@ -457,20 +528,21 @@
   }
 
   function renderPlaceholder(name, container) {
+    const labels = { dashboard: 'Dashboard', settings: 'Settings', users: 'User Management', roles: 'Role Permissions', store: 'Module Store' };
+    const icons = { dashboard: 'fa-th-large', settings: 'fa-cog', users: 'fa-users', roles: 'fa-shield-alt', store: 'fa-store' };
+    
     container.innerHTML = `
       <div class="p-6 md:p-8 fade-in">
         <div class="max-w-2xl mx-auto mt-16 text-center">
           <div class="inline-flex items-center justify-center w-20 h-20 bg-blue-50 rounded-2xl mb-6">
-            <i class="fas fa-layer-group text-blue-400 text-3xl"></i>
+            <i class="fas ${icons[name] || 'fa-layer-group'} text-blue-400 text-3xl"></i>
           </div>
-          <h2 class="text-2xl font-extrabold text-slate-800 mb-2 capitalize">${name}</h2>
+          <h2 class="text-2xl font-extrabold text-slate-800 mb-2">${labels[name] || name}</h2>
           <p class="text-slate-500 mb-6 text-sm">Create <code class="bg-slate-100 px-2 py-0.5 rounded text-blue-600 font-mono text-xs">pages/${name}.js</code> to build this module.</p>
         </div>
       </div>`;
   }
 
-  // ─── UI HELPERS ─────────────────────────────────────────────
-  
   function toggleMobileSidebar() {
     document.getElementById('sidebar').classList.toggle('open');
     document.getElementById('sidebar-overlay').classList.toggle('hidden');
@@ -489,19 +561,20 @@
     document.getElementById('notification-dropdown').classList.toggle('hidden');
   }
 
-  // ─── BOOT SEQUENCE ──────────────────────────────────────────
-  
   window.addEventListener('load', async () => {
     const savedUser = localStorage.getItem('wv_user');
     const savedSession = localStorage.getItem('wv_session');
     const savedUrl = localStorage.getItem('wv_gas_url');
+    const savedSheetId = localStorage.getItem('wv_sheet_id');
     
-    if (savedUser && savedSession && savedUrl) {
-      // Verify session is still valid
+    if (savedUser && savedSession && savedUrl && savedSheetId) {
       try {
-        API_URL = savedUrl;
-        const checkUrl = new URL(API_URL);
+        window.API_URL = savedUrl;
+        window.SHEET_ID = savedSheetId;
+        
+        const checkUrl = new URL(savedUrl);
         checkUrl.searchParams.set('path', 'auth/check-session');
+        checkUrl.searchParams.set('sheet_id', savedSheetId);
         checkUrl.searchParams.set('session_id', savedSession);
         checkUrl.searchParams.set('_t', Date.now());
         
@@ -509,8 +582,8 @@
         const data = await res.json();
         
         if (data.valid && data.user) {
-          currentUser = data.user;
-          currentSession = savedSession;
+          window.currentUser = data.user;
+          window.currentSession = savedSession;
           hideSplash();
           await initApp();
           return;
@@ -520,11 +593,10 @@
       }
     }
     
-    // Show login (first time or returning)
-    showLoginScreen(!savedUrl);
+    hideSplash();
+    showLoginScreen();
   });
 
-  // Enter key on password field submits login
   document.addEventListener('DOMContentLoaded', () => {
     const passField = document.getElementById('login-password');
     if (passField) {
@@ -534,11 +606,11 @@
     }
   });
 
-  // Global namespace for pages
   window.WorkVoltPages = window.WorkVoltPages || {};
   window.WorkVolt = {
     api: apiCall,
-    user: () => currentUser,
+    user: () => window.currentUser,
+    session: () => window.currentSession,
     toast: showToast,
     navigate: showModule
   };
