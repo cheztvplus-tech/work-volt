@@ -24,7 +24,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
     { id: 'hired', label: 'Hired', icon: 'fa-check-circle', color: 'bg-green-50', borderColor: 'border-green-200', bgDot: 'bg-green-600', description: 'Hired & onboarded', passCriteria: 'Offer accepted', timeframe: '1 day' },
   ];
 
-  const REJECTION_REASONS = [
+  const REJECTION_REASON = [
     'Skills mismatch',
     'Experience gap',
     'Communication issues',
@@ -64,7 +64,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
     url.searchParams.set('path', path);
     url.searchParams.set('token', savedSecret);
     Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && String(v) !== '') url.searchParams.set(k, String(v));
+      if (v !== undefined && v !== null) url.searchParams.set(k, JSON.stringify(v));
     });
     const res = await fetch(url.toString(), { cache: 'no-cache' });
     const data = await res.json();
@@ -73,15 +73,15 @@ window.WorkVoltPages['recruiting'] = function(container) {
   }
 
   // ── State ────────────────────────────────────────────────────────
-  let candidates = [];
-  let jobs = [];
-  let view = 'board';
+  let candidates = []; // All candidate objects
+  let jobs = [];       // All open positions
+  let view = 'board'; // 'board' | 'list' | 'analytics'
   let activeJobId = null;
   let filterStage = null;
   let searchQuery = '';
   let selectedCandidateId = null;
   let editingCandidateId = null;
-  let sortBy = 'dateAdded';
+  let sortBy = 'dateAdded'; // 'dateAdded' | 'name' | 'score'
   let loading = true;
 
   // ── Load initial data ────────────────────────────────────────────
@@ -96,6 +96,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
       }
     } catch (e) {
       console.log('Backend load error:', e.message);
+      // Fall back to localStorage
       const stored = localStorage.getItem('wv_recruiting_data');
       if (stored) {
         const data = JSON.parse(stored);
@@ -109,6 +110,8 @@ window.WorkVoltPages['recruiting'] = function(container) {
   }
 
   function saveData() {
+    // If connected to backend, data is auto-saved via API
+    // Otherwise, save to localStorage for offline mode
     if (!isConnected) {
       localStorage.setItem('wv_recruiting_data', JSON.stringify({ candidates, jobs }));
     }
@@ -199,7 +202,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
 
   function timeAgo(timestamp) {
     const now = Date.now();
-    const diff = now - new Date(timestamp).getTime();
+    const diff = now - timestamp;
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const days = Math.floor(hours / 24);
     if (days > 0) return `${days}d ago`;
@@ -219,13 +222,12 @@ window.WorkVoltPages['recruiting'] = function(container) {
   }
 
   function formatDate(timestamp) {
-    if (!timestamp) return '';
     return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
   function getTimeInStage(candidate) {
     const now = Date.now();
-    const stageTime = now - new Date(candidate.currentStageAt).getTime();
+    const stageTime = now - candidate.currentStageAt;
     const days = Math.floor(stageTime / (1000 * 60 * 60 * 24));
     return `${days}d`;
   }
@@ -235,7 +237,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
     if (isConnected) {
       api('recruitment/create/candidate', data).then(() => {
         loadData().then(() => renderBoard());
-      }).catch(err => showToast('Failed to create candidate: ' + err.message, 'error'));
+      }).catch(err => showToast('error', 'Failed to create candidate: ' + err.message));
       return;
     }
     
@@ -267,7 +269,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
   function updateCandidate(id, updates) {
     if (isConnected) {
       api('recruitment/update/candidate', { id, ...updates }).catch(err => {
-        showToast('Failed to update: ' + err.message, 'error');
+        showToast('error', 'Failed to update: ' + err.message);
       });
       return;
     }
@@ -286,7 +288,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
         stage: newStage,
         rejectionReason: rejectionReason || ''
       }).catch(err => {
-        showToast('Failed to move: ' + err.message, 'error');
+        showToast('error', 'Failed to move: ' + err.message);
       });
       return;
     }
@@ -299,30 +301,11 @@ window.WorkVoltPages['recruiting'] = function(container) {
     });
   }
 
-  function rejectCandidate(id, reason) {
-    if (isConnected) {
-      api('recruitment/reject/candidate', { 
-        id, 
-        rejectionReason: reason || ''
-      }).catch(err => {
-        showToast('Failed to reject: ' + err.message, 'error');
-      });
-      return;
-    }
-    
-    const now = new Date().toISOString();
-    updateCandidate(id, {
-      stage: 'rejected',
-      currentStageAt: now,
-      rejectionReason: reason || ''
-    });
-  }
-
   function deleteCandidate(id) {
     if (isConnected) {
       api('recruitment/delete/candidate', { id }).then(() => {
         loadData().then(() => renderBoard());
-      }).catch(err => showToast('Failed to delete: ' + err.message, 'error'));
+      }).catch(err => showToast('error', 'Failed to delete: ' + err.message));
       return;
     }
     
@@ -335,8 +318,8 @@ window.WorkVoltPages['recruiting'] = function(container) {
   function renderBoard() {
     const filteredCandidates = candidates.filter(c => {
       if (filterStage && c.stage !== filterStage) return false;
-      if (activeJobId && c.jobId !== activeJobId) return false;
-      return true;
+      if (!activeJobId || c.jobId === activeJobId) return true;
+      return false;
     });
 
     const boardHTML = `
@@ -565,7 +548,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
               <p class="text-xs font-semibold text-slate-600 uppercase">TIMELINE</p>
               <div class="text-sm space-y-1">
                 <p class="text-slate-700"><span class="text-slate-600">Applied:</span> ${formatDate(cand.appliedAt)}</p>
-                <p class="text-slate-700"><span class="text-slate-600">In pipeline:</span> ${Math.floor((Date.now() - new Date(cand.appliedAt).getTime()) / (1000 * 60 * 60 * 24))} days</p>
+                <p class="text-slate-700"><span class="text-slate-600">In pipeline:</span> ${Math.floor((Date.now() - cand.appliedAt) / (1000 * 60 * 60 * 24))} days</p>
               </div>
             </div>
 
@@ -619,7 +602,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
       .sort((a, b) => {
         if (sortBy === 'name') return a.name.localeCompare(b.name);
         if (sortBy === 'score') return calculateAverageScore(b) - calculateAverageScore(a);
-        return new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime();
+        return b.appliedAt - a.appliedAt;
       });
 
     const listHTML = `
@@ -686,7 +669,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
                 </tr>
               ` : filteredCandidates.map(cand => {
                 const stage = PIPELINE_STAGES.find(s => s.id === cand.stage);
-                const daysInPipeline = Math.floor((Date.now() - new Date(cand.appliedAt).getTime()) / (1000 * 60 * 60 * 24));
+                const daysInPipeline = Math.floor((Date.now() - cand.appliedAt) / (1000 * 60 * 60 * 24));
                 return `
                   <tr class="hover:bg-slate-50 transition cursor-pointer" onclick="WorkVoltPages.recruiting.selectCandidate('${cand.id}')">
                     <td class="px-4 py-4 text-sm font-medium text-slate-900">
@@ -733,6 +716,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
   }
 
   function renderAnalytics() {
+    // Calculate metrics
     const metrics = {
       totalCandidates: candidates.length,
       byStage: {},
@@ -744,23 +728,28 @@ window.WorkVoltPages['recruiting'] = function(container) {
       avgScore: 0
     };
 
+    // By stage
     PIPELINE_STAGES.forEach(stage => {
       metrics.byStage[stage.id] = candidates.filter(c => c.stage === stage.id).length;
     });
 
+    // Average time
     if (candidates.length > 0) {
-      const totalTime = candidates.reduce((sum, c) => sum + (Date.now() - new Date(c.appliedAt).getTime()), 0);
+      const totalTime = candidates.reduce((sum, c) => sum + (Date.now() - c.appliedAt), 0);
       metrics.avgTimeInPipeline = Math.floor(totalTime / candidates.length / (1000 * 60 * 60 * 24));
     }
 
+    // Conversion rate
     if (candidates.length > 0) {
       metrics.conversionRate = ((metrics.hired / candidates.length) * 100).toFixed(1);
     }
 
+    // By source
     JOB_SOURCES.forEach(source => {
       metrics.bySource[source] = candidates.filter(c => c.source === source).length;
     });
 
+    // Average score
     if (candidates.length > 0) {
       const totalScore = candidates.reduce((sum, c) => sum + parseFloat(calculateAverageScore(c)), 0);
       metrics.avgScore = (totalScore / candidates.length).toFixed(1);
@@ -955,8 +944,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
         </div>
       </div>
     `;
-    const modalContainer = document.getElementById('modal-container');
-    if (modalContainer) modalContainer.innerHTML = form;
+    document.getElementById('modal-container').innerHTML = form;
   }
 
   function showAdvanceModal(candId) {
@@ -1004,8 +992,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
         </div>
       </div>
     `;
-    const modalContainer = document.getElementById('modal-container');
-    if (modalContainer) modalContainer.innerHTML = modal;
+    document.getElementById('modal-container').innerHTML = modal;
   }
 
   function showRejectModal(candId) {
@@ -1030,7 +1017,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
               <label class="block text-xs font-semibold text-slate-600 mb-2">Rejection Reason *</label>
               <select id="rejectReason" class="field" required>
                 <option value="">Select a reason</option>
-                ${REJECTION_REASONS.map(r => `<option value="${r}">${r}</option>`).join('')}
+                ${REJECTION_REASON.map(r => `<option value="${r}">${r}</option>`).join('')}
               </select>
             </div>
 
@@ -1051,8 +1038,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
         </div>
       </div>
     `;
-    const modalContainer = document.getElementById('modal-container');
-    if (modalContainer) modalContainer.innerHTML = modal;
+    document.getElementById('modal-container').innerHTML = modal;
   }
 
   function editCandidate(candId) {
@@ -1079,7 +1065,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
               </div>
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-2">Phone</label>
-                <input type="tel" name="phone" class="field" value="${cand.phone || ''}">
+                <input type="tel" name="phone" class="field" value="${cand.phone}">
               </div>
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-2">Position</label>
@@ -1117,12 +1103,12 @@ window.WorkVoltPages['recruiting'] = function(container) {
 
             <div>
               <label class="block text-xs font-semibold text-slate-600 mb-2">Resume / Background</label>
-              <textarea name="resume" class="field resize-none" rows="2">${cand.resume || ''}</textarea>
+              <textarea name="resume" class="field resize-none" rows="2">${cand.resume}</textarea>
             </div>
 
             <div>
               <label class="block text-xs font-semibold text-slate-600 mb-2">Notes</label>
-              <textarea name="notes" class="field resize-none" rows="2">${cand.notes || ''}</textarea>
+              <textarea name="notes" class="field resize-none" rows="2">${cand.notes}</textarea>
             </div>
 
             <div class="flex gap-3 pt-4">
@@ -1137,8 +1123,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
         </div>
       </div>
     `;
-    const modalContainer = document.getElementById('modal-container');
-    if (modalContainer) modalContainer.innerHTML = form;
+    document.getElementById('modal-container').innerHTML = form;
   }
 
   // ── Submit handlers ──────────────────────────────────────────────
@@ -1160,7 +1145,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
 
     createCandidate(data);
     closeModal();
-    showToast(`${data.name} added to pipeline!`, 'success');
+    showToast('success', `${data.name} added to pipeline!`);
     renderBoard();
   }
 
@@ -1184,7 +1169,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
 
     updateCandidate(candId, updates);
     closeModal();
-    showToast('Candidate updated!', 'success');
+    showToast('success', 'Candidate updated!');
     if (view === 'list') renderList();
     else if (view === 'board') renderBoard();
   }
@@ -1197,22 +1182,16 @@ window.WorkVoltPages['recruiting'] = function(container) {
     moveCandidate(candId, stage);
 
     if (notes) {
-      let interviewNotes = [];
-      try {
-        interviewNotes = JSON.parse(cand.interviewNotes || '[]');
-      } catch(e) {
-        interviewNotes = [];
-      }
-      interviewNotes.push({
+      cand.interviewNotes.push({
         timestamp: Date.now(),
         stage: stage,
         text: notes
       });
-      updateCandidate(candId, { interviewNotes: JSON.stringify(interviewNotes) });
+      updateCandidate(candId, { interviewNotes: cand.interviewNotes });
     }
 
     closeModal();
-    showToast(`${cand.name} moved to ${getStageLabel(stage)}!`, 'success');
+    showToast('success', `${cand.name} moved to ${getStageLabel(stage)}!`);
     selectCandidate(null);
     if (view === 'board') renderBoard();
     else if (view === 'list') renderList();
@@ -1230,7 +1209,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
     }
 
     closeModal();
-    showToast(`${cand.name} rejected`, 'success');
+    showToast('success', `${cand.name} rejected`);
     selectCandidate(null);
     if (view === 'board') renderBoard();
     else if (view === 'list') renderList();
@@ -1240,13 +1219,9 @@ window.WorkVoltPages['recruiting'] = function(container) {
 
   loadData();
 
-  // Create modal container if it doesn't exist
-  let modalContainer = document.getElementById('modal-container');
-  if (!modalContainer) {
-    modalContainer = document.createElement('div');
-    modalContainer.id = 'modal-container';
-    document.body.appendChild(modalContainer);
-  }
+  // Create modal container
+  const modalContainer = document.createElement('div');
+  modalContainer.id = 'modal-container';
   container.appendChild(modalContainer);
 
   // Render initial view
@@ -1289,7 +1264,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
       if (confirm('Delete this candidate? This cannot be undone.')) {
         deleteCandidate(id);
         selectCandidate(null);
-        showToast('Candidate deleted', 'success');
+        showToast('success', 'Candidate deleted');
         if (view === 'board') renderBoard();
         else if (view === 'list') renderList();
       }
@@ -1301,13 +1276,12 @@ window.WorkVoltPages['recruiting'] = function(container) {
     submitNewCandidate,
     submitEditCandidate,
     closeModal: () => {
-      const mc = document.getElementById('modal-container');
-      if (mc) mc.innerHTML = '';
+      document.getElementById('modal-container').innerHTML = '';
     }
   };
 
   // Toast notification
-  function showToast(message, type = 'info') {
+  function showToast(type, message) {
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     toast.innerHTML = `<i class="fas fa-check-circle"></i> ${message}`;
