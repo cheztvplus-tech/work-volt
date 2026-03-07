@@ -292,6 +292,25 @@ window.WorkVoltPages['recruiting'] = function(container) {
       });
       return;
     }
+
+  function rejectCandidate(id, reason) {
+    if (isConnected) {
+      api('recruitment/reject/candidate', { 
+        id, 
+        rejectionReason: reason || ''
+      }).catch(err => {
+        showToast('Failed to reject: ' + err.message, 'error');
+      });
+      return;
+    }
+    
+    const now = new Date().toISOString();
+    updateCandidate(id, {
+      stage: 'rejected',
+      currentStageAt: now,
+      rejectionReason: reason || ''
+    });
+  }
     
     const now = new Date().toISOString();
     updateCandidate(id, {
@@ -1145,7 +1164,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
 
     createCandidate(data);
     closeModal();
-    showToast('success', `${data.name} added to pipeline!`);
+    showToast(`${data.name} added to pipeline!`,'success');
     renderBoard();
   }
 
@@ -1169,7 +1188,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
 
     updateCandidate(candId, updates);
     closeModal();
-    showToast('success', 'Candidate updated!');
+    showToast('Candidate updated!','success');
     if (view === 'list') renderList();
     else if (view === 'board') renderBoard();
   }
@@ -1182,16 +1201,23 @@ window.WorkVoltPages['recruiting'] = function(container) {
     moveCandidate(candId, stage);
 
     if (notes) {
-      cand.interviewNotes.push({
+      // Parse interviewNotes from JSON string if needed
+      let interviewNotes = [];
+      try {
+        interviewNotes = JSON.parse(cand.interviewNotes || '[]');
+      } catch(e) {
+        interviewNotes = [];
+      }
+      interviewNotes.push({
         timestamp: Date.now(),
         stage: stage,
         text: notes
       });
-      updateCandidate(candId, { interviewNotes: cand.interviewNotes });
+      updateCandidate(candId, { interviewNotes: JSON.stringify(interviewNotes) });
     }
 
     closeModal();
-    showToast('success', `${cand.name} moved to ${getStageLabel(stage)}!`);
+    showToast(`${cand.name} moved to ${getStageLabel(stage)}!`,'success');
     selectCandidate(null);
     if (view === 'board') renderBoard();
     else if (view === 'list') renderList();
@@ -1209,7 +1235,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
     }
 
     closeModal();
-    showToast('success', `${cand.name} rejected`);
+    showToast(`${cand.name} rejected`,'success');
     selectCandidate(null);
     if (view === 'board') renderBoard();
     else if (view === 'list') renderList();
@@ -1264,7 +1290,7 @@ window.WorkVoltPages['recruiting'] = function(container) {
       if (confirm('Delete this candidate? This cannot be undone.')) {
         deleteCandidate(id);
         selectCandidate(null);
-        showToast('success', 'Candidate deleted');
+        showToast('Candidate deleted','success');
         if (view === 'board') renderBoard();
         else if (view === 'list') renderList();
       }
