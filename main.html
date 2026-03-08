@@ -261,9 +261,9 @@
   let _rolePermissions   = {};
   let _userModuleOverrides = {};
 
-    async function loadRolePermissions() {
+  async function loadRolePermissions() {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || '';
-    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b'; // <---- API secret here
+    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b'; // <--- API secret here
     
     if (!savedUrl || !currentSession) return;
 
@@ -288,7 +288,7 @@
         try { _userModuleOverrides = JSON.parse(settings.user_module_overrides); } catch(e) {}
       }
     } catch(e) {
-      console.error('Could not load role permissions:', e.message);
+      console.warn('Could not load role permissions:', e.message);
     }
   }
 
@@ -347,9 +347,9 @@
     }
   }
 
-    async function loadInstalledModules() {
+  async function loadInstalledModules() {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || '';
-    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b'; // <---- API secret here
+    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b'; // <--- API secret here
     
     if (savedUrl) { API_URL = savedUrl; window.API_URL = savedUrl; }
 
@@ -374,30 +374,17 @@
           console.error('Modules API error:', data.error);
         }
       } catch(e) {
-        console.error('Could not load modules:', e.message);
-      }
-    }
-  }
-
-    if (!INSTALLED_MODULES || INSTALLED_MODULES.length === 0) {
-      try {
-        const saved = localStorage.getItem('wv_installed_modules');
-        if (saved) {
-          INSTALLED_MODULES = JSON.parse(saved);
-          window.INSTALLED_MODULES = INSTALLED_MODULES;
-        }
-      } catch(e) {
-        console.warn('Could not load modules from localStorage:', e.message);
+        console.warn('Could not load modules from Sheet:', e.message);
       }
     }
   }
 
   // ─────────────────────────────────────────────
-  //  API HELPER
+  //  API HELPER - WITH token
   // ─────────────────────────────────────────────
-      async function apiCall(path, params = {}, retries = 2) {
+  async function apiCall(path, params = {}, retries = 2) {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || API_URL;
-    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b';  // <---- API secret here
+    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b';  // <--- API secret here
     
     const url = new URL(savedUrl);
     url.searchParams.set('path', path);
@@ -463,7 +450,7 @@
     setTimeout(() => s.style.display = 'none', 450);
   }
 
-    function handleLogout() {
+  function handleLogout() {
     sessionStorage.removeItem('wv_user');
     sessionStorage.removeItem('wv_session');
     sessionStorage.removeItem('wv_gas_url');
@@ -504,14 +491,13 @@
     updateBackButton();
   }
 
-      function updateNotificationBell() {
+  function updateNotificationBell() {
     const bell = document.getElementById('header-notif-bell');
     const badge = document.getElementById('header-notif-badge');
     if (!bell) return;
     
     if (canAccessModule('notifications')) {
       bell.classList.remove('hidden');
-      // Poll for unread count every 30 seconds
       pollNotifBadge();
       setInterval(pollNotifBadge, 30000);
     } else {
@@ -841,7 +827,7 @@
   };
 
   // ─────────────────────────────────────────────
-  //  BOOT SEQUENCE - NO LOCAL STORAGE
+  //  BOOT SEQUENCE
   // ─────────────────────────────────────────────
   window.addEventListener('load', async () => {
     try {
@@ -864,7 +850,6 @@
 
       console.log('Starting app load...');
 
-      // Try to load modules - catch any error
       try {
         await loadInstalledModules();
         console.log('Modules loaded:', INSTALLED_MODULES);
@@ -872,7 +857,6 @@
         console.error('Module load failed:', e);
       }
 
-      // Try to load permissions - catch any error  
       try {
         await loadRolePermissions();
         console.log('Permissions loaded');
