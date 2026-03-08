@@ -202,12 +202,13 @@ window.WorkVoltPages['settings'] = function(container) {
           </div>
           <div class="px-6 py-5 space-y-4">
             ${renderStatus(status)}
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">GAS Web App URL</label>
-              <input id="settings-gas-url" type="url" placeholder="https://script.google.com/macros/s/.../exec"
-                value="${savedUrl}" class="field font-mono text-xs">
-              <p class="text-xs text-slate-400 mt-1.5">Deploy your <code class="bg-slate-100 px-1 rounded">Code.gs</code> as a Web App and paste the URL here.</p>
-            </div>
+            // Add this inside the connection tab form, after the API Secret field:
+<div>
+  <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Google Sheet ID</label>
+  <input id="settings-sheet-id" type="text" placeholder="1X2C0-cknczCcO0iaNseVQxVW1KHOH-PUqHKTibSxdUc"
+    value="${localStorage.getItem('wv_sheet_id') || ''}" class="field font-mono text-xs">
+  <p class="text-xs text-slate-400 mt-1.5">The ID from your Google Sheet URL.</p>
+</div>
             <div>
               <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">API Secret</label>
               <div class="relative">
