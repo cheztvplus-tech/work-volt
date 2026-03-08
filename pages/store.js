@@ -261,8 +261,9 @@ window.WorkVoltPages['store'] = function(container) {
   async function installModule(mod) {
     if (isInstalled(mod.id)) return;
 
-    const gasUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
-    
+    const gasUrl    = window.API_URL || localStorage.getItem('wv_gas_url') || '';
+    const apiSecret = window.API_SECRET_CLIENT || localStorage.getItem('wv_api_secret') || '';
+
     // Show installing state
     const btn = document.querySelector(`button[data-install="${mod.id}"]`);
     if (btn) { 
@@ -285,6 +286,7 @@ window.WorkVoltPages['store'] = function(container) {
         // CRITICAL: Call GAS to install module on SERVER
         const url = new URL(gasUrl);
         url.searchParams.set('path', 'module/install');
+        url.searchParams.set('token', apiSecret);  // FIX: include API secret for auth
         url.searchParams.set('session_id', sessionId);
         url.searchParams.set('sheet_id', localStorage.getItem('wv_sheet_id') || '');
         url.searchParams.set('module', mod.id);
@@ -295,7 +297,10 @@ window.WorkVoltPages['store'] = function(container) {
         if (data.error) throw new Error(data.error);
 
         // Now reload modules from server to get the updated list
-        const modulesRes = await fetch(`${gasUrl}?path=config/modules&session_id=${sessionId}&sheet_id=${localStorage.getItem('wv_sheet_id')}&_t=${Date.now()}`, { cache: 'no-cache' });
+        const modulesRes = await fetch(
+          `${gasUrl}?path=config/modules&token=${apiSecret}&session_id=${sessionId}&sheet_id=${localStorage.getItem('wv_sheet_id')}&_t=${Date.now()}`,
+          { cache: 'no-cache' }
+        );
         const modulesData = await modulesRes.json();
         
         if (modulesData.modules) {
@@ -312,12 +317,14 @@ window.WorkVoltPages['store'] = function(container) {
             btn.innerHTML = '<i class="fas fa-download text-xs"></i> Install'; 
         }
     }
-}
+  }
+
   // ── Uninstall ────────────────────────────────────────────────────
   async function uninstallModule(id) {
-    const gasUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
+    const gasUrl    = window.API_URL || localStorage.getItem('wv_gas_url') || '';
+    const apiSecret = window.API_SECRET_CLIENT || localStorage.getItem('wv_api_secret') || '';
     const sessionId = window.WorkVolt?.session() || localStorage.getItem('wv_session') || '';
-    const sheetId = localStorage.getItem('wv_sheet_id') || '';
+    const sheetId   = localStorage.getItem('wv_sheet_id') || '';
 
     if (!gasUrl || !sessionId || !sheetId) {
         window.WorkVolt?.toast('Not connected to server', 'error');
@@ -325,9 +332,10 @@ window.WorkVoltPages['store'] = function(container) {
     }
 
     try {
-        // Call GAS to uninstall - THIS IS THE FIX
+        // Call GAS to uninstall
         const url = new URL(gasUrl);
         url.searchParams.set('path', 'module/uninstall');
+        url.searchParams.set('token', apiSecret);  // FIX: include API secret for auth
         url.searchParams.set('session_id', sessionId);
         url.searchParams.set('sheet_id', sheetId);
         url.searchParams.set('module', id);
@@ -340,6 +348,7 @@ window.WorkVoltPages['store'] = function(container) {
         // Reload from server to get the updated list
         const modulesUrl = new URL(gasUrl);
         modulesUrl.searchParams.set('path', 'config/modules');
+        modulesUrl.searchParams.set('token', apiSecret);  // FIX: include API secret for auth
         modulesUrl.searchParams.set('session_id', sessionId);
         modulesUrl.searchParams.set('sheet_id', sheetId);
         modulesUrl.searchParams.set('_t', Date.now().toString());
@@ -357,7 +366,7 @@ window.WorkVoltPages['store'] = function(container) {
         window.WorkVolt?.toast(`Uninstall failed: ${e.message}`, 'error');
         console.error('Uninstall error:', e);
     }
-}
+  }
 
   function filtered() {
     return CATALOGUE.filter(m => {
