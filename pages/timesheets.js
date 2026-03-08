@@ -943,6 +943,7 @@ window.WorkVoltPages['timesheets'] = function(container) {
         '<button id="tf-close" class="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 border-none bg-transparent cursor-pointer">✕</button>' +
       '</div>' +
       '<div class="px-6 py-5">' +
+        '<input type="hidden" id="tf-timer-hours" value="">' +
         '<div id="ts-modal-status"></div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">' +
           userSelectHtml +
@@ -982,6 +983,14 @@ window.WorkVoltPages['timesheets'] = function(container) {
       '</div>';
 
     showModal(html, '640px');
+
+    // If this entry came from the timer, store exact elapsed hours in the hidden field
+    var timerHoursField = document.getElementById('tf-timer-hours');
+    if (r._timer_hours != null && timerHoursField) {
+      timerHoursField.value = String(r._timer_hours);
+      var timerHoursDisplay = document.getElementById('tf-hours-val');
+      if (timerHoursDisplay) timerHoursDisplay.textContent = fmtHours(r._timer_hours);
+    }
 
     // Auto-calc hours
     function recalcHours() {
@@ -1081,7 +1090,8 @@ window.WorkVoltPages['timesheets'] = function(container) {
     if (!_timerStart) return;
     clearInterval(_timerTick);
     var end = new Date();
-    var elapsed = (end - _timerStart) / 3600000; // hours
+    var elapsedMs = end - _timerStart;
+    var elapsed = elapsedMs / 3600000; // hours
     var startStr = _timerStart.toTimeString().slice(0,5);
     var endStr   = end.toTimeString().slice(0,5);
     localStorage.removeItem('wv_ts_timer_' + myUserId());
@@ -1094,6 +1104,7 @@ window.WorkVoltPages['timesheets'] = function(container) {
       start_time: startStr,
       end_time: endStr,
       total_hours: Math.round(elapsed*100)/100,
+      _timer_hours: elapsed,  // exact ms-precision elapsed; used by submitForm to skip calcHours
     };
     _timerStart = null;
     _timerEntry = null;
@@ -1153,7 +1164,11 @@ window.WorkVoltPages['timesheets'] = function(container) {
     if (!date) { modalStatus('Date is required.', false); return; }
     if (!task) { modalStatus('Task is required.', false); return; }
 
-    var hours = calcHours(start, end, brk);
+    // Use exact timer-elapsed hours if available (avoids calcHours rounding to whole minutes,
+    // which causes the diff<=0 path to wrongly add 24h for short sub-minute durations).
+    var _timerHoursEl = document.getElementById('tf-timer-hours');
+    var _timerHoursVal = _timerHoursEl ? parseFloat(_timerHoursEl.value) : NaN;
+    var hours = (!isNaN(_timerHoursVal) && _timerHoursVal >= 0) ? _timerHoursVal : calcHours(start, end, brk);
 
     var btn = document.getElementById('tf-save');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i>Saving…'; }
