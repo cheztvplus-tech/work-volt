@@ -202,7 +202,8 @@ window.WorkVoltPages['settings'] = function(container) {
           </div>
           <div class="px-6 py-5 space-y-4">
             ${renderStatus(status)}
-            // Add this inside the connection tab form, after the API Secret field:
+            
+            //Add this inside the connection tab form, after the API Secret field:
 <div>
   <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Google Sheet ID</label>
   <input id="settings-sheet-id" type="text" placeholder="1X2C0-cknczCcO0iaNseVQxVW1KHOH-PUqHKTibSxdUc"
