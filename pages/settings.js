@@ -1408,9 +1408,20 @@ window.WorkVoltPages['settings'] = function(container) {
       return;
     }
 
+    // ── Seed immediately from in-memory state so tab isn't blank ──
+    if (window.INSTALLED_MODULES && window.INSTALLED_MODULES.length) {
+      modulesCache = window.INSTALLED_MODULES.slice();
+      renderModuleLists();
+    }
+
     try {
       var data = await api('config/modules');
-      modulesCache = data.modules || [];
+      // Filter out any modules the user has uninstalled (denylist)
+      var denylist = [];
+      try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
+      modulesCache = (data.modules || []).filter(function(m) { return !denylist.includes(m.id); });
+      // Sync back to global state
+      window.INSTALLED_MODULES = modulesCache;
       renderModuleLists();
       loadPayrollTaxSettings();
     } catch(e) {
@@ -1594,6 +1605,12 @@ window.WorkVoltPages['settings'] = function(container) {
     try {
       await api('module/uninstall', { module: moduleId });
       setModuleStatus((ADDON_CATALOGUE[moduleId]?.label || moduleId) + ' uninstalled. Sheet data has been kept.', true);
+      // ── Write to denylist so a refresh doesn't resurrect it ──
+      try {
+        var denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]');
+        if (!denylist.includes(moduleId)) denylist.push(moduleId);
+        localStorage.setItem('wv_uninstalled_modules', JSON.stringify(denylist));
+      } catch(e) { /* non-fatal */ }
       modulesCache = modulesCache.filter(function(m) { return m.id !== moduleId; });
       if (window.INSTALLED_MODULES !== undefined) {
         window.INSTALLED_MODULES = modulesCache;
