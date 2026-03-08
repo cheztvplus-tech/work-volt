@@ -1,4 +1,4 @@
-window.WorkVoltPages = window.WorkVoltPages || {};
+    window.WorkVoltPages = window.WorkVoltPages || {};
 
 window.WorkVoltPages['settings'] = function(container) {
 
@@ -124,7 +124,7 @@ window.WorkVoltPages['settings'] = function(container) {
   // ================================================================
   //  MAIN RENDER
   // ================================================================
-  function render(connStatus) {
+  function render(connStatus, needsProvision) {
     var isConnected = !!(savedUrl && savedSecret);
 
     var tabNav = (
@@ -159,7 +159,7 @@ window.WorkVoltPages['settings'] = function(container) {
         </div>
 
         <div id="settings-tab-content" class="max-w-4xl mx-auto px-6 md:px-10 py-8">
-          ${activeTab === 'connection' ? renderConnectionTab(connStatus, isConnected) : activeTab === 'users' ? renderUsersTab() : activeTab === 'admin-config' ? renderAdminConfigTab() : renderModulesTab()}
+          ${activeTab === 'connection' ? renderConnectionTab(connStatus, isConnected, needsProvision) : activeTab === 'users' ? renderUsersTab() : activeTab === 'admin-config' ? renderAdminConfigTab() : renderModulesTab()}
         </div>
 
       </div>
@@ -174,7 +174,7 @@ window.WorkVoltPages['settings'] = function(container) {
   // ================================================================
   //  CONNECTION TAB
   // ================================================================
-  function renderConnectionTab(status, isConnected) {
+  function renderConnectionTab(status, isConnected, needsProvision) {
     var howToSteps = [
       ['1', 'Go to <strong>script.google.com</strong> → New Project'],
       ['2', 'Create a new Google Sheet → copy the Sheet ID from its URL'],
@@ -188,8 +188,29 @@ window.WorkVoltPages['settings'] = function(container) {
       return '<div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">' + s[0] + '</span><p class="text-sm text-slate-600 pt-0.5">' + s[1] + '</p></div>';
     }).join('');
 
+    // Show provision button if needed
+    var provisionSection = '';
+    if (needsProvision) {
+      provisionSection = `
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+          <div class="flex items-start gap-3">
+            <i class="fas fa-exclamation-triangle text-amber-500 mt-0.5"></i>
+            <div>
+              <p class="text-sm font-semibold text-amber-800">First-time Setup Required</p>
+              <p class="text-xs text-amber-600 mt-1">Your USERS sheet is empty. Click below to create the first SuperAdmin account.</p>
+              <button onclick="runProvision()" id="provision-btn" class="mt-3 btn-primary bg-amber-600 hover:bg-amber-700">
+                <i class="fas fa-magic text-sm"></i> Create SuperAdmin Account
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     return `
       <div class="max-w-2xl space-y-6">
+
+        ${provisionSection}
 
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
@@ -1052,7 +1073,7 @@ window.WorkVoltPages['settings'] = function(container) {
           '<input id="ptax-other_deduction_label" type="text" value="' + (cfg.other_deduction_label||'Other Deductions') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>'
       )
     );
-
+    
     // Dynamic rate reference panel — shows a "Refresh rates" button that hits the Anthropic API
     // to get the current year's rates, so the reference is always up to date
     var rateGuide = (
