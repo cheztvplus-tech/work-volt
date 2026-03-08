@@ -349,76 +349,104 @@
   }
 
   async function loadInstalledModules() {
-  const savedUrl = localStorage.getItem('wv_gas_url') || '';
-  const savedSheetId = localStorage.getItem('wv_sheet_id') || '';
-  const masterUrl = localStorage.getItem('wv_master_gas_url') || '';
-  
-  // Step 1: If we have a master URL, use it for all API calls
-  const effectiveUrl = masterUrl || savedUrl;
-  
-  if (effectiveUrl) { 
-    API_URL = effectiveUrl; 
-    window.API_URL = effectiveUrl; 
-  }
-  if (savedSheetId) { 
-    SHEET_ID = savedSheetId; 
-    window.SHEET_ID = savedSheetId; 
-  }
-
-  // Step 2: If connected but no master URL yet, fetch it from Sheet
-  // (This happens once after initial setup)
-  if (savedUrl && savedSheetId && currentSession && !masterUrl) {
-    try {
-      const url = new URL(savedUrl);
-      url.searchParams.set('path', 'config/get-gas-url');
-      url.searchParams.set('sheet_id', savedSheetId);
-      url.searchParams.set('session_id', currentSession);
-      const res = await fetch(url.toString(), { cache: 'no-cache' });
-      const data = await res.json();
-      
-      if (data.gas_url) {
-        // Store the master URL - now all users will use this
-        localStorage.setItem('wv_master_gas_url', data.gas_url);
-        API_URL = data.gas_url;
-        window.API_URL = data.gas_url;
-        console.log('Master GAS URL loaded:', data.gas_url);
-      }
-    } catch(e) {
-      console.warn('Could not fetch master GAS URL:', e.message);
+    const savedUrl = localStorage.getItem('wv_gas_url') || '';
+    const savedSheetId = localStorage.getItem('wv_sheet_id') || '';
+    let masterUrl = localStorage.getItem('wv_master_gas_url') || '';
+    
+    // Step 1: Setup basic config
+    if (savedUrl) { 
+        API_URL = savedUrl; 
+        window.API_URL = savedUrl; 
     }
-  }
+    if (savedSheetId) { 
+        SHEET_ID = savedSheetId; 
+        window.SHEET_ID = savedSheetId; 
+    }
 
-  // Step 3: Load modules from the master URL (or fallback to saved)
-  if (API_URL && savedSheetId && currentSession) {
-    try {
-      const url = new URL(API_URL);
-      url.searchParams.set('path', 'config/modules');
-      url.searchParams.set('sheet_id', savedSheetId);
-      url.searchParams.set('session_id', currentSession);
-      url.searchParams.set('_t', Date.now().toString());
-      const res = await fetch(url.toString(), { cache: 'no-cache' });
-      const data = await res.json();
-      
-      if (data.modules && Array.isArray(data.modules)) {
-        let denylist = [];
-        try { 
-          denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); 
-        } catch(e) {}
-        
-        const filtered = data.modules.filter(m => !denylist.includes(m.id));
-        INSTALLED_MODULES = filtered;
-        window.INSTALLED_MODULES = INSTALLED_MODULES;
-        
-        // Update localStorage to match server
+    // Step 2: If connected but no master URL yet, fetch it from Sheet
+    if (savedUrl && savedSheetId && currentSession && !masterUrl) {
         try {
-          localStorage.setItem('wv_installed_modules', JSON.stringify(filtered));
-        } catch(e) {}
-        return;
-      }
-    } catch(e) {
-      console.warn('Could not load modules from Sheet:', e.message);
+            console.log('Fetching master GAS URL...');
+            const url = new URL(savedUrl);
+            url.searchParams.set('path', 'config/get-gas-url');
+            url.searchParams.set('sheet_id', savedSheetId);
+            url.searchParams.set('session_id', currentSession);
+            url.searchParams.set('_t', Date.now().toString());
+            
+            const res = await fetch(url.toString(), { cache: 'no-cache' });
+            const data = await res.json();
+            
+            if (data.gas_url && data.gas_url.trim() !== '') {
+                console.log('Master GAS URL loaded:', data.gas_url);
+                localStorage.setItem('wv_master_gas_url', data.gas_url);
+                masterUrl = data.gas_url;
+                API_URL = data.gas_url;
+                window.API_URL = data.gas_url;
+            } else {
+                console.log('No master GAS URL set in Sheet, using original');
+            }
+        } catch(e) {
+            console.warn('Could not fetch master GAS URL:', e.message);
+            // Continue with savedUrl
+        }
+    } else if (masterUrl) {
+        // Use stored master URL
+        API_URL = masterUrl;
+        window.API_URL = masterUrl;
     }
-  }
+
+    // Step 3: Now load modules using the effective URL
+    const effectiveUrl = masterUrl || savedUrl;
+    
+    if (effectiveUrl && savedSheetId && currentSession) {
+        try {
+            console.log('Loading modules from:', effectiveUrl);
+            const url = new URL(effectiveUrl);
+            url.searchParams.set('path', 'config/modules');
+            url.searchParams.set('sheet_id', savedSheetId);
+            url.searchParams.set('session_id', currentSession);
+            url.searchParams.set('_t', Date.now().toString());
+            
+            const res = await fetch(url.toString(), { cache: 'no-cache' });
+            const data = await res.json();
+            
+            if (data.modules && Array.isArray(data.modules)) {
+                let denylist = [];
+                try { 
+                    denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); 
+                } catch(e) {}
+                
+                const filtered = data.modules.filter(m => !denylist.includes(m.id));
+                INSTALLED_MODULES = filtered;
+                window.INSTALLED_MODULES = INSTALLED_MODULES;
+                
+                // Update localStorage to match server
+                try {
+                    localStorage.setItem('wv_installed_modules', JSON.stringify(filtered));
+                } catch(e) {}
+                
+                console.log('Modules loaded:', filtered.length);
+                return; // Success!
+            } else {
+                console.warn('Invalid modules data from server:', data);
+            }
+        } catch(e) {
+            console.warn('Could not load modules from Sheet:', e.message);
+        }
+    }
+
+    // Fallback to localStorage only
+    console.log('Falling back to localStorage');
+    try {
+        const saved = localStorage.getItem('wv_installed_modules');
+        if (saved) {
+            INSTALLED_MODULES = JSON.parse(saved);
+            window.INSTALLED_MODULES = INSTALLED_MODULES;
+        }
+    } catch(e) {
+        console.warn('Could not load modules from localStorage:', e.message);
+    }
+}
 
   // Fallback to localStorage if not connected
   try {
