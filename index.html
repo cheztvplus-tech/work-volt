@@ -22,6 +22,7 @@
     }
     .shake { animation: shake 0.3s ease-in-out; }
   </style>
+<base target="_blank">
 </head>
 <body class="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 flex items-center justify-center p-4">
 
@@ -41,7 +42,7 @@
         <i class="fas fa-shield-alt text-blue-500"></i>
         <span class="text-xs font-bold text-blue-700 uppercase tracking-wide">Secure Sign In</span>
       </div>
-      
+
       <div class="p-6 space-y-4">
         <!-- Error Message -->
         <div id="login-error" class="hidden p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
@@ -49,18 +50,11 @@
           <span id="error-text"></span>
         </div>
 
-        <!-- GAS URL -->
+        <!-- GAS URL ONLY -->
         <div>
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Work Volt URL (GAS)</label>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Work Volt URL</label>
           <input id="gas-url" type="url" class="field" placeholder="https://script.google.com/macros/s/.../exec">
           <p class="text-xs text-slate-400 mt-1">Your Google Apps Script Web App URL</p>
-        </div>
-
-        <!-- Sheet ID -->
-        <div>
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Google Sheet ID</label>
-          <input id="sheet-id" type="text" class="field" placeholder="1X2C0-cknczCcO0iaNseVQxVW1KHOH-PUqHKTibSxdUc">
-          <p class="text-xs text-slate-400 mt-1">From Sheet URL: .../d/<strong>SHEET_ID</strong>/edit...</p>
         </div>
 
         <!-- Username -->
@@ -111,28 +105,23 @@
 
   <script>
     // ─────────────────────────────────────────────
-    //  LOGIN LOGIC
+    //  LOGIN LOGIC - SIMPLIFIED FOR HARDCODED SETUP
     // ─────────────────────────────────────────────
-    
-    // Check for saved credentials on load
+
+    // Check for saved URL on load
     const savedUrl = localStorage.getItem('wv_gas_url');
-    const savedSheetId = localStorage.getItem('wv_sheet_id');
-    
     if (savedUrl) document.getElementById('gas-url').value = savedUrl;
-    if (savedSheetId) document.getElementById('sheet-id').value = savedSheetId;
 
     // Check for existing session
     const savedSession = localStorage.getItem('wv_session');
     const savedUser = localStorage.getItem('wv_user');
-    if (savedSession && savedUser && savedUrl && savedSheetId) {
-      validateSession(savedUrl, savedSheetId, savedSession);
+    if (savedSession && savedUser && savedUrl) {
+      validateSession(savedUrl, savedSession);
     }
 
-    // Parse URL parameters - ONLY for gas_url and sheet_id (NOT username/password)
+    // Parse URL parameter for gas_url only
     const params = new URLSearchParams(window.location.search);
     if (params.get('gas_url')) document.getElementById('gas-url').value = params.get('gas_url');
-    if (params.get('sheet_id')) document.getElementById('sheet-id').value = params.get('sheet_id');
-    // NOTE: username and password are NOT auto-filled from URL for security
 
     function togglePassword() {
       const input = document.getElementById('password');
@@ -163,16 +152,16 @@
       document.getElementById('reset-hint').classList.toggle('hidden');
     }
 
-    async function validateSession(url, sheetId, sessionId) {
+    async function validateSession(url, sessionId) {
       try {
         const validateUrl = new URL(url);
         validateUrl.searchParams.set('path', 'auth/check-session');
-        validateUrl.searchParams.set('sheet_id', sheetId);
+        // NO sheet_id needed - it's hardcoded in Code.gs
         validateUrl.searchParams.set('session_id', sessionId);
-        
+
         const res = await fetch(validateUrl.toString(), { cache: 'no-cache' });
         const data = await res.json();
-        
+
         if (data.valid) {
           window.location.href = 'main.html';
         } else {
@@ -187,7 +176,6 @@
     async function doLogin() {
       const btn = document.getElementById('login-btn');
       const url = document.getElementById('gas-url').value.trim();
-      const sheetId = document.getElementById('sheet-id').value.trim();
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
       const rememberMe = document.getElementById('remember-me').checked;
@@ -195,7 +183,6 @@
       hideError();
 
       if (!url) return showError('Please enter your Work Volt URL');
-      if (!sheetId) return showError('Please enter your Google Sheet ID');
       if (!username) return showError('Please enter your username (email)');
       if (!password) return showError('Please enter your password');
 
@@ -211,10 +198,10 @@
           .map(b => b.toString(16).padStart(2, '0'))
           .join('');
 
-        // Call GAS login endpoint
+        // Call GAS login endpoint - NO sheet_id needed!
         const loginUrl = new URL(url);
         loginUrl.searchParams.set('path', 'auth/login');
-        loginUrl.searchParams.set('sheet_id', sheetId);
+        // NO sheet_id parameter - Code.gs has it hardcoded
         loginUrl.searchParams.set('email', username);
         loginUrl.searchParams.set('password_hash', passwordHash);
 
@@ -227,9 +214,8 @@
         // Save credentials
         if (rememberMe) {
           localStorage.setItem('wv_gas_url', url);
-          localStorage.setItem('wv_sheet_id', sheetId);
         }
-        
+
         localStorage.setItem('wv_session', data.session_id);
         localStorage.setItem('wv_user', JSON.stringify(data.user));
 
