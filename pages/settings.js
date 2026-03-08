@@ -1,28 +1,24 @@
-    window.WorkVoltPages = window.WorkVoltPages || {};
+window.WorkVoltPages = window.WorkVoltPages || {};
 
 window.WorkVoltPages['settings'] = function(container) {
 
   // ── State ──────────────────────────────────────────────────────
   let savedUrl    = localStorage.getItem('wv_gas_url')    || '';
-  let savedSecret = localStorage.getItem('wv_api_secret') || '';
   let activeTab   = 'connection';
   let usersCache  = [];
   let editingUser = null;
   let modulesCache = [];
 
   if (savedUrl)    window.API_URL = savedUrl;
-  if (savedSecret) window.API_SECRET_CLIENT = savedSecret;
 
 
   // ================================================================
   //  API HELPER
   // ================================================================
   async function api(path, params) {
-    const savedSheetId = localStorage.getItem('wv_sheet_id') || '';
     const url = new URL(savedUrl);
     url.searchParams.set('path', path);
     url.searchParams.set('session_id', window.WorkVolt.session());
-    url.searchParams.set('sheet_id', savedSheetId);
     url.searchParams.set('_t', Date.now());
     if (params) {
       Object.entries(params).forEach(function(kv) {
@@ -125,7 +121,7 @@ window.WorkVoltPages['settings'] = function(container) {
   //  MAIN RENDER
   // ================================================================
   function render(connStatus, needsProvision) {
-    var isConnected = !!(savedUrl && savedSecret);
+    var isConnected = !!savedUrl;
 
     var tabNav = (
       '<button onclick="settingsTab(\'connection\')" ' +
@@ -179,11 +175,10 @@ window.WorkVoltPages['settings'] = function(container) {
       ['1', 'Go to <strong>script.google.com</strong> → New Project'],
       ['2', 'Create a new Google Sheet → copy the Sheet ID from its URL'],
       ['3', 'Paste all your <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">.gs</code> files into the Apps Script editor (one file each)'],
-      ['4', 'Set <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">MASTER_SHEET_ID</code> and <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">API_SECRET</code> in <strong>Code.gs</strong>'],
+      ['4', 'Set <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">MASTER_SHEET_ID</code> in <strong>Code.gs</strong> (API_SECRET is already configured)'],
       ['5', 'Click <strong>Deploy → New Deployment</strong>'],
       ['6', 'Type: <strong>Web App</strong> · Execute as: <strong>Me</strong> · Access: <strong>Anyone</strong>'],
-      ['7', 'Copy the Web App URL → paste it above'],
-      ['8', 'Paste your <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">API_SECRET</code> value above → Save'],
+      ['7', 'Copy the Web App URL → paste it above and Save'],
     ].map(function(s) {
       return '<div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">' + s[0] + '</span><p class="text-sm text-slate-600 pt-0.5">' + s[1] + '</p></div>';
     }).join('');
@@ -242,17 +237,6 @@ window.WorkVoltPages['settings'] = function(container) {
               <input id="settings-sheet-id" type="text" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
                 value="${localStorage.getItem('wv_sheet_id') || ''}" class="field font-mono text-xs">
               <p class="text-xs text-slate-400 mt-1.5">From your Sheet URL: <code class="bg-slate-100 px-1 rounded">/d/SHEET_ID/edit</code> (required)</p>
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">API Secret</label>
-              <div class="relative">
-                <input id="settings-secret" type="password" placeholder="Your API_SECRET from Code.gs"
-                  value="${savedSecret}" class="field font-mono text-xs pr-10">
-                <button onclick="toggleSecretVis()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  <i id="secret-eye" class="fas fa-eye text-sm"></i>
-                </button>
-              </div>
-              <p class="text-xs text-slate-400 mt-1.5">Must match <code class="bg-slate-100 px-1 rounded">API_SECRET</code> in your <code class="bg-slate-100 px-1 rounded">Code.gs</code>.</p>
             </div>
             <div class="flex gap-3 pt-1">
               <button onclick="settingsTestConnection()" id="settings-test-btn" class="btn-secondary flex-1">
@@ -1668,13 +1652,6 @@ window.WorkVoltPages['settings'] = function(container) {
     render();
   };
 
-  window.toggleSecretVis = function() {
-    var inp = document.getElementById('settings-secret');
-    var eye = document.getElementById('secret-eye');
-    inp.type = inp.type === 'password' ? 'text' : 'password';
-    eye.className = inp.type === 'password' ? 'fas fa-eye text-sm' : 'fas fa-eye-slash text-sm';
-  };
-
   window.toggleHowTo = function() {
     var body = document.getElementById('howto-body');
     var chev = document.getElementById('howto-chevron');
@@ -1684,25 +1661,19 @@ window.WorkVoltPages['settings'] = function(container) {
 
   window.settingsSave = function() {
     var url     = document.getElementById('settings-gas-url').value.trim();
-    var secret  = document.getElementById('settings-secret').value.trim();
     var sheetId = document.getElementById('settings-sheet-id').value.trim();
     if (!url)     return window.WorkVolt?.toast('Please enter the GAS URL', 'warning');
-    if (!secret)  return window.WorkVolt?.toast('Please enter the API Secret', 'warning');
     if (!sheetId) return window.WorkVolt?.toast('Please enter the Sheet ID', 'warning');
-    localStorage.setItem('wv_gas_url',    url);
-    localStorage.setItem('wv_api_secret', secret);
-    localStorage.setItem('wv_sheet_id',   sheetId);
-    savedUrl    = url;
-    savedSecret = secret;
+    localStorage.setItem('wv_gas_url',  url);
+    localStorage.setItem('wv_sheet_id', sheetId);
+    savedUrl = url;
     window.API_URL = url;
-    window.API_SECRET_CLIENT = secret;
     render({ ok: true, message: 'Settings saved. Testing connection…' });
     setTimeout(function() { window.settingsTestConnection(); }, 400);
   };
 
   window.settingsTestConnection = async function() {
     var url     = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
-    var secret  = (document.getElementById('settings-secret')?.value  || '').trim() || savedSecret;
     var sheetId = (document.getElementById('settings-sheet-id')?.value || '').trim() || localStorage.getItem('wv_sheet_id') || '';
     var btn    = document.getElementById('settings-test-btn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Testing…'; }
@@ -1728,16 +1699,15 @@ window.WorkVoltPages['settings'] = function(container) {
       }
       render(connStatus);
     } catch(e) {
-      render({ ok: false, message: 'Connection failed: ' + e.message + '. Check the URL and API Secret.' });
+      render({ ok: false, message: 'Connection failed: ' + e.message + '. Check the GAS URL and Sheet ID.' });
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
     }
   };
 
   window.settingsDisconnect = function() {
     localStorage.removeItem('wv_gas_url');
-    localStorage.removeItem('wv_api_secret');
-    savedUrl    = '';
-    savedSecret = '';
+    localStorage.removeItem('wv_sheet_id');
+    savedUrl = '';
     window.API_URL = '';
     render({ ok: false, message: 'Disconnected. Enter a new GAS URL to reconnect.' });
   };
@@ -1767,7 +1737,6 @@ window.WorkVoltPages['settings'] = function(container) {
 
   if (savedUrl) {
     window.API_URL = savedUrl;
-    window.API_SECRET_CLIENT = savedSecret;
   }
 
   // Restore previously installed modules from localStorage on boot
