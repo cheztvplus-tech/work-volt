@@ -342,11 +342,7 @@
 
   function saveInstalledModules() {
     try {
-      // Always strip denylist entries before persisting
-      let denylist = [];
-      try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
-      const toSave = (INSTALLED_MODULES || []).filter(m => !denylist.includes(m.id));
-      localStorage.setItem('wv_installed_modules', JSON.stringify(toSave));
+      localStorage.setItem('wv_installed_modules', JSON.stringify(INSTALLED_MODULES));
     } catch(e) {
       console.warn('Could not save modules to localStorage:', e.message);
     }
@@ -359,10 +355,6 @@
     if (savedUrl) { API_URL = savedUrl; window.API_URL = savedUrl; }
     if (savedSheetId) { SHEET_ID = savedSheetId; window.SHEET_ID = savedSheetId; }
 
-    // Always read the denylist first — it is the source of truth for uninstalls
-    let denylist = [];
-    try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
-
     let gasSucceeded = false;
 
     if (savedUrl && savedSheetId && currentSession) {
@@ -374,11 +366,14 @@
         const res = await fetch(url.toString(), { cache: 'no-cache' });
         const data = await res.json();
         if (data.modules) {
-          // Filter out anything the user has explicitly uninstalled
+          // Filter out any modules the user has explicitly uninstalled locally.
+          // This guards against the GAS config/modules endpoint returning stale
+          // data (e.g. server-side uninstall failed silently or hasn't synced yet).
+          let denylist = [];
+          try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
           INSTALLED_MODULES = data.modules.filter(m => !denylist.includes(m.id));
           window.INSTALLED_MODULES = INSTALLED_MODULES;
-          // Keep localStorage in sync with the filtered result
-          saveInstalledModules();
+          // GAS responded — don't fall back to stale localStorage even if result is empty
           gasSucceeded = true;
         }
       } catch(e) {
@@ -386,16 +381,15 @@
       }
     }
 
-    // Only fall back to localStorage if GAS was unreachable (not connected / fetch failed)
-    // Never use the localStorage fallback when GAS succeeded — even if the result is empty,
-    // because an empty result after denylist filtering is intentional (user removed everything)
+    // Only use localStorage fallback if GAS was unreachable or not configured.
+    // If GAS succeeded (even returning 0 modules), skip this — an empty result
+    // is intentional (user uninstalled everything) and must not be overridden.
     if (!gasSucceeded) {
       try {
         const saved = localStorage.getItem('wv_installed_modules');
         if (saved) {
-          const parsed = JSON.parse(saved);
-          // Still apply denylist to the cached copy in case it's stale
-          INSTALLED_MODULES = parsed.filter(m => !denylist.includes(m.id));
+          const denylist = (() => { try { return JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) { return []; } })();
+          INSTALLED_MODULES = JSON.parse(saved).filter(m => !denylist.includes(m.id));
           window.INSTALLED_MODULES = INSTALLED_MODULES;
         }
       } catch(e) {
