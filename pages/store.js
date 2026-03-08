@@ -254,6 +254,11 @@ window.WorkVoltPages['store'] = function(container) {
 
   // ── Helpers ─────────────────────────────────────────────────────────
   function isInstalled(id) {
+    // Also check denylist so recently uninstalled modules aren't shown as installed
+    try {
+      const denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]');
+      if (denylist.includes(id)) return false;
+    } catch(e) {}
     return (window.INSTALLED_MODULES || []).some(m => m.id === id);
   }
 
@@ -334,6 +339,9 @@ window.WorkVoltPages['store'] = function(container) {
             };
           });
           
+          // Filter denylist before applying server response
+          const denylist2 = (() => { try { return JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) { return []; } })();
+          enhancedModules = enhancedModules.filter(m => !denylist2.includes(m.id));
           window.INSTALLED_MODULES.length = 0;
           window.INSTALLED_MODULES.push(...enhancedModules);
           if (typeof saveInstalledModules === 'function') saveInstalledModules();
