@@ -262,153 +262,95 @@ window.WorkVoltPages['store'] = function(container) {
     if (isInstalled(mod.id)) return;
 
     const gasUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
-    const secret = window.API_SECRET_CLIENT || localStorage.getItem('wv_api_secret') || '';
-
-    // Show installing state on button
+    
+    // Show installing state
     const btn = document.querySelector(`button[data-install="${mod.id}"]`);
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Installing…'; }
+    if (btn) { 
+        btn.disabled = true; 
+        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Installing…'; 
+    }
 
-    // CRITICAL FIX: Always save to localStorage FIRST as source of truth
-    // This ensures the module persists even if GAS fails or has delays
-    window.INSTALLED_MODULES = window.INSTALLED_MODULES || [];
-    const newModule = {
-      id: mod.id,
-      label: mod.label,
-      icon: mod.icon,
-      version: mod.version,
-      category: mod.category,
-      description: mod.description,
-      gradient: mod.gradient,
-      color: mod.color,
-      author: mod.author,
-      tags: mod.tags || [],
-      featured: mod.featured || false
-    };
+    if (!gasUrl) {
+        window.WorkVolt?.toast('Please connect Google Sheet first', 'error');
+        if (btn) { 
+            btn.disabled = false; 
+            btn.innerHTML = '<i class="fas fa-download text-xs"></i> Install'; 
+        }
+        return;
+    }
+
+    const sessionId = window.WorkVolt?.session() || localStorage.getItem('wv_session') || '';
     
-    window.INSTALLED_MODULES.push(newModule);
-    
-    // Remove from denylist
     try {
-      const dl = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]');
-      localStorage.setItem('wv_uninstalled_modules', JSON.stringify(dl.filter(i => i !== mod.id)));
-    } catch(e) {}
-    
-    // Save immediately to localStorage
-    if (typeof saveInstalledModules === 'function') saveInstalledModules();
-    
-    // Update UI immediately
-    if (typeof renderNav === 'function') renderNav();
-    render();
-
-    if (gasUrl && secret) {
-      const sessionId = window.WorkVolt?.session() || localStorage.getItem('wv_session') || '';
-      try {
-        // Call GAS to install
+        // CRITICAL: Call GAS to install module on SERVER
         const url = new URL(gasUrl);
-        url.searchParams.set('path',       'module/install');
+        url.searchParams.set('path', 'module/install');
         url.searchParams.set('session_id', sessionId);
-        url.searchParams.set('sheet_id',   localStorage.getItem('wv_sheet_id') || '');
-        url.searchParams.set('module',     mod.id);
-        const res  = await fetch(url.toString(), { cache: 'no-cache' });
+        url.searchParams.set('sheet_id', localStorage.getItem('wv_sheet_id') || '');
+        url.searchParams.set('module', mod.id);
+        
+        const res = await fetch(url.toString(), { cache: 'no-cache' });
         const data = await res.json();
+        
         if (data.error) throw new Error(data.error);
 
-        window.WorkVolt?.toast(`${mod.label} installed! Sheet tabs created.`, 'success');
+        // Now reload modules from server to get the updated list
+        const modulesRes = await fetch(`${gasUrl}?path=config/modules&session_id=${sessionId}&sheet_id=${localStorage.getItem('wv_sheet_id')}&_t=${Date.now()}`, { cache: 'no-cache' });
+        const modulesData = await modulesRes.json();
         
-        // CRITICAL FIX: After GAS install, merge server data with local data
-        // rather than blindly overwriting. Server might not have propagated yet.
-        try {
-          const cfgUrl = new URL(gasUrl);
-          cfgUrl.searchParams.set('path',       'config/modules');
-          cfgUrl.searchParams.set('session_id', sessionId);
-          cfgUrl.searchParams.set('sheet_id',   localStorage.getItem('wv_sheet_id') || '');
-          const cfgRes  = await fetch(cfgUrl.toString(), { cache: 'no-cache' });
-          const cfgData = await cfgRes.json();
-          
-          if (cfgData.modules && Array.isArray(cfgData.modules)) {
-            // Merge server modules with local modules - prefer local additions
-            const serverIds = new Set(cfgData.modules.map(m => m.id));
-            const localOnly = window.INSTALLED_MODULES.filter(m => !serverIds.has(m.id));
-            
-            // Enhance server modules with catalogue data
-            const enhancedServer = cfgData.modules.map(m => {
-              const catalogueModule = CATALOGUE.find(cat => cat.id === m.id);
-              return {
-                id: m.id || catalogueModule?.id,
-                label: m.label || catalogueModule?.label,
-                icon: m.icon || catalogueModule?.icon,
-                version: m.version || catalogueModule?.version || '1.0.0',
-                category: m.category || catalogueModule?.category,
-                description: m.description || catalogueModule?.description,
-                gradient: m.gradient || catalogueModule?.gradient,
-                color: m.color || catalogueModule?.color,
-                author: m.author || catalogueModule?.author || 'Work Volt',
-                tags: m.tags || catalogueModule?.tags || [],
-                featured: m.featured !== undefined ? m.featured : (catalogueModule?.featured || false)
-              };
-            });
-            
-            // Combine: server modules + any local-only modules
-            window.INSTALLED_MODULES = [...enhancedServer, ...localOnly];
-            if (typeof saveInstalledModules === 'function') saveInstalledModules();
+        if (modulesData.modules) {
+            window.INSTALLED_MODULES = modulesData.modules;
+            window.WorkVolt?.toast(`${mod.label} installed!`, 'success');
             if (typeof renderNav === 'function') renderNav();
-          }
-        } catch(syncErr) {
-          // Sync failed but local is already saved - that's fine
-          console.log('GAS sync warning:', syncErr.message);
+            render();
         }
-        
-      } catch(e) {
-        // GAS failed but module is already saved locally
-        window.WorkVolt?.toast(`${mod.label} added locally (Sheet sync failed: ${e.message})`, 'warning');
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download text-xs"></i> Install'; }
-        return;
-      }
-    } else {
-      // Not connected mode
-      window.WorkVolt?.toast(`${mod.label} added (connect Google Sheet to provision its data tabs).`, 'info');
-    }
-  }
 
+    } catch(e) {
+        window.WorkVolt?.toast(`Install failed: ${e.message}`, 'error');
+        if (btn) { 
+            btn.disabled = false; 
+            btn.innerHTML = '<i class="fas fa-download text-xs"></i> Install'; 
+        }
+    }
+}
   // ── Uninstall ────────────────────────────────────────────────────
   async function uninstallModule(id) {
     const gasUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
-    const secret = window.API_SECRET_CLIENT || localStorage.getItem('wv_api_secret') || '';
+    const sessionId = window.WorkVolt?.session() || localStorage.getItem('wv_session') || '';
 
-    // CRITICAL FIX: Remove from localStorage FIRST
-    window.INSTALLED_MODULES = (window.INSTALLED_MODULES || []).filter(m => m.id !== id);
-    
-    // Add to denylist to prevent it from reappearing on next load
+    // Call GAS to uninstall
+    if (gasUrl && sessionId) {
+        try {
+            const url = new URL(gasUrl);
+            url.searchParams.set('path', 'module/uninstall');
+            url.searchParams.set('session_id', sessionId);
+            url.searchParams.set('sheet_id', localStorage.getItem('wv_sheet_id') || '');
+            url.searchParams.set('module', id);
+            await fetch(url.toString(), { cache: 'no-cache' });
+        } catch(e) {
+            console.warn('GAS uninstall failed:', e);
+        }
+    }
+
+    // Reload from server
     try {
-      const denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]');
-      if (!denylist.includes(id)) denylist.push(id);
-      localStorage.setItem('wv_uninstalled_modules', JSON.stringify(denylist));
-    } catch(e) {}
-
-    // Persist removal immediately
-    if (typeof saveInstalledModules === 'function') saveInstalledModules();
-    
-    // Update UI immediately
-    if (typeof renderNav === 'function') renderNav();
-    render();
-
-    if (gasUrl && secret) {
-      try {
-        const sessionId = window.WorkVolt?.session() || localStorage.getItem('wv_session') || '';
-        const url = new URL(gasUrl);
-        url.searchParams.set('path',       'module/uninstall');
-        url.searchParams.set('session_id', sessionId);
-        url.searchParams.set('sheet_id',   localStorage.getItem('wv_sheet_id') || '');
-        url.searchParams.set('module',     id);
-        await fetch(url.toString(), { cache: 'no-cache' });
-      } catch(e) { 
-        // Silent - local denylist is the safety net
-        console.log('GAS uninstall warning:', e.message);
-      }
+        const modulesRes = await fetch(`${gasUrl}?path=config/modules&session_id=${sessionId}&sheet_id=${localStorage.getItem('wv_sheet_id')}&_t=${Date.now()}`, { cache: 'no-cache' });
+        const modulesData = await modulesRes.json();
+        
+        if (modulesData.modules) {
+            window.INSTALLED_MODULES = modulesData.modules;
+            if (typeof renderNav === 'function') renderNav();
+            render();
+        }
+    } catch(e) {
+        // Fallback: remove locally
+        window.INSTALLED_MODULES = (window.INSTALLED_MODULES || []).filter(m => m.id !== id);
+        if (typeof renderNav === 'function') renderNav();
+        render();
     }
     
-    window.WorkVolt?.toast('Module removed. Sheet data preserved in Google Sheet.', 'info');
-  }
+    window.WorkVolt?.toast('Module removed', 'info');
+}
 
   function filtered() {
     return CATALOGUE.filter(m => {
