@@ -364,7 +364,12 @@
         const res = await fetch(url.toString(), { cache: 'no-cache' });
         const data = await res.json();
         if (data.modules) {
-          INSTALLED_MODULES = data.modules;
+          // Filter out any modules the user has explicitly uninstalled locally.
+          // This guards against the GAS config/modules endpoint returning stale
+          // data (e.g. server-side uninstall failed silently or hasn't synced yet).
+          let denylist = [];
+          try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
+          INSTALLED_MODULES = data.modules.filter(m => !denylist.includes(m.id));
           window.INSTALLED_MODULES = INSTALLED_MODULES;
         }
       } catch(e) {
