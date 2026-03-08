@@ -254,11 +254,6 @@ window.WorkVoltPages['store'] = function(container) {
 
   // ── Helpers ─────────────────────────────────────────────────────────
   function isInstalled(id) {
-    // Also check denylist so recently uninstalled modules aren't shown as installed
-    try {
-      const denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]');
-      if (denylist.includes(id)) return false;
-    } catch(e) {}
     return (window.INSTALLED_MODULES || []).some(m => m.id === id);
   }
 
@@ -299,24 +294,33 @@ window.WorkVoltPages['store'] = function(container) {
       };
       
       window.INSTALLED_MODULES.push(newModule);
+      // Remove from denylist — this module is being installed
+      try {
+        const dl = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]');
+        localStorage.setItem('wv_uninstalled_modules', JSON.stringify(dl.filter(i => i !== mod.id)));
+      } catch(e) {}
       if (typeof saveInstalledModules === 'function') saveInstalledModules();
       if (typeof renderNav === 'function') renderNav();
       render();
       
       // Now sync with GAS in the background
+      // Use session_id (not token) — GAS requires session auth for protected endpoints
+      const sessionId = window.WorkVolt?.session() || localStorage.getItem('wv_session') || '';
       try {
         const url = new URL(gasUrl);
-        url.searchParams.set('path',   'module/install');
-        url.searchParams.set('token',  secret);
-        url.searchParams.set('module', mod.id);
+        url.searchParams.set('path',       'module/install');
+        url.searchParams.set('session_id', sessionId);
+        url.searchParams.set('sheet_id',   localStorage.getItem('wv_sheet_id') || '');
+        url.searchParams.set('module',     mod.id);
         const res  = await fetch(url.toString(), { cache: 'no-cache' });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
 
         // Successfully installed on GAS — refresh module list from server
         const cfgUrl = new URL(gasUrl);
-        cfgUrl.searchParams.set('path',  'config/modules');
-        cfgUrl.searchParams.set('token', secret);
+        cfgUrl.searchParams.set('path',       'config/modules');
+        cfgUrl.searchParams.set('session_id', sessionId);
+        cfgUrl.searchParams.set('sheet_id',   localStorage.getItem('wv_sheet_id') || '');
         const cfgRes  = await fetch(cfgUrl.toString(), { cache: 'no-cache' });
         const cfgData = await cfgRes.json();
         
@@ -339,9 +343,6 @@ window.WorkVoltPages['store'] = function(container) {
             };
           });
           
-          // Filter denylist before applying server response
-          const denylist2 = (() => { try { return JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) { return []; } })();
-          enhancedModules = enhancedModules.filter(m => !denylist2.includes(m.id));
           window.INSTALLED_MODULES.length = 0;
           window.INSTALLED_MODULES.push(...enhancedModules);
           if (typeof saveInstalledModules === 'function') saveInstalledModules();
@@ -403,12 +404,15 @@ window.WorkVoltPages['store'] = function(container) {
 
     if (gasUrl && secret) {
       try {
+        // Use session_id (not token) — GAS requires session auth for protected endpoints
+        const sessionId = window.WorkVolt?.session() || localStorage.getItem('wv_session') || '';
         const url = new URL(gasUrl);
-        url.searchParams.set('path',   'module/uninstall');
-        url.searchParams.set('token',  secret);
-        url.searchParams.set('module', id);
+        url.searchParams.set('path',       'module/uninstall');
+        url.searchParams.set('session_id', sessionId);
+        url.searchParams.set('sheet_id',   localStorage.getItem('wv_sheet_id') || '');
+        url.searchParams.set('module',     id);
         await fetch(url.toString(), { cache: 'no-cache' });
-      } catch(e) { /* Silent — still remove locally */ }
+      } catch(e) { /* Silent — denylist is the safety net */ }
     }
 
     // Remove from INSTALLED_MODULES array immediately
