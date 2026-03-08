@@ -4,21 +4,25 @@ window.WorkVoltPages['settings'] = function(container) {
 
   // ── State ──────────────────────────────────────────────────────
   let savedUrl    = localStorage.getItem('wv_gas_url')    || '';
+  let savedSecret = localStorage.getItem('wv_api_secret') || '';
   let activeTab   = 'connection';
   let usersCache  = [];
   let editingUser = null;
   let modulesCache = [];
 
   if (savedUrl)    window.API_URL = savedUrl;
+  if (savedSecret) window.API_SECRET_CLIENT = savedSecret;
 
 
   // ================================================================
   //  API HELPER
   // ================================================================
   async function api(path, params) {
+    const savedSheetId = localStorage.getItem('wv_sheet_id') || '';
     const url = new URL(savedUrl);
     url.searchParams.set('path', path);
     url.searchParams.set('session_id', window.WorkVolt.session());
+    url.searchParams.set('sheet_id', savedSheetId);
     url.searchParams.set('_t', Date.now());
     if (params) {
       Object.entries(params).forEach(function(kv) {
@@ -121,7 +125,7 @@ window.WorkVoltPages['settings'] = function(container) {
   //  MAIN RENDER
   // ================================================================
   function render(connStatus, needsProvision) {
-    var isConnected = !!savedUrl;
+    var isConnected = !!(savedUrl && savedSecret);
 
     var tabNav = (
       '<button onclick="settingsTab(\'connection\')" ' +
@@ -168,22 +172,10 @@ window.WorkVoltPages['settings'] = function(container) {
 
 
   // ================================================================
-  //  CONNECTION TAB
+  //  CONNECTION TAB - SIMPLIFIED & WORKING
   // ================================================================
   function renderConnectionTab(status, isConnected, needsProvision) {
-    var howToSteps = [
-      ['1', 'Go to <strong>script.google.com</strong> → New Project'],
-      ['2', 'Create a new Google Sheet → copy the Sheet ID from its URL'],
-      ['3', 'Paste all your <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">.gs</code> files into the Apps Script editor (one file each)'],
-      ['4', 'Set <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">MASTER_SHEET_ID</code> in <strong>Code.gs</strong> (API_SECRET is already configured)'],
-      ['5', 'Click <strong>Deploy → New Deployment</strong>'],
-      ['6', 'Type: <strong>Web App</strong> · Execute as: <strong>Me</strong> · Access: <strong>Anyone</strong>'],
-      ['7', 'Copy the Web App URL → paste it above and Save'],
-    ].map(function(s) {
-      return '<div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">' + s[0] + '</span><p class="text-sm text-slate-600 pt-0.5">' + s[1] + '</p></div>';
-    }).join('');
-
-    // Show provision button if needed
+    
     var provisionSection = '';
     if (needsProvision) {
       provisionSection = `
@@ -207,67 +199,112 @@ window.WorkVoltPages['settings'] = function(container) {
 
         ${provisionSection}
 
+        <!-- MAIN CONNECTION FORM -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div class="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
-            <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
-              <i class="fas fa-plug text-white text-sm"></i>
+          <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
+                <i class="fas fa-plug text-white text-sm"></i>
+              </div>
+              <div>
+                <h2 class="font-bold text-slate-900">Google Sheet Connection</h2>
+                <p class="text-xs text-slate-500">Connect to your GAS Web App</p>
+              </div>
             </div>
-            <div>
-              <h2 class="font-bold text-slate-900">Google Sheet Connection</h2>
-              <p class="text-xs text-slate-500">Connect your GAS Web App to power all modules</p>
-            </div>
-            <div class="ml-auto">
-              <span class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full
-                ${isConnected ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
-                <span class="w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-slate-400'}"></span>
-                ${isConnected ? 'Connected' : 'Not connected'}
-              </span>
-            </div>
+            <span class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full
+              ${isConnected ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
+              <span class="w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-slate-400'}"></span>
+              ${isConnected ? 'Connected' : 'Not connected'}
+            </span>
           </div>
+
           <div class="px-6 py-5 space-y-4">
+            
+            <!-- Status Message -->
             ${renderStatus(status)}
+
+            <!-- GAS URL -->
             <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">GAS Web App URL</label>
-              <input id="settings-gas-url" type="url" placeholder="https://script.google.com/macros/s/.../exec"
-                value="${savedUrl}" class="field font-mono text-xs">
-              <p class="text-xs text-slate-400 mt-1.5">Deploy your <code class="bg-slate-100 px-1 rounded">Code.gs</code> as a Web App and paste the URL here.</p>
+              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">GAS Web App URL <span class="text-red-500">*</span></label>
+              <input id="settings-gas-url" type="url" placeholder="https://script.google.com/macros/s/[PROJECT-ID]/usercurrentapp"
+                value="${savedUrl}" class="field font-mono text-xs w-full">
+              <p class="text-xs text-slate-400 mt-1.5">Your Apps Script Web App deployment URL</p>
             </div>
+
+            <!-- Sheet ID -->
             <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Google Sheet ID <span class="text-red-500">*</span></label>
-              <input id="settings-sheet-id" type="text" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-                value="${localStorage.getItem('wv_sheet_id') || ''}" class="field font-mono text-xs">
-              <p class="text-xs text-slate-400 mt-1.5">From your Sheet URL: <code class="bg-slate-100 px-1 rounded">/d/SHEET_ID/edit</code> (required)</p>
+              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Google Sheet ID <span class="text-red-500">*</span></label>
+              <input id="settings-sheet-id" type="text" placeholder="e.g., 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                value="${localStorage.getItem('wv_sheet_id') || ''}" class="field font-mono text-xs w-full">
+              <p class="text-xs text-slate-400 mt-1.5">From your Sheet: Copy the ID from the URL between <code class="bg-slate-100 px-1 rounded">/d/</code> and <code class="bg-slate-100 px-1 rounded">/edit</code></p>
             </div>
-            <div class="flex gap-3 pt-1">
-              <button onclick="settingsTestConnection()" id="settings-test-btn" class="btn-secondary flex-1">
-                <i class="fas fa-vial text-sm"></i> Test Connection
-              </button>
+
+            <!-- API Secret -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">API Secret <span class="text-red-500">*</span></label>
+              <div class="relative">
+                <input id="settings-secret" type="password" placeholder="Your API_SECRET value from Code.gs"
+                  value="${savedSecret}" class="field font-mono text-xs pr-10 w-full">
+                <button type="button" onclick="toggleSecretVis()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <i id="secret-eye" class="fas fa-eye text-sm"></i>
+                </button>
+              </div>
+              <p class="text-xs text-slate-400 mt-1.5">Must match the <code class="bg-slate-100 px-1 rounded">API_SECRET</code> in your Code.gs file</p>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-3 pt-2">
               <button onclick="settingsSave()" id="settings-save-btn" class="btn-primary flex-1">
-                <i class="fas fa-save text-sm"></i> Save
+                <i class="fas fa-save text-sm"></i> Save & Connect
+              </button>
+              <button onclick="settingsTestConnection()" id="settings-test-btn" class="btn-secondary flex-1">
+                <i class="fas fa-vial text-sm"></i> Test
               </button>
             </div>
           </div>
         </div>
 
+        <!-- SETUP INSTRUCTIONS -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <button onclick="toggleHowTo()" class="w-full px-6 py-4 flex items-center justify-between text-left">
-            <h2 class="font-bold text-slate-900 flex items-center gap-2 text-sm">
+          <button onclick="toggleHowTo()" class="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-slate-50">
+            <div class="flex items-center gap-2">
               <i class="fas fa-book text-slate-400 text-sm"></i>
-              How to deploy your GAS backend
-            </h2>
+              <h3 class="font-bold text-slate-900 text-sm">Setup Instructions</h3>
+            </div>
             <i id="howto-chevron" class="fas fa-chevron-down text-slate-400 text-xs transition-transform"></i>
           </button>
-          <div id="howto-body" class="hidden px-6 pb-5 space-y-3 border-t border-slate-100 pt-4">
-            ${howToSteps}
+          <div id="howto-body" class="hidden px-6 pb-5 space-y-2 border-t border-slate-100 pt-4 text-xs text-slate-600">
+            <p><strong>1. Set up your GAS project:</strong></p>
+            <p class="ml-3">→ Go to <code class="bg-slate-100 px-1 rounded">script.google.com</code> and create a new project</p>
+            <p class="ml-3">→ Create a Google Sheet (this will be your database)</p>
+            <p class="ml-3">→ Copy the Sheet ID from its URL</p>
+            
+            <p class="mt-3"><strong>2. Upload the code:</strong></p>
+            <p class="ml-3">→ Paste each <code class="bg-slate-100 px-1 rounded">.gs</code> file into separate Apps Script files</p>
+            <p class="ml-3">→ Set <code class="bg-slate-100 px-1 rounded">MASTER_SHEET_ID</code> and <code class="bg-slate-100 px-1 rounded">API_SECRET</code> in Code.gs</p>
+            
+            <p class="mt-3"><strong>3. Deploy as Web App:</strong></p>
+            <p class="ml-3">→ Click <strong>Deploy → New Deployment</strong></p>
+            <p class="ml-3">→ Type: <strong>Web App</strong></p>
+            <p class="ml-3">→ Execute as: <strong>Me</strong></p>
+            <p class="ml-3">→ Access: <strong>Anyone</strong></p>
+            <p class="ml-3">→ Copy the deployment URL</p>
+            
+            <p class="mt-3"><strong>4. Connect here:</strong></p>
+            <p class="ml-3">→ Paste the Web App URL above</p>
+            <p class="ml-3">→ Paste your Sheet ID</p>
+            <p class="ml-3">→ Paste your API_SECRET</p>
+            <p class="ml-3">→ Click Save & Connect</p>
           </div>
         </div>
 
+        <!-- DISCONNECT -->
         ${isConnected ? `
         <div class="bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden">
           <div class="px-6 py-5 flex items-center justify-between">
             <div>
               <h2 class="font-bold text-red-700 text-sm">Disconnect</h2>
-              <p class="text-xs text-slate-500 mt-0.5">Remove the saved URL and secret from this browser</p>
+              <p class="text-xs text-slate-500 mt-0.5">Remove the saved connection from this browser</p>
             </div>
             <button onclick="settingsDisconnect()"
               class="text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-xl transition-colors border border-red-200">
@@ -1652,6 +1689,13 @@ window.WorkVoltPages['settings'] = function(container) {
     render();
   };
 
+  window.toggleSecretVis = function() {
+    var inp = document.getElementById('settings-secret');
+    var eye = document.getElementById('secret-eye');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+    eye.className = inp.type === 'password' ? 'fas fa-eye text-sm' : 'fas fa-eye-slash text-sm';
+  };
+
   window.toggleHowTo = function() {
     var body = document.getElementById('howto-body');
     var chev = document.getElementById('howto-chevron');
@@ -1661,53 +1705,127 @@ window.WorkVoltPages['settings'] = function(container) {
 
   window.settingsSave = function() {
     var url     = document.getElementById('settings-gas-url').value.trim();
+    var secret  = document.getElementById('settings-secret').value.trim();
     var sheetId = document.getElementById('settings-sheet-id').value.trim();
-    if (!url)     return window.WorkVolt?.toast('Please enter the GAS URL', 'warning');
-    if (!sheetId) return window.WorkVolt?.toast('Please enter the Sheet ID', 'warning');
-    localStorage.setItem('wv_gas_url',  url);
+    
+    // Validation
+    if (!url) {
+      window.WorkVolt?.toast?.('Please enter the GAS URL', 'warning');
+      return;
+    }
+    if (!sheetId) {
+      window.WorkVolt?.toast?.('Please enter the Sheet ID', 'warning');
+      return;
+    }
+    if (!secret) {
+      window.WorkVolt?.toast?.('Please enter the API Secret', 'warning');
+      return;
+    }
+    
+    // Basic URL validation
+    if (!url.includes('script.google.com') && !url.includes('script.googleapis.com')) {
+      window.WorkVolt?.toast?.('URL must be from script.google.com', 'warning');
+      return;
+    }
+    
+    // Save to localStorage
+    localStorage.setItem('wv_gas_url', url);
+    localStorage.setItem('wv_api_secret', secret);
     localStorage.setItem('wv_sheet_id', sheetId);
+    
     savedUrl = url;
+    savedSecret = secret;
     window.API_URL = url;
+    window.API_SECRET_CLIENT = secret;
+    
+    // Show success message and test connection
     render({ ok: true, message: 'Settings saved. Testing connection…' });
-    setTimeout(function() { window.settingsTestConnection(); }, 400);
+    setTimeout(function() { 
+      window.settingsTestConnection(); 
+    }, 500);
   };
 
   window.settingsTestConnection = async function() {
     var url     = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
+    var secret  = (document.getElementById('settings-secret')?.value  || '').trim() || savedSecret;
     var sheetId = (document.getElementById('settings-sheet-id')?.value || '').trim() || localStorage.getItem('wv_sheet_id') || '';
     var btn    = document.getElementById('settings-test-btn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Testing…'; }
+    
+    // Validation
+    if (!url || !sheetId) {
+      if (btn) btn.disabled = false;
+      render({ ok: false, message: 'Please enter GAS URL and Sheet ID before testing' });
+      return;
+    }
+
+    if (btn) { 
+      btn.disabled = true; 
+      btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Testing…'; 
+    }
     
     try {
+      // 1. Test ping (basic connectivity)
       var pingUrl = new URL(url);
       pingUrl.searchParams.set('path', 'ping');
       var pingRes  = await fetch(pingUrl.toString(), { cache: 'no-cache' });
       var pingData = await pingRes.json();
-      if (pingData.status !== 'ok') throw new Error('Unexpected response from server');
+      
+      if (!pingData || pingData.error) {
+        throw new Error('GAS server error: ' + (pingData?.error || 'No response'));
+      }
 
+      // 2. Test setup/check (sheet connection)
       var checkUrl = new URL(url);
-      checkUrl.searchParams.set('path',  'setup/check');
+      checkUrl.searchParams.set('path', 'setup/check');
       checkUrl.searchParams.set('sheet_id', sheetId);
-      checkUrl.searchParams.set('session_id', window.WorkVolt.session() || '');
+      checkUrl.searchParams.set('session_id', window.WorkVolt?.session?.() || '');
+      
       var checkRes  = await fetch(checkUrl.toString(), { cache: 'no-cache' });
       var checkData = await checkRes.json();
-      if (checkData.error) throw new Error(checkData.error);
-
-      var connStatus = { ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' };
-      if (checkData.connected) {
-        connStatus.message = '✓ Connected! ' + (checkData.message || 'Sheet accessible.');
+      
+      if (checkData?.error) {
+        throw new Error(checkData.error);
       }
+
+      // Success
+      var connStatus = { 
+        ok: true, 
+        message: '✓ Connected! Sheet ID: ' + sheetId.substring(0, 20) + '...' 
+      };
       render(connStatus);
+      
+      if (btn) { 
+        setTimeout(function() {
+          if (btn) { 
+            btn.disabled = false; 
+            btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test'; 
+          }
+        }, 1000);
+      }
+      
     } catch(e) {
-      render({ ok: false, message: 'Connection failed: ' + e.message + '. Check the GAS URL and Sheet ID.' });
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
+      var errorMsg = e.message;
+      // Provide helpful error messages
+      if (errorMsg.includes('Failed to fetch')) {
+        errorMsg = 'Network error: Check your GAS URL and try again';
+      } else if (errorMsg.includes('Cannot open sheet')) {
+        errorMsg = 'Sheet error: Check your Sheet ID and permissions';
+      }
+      
+      render({ ok: false, message: '✗ Connection failed: ' + errorMsg });
+      
+      if (btn) { 
+        btn.disabled = false; 
+        btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test'; 
+      }
     }
   };
 
   window.settingsDisconnect = function() {
     localStorage.removeItem('wv_gas_url');
-    localStorage.removeItem('wv_sheet_id');
-    savedUrl = '';
+    localStorage.removeItem('wv_api_secret');
+    savedUrl    = '';
+    savedSecret = '';
     window.API_URL = '';
     render({ ok: false, message: 'Disconnected. Enter a new GAS URL to reconnect.' });
   };
@@ -1737,6 +1855,7 @@ window.WorkVoltPages['settings'] = function(container) {
 
   if (savedUrl) {
     window.API_URL = savedUrl;
+    window.API_SECRET_CLIENT = savedSecret;
   }
 
   // Restore previously installed modules from localStorage on boot
