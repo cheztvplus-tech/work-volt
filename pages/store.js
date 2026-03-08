@@ -42,6 +42,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#3b82f6',
       gradient: 'from-blue-500 to-indigo-600',
       featured: true,
+      comingSoon: true,
     },
     {
       id: 'payroll',
@@ -55,6 +56,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#10b981',
       gradient: 'from-emerald-500 to-teal-600',
       featured: false,
+      comingSoon: true,
     },
     {
       id: 'timesheets',
@@ -68,6 +70,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#f59e0b',
       gradient: 'from-amber-500 to-orange-500',
       featured: false,
+      comingSoon: true,
     },
     {
       id: 'financials',
@@ -81,6 +84,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#06b6d4',
       gradient: 'from-cyan-500 to-blue-500',
       featured: true,
+      comingSoon: true,
     },
     {
       id: 'crm',
@@ -121,6 +125,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#6366f1',
       gradient: 'from-indigo-500 to-violet-600',
       featured: false,
+      comingSoon: true,
     },
     {
       id: 'assets',
@@ -134,6 +139,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#64748b',
       gradient: 'from-slate-500 to-slate-700',
       featured: false,
+      comingSoon: true,
     },
     {
       id: 'attendance',
@@ -147,6 +153,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#6366f1',
       gradient: 'from-indigo-500 to-purple-600',
       featured: false,
+      comingSoon: true,
     },
     {
       id: 'invoices',
@@ -160,6 +167,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#10b981',
       gradient: 'from-emerald-500 to-teal-600',
       featured: true,
+      comingSoon: true,
     },
     {
       id: 'inventory',
@@ -173,6 +181,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#f59e0b',
       gradient: 'from-amber-500 to-orange-500',
       featured: false,
+      comingSoon: true,
     },
     {
       id: 'scheduler',
@@ -186,6 +195,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#3b82f6',
       gradient: 'from-blue-500 to-cyan-500',
       featured: false,
+      comingSoon: true,
     },
     {
       id: 'expenses',
@@ -199,6 +209,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#ec4899',
       gradient: 'from-pink-500 to-rose-500',
       featured: true,
+      comingSoon: true,
     },
     {
       id: 'contracts',
@@ -212,6 +223,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#8b5cf6',
       gradient: 'from-violet-500 to-purple-600',
       featured: false,
+      comingSoon: true,
     },
     {
       id: 'helpdesk',
@@ -225,6 +237,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#06b6d4',
       gradient: 'from-cyan-500 to-blue-500',
       featured: false,
+      comingSoon: true,
     },
     {
       id: 'recruitment',
@@ -238,6 +251,7 @@ window.WorkVoltPages['store'] = function(container) {
       color: '#f97316',
       gradient: 'from-orange-500 to-red-500',
       featured: false,
+      comingSoon: true,
     },
   ];
 
@@ -260,6 +274,7 @@ window.WorkVoltPages['store'] = function(container) {
   // ── Install ─────────────────────────────────────────────────────
   async function installModule(mod) {
     if (isInstalled(mod.id)) return;
+    if (mod.comingSoon) return;
 
     const gasUrl    = window.API_URL || localStorage.getItem('wv_gas_url') || '';
     const apiSecret = window.API_SECRET_CLIENT || localStorage.getItem('wv_api_secret') || '';
@@ -528,7 +543,9 @@ window.WorkVoltPages['store'] = function(container) {
           <span class="text-xs opacity-60">v${m.version}</span>
           ${inst
             ? `<span class="text-xs bg-white/20 px-3 py-1 rounded-full font-semibold"><i class="fas fa-check mr-1"></i>Installed</span>`
-            : `<button onclick="event.stopPropagation();storeInstall('${m.id}')" class="text-xs bg-white text-slate-800 font-bold px-3 py-1 rounded-full hover:bg-blue-50 transition-colors">Install</button>`
+            : m.comingSoon
+              ? `<span class="text-xs bg-white/20 px-3 py-1 rounded-full font-semibold opacity-80"><i class="fas fa-clock mr-1"></i>Coming Soon</span>`
+              : `<button onclick="event.stopPropagation();storeInstall('${m.id}')" class="text-xs bg-white text-slate-800 font-bold px-3 py-1 rounded-full hover:bg-blue-50 transition-colors">Install</button>`
           }
         </div>
       </div>
@@ -538,17 +555,20 @@ window.WorkVoltPages['store'] = function(container) {
   function renderCard(m) {
     const inst = isInstalled(m.id);
     return `
-      <div class="group bg-white border border-slate-200 rounded-2xl p-5 hover:border-blue-200 hover:shadow-md transition-all cursor-pointer"
+      <div class="group bg-white border border-slate-200 rounded-2xl p-5 ${m.comingSoon ? 'opacity-75 cursor-pointer hover:border-amber-200 hover:shadow-md' : 'hover:border-blue-200 hover:shadow-md cursor-pointer'} transition-all"
            onclick="storeOpenDetail('${m.id}')">
         <div class="flex items-start gap-4">
-          <div class="w-12 h-12 bg-gradient-to-br ${m.gradient} rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
+          <div class="w-12 h-12 bg-gradient-to-br ${m.gradient} rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm ${m.comingSoon ? 'opacity-60' : ''}">
             <i class="fas ${m.icon} text-white text-lg"></i>
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-0.5">
               <h3 class="font-bold text-slate-900 text-sm">${m.label}</h3>
               <span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">${m.category}</span>
-              ${m.featured ? `<span class="text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-star text-[8px] mr-0.5"></i>Featured</span>` : ''}
+              ${m.comingSoon
+                ? `<span class="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-clock text-[8px] mr-0.5"></i>Coming Soon</span>`
+                : m.featured ? `<span class="text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-star text-[8px] mr-0.5"></i>Featured</span>` : ''
+              }
             </div>
             <p class="text-xs text-slate-500 leading-relaxed line-clamp-2">${m.description}</p>
           </div>
@@ -563,11 +583,15 @@ window.WorkVoltPages['store'] = function(container) {
             ? `<span class="flex items-center gap-1.5 text-xs text-green-600 font-semibold bg-green-50 px-3 py-1.5 rounded-xl">
                 <i class="fas fa-check-circle text-xs"></i> Installed
                </span>`
-            : `<button onclick="event.stopPropagation();storeInstall('${m.id}')"
-                 data-install="${m.id}"
-                 class="flex items-center gap-1.5 text-xs font-bold bg-blue-600 text-white px-3 py-1.5 rounded-xl hover:bg-blue-700 active:scale-95 transition-all">
-                 <i class="fas fa-download text-xs"></i> Install
-               </button>`
+            : m.comingSoon
+              ? `<span class="flex items-center gap-1.5 text-xs text-amber-600 font-semibold bg-amber-50 px-3 py-1.5 rounded-xl cursor-default">
+                   <i class="fas fa-clock text-xs"></i> Coming Soon
+                 </span>`
+              : `<button onclick="event.stopPropagation();storeInstall('${m.id}')"
+                   data-install="${m.id}"
+                   class="flex items-center gap-1.5 text-xs font-bold bg-blue-600 text-white px-3 py-1.5 rounded-xl hover:bg-blue-700 active:scale-95 transition-all">
+                   <i class="fas fa-download text-xs"></i> Install
+                 </button>`
           }
         </div>
       </div>
@@ -634,10 +658,14 @@ window.WorkVoltPages['store'] = function(container) {
                  Remove
                </button>
              </div>`
-          : `<button onclick="storeInstall('${m.id}');storeCloseModal()"
-               class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl py-3.5 text-sm transition-all active:scale-[.98] shadow-lg shadow-blue-200">
-               <i class="fas fa-download"></i> Install Module
-             </button>`
+          : m.comingSoon
+            ? `<div class="flex items-center justify-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 font-semibold rounded-xl py-3.5 text-sm">
+                 <i class="fas fa-clock"></i> Coming Soon — Check back later!
+               </div>`
+            : `<button onclick="storeInstall('${m.id}');storeCloseModal()"
+                 class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl py-3.5 text-sm transition-all active:scale-[.98] shadow-lg shadow-blue-200">
+                 <i class="fas fa-download"></i> Install Module
+               </button>`
         }
       </div>
     `;
