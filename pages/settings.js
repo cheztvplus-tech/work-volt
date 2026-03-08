@@ -217,6 +217,12 @@ window.WorkVoltPages['settings'] = function(container) {
               <p class="text-xs text-slate-400 mt-1.5">Deploy your <code class="bg-slate-100 px-1 rounded">Code.gs</code> as a Web App and paste the URL here.</p>
             </div>
             <div>
+              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Google Sheet ID <span class="text-red-500">*</span></label>
+              <input id="settings-sheet-id" type="text" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                value="${localStorage.getItem('wv_sheet_id') || ''}" class="field font-mono text-xs">
+              <p class="text-xs text-slate-400 mt-1.5">From your Sheet URL: <code class="bg-slate-100 px-1 rounded">/d/SHEET_ID/edit</code> (required)</p>
+            </div>
+            <div>
               <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">API Secret</label>
               <div class="relative">
                 <input id="settings-secret" type="password" placeholder="Your API_SECRET from Code.gs"
@@ -1656,12 +1662,15 @@ window.WorkVoltPages['settings'] = function(container) {
   };
 
   window.settingsSave = function() {
-    var url    = document.getElementById('settings-gas-url').value.trim();
-    var secret = document.getElementById('settings-secret').value.trim();
-    if (!url)    return window.WorkVolt?.toast('Please enter the GAS URL', 'warning');
-    if (!secret) return window.WorkVolt?.toast('Please enter the API Secret', 'warning');
+    var url     = document.getElementById('settings-gas-url').value.trim();
+    var secret  = document.getElementById('settings-secret').value.trim();
+    var sheetId = document.getElementById('settings-sheet-id').value.trim();
+    if (!url)     return window.WorkVolt?.toast('Please enter the GAS URL', 'warning');
+    if (!secret)  return window.WorkVolt?.toast('Please enter the API Secret', 'warning');
+    if (!sheetId) return window.WorkVolt?.toast('Please enter the Sheet ID', 'warning');
     localStorage.setItem('wv_gas_url',    url);
     localStorage.setItem('wv_api_secret', secret);
+    localStorage.setItem('wv_sheet_id',   sheetId);
     savedUrl    = url;
     savedSecret = secret;
     window.API_URL = url;
@@ -1671,8 +1680,9 @@ window.WorkVoltPages['settings'] = function(container) {
   };
 
   window.settingsTestConnection = async function() {
-    var url    = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
-    var secret = (document.getElementById('settings-secret')?.value  || '').trim() || savedSecret;
+    var url     = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
+    var secret  = (document.getElementById('settings-secret')?.value  || '').trim() || savedSecret;
+    var sheetId = (document.getElementById('settings-sheet-id')?.value || '').trim() || localStorage.getItem('wv_sheet_id') || '';
     var btn    = document.getElementById('settings-test-btn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Testing…'; }
     
@@ -1683,17 +1693,17 @@ window.WorkVoltPages['settings'] = function(container) {
       var pingData = await pingRes.json();
       if (pingData.status !== 'ok') throw new Error('Unexpected response from server');
 
-      var provUrl = new URL(url);
-      provUrl.searchParams.set('path',  'setup/provision');
-      provUrl.searchParams.set('token', secret);
-      var provRes  = await fetch(provUrl.toString(), { cache: 'no-cache' });
-      var provData = await provRes.json();
-      if (provData.error) throw new Error(provData.error);
+      var checkUrl = new URL(url);
+      checkUrl.searchParams.set('path',  'setup/check');
+      checkUrl.searchParams.set('sheet_id', sheetId);
+      checkUrl.searchParams.set('session_id', window.WorkVolt.session() || '');
+      var checkRes  = await fetch(checkUrl.toString(), { cache: 'no-cache' });
+      var checkData = await checkRes.json();
+      if (checkData.error) throw new Error(checkData.error);
 
       var connStatus = { ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' };
-      if (provData.provisioned) {
-        connStatus.message = '✓ Connected! USERS sheet created.';
-        connStatus.provision = provData;
+      if (checkData.connected) {
+        connStatus.message = '✓ Connected! ' + (checkData.message || 'Sheet accessible.');
       }
       render(connStatus);
     } catch(e) {
