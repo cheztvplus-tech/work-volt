@@ -108,7 +108,7 @@ window.WorkVoltPages['timesheets'] = function(container) {
   }
   function calcHours(start, end, breakMins) {
     if (!start || !end) return 0;
-    var s = parseTimeStr(start), e = parseTimeStr(end);
+    var s = parseTimeStr(normalizeTime(start)), e = parseTimeStr(normalizeTime(end));
     if (s === null || e === null) return 0;
     var diff = (e - s) / 60;
     if (diff <= 0) diff += 24;
@@ -123,6 +123,26 @@ window.WorkVoltPages['timesheets'] = function(container) {
     if (ampm === 'pm' && h < 12) h += 12;
     if (ampm === 'am' && h === 12) h = 0;
     return h * 60 + min;
+  }
+  // Normalize a time value that may be a full ISO string (e.g. "1899-12-30T09:00:00.000Z")
+  // or already a plain "HH:MM" string — always returns "HH:MM" or '' if invalid.
+  function normalizeTime(t) {
+    if (!t) return '';
+    var s = String(t);
+    // ISO / date-time string: grab the time portion and convert from UTC
+    if (s.indexOf('T') !== -1) {
+      try {
+        var d = new Date(s);
+        if (!isNaN(d.getTime())) {
+          var h = d.getUTCHours(), m = d.getUTCMinutes();
+          return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+        }
+      } catch(e) {}
+    }
+    // Already "HH:MM" or "H:MM" — pass through
+    var m2 = s.match(/^(\d{1,2}):(\d{2})/);
+    if (m2) return String(parseInt(m2[1])).padStart(2,'0') + ':' + m2[2];
+    return '';
   }
   function toast(msg, type) {
     if (window.WorkVolt && window.WorkVolt.toast) window.WorkVolt.toast(msg, type || 'info');
@@ -504,7 +524,7 @@ window.WorkVoltPages['timesheets'] = function(container) {
           '</td>' +
           '<td class="px-4 py-3 whitespace-nowrap text-xs text-slate-500">' +
             (r.start_time && r.end_time
-              ? '<span class="font-mono">' + esc(r.start_time) + ' – ' + esc(r.end_time) + '</span>' +
+              ? '<span class="font-mono">' + esc(normalizeTime(r.start_time)) + ' – ' + esc(normalizeTime(r.end_time)) + '</span>' +
                 (r.break_minutes ? '<div class="text-[10px] text-slate-400">' + r.break_minutes + 'm break</div>' : '')
               : '<span class="text-slate-300">—</span>') +
           '</td>' +
@@ -809,9 +829,9 @@ window.WorkVoltPages['timesheets'] = function(container) {
           '<div class="bg-slate-50 rounded-xl p-4 mb-4">' +
             '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-3">Hours Breakdown</p>' +
             '<div class="grid grid-cols-3 gap-3 text-center">' +
-              '<div><div class="text-2xl font-extrabold text-slate-900">' + esc(r.start_time||'—') + '</div><div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-0.5">Start</div></div>' +
+              '<div><div class="text-2xl font-extrabold text-slate-900">' + esc(normalizeTime(r.start_time)||'—') + '</div><div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-0.5">Start</div></div>' +
               '<div><div class="text-2xl font-extrabold text-amber-600">' + fmtHours(hours) + '</div><div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-0.5">Total</div></div>' +
-              '<div><div class="text-2xl font-extrabold text-slate-900">' + esc(r.end_time||'—') + '</div><div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-0.5">End</div></div>' +
+              '<div><div class="text-2xl font-extrabold text-slate-900">' + esc(normalizeTime(r.end_time)||'—') + '</div><div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-0.5">End</div></div>' +
             '</div>' +
             (r.break_minutes ? '<div class="text-center mt-2 text-xs text-slate-400"><i class="fas fa-coffee mr-1"></i>' + esc(r.break_minutes) + ' min break deducted</div>' : '') +
           '</div>' +
@@ -883,8 +903,12 @@ window.WorkVoltPages['timesheets'] = function(container) {
   function openEntryForm(entry, prefillDate) {
     var isEdit = !!entry;
     var r = entry || {};
-    var today = prefillDate || fmtDateInput(new Date());
+    // For new entries use prefillDate or today; for edits use the entry's date
+    var today = isEdit ? (fmtDateInput(r.date) || todayStr()) : (prefillDate || todayStr());
     var uid = r.user_id || myUserId();
+    // Normalize stored times (may be ISO strings from Google Sheets) to HH:MM for <input type="time">
+    var startVal = normalizeTime(r.start_time) || '09:00';
+    var endVal   = normalizeTime(r.end_time)   || '17:00';
 
     var userSelectHtml = isAdmin()
       ? '<div><label class="ts-label">Employee</label>' +
@@ -923,8 +947,8 @@ window.WorkVoltPages['timesheets'] = function(container) {
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">' +
           userSelectHtml +
           '<div><label class="ts-label">Date</label><input id="tf-date" type="date" class="ts-input" value="' + esc(today) + '"></div>' +
-          '<div><label class="ts-label">Start Time</label><input id="tf-start" type="time" class="ts-input" value="' + esc(r.start_time||'09:00') + '"></div>' +
-          '<div><label class="ts-label">End Time</label><input id="tf-end" type="time" class="ts-input" value="' + esc(r.end_time||'17:00') + '"></div>' +
+          '<div><label class="ts-label">Start Time</label><input id="tf-start" type="time" class="ts-input" value="' + esc(startVal) + '"></div>' +
+          '<div><label class="ts-label">End Time</label><input id="tf-end" type="time" class="ts-input" value="' + esc(endVal) + '"></div>' +
           '<div><label class="ts-label">Break (minutes)</label><input id="tf-break" type="number" min="0" max="480" class="ts-input" value="' + esc(r.break_minutes||'0') + '" placeholder="0"></div>' +
           '<div><label class="ts-label">Total Hours (auto)</label>' +
             '<div class="ts-input flex items-center gap-2 font-bold text-amber-600" id="tf-hours-display" style="background:#fffbeb;border-color:#fde68a">' +
