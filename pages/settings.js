@@ -18,12 +18,9 @@ window.WorkVoltPages['settings'] = function(container) {
   //  API HELPER
   // ================================================================
   async function api(path, params) {
-    const savedSheetId = localStorage.getItem('wv_sheet_id') || '';
     const url = new URL(savedUrl);
-    url.searchParams.set('path', path);
-    url.searchParams.set('session_id', window.WorkVolt.session());
-    url.searchParams.set('sheet_id', savedSheetId);
-    url.searchParams.set('_t', Date.now());
+    url.searchParams.set('path',  path);
+    url.searchParams.set('token', savedSecret);
     if (params) {
       Object.entries(params).forEach(function(kv) {
         if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
@@ -124,7 +121,7 @@ window.WorkVoltPages['settings'] = function(container) {
   // ================================================================
   //  MAIN RENDER
   // ================================================================
-  function render(connStatus, needsProvision) {
+  function render(connStatus) {
     var isConnected = !!(savedUrl && savedSecret);
 
     var tabNav = (
@@ -159,7 +156,7 @@ window.WorkVoltPages['settings'] = function(container) {
         </div>
 
         <div id="settings-tab-content" class="max-w-4xl mx-auto px-6 md:px-10 py-8">
-          ${activeTab === 'connection' ? renderConnectionTab(connStatus, isConnected, needsProvision) : activeTab === 'users' ? renderUsersTab() : activeTab === 'admin-config' ? renderAdminConfigTab() : renderModulesTab()}
+          ${activeTab === 'connection' ? renderConnectionTab(connStatus, isConnected) : activeTab === 'users' ? renderUsersTab() : activeTab === 'admin-config' ? renderAdminConfigTab() : renderModulesTab()}
         </div>
 
       </div>
@@ -172,139 +169,91 @@ window.WorkVoltPages['settings'] = function(container) {
 
 
   // ================================================================
-  //  CONNECTION TAB - SIMPLIFIED & WORKING
+  //  CONNECTION TAB
   // ================================================================
-  function renderConnectionTab(status, isConnected, needsProvision) {
-    
-    var provisionSection = '';
-    if (needsProvision) {
-      provisionSection = `
-        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-          <div class="flex items-start gap-3">
-            <i class="fas fa-exclamation-triangle text-amber-500 mt-0.5"></i>
-            <div>
-              <p class="text-sm font-semibold text-amber-800">First-time Setup Required</p>
-              <p class="text-xs text-amber-600 mt-1">Your USERS sheet is empty. Click below to create the first SuperAdmin account.</p>
-              <button onclick="runProvision()" id="provision-btn" class="mt-3 btn-primary bg-amber-600 hover:bg-amber-700">
-                <i class="fas fa-magic text-sm"></i> Create SuperAdmin Account
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
-    }
+  function renderConnectionTab(status, isConnected) {
+    var howToSteps = [
+      ['1', 'Go to <strong>script.google.com</strong> → New Project'],
+      ['2', 'Create a new Google Sheet → copy the Sheet ID from its URL'],
+      ['3', 'Paste all your <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">.gs</code> files into the Apps Script editor (one file each)'],
+      ['4', 'Set <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">MASTER_SHEET_ID</code> and <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">API_SECRET</code> in <strong>Code.gs</strong>'],
+      ['5', 'Click <strong>Deploy → New Deployment</strong>'],
+      ['6', 'Type: <strong>Web App</strong> · Execute as: <strong>Me</strong> · Access: <strong>Anyone</strong>'],
+      ['7', 'Copy the Web App URL → paste it above'],
+      ['8', 'Paste your <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">API_SECRET</code> value above → Save'],
+    ].map(function(s) {
+      return '<div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">' + s[0] + '</span><p class="text-sm text-slate-600 pt-0.5">' + s[1] + '</p></div>';
+    }).join('');
 
     return `
       <div class="max-w-2xl space-y-6">
 
-        ${provisionSection}
-
-        <!-- MAIN CONNECTION FORM -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
-                <i class="fas fa-plug text-white text-sm"></i>
-              </div>
-              <div>
-                <h2 class="font-bold text-slate-900">Google Sheet Connection</h2>
-                <p class="text-xs text-slate-500">Connect to your GAS Web App</p>
-              </div>
+          <div class="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
+            <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
+              <i class="fas fa-plug text-white text-sm"></i>
             </div>
-            <span class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full
-              ${isConnected ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
-              <span class="w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-slate-400'}"></span>
-              ${isConnected ? 'Connected' : 'Not connected'}
-            </span>
+            <div>
+              <h2 class="font-bold text-slate-900">Google Sheet Connection</h2>
+              <p class="text-xs text-slate-500">Connect your GAS Web App to power all modules</p>
+            </div>
+            <div class="ml-auto">
+              <span class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full
+                ${isConnected ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
+                <span class="w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-slate-400'}"></span>
+                ${isConnected ? 'Connected' : 'Not connected'}
+              </span>
+            </div>
           </div>
-
           <div class="px-6 py-5 space-y-4">
-            
-            <!-- Status Message -->
             ${renderStatus(status)}
-
-            <!-- GAS URL -->
             <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">GAS Web App URL <span class="text-red-500">*</span></label>
-              <input id="settings-gas-url" type="url" placeholder="https://script.google.com/macros/s/[PROJECT-ID]/usercurrentapp"
-                value="${savedUrl}" class="field font-mono text-xs w-full">
-              <p class="text-xs text-slate-400 mt-1.5">Your Apps Script Web App deployment URL</p>
+              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">GAS Web App URL</label>
+              <input id="settings-gas-url" type="url" placeholder="https://script.google.com/macros/s/.../exec"
+                value="${savedUrl}" class="field font-mono text-xs">
+              <p class="text-xs text-slate-400 mt-1.5">Deploy your <code class="bg-slate-100 px-1 rounded">Code.gs</code> as a Web App and paste the URL here.</p>
             </div>
-
-            <!-- Sheet ID -->
             <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Google Sheet ID <span class="text-red-500">*</span></label>
-              <input id="settings-sheet-id" type="text" placeholder="e.g., 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-                value="${localStorage.getItem('wv_sheet_id') || ''}" class="field font-mono text-xs w-full">
-              <p class="text-xs text-slate-400 mt-1.5">From your Sheet: Copy the ID from the URL between <code class="bg-slate-100 px-1 rounded">/d/</code> and <code class="bg-slate-100 px-1 rounded">/edit</code></p>
-            </div>
-
-            <!-- API Secret -->
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">API Secret <span class="text-red-500">*</span></label>
+              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">API Secret</label>
               <div class="relative">
-                <input id="settings-secret" type="password" placeholder="Your API_SECRET value from Code.gs"
-                  value="${savedSecret}" class="field font-mono text-xs pr-10 w-full">
-                <button type="button" onclick="toggleSecretVis()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <input id="settings-secret" type="password" placeholder="Your API_SECRET from Code.gs"
+                  value="${savedSecret}" class="field font-mono text-xs pr-10">
+                <button onclick="toggleSecretVis()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                   <i id="secret-eye" class="fas fa-eye text-sm"></i>
                 </button>
               </div>
-              <p class="text-xs text-slate-400 mt-1.5">Must match the <code class="bg-slate-100 px-1 rounded">API_SECRET</code> in your Code.gs file</p>
+              <p class="text-xs text-slate-400 mt-1.5">Must match <code class="bg-slate-100 px-1 rounded">API_SECRET</code> in your <code class="bg-slate-100 px-1 rounded">Code.gs</code>.</p>
             </div>
-
-            <!-- Action Buttons -->
-            <div class="flex gap-3 pt-2">
-              <button onclick="settingsSave()" id="settings-save-btn" class="btn-primary flex-1">
-                <i class="fas fa-save text-sm"></i> Save & Connect
-              </button>
+            <div class="flex gap-3 pt-1">
               <button onclick="settingsTestConnection()" id="settings-test-btn" class="btn-secondary flex-1">
-                <i class="fas fa-vial text-sm"></i> Test
+                <i class="fas fa-vial text-sm"></i> Test Connection
+              </button>
+              <button onclick="settingsSave()" id="settings-save-btn" class="btn-primary flex-1">
+                <i class="fas fa-save text-sm"></i> Save
               </button>
             </div>
           </div>
         </div>
 
-        <!-- SETUP INSTRUCTIONS -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <button onclick="toggleHowTo()" class="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-slate-50">
-            <div class="flex items-center gap-2">
+          <button onclick="toggleHowTo()" class="w-full px-6 py-4 flex items-center justify-between text-left">
+            <h2 class="font-bold text-slate-900 flex items-center gap-2 text-sm">
               <i class="fas fa-book text-slate-400 text-sm"></i>
-              <h3 class="font-bold text-slate-900 text-sm">Setup Instructions</h3>
-            </div>
+              How to deploy your GAS backend
+            </h2>
             <i id="howto-chevron" class="fas fa-chevron-down text-slate-400 text-xs transition-transform"></i>
           </button>
-          <div id="howto-body" class="hidden px-6 pb-5 space-y-2 border-t border-slate-100 pt-4 text-xs text-slate-600">
-            <p><strong>1. Set up your GAS project:</strong></p>
-            <p class="ml-3">→ Go to <code class="bg-slate-100 px-1 rounded">script.google.com</code> and create a new project</p>
-            <p class="ml-3">→ Create a Google Sheet (this will be your database)</p>
-            <p class="ml-3">→ Copy the Sheet ID from its URL</p>
-            
-            <p class="mt-3"><strong>2. Upload the code:</strong></p>
-            <p class="ml-3">→ Paste each <code class="bg-slate-100 px-1 rounded">.gs</code> file into separate Apps Script files</p>
-            <p class="ml-3">→ Set <code class="bg-slate-100 px-1 rounded">MASTER_SHEET_ID</code> and <code class="bg-slate-100 px-1 rounded">API_SECRET</code> in Code.gs</p>
-            
-            <p class="mt-3"><strong>3. Deploy as Web App:</strong></p>
-            <p class="ml-3">→ Click <strong>Deploy → New Deployment</strong></p>
-            <p class="ml-3">→ Type: <strong>Web App</strong></p>
-            <p class="ml-3">→ Execute as: <strong>Me</strong></p>
-            <p class="ml-3">→ Access: <strong>Anyone</strong></p>
-            <p class="ml-3">→ Copy the deployment URL</p>
-            
-            <p class="mt-3"><strong>4. Connect here:</strong></p>
-            <p class="ml-3">→ Paste the Web App URL above</p>
-            <p class="ml-3">→ Paste your Sheet ID</p>
-            <p class="ml-3">→ Paste your API_SECRET</p>
-            <p class="ml-3">→ Click Save & Connect</p>
+          <div id="howto-body" class="hidden px-6 pb-5 space-y-3 border-t border-slate-100 pt-4">
+            ${howToSteps}
           </div>
         </div>
 
-        <!-- DISCONNECT -->
         ${isConnected ? `
         <div class="bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden">
           <div class="px-6 py-5 flex items-center justify-between">
             <div>
               <h2 class="font-bold text-red-700 text-sm">Disconnect</h2>
-              <p class="text-xs text-slate-500 mt-0.5">Remove the saved connection from this browser</p>
+              <p class="text-xs text-slate-500 mt-0.5">Remove the saved URL and secret from this browser</p>
             </div>
             <button onclick="settingsDisconnect()"
               class="text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-xl transition-colors border border-red-200">
@@ -714,11 +663,8 @@ window.WorkVoltPages['settings'] = function(container) {
     try {
       var user = usersCache.find(function(u) { return u.user_id === userId; });
       if (!user) throw new Error('User not found');
-      var msgBuffer  = new TextEncoder().encode(newPass);
-      var hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-      var hashHex    = Array.from(new Uint8Array(hashBuffer)).map(function(b) { return b.toString(16).padStart(2,'0'); }).join('');
       var tokenData = await api('users/reset-token', { email: user.email });
-      await api('users/set-password', { token: tokenData.token, password_hash: hashHex });
+      await api('users/set-password', { token: tokenData.token, password: newPass });
       setFormStatus('Password updated successfully.', true);
       setTimeout(function() { window.usersCloseModal(); }, 900);
     } catch(e) {
@@ -1094,7 +1040,7 @@ window.WorkVoltPages['settings'] = function(container) {
           '<input id="ptax-other_deduction_label" type="text" value="' + (cfg.other_deduction_label||'Other Deductions') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>'
       )
     );
-    
+
     // Dynamic rate reference panel — shows a "Refresh rates" button that hits the Anthropic API
     // to get the current year's rates, so the reference is always up to date
     var rateGuide = (
@@ -1458,17 +1404,7 @@ window.WorkVoltPages['settings'] = function(container) {
 
     try {
       var data = await api('config/modules');
-      // Always apply the denylist — this is the source of truth for uninstalls
-      var denylist = [];
-      try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
-      modulesCache = (data.modules || []).filter(function(m) { return !denylist.includes(m.id); });
-      // If denylist removed entries, push the corrected list back to GAS so server stays in sync
-      if (denylist.length && data.modules && data.modules.length !== modulesCache.length) {
-        try { api('config/save-modules', { modules: JSON.stringify(modulesCache) }); } catch(e) {}
-      }
-      // Sync to global in-memory state and persist locally
-      window.INSTALLED_MODULES = modulesCache.slice();
-      if (typeof saveInstalledModules === 'function') saveInstalledModules();
+      modulesCache = data.modules || [];
       renderModuleLists();
       loadPayrollTaxSettings();
     } catch(e) {
@@ -1650,31 +1586,15 @@ window.WorkVoltPages['settings'] = function(container) {
     if (!confirm('Uninstall ' + (ADDON_CATALOGUE[moduleId]?.label || moduleId) + '? The sheet data will be kept but the module will be removed from the menu.')) return;
     setModuleStatus('', false);
     try {
-      // 1. Remove from local cache immediately
+      await api('module/uninstall', { module: moduleId });
+      setModuleStatus((ADDON_CATALOGUE[moduleId]?.label || moduleId) + ' uninstalled. Sheet data has been kept.', true);
       modulesCache = modulesCache.filter(function(m) { return m.id !== moduleId; });
-
-      // 2. Write to denylist in localStorage — this survives refresh
-      try {
-        var denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]');
-        if (!denylist.includes(moduleId)) denylist.push(moduleId);
-        localStorage.setItem('wv_uninstalled_modules', JSON.stringify(denylist));
-      } catch(e) { /* non-fatal */ }
-
-      // 3. Sync in-memory global state and persist locally
-      window.INSTALLED_MODULES = modulesCache.slice();
-      if (typeof saveInstalledModules === 'function') saveInstalledModules();
-      if (typeof renderNav === 'function') renderNav();
+      if (window.INSTALLED_MODULES !== undefined) {
+        window.INSTALLED_MODULES = modulesCache;
+        if (typeof renderNav === 'function') renderNav();
+      }
       renderModuleLists();
       loadPayrollTaxSettings();
-
-      // 4. Tell GAS to remove it server-side (best-effort — denylist is the safety net)
-      try {
-        await api('module/uninstall', { module: moduleId });
-        // Also overwrite the full modules list on GAS so it matches local state
-        await api('config/save-modules', { modules: JSON.stringify(modulesCache) });
-      } catch(e) { /* server sync failed but local denylist protects us */ }
-
-      setModuleStatus((ADDON_CATALOGUE[moduleId]?.label || moduleId) + ' uninstalled. Sheet data has been kept.', true);
     } catch(e) {
       setModuleStatus('Uninstall failed: ' + e.message, false);
     }
@@ -1704,98 +1624,47 @@ window.WorkVoltPages['settings'] = function(container) {
   };
 
   window.settingsSave = function() {
-    var url     = document.getElementById('settings-gas-url').value.trim();
-    var secret  = document.getElementById('settings-secret').value.trim();
-    var sheetId = document.getElementById('settings-sheet-id').value.trim();
-    
-    // Validation
-    if (!url) {
-      window.WorkVolt?.toast?.('Please enter the GAS URL', 'warning');
-      return;
-    }
-    if (!sheetId) {
-      window.WorkVolt?.toast?.('Please enter the Sheet ID', 'warning');
-      return;
-    }
-    if (!secret) {
-      window.WorkVolt?.toast?.('Please enter the API Secret', 'warning');
-      return;
-    }
-    
-    // Basic URL validation
-    if (!url.includes('script.google.com') && !url.includes('script.googleapis.com')) {
-      window.WorkVolt?.toast?.('URL must be from script.google.com', 'warning');
-      return;
-    }
-    
-    // Save to localStorage
-    localStorage.setItem('wv_gas_url', url);
+    var url    = document.getElementById('settings-gas-url').value.trim();
+    var secret = document.getElementById('settings-secret').value.trim();
+    if (!url)    return window.WorkVolt?.toast('Please enter the GAS URL', 'warning');
+    if (!secret) return window.WorkVolt?.toast('Please enter the API Secret', 'warning');
+    localStorage.setItem('wv_gas_url',    url);
     localStorage.setItem('wv_api_secret', secret);
-    localStorage.setItem('wv_sheet_id', sheetId);
-    
-    savedUrl = url;
+    savedUrl    = url;
     savedSecret = secret;
     window.API_URL = url;
     window.API_SECRET_CLIENT = secret;
-    
-    // Show success message and test connection
     render({ ok: true, message: 'Settings saved. Testing connection…' });
-    setTimeout(function() { 
-      window.settingsTestConnection(); 
-    }, 500);
+    setTimeout(function() { window.settingsTestConnection(); }, 400);
   };
 
   window.settingsTestConnection = async function() {
-    var url     = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
-    var sheetId = (document.getElementById('settings-sheet-id')?.value || '').trim() || localStorage.getItem('wv_sheet_id') || '';
+    var url    = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
+    var secret = (document.getElementById('settings-secret')?.value  || '').trim() || savedSecret;
     var btn    = document.getElementById('settings-test-btn');
-    
-    if (!url || !sheetId) {
-      render({ ok: false, message: 'Please enter GAS URL and Sheet ID before testing' });
-      return;
-    }
-
-    if (btn) { 
-      btn.disabled = true; 
-      btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Testing…'; 
-    }
-    
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Testing…'; }
     try {
-      // Simple ping test
-      var testUrl = url + '?path=ping';
-      var res = await fetch(testUrl, { 
-        cache: 'no-cache',
-        mode: 'cors'
-      });
-      
-      if (!res.ok) {
-        throw new Error('HTTP ' + res.status + ': ' + res.statusText);
-      }
-      
-      var data = await res.json();
-      
-      if (!data.status || data.status !== 'ok') {
-        throw new Error('Server did not respond with valid ping');
-      }
+      var pingUrl = new URL(url);
+      pingUrl.searchParams.set('path', 'ping');
+      var pingRes  = await fetch(pingUrl.toString(), { cache: 'no-cache' });
+      var pingData = await pingRes.json();
+      if (pingData.status !== 'ok') throw new Error('Unexpected response from server');
 
-      render({ ok: true, message: '✓ Connected successfully to GAS Web App' });
-      
-      if (btn) { 
-        setTimeout(function() {
-          if (btn) { 
-            btn.disabled = false; 
-            btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test'; 
-          }
-        }, 1000);
+      var provUrl = new URL(url);
+      provUrl.searchParams.set('path',  'setup/provision');
+      provUrl.searchParams.set('token', secret);
+      var provRes  = await fetch(provUrl.toString(), { cache: 'no-cache' });
+      var provData = await provRes.json();
+      if (provData.error) throw new Error(provData.error);
+
+      if (provData.provisioned) {
+        render({ ok: true, message: '✓ Connected! USERS sheet created.', provision: provData });
+      } else {
+        render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
       }
-      
     } catch(e) {
-      render({ ok: false, message: '✗ Connection failed: ' + e.message });
-      
-      if (btn) { 
-        btn.disabled = false; 
-        btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test'; 
-      }
+      render({ ok: false, message: 'Connection failed: ' + e.message + '. Check the URL and try again.' });
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
     }
   };
 
@@ -1810,36 +1679,9 @@ window.WorkVoltPages['settings'] = function(container) {
 
 
   // ── Boot ──────────────────────────────────────────────────────
-
-  // Define saveInstalledModules globally so store.js can call it too
-  window.saveInstalledModules = function() {
-    try {
-      var denylist = [];
-      try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
-      var toSave = (window.INSTALLED_MODULES || []).filter(function(m) { return !denylist.includes(m.id); });
-      localStorage.setItem('wv_installed_modules', JSON.stringify(toSave));
-    } catch(e) { /* non-fatal */ }
-  };
-
-  // Load persisted modules on boot, applying denylist
-  window.loadInstalledModules = function() {
-    try {
-      var denylist = [];
-      try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
-      var saved = JSON.parse(localStorage.getItem('wv_installed_modules') || '[]');
-      return saved.filter(function(m) { return !denylist.includes(m.id); });
-    } catch(e) { return []; }
-  };
-
   if (savedUrl) {
     window.API_URL = savedUrl;
     window.API_SECRET_CLIENT = savedSecret;
-  }
-
-  // Restore previously installed modules from localStorage on boot
-  if (!window.INSTALLED_MODULES || !window.INSTALLED_MODULES.length) {
-    var persisted = window.loadInstalledModules();
-    if (persisted.length) window.INSTALLED_MODULES = persisted;
   }
 
   render();
