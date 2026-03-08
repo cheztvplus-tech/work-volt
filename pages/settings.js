@@ -1747,13 +1747,10 @@ window.WorkVoltPages['settings'] = function(container) {
 
   window.settingsTestConnection = async function() {
     var url     = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
-    var secret  = (document.getElementById('settings-secret')?.value  || '').trim() || savedSecret;
     var sheetId = (document.getElementById('settings-sheet-id')?.value || '').trim() || localStorage.getItem('wv_sheet_id') || '';
     var btn    = document.getElementById('settings-test-btn');
     
-    // Validation
     if (!url || !sheetId) {
-      if (btn) btn.disabled = false;
       render({ ok: false, message: 'Please enter GAS URL and Sheet ID before testing' });
       return;
     }
@@ -1764,35 +1761,24 @@ window.WorkVoltPages['settings'] = function(container) {
     }
     
     try {
-      // 1. Test ping (basic connectivity)
-      var pingUrl = new URL(url);
-      pingUrl.searchParams.set('path', 'ping');
-      var pingRes  = await fetch(pingUrl.toString(), { cache: 'no-cache' });
-      var pingData = await pingRes.json();
+      // Simple ping test
+      var testUrl = url + '?path=ping';
+      var res = await fetch(testUrl, { 
+        cache: 'no-cache',
+        mode: 'cors'
+      });
       
-      if (!pingData || pingData.error) {
-        throw new Error('GAS server error: ' + (pingData?.error || 'No response'));
+      if (!res.ok) {
+        throw new Error('HTTP ' + res.status + ': ' + res.statusText);
+      }
+      
+      var data = await res.json();
+      
+      if (!data.status || data.status !== 'ok') {
+        throw new Error('Server did not respond with valid ping');
       }
 
-      // 2. Test setup/check (sheet connection)
-      var checkUrl = new URL(url);
-      checkUrl.searchParams.set('path', 'setup/check');
-      checkUrl.searchParams.set('sheet_id', sheetId);
-      checkUrl.searchParams.set('session_id', window.WorkVolt?.session?.() || '');
-      
-      var checkRes  = await fetch(checkUrl.toString(), { cache: 'no-cache' });
-      var checkData = await checkRes.json();
-      
-      if (checkData?.error) {
-        throw new Error(checkData.error);
-      }
-
-      // Success
-      var connStatus = { 
-        ok: true, 
-        message: '✓ Connected! Sheet ID: ' + sheetId.substring(0, 20) + '...' 
-      };
-      render(connStatus);
+      render({ ok: true, message: '✓ Connected successfully to GAS Web App' });
       
       if (btn) { 
         setTimeout(function() {
@@ -1804,15 +1790,7 @@ window.WorkVoltPages['settings'] = function(container) {
       }
       
     } catch(e) {
-      var errorMsg = e.message;
-      // Provide helpful error messages
-      if (errorMsg.includes('Failed to fetch')) {
-        errorMsg = 'Network error: Check your GAS URL and try again';
-      } else if (errorMsg.includes('Cannot open sheet')) {
-        errorMsg = 'Sheet error: Check your Sheet ID and permissions';
-      }
-      
-      render({ ok: false, message: '✗ Connection failed: ' + errorMsg });
+      render({ ok: false, message: '✗ Connection failed: ' + e.message });
       
       if (btn) { 
         btn.disabled = false; 
