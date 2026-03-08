@@ -373,17 +373,16 @@
           try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
           INSTALLED_MODULES = data.modules.filter(m => !denylist.includes(m.id));
           window.INSTALLED_MODULES = INSTALLED_MODULES;
-          // GAS responded — don't fall back to stale localStorage even if result is empty
-          gasSucceeded = true;
+          gasSucceeded = true; // GAS responded — trust its answer even if empty
         }
       } catch(e) {
         console.warn('Could not load modules from Sheet:', e.message);
       }
     }
 
-    // Only use localStorage fallback if GAS was unreachable or not configured.
-    // If GAS succeeded (even returning 0 modules), skip this — an empty result
-    // is intentional (user uninstalled everything) and must not be overridden.
+    // Only fall back to localStorage if GAS was unreachable.
+    // If GAS succeeded (even with 0 modules), skip this — an empty result
+    // means the user has no modules installed, which must be respected.
     if (!gasSucceeded) {
       try {
         const saved = localStorage.getItem('wv_installed_modules');
