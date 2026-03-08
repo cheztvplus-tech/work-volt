@@ -387,15 +387,21 @@
                 
                 // Apply denylist to server modules
                 let denylist = [];
-                try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
+                try { 
+                    denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); 
+                } catch(e) {}
                 const filteredServer = data.modules.filter(m => !denylist.includes(m.id));
                 
                 // Merge: server modules + local-only modules (new installs)
                 INSTALLED_MODULES = [...filteredServer, ...localOnly];
                 window.INSTALLED_MODULES = INSTALLED_MODULES;
                 
-                // Save merged result back to localStorage
-                if (typeof saveInstalledModules === 'function') saveInstalledModules();
+                // Save merged result back to localStorage (inline to avoid dependency issues)
+                try {
+                    localStorage.setItem('wv_installed_modules', JSON.stringify(INSTALLED_MODULES));
+                } catch(e) {
+                    console.warn('Could not save merged modules to localStorage:', e.message);
+                }
             }
         } catch(e) {
             console.warn('Could not load modules from Sheet:', e.message);
@@ -403,24 +409,7 @@
         }
     }
 }
-
-    // Only fall back to localStorage if GAS was unreachable.
-    // If GAS succeeded (even with 0 modules), skip this — an empty result
-    // means the user has no modules installed, which must be respected.
-    if (!gasSucceeded) {
-      try {
-        const saved = localStorage.getItem('wv_installed_modules');
-        if (saved) {
-          const denylist = (() => { try { return JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) { return []; } })();
-          INSTALLED_MODULES = JSON.parse(saved).filter(m => !denylist.includes(m.id));
-          window.INSTALLED_MODULES = INSTALLED_MODULES;
-        }
-      } catch(e) {
-        console.warn('Could not load modules from localStorage:', e.message);
-      }
-    }
-  }
-
+    
   // ─────────────────────────────────────────────
   //  API HELPER - WITH sheet_id
   // ─────────────────────────────────────────────
