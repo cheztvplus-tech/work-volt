@@ -261,23 +261,14 @@
   let _rolePermissions   = {};
   let _userModuleOverrides = {};
 
-  async function loadRolePermissions() {
-    const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSheetId = localStorage.getItem('wv_sheet_id') || '';
+    async function loadRolePermissions() {
+    const savedUrl = sessionStorage.getItem('wv_gas_url') || '';
     
-    try {
-      const local = JSON.parse(localStorage.getItem('wv_role_permissions') || 'null');
-      if (local) _rolePermissions = local;
-      const localOv = JSON.parse(localStorage.getItem('wv_user_overrides') || 'null');
-      if (localOv) _userModuleOverrides = localOv;
-    } catch(e) {}
-
-    if (!savedUrl || !savedSheetId || !currentSession) return;
+    if (!savedUrl || !currentSession) return;
 
     try {
       const url = new URL(savedUrl);
       url.searchParams.set('path', 'config/get-all');
-      url.searchParams.set('sheet_id', savedSheetId);
       url.searchParams.set('session_id', currentSession);
       const res = await fetch(url.toString(), { cache: 'no-cache' });
       const data = await res.json();
@@ -348,18 +339,15 @@
     }
   }
 
-  async function loadInstalledModules() {
-    const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSheetId = localStorage.getItem('wv_sheet_id') || '';
+    async function loadInstalledModules() {
+    const savedUrl = sessionStorage.getItem('wv_gas_url') || '';
     
     if (savedUrl) { API_URL = savedUrl; window.API_URL = savedUrl; }
-    if (savedSheetId) { SHEET_ID = savedSheetId; window.SHEET_ID = savedSheetId; }
 
-    if (savedUrl && savedSheetId && currentSession) {
+    if (savedUrl && currentSession) {
       try {
         const url = new URL(savedUrl);
         url.searchParams.set('path', 'config/modules');
-        url.searchParams.set('sheet_id', savedSheetId);
         url.searchParams.set('session_id', currentSession);
         const res = await fetch(url.toString(), { cache: 'no-cache' });
         const data = await res.json();
@@ -371,6 +359,7 @@
         console.warn('Could not load modules from Sheet:', e.message);
       }
     }
+  }
 
     if (!INSTALLED_MODULES || INSTALLED_MODULES.length === 0) {
       try {
@@ -386,14 +375,13 @@
   }
 
   // ─────────────────────────────────────────────
-  //  API HELPER - WITH sheet_id
+  //  API HELPER
   // ─────────────────────────────────────────────
   async function apiCall(path, params = {}, retries = 2) {
-    const savedSheetId = localStorage.getItem('wv_sheet_id') || SHEET_ID;
+    const savedUrl = sessionStorage.getItem('wv_gas_url') || API_URL;
     
-    const url = new URL(API_URL);
+    const url = new URL(savedUrl);
     url.searchParams.set('path', path);
-    url.searchParams.set('sheet_id', savedSheetId);
     url.searchParams.set('_t', Date.now().toString());
     if (currentSession) url.searchParams.set('session_id', currentSession);
     for (const k in params) {
@@ -444,17 +432,19 @@
     setTimeout(() => s.style.display = 'none', 450);
   }
 
-  function handleLogout() {
-    localStorage.removeItem('wv_user');
-    localStorage.removeItem('wv_session');
+    function handleLogout() {
+    sessionStorage.removeItem('wv_user');
+    sessionStorage.removeItem('wv_session');
+    sessionStorage.removeItem('wv_gas_url');
     currentUser = null;
     currentSession = null;
     window.location.href = 'index.html';
   }
 
   function forceLogout(msg) {
-    localStorage.removeItem('wv_user');
-    localStorage.removeItem('wv_session');
+    sessionStorage.removeItem('wv_user');
+    sessionStorage.removeItem('wv_session');
+    sessionStorage.removeItem('wv_gas_url');
     currentUser = null;
     currentSession = null;
     if (msg) showToast(msg, 'error');
@@ -820,54 +810,31 @@
   };
 
   // ─────────────────────────────────────────────
-  //  BOOT SEQUENCE
+  //  BOOT SEQUENCE - NO LOCAL STORAGE
   // ─────────────────────────────────────────────
   window.addEventListener('load', async () => {
-    const savedUser = localStorage.getItem('wv_user');
-    const savedSession = localStorage.getItem('wv_session');
-    const savedUrl = localStorage.getItem('wv_gas_url') || '';
-    const savedSheetId = localStorage.getItem('wv_sheet_id') || '';
-
-    if (!savedUser || !savedSession || !savedUrl || !savedSheetId) {
+    // Check sessionStorage first (from login), then memory
+    const savedUser = sessionStorage.getItem('wv_user');
+    const savedSession = sessionStorage.getItem('wv_session');
+    const savedUrl = sessionStorage.getItem('wv_gas_url') || (window.sessionData && window.sessionData.gas_url) || '';
+    
+    if (!savedUser || !savedSession || !savedUrl) {
+      // No session - redirect to login
       window.location.href = 'index.html';
       return;
     }
 
-    // STEP 1: Use saved URL initially to make the first call
+    // Use session data
     API_URL = savedUrl;
-    SHEET_ID = savedSheetId;
     window.API_URL = savedUrl;
-    window.SHEET_ID = savedSheetId;
     currentUser = JSON.parse(savedUser);
     currentSession = savedSession;
-
-    // STEP 2: Fetch the canonical GAS URL from the Sheet
-    try {
-        const checkUrl = new URL(savedUrl);
-        checkUrl.searchParams.set('path', 'config/get-gas-url');
-        checkUrl.searchParams.set('sheet_id', savedSheetId);
-        checkUrl.searchParams.set('session_id', savedSession);
-        checkUrl.searchParams.set('_t', Date.now());
-        
-        const res = await fetch(checkUrl.toString(), { cache: 'no-cache' });
-        const data = await res.json();
-        
-        if (data.gas_url && data.gas_url.trim() !== '') {
-            console.log('Using canonical GAS URL:', data.gas_url);
-            API_URL = data.gas_url;
-            window.API_URL = data.gas_url;
-            // Save it so we use it going forward
-            localStorage.setItem('wv_gas_url', data.gas_url);
-        }
-    } catch(e) {
-        console.warn('Could not fetch canonical GAS URL, using saved:', e.message);
-    }
 
     await loadInstalledModules();
     await loadRolePermissions();
     hideSplash();
     await showApp();
-});
+  });
   </script>
 
 </body>
