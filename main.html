@@ -833,6 +833,7 @@
       return;
     }
 
+    // STEP 1: Use saved URL initially to make the first call
     API_URL = savedUrl;
     SHEET_ID = savedSheetId;
     window.API_URL = savedUrl;
@@ -840,11 +841,33 @@
     currentUser = JSON.parse(savedUser);
     currentSession = savedSession;
 
+    // STEP 2: Fetch the canonical GAS URL from the Sheet
+    try {
+        const checkUrl = new URL(savedUrl);
+        checkUrl.searchParams.set('path', 'config/get-gas-url');
+        checkUrl.searchParams.set('sheet_id', savedSheetId);
+        checkUrl.searchParams.set('session_id', savedSession);
+        checkUrl.searchParams.set('_t', Date.now());
+        
+        const res = await fetch(checkUrl.toString(), { cache: 'no-cache' });
+        const data = await res.json();
+        
+        if (data.gas_url && data.gas_url.trim() !== '') {
+            console.log('Using canonical GAS URL:', data.gas_url);
+            API_URL = data.gas_url;
+            window.API_URL = data.gas_url;
+            // Save it so we use it going forward
+            localStorage.setItem('wv_gas_url', data.gas_url);
+        }
+    } catch(e) {
+        console.warn('Could not fetch canonical GAS URL, using saved:', e.message);
+    }
+
     await loadInstalledModules();
     await loadRolePermissions();
     hideSplash();
     await showApp();
-  });
+});
   </script>
 
 </body>
