@@ -317,39 +317,46 @@ window.WorkVoltPages['store'] = function(container) {
   async function uninstallModule(id) {
     const gasUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
     const sessionId = window.WorkVolt?.session() || localStorage.getItem('wv_session') || '';
+    const sheetId = localStorage.getItem('wv_sheet_id') || '';
 
-    // Call GAS to uninstall
-    if (gasUrl && sessionId) {
-        try {
-            const url = new URL(gasUrl);
-            url.searchParams.set('path', 'module/uninstall');
-            url.searchParams.set('session_id', sessionId);
-            url.searchParams.set('sheet_id', localStorage.getItem('wv_sheet_id') || '');
-            url.searchParams.set('module', id);
-            await fetch(url.toString(), { cache: 'no-cache' });
-        } catch(e) {
-            console.warn('GAS uninstall failed:', e);
-        }
+    if (!gasUrl || !sessionId || !sheetId) {
+        window.WorkVolt?.toast('Not connected to server', 'error');
+        return;
     }
 
-    // Reload from server
     try {
-        const modulesRes = await fetch(`${gasUrl}?path=config/modules&session_id=${sessionId}&sheet_id=${localStorage.getItem('wv_sheet_id')}&_t=${Date.now()}`, { cache: 'no-cache' });
+        // Call GAS to uninstall - THIS IS THE FIX
+        const url = new URL(gasUrl);
+        url.searchParams.set('path', 'module/uninstall');
+        url.searchParams.set('session_id', sessionId);
+        url.searchParams.set('sheet_id', sheetId);
+        url.searchParams.set('module', id);
+        
+        const res = await fetch(url.toString(), { cache: 'no-cache' });
+        const data = await res.json();
+        
+        if (data.error) throw new Error(data.error);
+
+        // Reload from server to get the updated list
+        const modulesUrl = new URL(gasUrl);
+        modulesUrl.searchParams.set('path', 'config/modules');
+        modulesUrl.searchParams.set('session_id', sessionId);
+        modulesUrl.searchParams.set('sheet_id', sheetId);
+        modulesUrl.searchParams.set('_t', Date.now().toString());
+        
+        const modulesRes = await fetch(modulesUrl.toString(), { cache: 'no-cache' });
         const modulesData = await modulesRes.json();
         
         if (modulesData.modules) {
             window.INSTALLED_MODULES = modulesData.modules;
             if (typeof renderNav === 'function') renderNav();
             render();
+            window.WorkVolt?.toast('Module removed', 'info');
         }
     } catch(e) {
-        // Fallback: remove locally
-        window.INSTALLED_MODULES = (window.INSTALLED_MODULES || []).filter(m => m.id !== id);
-        if (typeof renderNav === 'function') renderNav();
-        render();
+        window.WorkVolt?.toast(`Uninstall failed: ${e.message}`, 'error');
+        console.error('Uninstall error:', e);
     }
-    
-    window.WorkVolt?.toast('Module removed', 'info');
 }
 
   function filtered() {
