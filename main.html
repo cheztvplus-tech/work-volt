@@ -263,7 +263,7 @@
 
     async function loadRolePermissions() {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || '';
-    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b';
+    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b'; // <---- API secret here
     
     if (!savedUrl || !currentSession) return;
 
@@ -272,8 +272,14 @@
       url.searchParams.set('path', 'config/get-all');
       url.searchParams.set('token', API_TOKEN);
       url.searchParams.set('session_id', currentSession);
+      
+      console.log('Fetching config from:', url.toString().replace(API_TOKEN, '***'));
+      
       const res = await fetch(url.toString(), { cache: 'no-cache' });
-      const data = await res.json();
+      const text = await res.text();
+      console.log('Config response:', text.substring(0, 200));
+      
+      const data = JSON.parse(text);
       const settings = data.settings || {};
       if (settings.role_permissions) {
         try { _rolePermissions = JSON.parse(settings.role_permissions); } catch(e) {}
@@ -282,7 +288,7 @@
         try { _userModuleOverrides = JSON.parse(settings.user_module_overrides); } catch(e) {}
       }
     } catch(e) {
-      console.warn('Could not load role permissions:', e.message);
+      console.error('Could not load role permissions:', e.message);
     }
   }
 
@@ -343,7 +349,7 @@
 
     async function loadInstalledModules() {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || '';
-    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b';
+    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b'; // <---- API secret here
     
     if (savedUrl) { API_URL = savedUrl; window.API_URL = savedUrl; }
 
@@ -353,14 +359,22 @@
         url.searchParams.set('path', 'config/modules');
         url.searchParams.set('token', API_TOKEN);
         url.searchParams.set('session_id', currentSession);
+        
+        console.log('Fetching modules from:', url.toString().replace(API_TOKEN, '***'));
+        
         const res = await fetch(url.toString(), { cache: 'no-cache' });
-        const data = await res.json();
+        const text = await res.text();
+        console.log('Modules response:', text.substring(0, 200));
+        
+        const data = JSON.parse(text);
         if (data.modules) {
           INSTALLED_MODULES = data.modules;
           window.INSTALLED_MODULES = INSTALLED_MODULES;
+        } else if (data.error) {
+          console.error('Modules API error:', data.error);
         }
       } catch(e) {
-        console.warn('Could not load modules from Sheet:', e.message);
+        console.error('Could not load modules:', e.message);
       }
     }
   }
@@ -381,19 +395,21 @@
   // ─────────────────────────────────────────────
   //  API HELPER
   // ─────────────────────────────────────────────
-    async function apiCall(path, params = {}, retries = 2) {
+      async function apiCall(path, params = {}, retries = 2) {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || API_URL;
-    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b'; // <---insert api secret
+    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b';  // <---- API secret here
     
     const url = new URL(savedUrl);
     url.searchParams.set('path', path);
-    url.searchParams.set('token', API_TOKEN); // ADD THIS LINE
+    url.searchParams.set('token', API_TOKEN);
     url.searchParams.set('_t', Date.now().toString());
     if (currentSession) url.searchParams.set('session_id', currentSession);
     for (const k in params) {
       if (params[k] !== undefined && params[k] !== null)
         url.searchParams.set(k, params[k]);
     }
+
+    console.log('API call:', path, url.toString().replace(API_TOKEN, '***'));
 
     let lastErr;
     for (let i = 0; i <= retries; i++) {
@@ -403,14 +419,22 @@
         const res = await fetch(url.toString(), { method:'GET', mode:'cors', cache:'no-cache', signal: ctrl.signal });
         clearTimeout(tid);
 
-        if (res.status === 401 || res.status === 403) throw new Error('TOKEN_INVALID');
+        console.log('Response status:', res.status);
+
+        if (res.status === 401 || res.status === 403) {
+          console.error('Auth failed - token invalid');
+          throw new Error('TOKEN_INVALID');
+        }
         if (!res.ok) throw new Error('HTTP ' + res.status);
 
         const text = await res.text();
+        console.log('Response text:', text.substring(0, 200));
+        
         if (!text) throw new Error('Empty response');
         const data = JSON.parse(text);
 
         if (data.error) {
+          console.error('API error:', data.error);
           if (data.code === 'TOKEN_INVALID' || data.error === 'TOKEN_INVALID' || data.error === 'Unauthorized') throw new Error('TOKEN_INVALID');
           throw new Error(data.error);
         }
@@ -418,6 +442,7 @@
 
       } catch(err) {
         lastErr = err;
+        console.error('API error attempt ' + i + ':', err.message);
         if (err.name === 'AbortError') lastErr = new Error('Request timeout — please try again');
         else if (err.message === 'TOKEN_INVALID' && path !== 'auth/login') {
           forceLogout('Session expired. Please sign in again.');
@@ -818,13 +843,16 @@
   // ─────────────────────────────────────────────
   //  BOOT SEQUENCE - NO LOCAL STORAGE
   // ─────────────────────────────────────────────
-    window.addEventListener('load', async () => {
+  window.addEventListener('load', async () => {
     try {
       const savedUser = sessionStorage.getItem('wv_user');
       const savedSession = sessionStorage.getItem('wv_session');
       const savedUrl = sessionStorage.getItem('wv_gas_url') || (window.sessionData && window.sessionData.gas_url) || '';
       
+      console.log('Boot check:', { hasUser: !!savedUser, hasSession: !!savedSession, hasUrl: !!savedUrl });
+      
       if (!savedUser || !savedSession || !savedUrl) {
+        console.log('Missing credentials, redirecting to login');
         window.location.href = 'index.html';
         return;
       }
@@ -834,14 +862,30 @@
       currentUser = JSON.parse(savedUser);
       currentSession = savedSession;
 
-      console.log('Booting with session:', currentSession);
-      
-      await loadInstalledModules();
-      await loadRolePermissions();
+      console.log('Starting app load...');
+
+      // Try to load modules - catch any error
+      try {
+        await loadInstalledModules();
+        console.log('Modules loaded:', INSTALLED_MODULES);
+      } catch (e) {
+        console.error('Module load failed:', e);
+      }
+
+      // Try to load permissions - catch any error  
+      try {
+        await loadRolePermissions();
+        console.log('Permissions loaded');
+      } catch (e) {
+        console.error('Permissions load failed:', e);
+      }
+
       hideSplash();
       await showApp();
+      console.log('App shown successfully');
+      
     } catch (err) {
-      console.error('Boot error:', err);
+      console.error('Fatal boot error:', err);
       alert('Failed to start app: ' + err.message);
       window.location.href = 'index.html';
     }
