@@ -1408,20 +1408,19 @@ window.WorkVoltPages['settings'] = function(container) {
       return;
     }
 
-    // ── Seed immediately from in-memory state so tab isn't blank ──
-    if (window.INSTALLED_MODULES && window.INSTALLED_MODULES.length) {
-      modulesCache = window.INSTALLED_MODULES.slice();
-      renderModuleLists();
-    }
-
     try {
       var data = await api('config/modules');
-      // Filter out any modules the user has uninstalled (denylist)
+      // Always apply the denylist — this is the source of truth for uninstalls
       var denylist = [];
       try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
       modulesCache = (data.modules || []).filter(function(m) { return !denylist.includes(m.id); });
-      // Sync back to global state
-      window.INSTALLED_MODULES = modulesCache;
+      // If denylist removed entries, push the corrected list back to GAS so server stays in sync
+      if (denylist.length && data.modules && data.modules.length !== modulesCache.length) {
+        try { api('config/save-modules', { modules: JSON.stringify(modulesCache) }); } catch(e) {}
+      }
+      // Sync to global in-memory state and persist locally
+      window.INSTALLED_MODULES = modulesCache.slice();
+      if (typeof saveInstalledModules === 'function') saveInstalledModules();
       renderModuleLists();
       loadPayrollTaxSettings();
     } catch(e) {
@@ -1603,21 +1602,31 @@ window.WorkVoltPages['settings'] = function(container) {
     if (!confirm('Uninstall ' + (ADDON_CATALOGUE[moduleId]?.label || moduleId) + '? The sheet data will be kept but the module will be removed from the menu.')) return;
     setModuleStatus('', false);
     try {
-      await api('module/uninstall', { module: moduleId });
-      setModuleStatus((ADDON_CATALOGUE[moduleId]?.label || moduleId) + ' uninstalled. Sheet data has been kept.', true);
-      // ── Write to denylist so a refresh doesn't resurrect it ──
+      // 1. Remove from local cache immediately
+      modulesCache = modulesCache.filter(function(m) { return m.id !== moduleId; });
+
+      // 2. Write to denylist in localStorage — this survives refresh
       try {
         var denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]');
         if (!denylist.includes(moduleId)) denylist.push(moduleId);
         localStorage.setItem('wv_uninstalled_modules', JSON.stringify(denylist));
       } catch(e) { /* non-fatal */ }
-      modulesCache = modulesCache.filter(function(m) { return m.id !== moduleId; });
-      if (window.INSTALLED_MODULES !== undefined) {
-        window.INSTALLED_MODULES = modulesCache;
-        if (typeof renderNav === 'function') renderNav();
-      }
+
+      // 3. Sync in-memory global state and persist locally
+      window.INSTALLED_MODULES = modulesCache.slice();
+      if (typeof saveInstalledModules === 'function') saveInstalledModules();
+      if (typeof renderNav === 'function') renderNav();
       renderModuleLists();
       loadPayrollTaxSettings();
+
+      // 4. Tell GAS to remove it server-side (best-effort — denylist is the safety net)
+      try {
+        await api('module/uninstall', { module: moduleId });
+        // Also overwrite the full modules list on GAS so it matches local state
+        await api('config/save-modules', { modules: JSON.stringify(modulesCache) });
+      } catch(e) { /* server sync failed but local denylist protects us */ }
+
+      setModuleStatus((ADDON_CATALOGUE[moduleId]?.label || moduleId) + ' uninstalled. Sheet data has been kept.', true);
     } catch(e) {
       setModuleStatus('Uninstall failed: ' + e.message, false);
     }
@@ -1704,9 +1713,36 @@ window.WorkVoltPages['settings'] = function(container) {
 
 
   // ── Boot ──────────────────────────────────────────────────────
+
+  // Define saveInstalledModules globally so store.js can call it too
+  window.saveInstalledModules = function() {
+    try {
+      var denylist = [];
+      try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
+      var toSave = (window.INSTALLED_MODULES || []).filter(function(m) { return !denylist.includes(m.id); });
+      localStorage.setItem('wv_installed_modules', JSON.stringify(toSave));
+    } catch(e) { /* non-fatal */ }
+  };
+
+  // Load persisted modules on boot, applying denylist
+  window.loadInstalledModules = function() {
+    try {
+      var denylist = [];
+      try { denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]'); } catch(e) {}
+      var saved = JSON.parse(localStorage.getItem('wv_installed_modules') || '[]');
+      return saved.filter(function(m) { return !denylist.includes(m.id); });
+    } catch(e) { return []; }
+  };
+
   if (savedUrl) {
     window.API_URL = savedUrl;
     window.API_SECRET_CLIENT = savedSecret;
+  }
+
+  // Restore previously installed modules from localStorage on boot
+  if (!window.INSTALLED_MODULES || !window.INSTALLED_MODULES.length) {
+    var persisted = window.loadInstalledModules();
+    if (persisted.length) window.INSTALLED_MODULES = persisted;
   }
 
   render();
