@@ -389,9 +389,9 @@ window.WorkVoltPages['projects'] = function(container) {
           '<div style="background:#f1f5f9;border-radius:9999px;height:6px;overflow:hidden">' +
             '<div style="width:' + pct + '%;height:6px;border-radius:9999px;background:' + (pct >= 100 ? '#22c55e' : color) + ';transition:width .5s"></div>' +
           '</div>' +
-          (p.task_count
+          (tasksInstalled() && p.task_count
             ? '<p class="text-[10px] text-slate-400 mt-1">' + (p.tasks_done||0) + ' of ' + p.task_count + ' tasks done</p>'
-            : '<p class="text-[10px] text-slate-400 mt-1">No tasks yet</p>') +
+            : '') +
         '</div>' +
 
         // Footer: due date + owner + task count
@@ -403,7 +403,7 @@ window.WorkVoltPages['projects'] = function(container) {
                 fmtDate(p.due_date) +
               '</span>'
               : '<span class="text-[11px] text-slate-300">No deadline</span>') +
-            (p.task_count
+            (tasksInstalled() && p.task_count
               ? '<span class="flex items-center gap-1 text-[11px] text-slate-500">' +
                 '<i class="fas fa-check-square text-[10px] text-slate-300"></i>' + p.task_count + '</span>'
               : '') +
@@ -553,7 +553,7 @@ window.WorkVoltPages['projects'] = function(container) {
               '<div>' +
                 '<p class="text-xs font-bold text-slate-500 uppercase tracking-wide">Progress</p>' +
                 '<p class="text-lg font-extrabold text-slate-900">' + pct + '%</p>' +
-                '<p class="text-[11px] text-slate-400">' + (statsCache.done||0) + '/' + (statsCache.total||0) + ' tasks done</p>' +
+                (tasksInstalled() ? '<p class="text-[11px] text-slate-400">' + (statsCache.done||0) + '/' + (statsCache.total||0) + ' tasks done</p>' : '') +
               '</div>' +
             '</div>' +
 
@@ -571,13 +571,21 @@ window.WorkVoltPages['projects'] = function(container) {
 
             // Overdue
             '<div class="flex items-center gap-2.5">' +
-              '<div class="w-10 h-10 rounded-xl ' + (parseInt(statsCache.overdue) > 0 ? 'bg-red-50 border border-red-200' : 'bg-slate-50 border border-slate-200') + ' flex items-center justify-center flex-shrink-0">' +
-                '<i class="fas fa-fire text-' + (parseInt(statsCache.overdue) > 0 ? 'red-400' : 'slate-400') + ' text-sm"></i>' +
-              '</div>' +
-              '<div>' +
-                '<p class="text-xs font-bold text-slate-500 uppercase tracking-wide">Overdue</p>' +
-                '<p class="text-sm font-bold ' + (parseInt(statsCache.overdue) > 0 ? 'text-red-600' : 'text-slate-900') + '">' + (statsCache.overdue||0) + ' tasks</p>' +
-              '</div>' +
+              (tasksInstalled()
+                ? '<div class="w-10 h-10 rounded-xl ' + (parseInt(statsCache.overdue) > 0 ? 'bg-red-50 border border-red-200' : 'bg-slate-50 border border-slate-200') + ' flex items-center justify-center flex-shrink-0">' +
+                  '<i class="fas fa-fire text-' + (parseInt(statsCache.overdue) > 0 ? 'red-400' : 'slate-400') + ' text-sm"></i>' +
+                  '</div>' +
+                  '<div>' +
+                    '<p class="text-xs font-bold text-slate-500 uppercase tracking-wide">Overdue</p>' +
+                    '<p class="text-sm font-bold ' + (parseInt(statsCache.overdue) > 0 ? 'text-red-600' : 'text-slate-900') + '">' + (statsCache.overdue||0) + ' tasks</p>' +
+                  '</div>'
+                : '<div class="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center flex-shrink-0">' +
+                  '<i class="fas fa-fire text-slate-400 text-sm"></i>' +
+                  '</div>' +
+                  '<div>' +
+                    '<p class="text-xs font-bold text-slate-500 uppercase tracking-wide">Overdue</p>' +
+                    '<p class="text-sm font-bold text-slate-400">N/A</p>' +
+                  '</div>') +
             '</div>' +
 
             // Owner
@@ -668,41 +676,43 @@ window.WorkVoltPages['projects'] = function(container) {
   function renderLeftPanel() {
     var html = '<div class="p-4">';
 
-    // Quick nav
-    html += '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2">Quick Filters</p>';
-    var quickLinks = [
-      { k:'',        icon:'fa-th-large',    lbl:'All Tasks',  count: Object.values(tasksCache).length },
-      { k:'mine',    icon:'fa-user',         lbl:'Assigned to Me', count: Object.values(tasksCache).filter(function(t){return t.assigned_to===myId;}).length },
-      { k:'overdue', icon:'fa-fire',         lbl:'Overdue',    count: Object.values(tasksCache).filter(isOverdue).length },
-      { k:'today',   icon:'fa-calendar-day', lbl:'Due Today',  count: Object.values(tasksCache).filter(function(t){
-        if(!t.due_date) return false;
-        var d=new Date(t.due_date);d.setHours(0,0,0,0);var n=new Date();n.setHours(0,0,0,0);return d.getTime()===n.getTime();
-      }).length },
-    ];
-    quickLinks.forEach(function(q) {
-      html += '<button data-quick="' + q.k + '" class="proj-quick-btn w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all mb-0.5 ' +
-        (taskFilter.quick === q.k ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50') + '">' +
-        '<span class="flex items-center gap-2"><i class="fas ' + q.icon + ' text-[10px] w-3"></i>' + q.lbl + '</span>' +
-        (q.count ? '<span class="text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">' + q.count + '</span>' : '') +
-        '</button>';
-    });
-
-    // Status breakdown
-    var breakdown = {};
-    try { breakdown = JSON.parse(statsCache.by_status || '{}'); } catch(e) {}
-    if (Object.keys(breakdown).length) {
-      html += '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mt-4 mb-2">By Status</p>';
-      TASK_STATUSES.forEach(function(s) {
-        var cnt = breakdown[s] || 0;
-        if (!cnt) return;
-        var tc = TASK_STATUS_COLORS[s] || TASK_STATUS_COLORS['To Do'];
-        html += '<div class="flex items-center justify-between mb-1.5">' +
-          '<span class="flex items-center gap-1.5 text-[11px] text-slate-600">' +
-            '<span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:' + tc.dot + '"></span>' + s +
-          '</span>' +
-          '<span class="text-[11px] font-bold text-slate-700">' + cnt + '</span>' +
-          '</div>';
+    // Quick nav — only show if Tasks module is installed
+    if (tasksInstalled()) {
+      html += '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2">Quick Filters</p>';
+      var quickLinks = [
+        { k:'',        icon:'fa-th-large',    lbl:'All Tasks',  count: Object.values(tasksCache).length },
+        { k:'mine',    icon:'fa-user',         lbl:'Assigned to Me', count: Object.values(tasksCache).filter(function(t){return t.assigned_to===myId;}).length },
+        { k:'overdue', icon:'fa-fire',         lbl:'Overdue',    count: Object.values(tasksCache).filter(isOverdue).length },
+        { k:'today',   icon:'fa-calendar-day', lbl:'Due Today',  count: Object.values(tasksCache).filter(function(t){
+          if(!t.due_date) return false;
+          var d=new Date(t.due_date);d.setHours(0,0,0,0);var n=new Date();n.setHours(0,0,0,0);return d.getTime()===n.getTime();
+        }).length },
+      ];
+      quickLinks.forEach(function(q) {
+        html += '<button data-quick="' + q.k + '" class="proj-quick-btn w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all mb-0.5 ' +
+          (taskFilter.quick === q.k ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50') + '">' +
+          '<span class="flex items-center gap-2"><i class="fas ' + q.icon + ' text-[10px] w-3"></i>' + q.lbl + '</span>' +
+          (q.count ? '<span class="text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">' + q.count + '</span>' : '') +
+          '</button>';
       });
+
+      // Status breakdown
+      var breakdown = {};
+      try { breakdown = JSON.parse(statsCache.by_status || '{}'); } catch(e) {}
+      if (Object.keys(breakdown).length) {
+        html += '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mt-4 mb-2">By Status</p>';
+        TASK_STATUSES.forEach(function(s) {
+          var cnt = breakdown[s] || 0;
+          if (!cnt) return;
+          var tc = TASK_STATUS_COLORS[s] || TASK_STATUS_COLORS['To Do'];
+          html += '<div class="flex items-center justify-between mb-1.5">' +
+            '<span class="flex items-center gap-1.5 text-[11px] text-slate-600">' +
+              '<span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:' + tc.dot + '"></span>' + s +
+            '</span>' +
+            '<span class="text-[11px] font-bold text-slate-700">' + cnt + '</span>' +
+            '</div>';
+        });
+      }
     }
 
     // Members
@@ -998,6 +1008,7 @@ window.WorkVoltPages['projects'] = function(container) {
 
     var html = '<div class="p-4 flex flex-col gap-5">';
 
+    if (tasksInstalled()) {
     // ── Stats ──
     html += '<div>';
     html += '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-3">Overview</p>';
@@ -1065,6 +1076,7 @@ window.WorkVoltPages['projects'] = function(container) {
       });
       html += '</div>';
     }
+    } // end tasksInstalled()
 
     // ── Activity ──
     if (activityCache.length) {
