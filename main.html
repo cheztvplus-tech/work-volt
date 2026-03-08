@@ -263,12 +263,14 @@
 
     async function loadRolePermissions() {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || '';
+    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b';
     
     if (!savedUrl || !currentSession) return;
 
     try {
       const url = new URL(savedUrl);
       url.searchParams.set('path', 'config/get-all');
+      url.searchParams.set('token', API_TOKEN);
       url.searchParams.set('session_id', currentSession);
       const res = await fetch(url.toString(), { cache: 'no-cache' });
       const data = await res.json();
@@ -341,6 +343,7 @@
 
     async function loadInstalledModules() {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || '';
+    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b';
     
     if (savedUrl) { API_URL = savedUrl; window.API_URL = savedUrl; }
 
@@ -348,6 +351,7 @@
       try {
         const url = new URL(savedUrl);
         url.searchParams.set('path', 'config/modules');
+        url.searchParams.set('token', API_TOKEN);
         url.searchParams.set('session_id', currentSession);
         const res = await fetch(url.toString(), { cache: 'no-cache' });
         const data = await res.json();
@@ -377,11 +381,13 @@
   // ─────────────────────────────────────────────
   //  API HELPER
   // ─────────────────────────────────────────────
-  async function apiCall(path, params = {}, retries = 2) {
+    async function apiCall(path, params = {}, retries = 2) {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || API_URL;
+    const API_TOKEN = 'wv_4f8a2e1b9c7d3f6a0e5b8c2d4f7a1e3b'; // <---insert api secret
     
     const url = new URL(savedUrl);
     url.searchParams.set('path', path);
+    url.searchParams.set('token', API_TOKEN); // ADD THIS LINE
     url.searchParams.set('_t', Date.now().toString());
     if (currentSession) url.searchParams.set('session_id', currentSession);
     for (const k in params) {
@@ -405,7 +411,7 @@
         const data = JSON.parse(text);
 
         if (data.error) {
-          if (data.code === 'TOKEN_INVALID' || data.error === 'TOKEN_INVALID') throw new Error('TOKEN_INVALID');
+          if (data.code === 'TOKEN_INVALID' || data.error === 'TOKEN_INVALID' || data.error === 'Unauthorized') throw new Error('TOKEN_INVALID');
           throw new Error(data.error);
         }
         return data;
@@ -812,28 +818,33 @@
   // ─────────────────────────────────────────────
   //  BOOT SEQUENCE - NO LOCAL STORAGE
   // ─────────────────────────────────────────────
-  window.addEventListener('load', async () => {
-    // Check sessionStorage first (from login), then memory
-    const savedUser = sessionStorage.getItem('wv_user');
-    const savedSession = sessionStorage.getItem('wv_session');
-    const savedUrl = sessionStorage.getItem('wv_gas_url') || (window.sessionData && window.sessionData.gas_url) || '';
-    
-    if (!savedUser || !savedSession || !savedUrl) {
-      // No session - redirect to login
+    window.addEventListener('load', async () => {
+    try {
+      const savedUser = sessionStorage.getItem('wv_user');
+      const savedSession = sessionStorage.getItem('wv_session');
+      const savedUrl = sessionStorage.getItem('wv_gas_url') || (window.sessionData && window.sessionData.gas_url) || '';
+      
+      if (!savedUser || !savedSession || !savedUrl) {
+        window.location.href = 'index.html';
+        return;
+      }
+
+      API_URL = savedUrl;
+      window.API_URL = savedUrl;
+      currentUser = JSON.parse(savedUser);
+      currentSession = savedSession;
+
+      console.log('Booting with session:', currentSession);
+      
+      await loadInstalledModules();
+      await loadRolePermissions();
+      hideSplash();
+      await showApp();
+    } catch (err) {
+      console.error('Boot error:', err);
+      alert('Failed to start app: ' + err.message);
       window.location.href = 'index.html';
-      return;
     }
-
-    // Use session data
-    API_URL = savedUrl;
-    window.API_URL = savedUrl;
-    currentUser = JSON.parse(savedUser);
-    currentSession = savedSession;
-
-    await loadInstalledModules();
-    await loadRolePermissions();
-    hideSplash();
-    await showApp();
   });
   </script>
 
