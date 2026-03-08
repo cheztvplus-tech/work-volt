@@ -369,7 +369,14 @@ window.WorkVoltPages['store'] = function(container) {
     };
     
     window.INSTALLED_MODULES.push(newModule);
-    
+
+    // Remove from denylist in case this module was previously uninstalled and is now being re-installed
+    try {
+      const denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]');
+      const updated = denylist.filter(i => i !== mod.id);
+      localStorage.setItem('wv_uninstalled_modules', JSON.stringify(updated));
+    } catch(e) { /* non-fatal */ }
+
     // Save to localStorage for persistence
     if (typeof saveInstalledModules === 'function') saveInstalledModules();
     
@@ -398,7 +405,16 @@ window.WorkVoltPages['store'] = function(container) {
 
     // Remove from INSTALLED_MODULES array immediately
     window.INSTALLED_MODULES = (window.INSTALLED_MODULES || []).filter(m => m.id !== id);
-    
+
+    // Persist the uninstalled ID to a denylist so it stays removed even if the
+    // GAS config/modules endpoint still lists it on next load (e.g. if the
+    // server-side uninstall failed silently or GAS hasn't refreshed yet).
+    try {
+      const denylist = JSON.parse(localStorage.getItem('wv_uninstalled_modules') || '[]');
+      if (!denylist.includes(id)) denylist.push(id);
+      localStorage.setItem('wv_uninstalled_modules', JSON.stringify(denylist));
+    } catch(e) { /* non-fatal */ }
+
     // Persist removal to localStorage
     if (typeof saveInstalledModules === 'function') saveInstalledModules();
     
