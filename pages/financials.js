@@ -360,15 +360,31 @@ function renderDashboard(c) {
     const revH = Math.round((t.revenue  / maxBar) * 100);
     const expH = Math.round((t.expenses / maxBar) * 100);
     const label = t.month ? t.month.substring(5) : '';
+    const isCurrentMonth = t.month === ym;
     return `
       <div class="flex flex-col items-center gap-1 flex-1">
         <div class="w-full flex items-end justify-center gap-0.5 h-16">
-          <div class="w-3 rounded-t" style="height:${Math.max(revH,1)}%;background:#10b981;min-height:2px" title="Revenue ${fmt.currency(t.revenue)}"></div>
-          <div class="w-3 rounded-t" style="height:${Math.max(expH,1)}%;background:#f87171;min-height:2px" title="Expenses ${fmt.currency(t.expenses)}"></div>
+          <div class="w-3 rounded-t transition-all" style="height:${revH > 0 ? revH : 0}%;background:${isCurrentMonth ? '#059669' : '#10b981'};${revH === 0 ? 'min-height:0' : 'min-height:2px'}" title="Revenue ${fmt.currency(t.revenue)}"></div>
+          <div class="w-3 rounded-t transition-all" style="height:${expH > 0 ? expH : 0}%;background:${isCurrentMonth ? '#dc2626' : '#f87171'};${expH === 0 ? 'min-height:0' : 'min-height:2px'}" title="Expenses ${fmt.currency(t.expenses)}"></div>
         </div>
-        <span class="text-[10px] text-slate-400 font-medium">${label}</span>
+        <span class="text-[10px] font-medium ${isCurrentMonth ? 'text-slate-700 font-bold' : 'text-slate-400'}">${label}</span>
       </div>`;
   }).join('');
+
+  // Bottom summary always uses current-month computed values (reliable)
+  const trendSummary = `
+    <div class="text-center">
+      <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wide">This Month Revenue</p>
+      <p class="text-sm font-extrabold text-emerald-600">${fmt.currency(monthRevenue)}</p>
+    </div>
+    <div class="text-center">
+      <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wide">This Month Expenses</p>
+      <p class="text-sm font-extrabold text-red-500">${fmt.currency(totalOutflows)}</p>
+    </div>
+    <div class="text-center">
+      <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wide">This Month Profit</p>
+      <p class="text-sm font-extrabold ${netProfit >= 0 ? 'text-blue-600' : 'text-red-500'}">${fmt.currency(netProfit)}</p>
+    </div>`;
 
   // Expense breakdown list
   const expEntries = Object.entries(expBreak).sort((a,b) => b[1]-a[1]).slice(0,6);
@@ -420,20 +436,7 @@ function renderDashboard(c) {
           ${trendBars || '<p class="text-xs text-slate-400 m-auto">No trend data yet</p>'}
         </div>
         <div class="mt-3 pt-3 border-t border-slate-100 grid grid-cols-3 gap-3">
-          ${trend.slice(-1).map(t => `
-            <div class="text-center">
-              <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Latest Revenue</p>
-              <p class="text-sm font-extrabold text-emerald-600">${fmt.currency(t.revenue)}</p>
-            </div>
-            <div class="text-center">
-              <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Latest Expenses</p>
-              <p class="text-sm font-extrabold text-red-500">${fmt.currency(t.expenses)}</p>
-            </div>
-            <div class="text-center">
-              <p class="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Latest Profit</p>
-              <p class="text-sm font-extrabold ${t.profit >= 0 ? 'text-blue-600' : 'text-red-500'}">${fmt.currency(t.profit)}</p>
-            </div>
-          `).join('') || '<div class="col-span-3 text-center text-xs text-slate-400">Load data to see trend</div>'}
+          ${trendSummary}
         </div>
       </div>
 
