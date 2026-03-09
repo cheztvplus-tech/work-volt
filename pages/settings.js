@@ -1683,7 +1683,10 @@ window.WorkVoltPages['settings'] = function(container) {
 
   window.settingsSave = function() {
     var url    = document.getElementById('settings-gas-url').value.trim();
-    var secret = document.getElementById('settings-secret').value.trim();
+    // Read secret from the field if visible, otherwise fall back to what's already saved
+    var secretField = document.getElementById('settings-secret');
+    var secret = (secretField && secretField.value.trim()) ? secretField.value.trim() : savedSecret;
+
     if (!url) return window.WorkVolt?.toast('Please enter the GAS URL', 'warning');
     
     // In setup mode, API secret is required
@@ -1898,6 +1901,8 @@ window.WorkVoltPages['settings'] = function(container) {
   // ── Boot ──────────────────────────────────────────────────────
   if (savedUrl) {
     window.API_URL = savedUrl;
+  }
+  if (savedSecret) {
     window.API_SECRET_CLIENT = savedSecret;
   }
 
