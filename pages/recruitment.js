@@ -248,17 +248,28 @@ window.WorkVoltPages['recruitment'] = function(container) {
         <!-- Job selector + filters row -->
         <div class="bg-white border-b border-slate-100 px-6 py-3 flex items-center gap-3 flex-wrap">
 
-          <!-- Job selector -->
-          <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+          <!-- Job selector (closed jobs hidden) -->
+          <div class="flex items-center gap-2 flex-shrink-0">
             <i class="fas fa-briefcase text-slate-400 text-sm"></i>
-            <select id="job-selector" class="field" style="max-width:280px">
+            <select id="job-selector" class="field text-sm" style="max-width:220px">
               <option value="">— Select a job —</option>
-              ${jobs.map(j => `
+              ${jobs.filter(j => j.status !== 'Closed').map(j => `
                 <option value="${j.job_id}" ${j.job_id === selectedJobId ? 'selected' : ''}>
-                  ${esc(j.title)} ${j.status === 'Closed' ? '(Closed)' : ''} · ${j.candidate_count || 0} candidates
+                  ${esc(j.title)} · ${j.candidate_count || 0} candidates
                 </option>`).join('')}
             </select>
           </div>
+
+          <!-- Selected job title displayed prominently -->
+          ${job ? `
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-slate-300">|</span>
+            <span class="font-extrabold text-slate-800 text-base truncate" style="max-width:320px" title="${esc(job.title)}">
+              ${esc(job.title)}
+            </span>
+            ${job.department ? `<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 flex-shrink-0">${esc(job.department)}</span>` : ''}
+            ${job.status && job.status !== 'Open' ? `<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex-shrink-0">${esc(job.status)}</span>` : ''}
+          </div>` : ''}
 
           <!-- Search -->
           <div class="relative">
