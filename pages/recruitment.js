@@ -1362,22 +1362,36 @@ window.WorkVoltPages['recruitment'] = function(container) {
         await loadDashboard();
         render();
 
-        // Navigate to Settings → User Management → open Edit User form for the new user
+        // Navigate to Settings → User Management → open Edit User form for the new user.
+        // loadUsers() inside settingsTab is async with no callback, so we can't know
+        // exactly when usersCache is ready. Instead we poll: call usersOpenEdit() every
+        // 300ms and stop as soon as #user-modal-backdrop loses its 'hidden' class.
         setTimeout(() => {
           if (window.WorkVolt?.navigate) window.WorkVolt.navigate('settings');
 
           setTimeout(() => {
             if (typeof window.settingsTab === 'function') window.settingsTab('users');
 
-            setTimeout(() => {
-              if (newUserId && typeof window.usersOpenEdit === 'function') {
-                window.usersOpenEdit(newUserId);
-              }
-              window.WorkVolt?.toast(
-                'User created with access enabled. Complete the profile details here.',
-                'info'
-              );
-            }, 500);
+            if (newUserId) {
+              let attempts = 0;
+              const tryOpen = () => {
+                attempts++;
+                if (typeof window.usersOpenEdit === 'function') {
+                  window.usersOpenEdit(newUserId);
+                }
+                const backdrop = document.getElementById('user-modal-backdrop');
+                if (backdrop && !backdrop.classList.contains('hidden')) {
+                  // Modal opened successfully
+                  window.WorkVolt?.toast(
+                    'User created with access enabled. Complete the profile details here.',
+                    'info'
+                  );
+                } else if (attempts < 25) {
+                  setTimeout(tryOpen, 300); // loadUsers still running, retry in 300ms
+                }
+              };
+              setTimeout(tryOpen, 600); // give loadUsers a head start
+            }
           }, 400);
         }, 600);
 
