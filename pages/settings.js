@@ -832,6 +832,7 @@ window.WorkVoltPages['settings'] = function(container) {
   //  MODULES TAB
   // ================================================================
   var ADDON_CATALOGUE = {
+    notifications: { label: 'Notifications',         icon: 'fa-bell',               description: 'Full notification center with smart grouping, priority levels, bell alerts, popup toasts, persistent banners, and quiet hours.' },
     tasks:       { label: 'Tasks',                 icon: 'fa-check-circle',       description: 'Create, assign and track tasks with priority, billing and pay-per-task support.' },
     pipeline:    { label: 'Pipeline',              icon: 'fa-users',              description: 'Visual sales pipeline to manage leads and deals through custom stages.' },
     payroll:     { label: 'Payroll',               icon: 'fa-money-bill-wave',    description: 'Run payroll for hourly, salaried and pay-per-task employees.' },
