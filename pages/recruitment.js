@@ -1254,7 +1254,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
         <!-- Question -->
         <div class="text-center space-y-1">
           <p class="font-extrabold text-slate-800 text-base">Will this employee need app access?</p>
-          <p class="text-xs text-slate-400">This determines whether a user account will be activated in the system.</p>
+          <p class="text-xs text-slate-400">This controls whether the new employee can log into the app.</p>
         </div>
 
         <!-- Choice buttons -->
@@ -1263,13 +1263,13 @@ window.WorkVoltPages['recruitment'] = function(container) {
             class="flex flex-col items-center gap-2 px-4 py-5 rounded-2xl border-2 border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all text-slate-600">
             <i class="fas fa-times-circle text-2xl text-slate-400"></i>
             <span class="font-extrabold text-sm">No</span>
-            <span class="text-[11px] text-slate-400 text-center leading-tight">Add to Users sheet<br>with access disabled</span>
+            <span class="text-[11px] text-slate-400 text-center leading-tight">Create as Contractor<br>with access disabled</span>
           </button>
           <button id="app-access-yes"
             class="flex flex-col items-center gap-2 px-4 py-5 rounded-2xl border-2 border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-slate-600">
             <i class="fas fa-check-circle text-2xl text-blue-400"></i>
             <span class="font-extrabold text-sm">Yes</span>
-            <span class="text-[11px] text-slate-400 text-center leading-tight">Add to Users sheet<br>and open Add User form</span>
+            <span class="text-[11px] text-slate-400 text-center leading-tight">Open Add User form<br>with access enabled</span>
           </button>
         </div>
 
@@ -1286,6 +1286,9 @@ window.WorkVoltPages['recruitment'] = function(container) {
   function bindAppAccessEvents(data) {
     const box = document.getElementById('rec-modal-box');
     if (!box) return;
+
+    const c      = data.candidate || {};
+    const reason = data.reason    || '';
 
     box.querySelector('#modal-close')?.addEventListener('click', closeModal);
     box.querySelector('#modal-cancel')?.addEventListener('click', closeModal);
@@ -1307,45 +1310,29 @@ window.WorkVoltPages['recruitment'] = function(container) {
       });
     };
 
-    // ── Shared: complete the hire first ────────────────────────────
-    async function doCompleteHire(grantAccess) {
-      const c      = data.candidate || {};
-      const reason = data.reason    || '';
-
-      disableBtns();
-      setStatus('<i class="fas fa-circle-notch fa-spin mr-1"></i>Processing hire…', true);
-
-      // Generate a temporary placeholder password for the user record.
-      // If no access, the account will be deactivated immediately after creation.
-      const tempPass = 'WV-' + Math.random().toString(36).slice(2, 8).toUpperCase()
-                     + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-
-      const hireRes = await api('candidates/complete-hire', {
-        candidate_id: c.candidate_id,
-        role:         'Employee',
-        password:     tempPass,
-        reason,
-        moved_by:     user.user_id || '',
-        mover_name:   user.name    || user.email || 'System'
-      });
-
-      if (hireRes.error) throw new Error(hireRes.error);
-      return { hireRes, tempPass };
-    }
-
-    // ── NO — hire + deactivate ──────────────────────────────────────
+    // ── NO: create user as Contractor with active = false ──────────
     box.querySelector('#app-access-no')?.addEventListener('click', async () => {
       try {
-        const { hireRes } = await doCompleteHire(false);
+        disableBtns();
+        setStatus('<i class="fas fa-circle-notch fa-spin mr-1"></i>Processing…', true);
 
-        // Deactivate the freshly-created user account if one was made
-        if (hireRes.user_account?.created && hireRes.user_account?.user_id) {
-          try {
-            await window.WorkVolt.api('users/deactivate', { user_id: hireRes.user_account.user_id });
-          } catch(e) { /* Non-fatal — user row was created, deactivation best-effort */ }
-        }
+        // Generate a temporary password — recruiter can reset it later
+        const tempPass = 'WV-' + Math.random().toString(36).slice(2, 8).toUpperCase()
+                       + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
 
-        toast(`${data.candidate?.name || 'Candidate'} hired — app access disabled`, 'success');
+        const res = await api('candidates/complete-hire', {
+          candidate_id: c.candidate_id,
+          role:         'Contractor',
+          active:       'false',
+          password:     tempPass,
+          reason,
+          moved_by:     user.user_id || '',
+          mover_name:   user.name    || user.email || 'System'
+        });
+
+        if (res.error) throw new Error(res.error);
+
+        toast(`${c.name || 'Candidate'} hired — added as Contractor (access disabled)`, 'success');
         closeModal();
         closeDetailPanel();
         await loadCandidates();
@@ -1354,63 +1341,69 @@ window.WorkVoltPages['recruitment'] = function(container) {
       } catch(e) { setStatus(e.message, false); }
     });
 
-    // ── YES — hire + open Add User form ────────────────────────────
+    // ── YES: mark as Hired via move-stage, then open Add User form ──
     box.querySelector('#app-access-yes')?.addEventListener('click', async () => {
       try {
-        const { hireRes } = await doCompleteHire(true);
+        disableBtns();
+        setStatus('<i class="fas fa-circle-notch fa-spin mr-1"></i>Processing…', true);
 
-        toast(`${data.candidate?.name || 'Candidate'} hired — opening Add User form…`, 'success');
+        // Move the candidate to Hired — do NOT create a user yet
+        const res = await api('candidates/move-stage', {
+          candidate_id: c.candidate_id,
+          stage:        'Hired',
+          reason,
+          moved_by:     user.user_id || '',
+          mover_name:   user.name    || user.email || 'System'
+        });
+
+        if (res.error) throw new Error(res.error);
+
+        toast(`${c.name || 'Candidate'} hired — opening Add User form…`, 'success');
         closeModal();
         closeDetailPanel();
         await loadCandidates();
         await loadDashboard();
         render();
 
-        // Navigate to Settings → User Management and open the Add User form.
-        // Pre-fill with candidate info if the Settings page supports it.
+        // Navigate to Settings → User Management and open Add User form pre-filled
         setTimeout(() => {
-          const c = data.candidate || {};
-          // Switch to settings page and open the add user modal
-          if (window.WorkVolt?.navigate) {
-            window.WorkVolt.navigate('settings');
-          }
-          // After navigation, open the add user modal pre-filled with candidate data
+          if (window.WorkVolt?.navigate) window.WorkVolt.navigate('settings');
+
           setTimeout(() => {
-            if (typeof window.settingsTab === 'function') {
-              window.settingsTab('users');
-            }
+            if (typeof window.settingsTab === 'function') window.settingsTab('users');
+
             setTimeout(() => {
               if (typeof window.usersOpenAdd === 'function') {
                 window.usersOpenAdd();
-                // Pre-fill form fields with candidate data
+
+                // Pre-fill with candidate data + set active = true by default
                 setTimeout(() => {
-                  const fillField = (id, val) => {
+                  const fill = (id, val) => {
                     const el = document.getElementById(id);
                     if (el && val) el.value = val;
                   };
-                  fillField('uf-name',      c.name  || '');
-                  fillField('uf-email',     c.email || '');
-                  fillField('uf-phone',     c.phone || '');
-                  // Set role to Employee by default
+                  fill('uf-name',  c.name  || '');
+                  fill('uf-email', c.email || '');
+                  fill('uf-phone', c.phone || '');
+                  // Default role to Employee; recruiter can change it
                   const roleEl = document.getElementById('uf-role');
                   if (roleEl) roleEl.value = 'Employee';
-                  // If user was already created by completeHire, show a notice
-                  if (hireRes.user_account?.created) {
-                    window.WorkVolt?.toast(
-                      'A user account was pre-created. Fill in the full details and set a password below.',
-                      'info'
-                    );
-                  }
+                  // Ensure active toggle is ON
+                  const activeEl = document.getElementById('uf-active');
+                  if (activeEl) activeEl.checked = true;
+                  window.WorkVolt?.toast(
+                    'Fill in the remaining details and set a password to complete the account.',
+                    'info'
+                  );
                 }, 150);
               }
-            }, 300);
+            }, 350);
           }, 400);
         }, 600);
 
       } catch(e) { setStatus(e.message, false); }
     });
   }
-
   function bindModalEvents(mode, data) {
     const box = document.getElementById('rec-modal-box');
     if (!box) return;
