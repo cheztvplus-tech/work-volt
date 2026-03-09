@@ -69,7 +69,6 @@ let state = {
     payroll:  { installed: false, data: [] },
     assets:   { installed: false, data: [] },
     tasks:    { installed: false, data: [] },
-    projects: { installed: false, data: [] },
   },
 };
 
@@ -239,7 +238,6 @@ async function loadCrossModuleData() {
     tryLoad('payroll',  'payroll/payments/list',    'payroll'),
     tryLoad('assets',   'assets/maintenance/list',  'assets'),
     tryLoad('tasks',    'tasks/list',               'tasks'),
-    tryLoad('projects', 'projects/list',            'projects'),
   ]);
 }
 async function loadReports() {
@@ -276,33 +274,106 @@ function renderTab() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function renderDashboard(c) {
   const d = state.dashboard || {};
-  const trend = d.monthly_trend || [];
-  const expBreak = d.expense_breakdown || {};
+  const now = new Date();
+  const ym  = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 
-  // Sparkline bars (normalize to max)
-  const maxProfit = Math.max(...trend.map(t => Math.abs(t.profit)), 1);
-  const maxRev    = Math.max(...trend.map(t => t.revenue), 1);
-  const maxExp    = Math.max(...trend.map(t => t.expenses), 1);
-  const maxBar    = Math.max(maxRev, maxExp, 1);
+  // ── Compute KPIs locally from state (reliable, always up-to-date) ──
+  // Revenue: invoices paid or sent this month
+  const monthRevenue = state.invoices
+    .filter(inv => (inv.issue_date||'').startsWith(ym))
+    .reduce((s,inv) => s + (parseFloat(inv.total)||0), 0);
 
+  // Expenses: all approved/paid expenses this month
+  const monthExpenses = state.expenses
+    .filter(e => (e.date||'').startsWith(ym))
+    .reduce((s,e) => s + (parseFloat(e.amount)||0), 0);
+
+  // Bills paid this month also count as outflows
+  const monthBills = state.bills
+    .filter(b => ((b.issue_date||b.due_date||'').startsWith(ym)))
+    .reduce((s,b) => s + (parseFloat(b.amount)||0), 0);
+
+  // Cross-module costs this month
+  const payrollCost = state.modules.payroll.installed
+    ? state.modules.payroll.data.reduce((s,p) => s + (parseFloat(p.net_pay||p.amount||0)), 0) : 0;
+  const maintCost = state.modules.assets.installed
+    ? state.modules.assets.data.reduce((s,m) => s + (parseFloat(m.cost||m.amount||0)), 0) : 0;
+  const taskCost = state.modules.tasks.installed
+    ? state.modules.tasks.data.reduce((s,t) => s + (parseFloat(t.cost||t.estimated_cost||0)), 0) : 0;
+
+  const totalOutflows = monthExpenses + monthBills + payrollCost + maintCost + taskCost;
+  const netProfit     = monthRevenue - totalOutflows;
+
+  // AR metrics
+  const outstandingAR = state.invoices
+    .filter(inv => inv.status === 'Sent' || inv.status === 'Partial' || inv.status === 'Unpaid')
+    .reduce((s,inv) => s + (parseFloat(inv.balance_due)||parseFloat(inv.total)||0), 0);
+  const overdueAR = state.invoices
+    .filter(inv => inv.status === 'Overdue')
+    .reduce((s,inv) => s + (parseFloat(inv.balance_due)||parseFloat(inv.total)||0), 0);
+  const billsDue = state.bills
+    .filter(b => b.status === 'Unpaid' || b.status === 'Partial')
+    .reduce((s,b) => s + (parseFloat(b.balance_due)||parseFloat(b.amount)||0), 0);
+  const overdueBills = state.bills
+    .filter(b => b.status === 'Overdue')
+    .reduce((s,b) => s + (parseFloat(b.balance_due)||parseFloat(b.amount)||0), 0);
+
+  // Expense breakdown from all expenses
+  const expBreakRaw = {};
+  state.expenses.forEach(e => {
+    if (e.category) expBreakRaw[e.category] = (expBreakRaw[e.category]||0) + (parseFloat(e.amount)||0);
+  });
+  if (payrollCost > 0)  expBreakRaw['Payroll']           = (expBreakRaw['Payroll']||0) + payrollCost;
+  if (maintCost > 0)    expBreakRaw['Asset Maintenance']  = (expBreakRaw['Asset Maintenance']||0) + maintCost;
+  if (taskCost > 0)     expBreakRaw['Task Costs']         = (expBreakRaw['Task Costs']||0) + taskCost;
+  if (monthBills > 0)   expBreakRaw['Bills']              = (expBreakRaw['Bills']||0) + monthBills;
+
+  // Monthly trend (use server data if available, else derive from invoices/expenses)
+  const trend = (d.monthly_trend && d.monthly_trend.length) ? d.monthly_trend : (() => {
+    const months = {};
+    for (let i = 5; i >= 0; i--) {
+      const d2 = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}`;
+      months[key] = { month: key, revenue: 0, expenses: 0, profit: 0 };
+    }
+    state.invoices.forEach(inv => {
+      const m = (inv.issue_date||'').substring(0,7);
+      if (months[m]) months[m].revenue += parseFloat(inv.total)||0;
+    });
+    state.expenses.forEach(e => {
+      const m = (e.date||'').substring(0,7);
+      if (months[m]) months[m].expenses += parseFloat(e.amount)||0;
+    });
+    state.bills.forEach(b => {
+      const m = ((b.issue_date||b.due_date||'')).substring(0,7);
+      if (months[m]) months[m].expenses += parseFloat(b.amount)||0;
+    });
+    Object.values(months).forEach(m => m.profit = m.revenue - m.expenses);
+    return Object.values(months);
+  })();
+
+  const expBreak = (d.expense_breakdown && Object.keys(d.expense_breakdown).length) ? d.expense_breakdown : expBreakRaw;
+
+  // Sparkline bars
+  const maxBar = Math.max(...trend.map(t => Math.max(t.revenue, t.expenses)), 1);
   const trendBars = trend.map(t => {
-    const revH  = Math.round((t.revenue  / maxBar) * 100);
-    const expH  = Math.round((t.expenses / maxBar) * 100);
+    const revH = Math.round((t.revenue  / maxBar) * 100);
+    const expH = Math.round((t.expenses / maxBar) * 100);
     const label = t.month ? t.month.substring(5) : '';
     return `
       <div class="flex flex-col items-center gap-1 flex-1">
         <div class="w-full flex items-end justify-center gap-0.5 h-16">
-          <div class="w-3 rounded-t" style="height:${revH}%;background:#10b981;min-height:2px" title="Revenue ${fmt.currency(t.revenue)}"></div>
-          <div class="w-3 rounded-t" style="height:${expH}%;background:#f87171;min-height:2px" title="Expenses ${fmt.currency(t.expenses)}"></div>
+          <div class="w-3 rounded-t" style="height:${Math.max(revH,1)}%;background:#10b981;min-height:2px" title="Revenue ${fmt.currency(t.revenue)}"></div>
+          <div class="w-3 rounded-t" style="height:${Math.max(expH,1)}%;background:#f87171;min-height:2px" title="Expenses ${fmt.currency(t.expenses)}"></div>
         </div>
         <span class="text-[10px] text-slate-400 font-medium">${label}</span>
       </div>`;
   }).join('');
 
-  // Expense breakdown pie-like list
-  const expEntries = Object.entries(expBreak).sort((a,b) => b[1]-a[1]).slice(0,5);
+  // Expense breakdown list
+  const expEntries = Object.entries(expBreak).sort((a,b) => b[1]-a[1]).slice(0,6);
   const totalExpBreak = expEntries.reduce((s,[,v]) => s+v, 0) || 1;
-  const expList = expEntries.map(([cat, amt]) => {
+  const expList = expEntries.length ? expEntries.map(([cat, amt]) => {
     const pct = Math.round((amt / totalExpBreak) * 100);
     return `
       <div class="mb-2">
@@ -314,22 +385,22 @@ function renderDashboard(c) {
           <div class="h-full rounded-full bg-emerald-400" style="width:${pct}%"></div>
         </div>
       </div>`;
-  }).join('') || '<p class="text-xs text-slate-400">No expense data yet</p>';
+  }).join('') : '<p class="text-xs text-slate-400">No expense data yet</p>';
 
   c.innerHTML = `
   <div class="p-6 space-y-5 max-w-7xl mx-auto fade-in">
 
     <!-- KPI row -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      ${kpi('Monthly Revenue',  fmt.currency(d.month_revenue),  'd.month_revenue',  'fa-arrow-trend-up',   'bg-emerald-50 text-emerald-600', '+this month')}
-      ${kpi('Monthly Expenses', fmt.currency(d.month_expenses), 'd.month_expenses', 'fa-arrow-trend-down', 'bg-red-50 text-red-500',         'this month')}
-      ${kpi('Net Profit',       fmt.currency(d.month_profit),   'd.month_profit',   'fa-chart-line',       d.month_profit >= 0 ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-500', 'this month')}
-      ${kpi('Outstanding AR',   fmt.currency(d.outstanding_ar), 'd.outstanding_ar', 'fa-file-invoice',     'bg-amber-50 text-amber-600',     'receivable')}
+      ${kpi('Monthly Revenue',  fmt.currency(monthRevenue),  '', 'fa-arrow-trend-up',   'bg-emerald-50 text-emerald-600', 'this month')}
+      ${kpi('Monthly Expenses', fmt.currency(totalOutflows), '', 'fa-arrow-trend-down', 'bg-red-50 text-red-500',         'all outflows')}
+      ${kpi('Net Profit',       fmt.currency(netProfit),     '', 'fa-chart-line',       netProfit >= 0 ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-500', 'this month')}
+      ${kpi('Outstanding AR',   fmt.currency(outstandingAR), '', 'fa-file-invoice',     'bg-amber-50 text-amber-600',     'receivable')}
     </div>
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      ${kpi('Overdue AR',    fmt.currency(d.overdue_ar),    'd.overdue_ar',    'fa-exclamation-circle', 'bg-red-50 text-red-500',    'needs attention')}
-      ${kpi('Bills Due',     fmt.currency(d.bills_due),     'd.bills_due',     'fa-file-alt',           'bg-violet-50 text-violet-600','to pay')}
-      ${kpi('Overdue Bills', fmt.currency(d.overdue_bills), 'd.overdue_bills', 'fa-clock',              'bg-orange-50 text-orange-500', 'overdue')}
+      ${kpi('Overdue AR',    fmt.currency(overdueAR),   '', 'fa-exclamation-circle', 'bg-red-50 text-red-500',     'needs attention')}
+      ${kpi('Bills Due',     fmt.currency(billsDue),    '', 'fa-file-alt',           'bg-violet-50 text-violet-600','to pay')}
+      ${kpi('Overdue Bills', fmt.currency(overdueBills),'', 'fa-clock',              'bg-orange-50 text-orange-500', 'overdue')}
       ${kpi('Total Invoices', String(state.invoices.length), '', 'fa-list',  'bg-slate-100 text-slate-600', 'all time')}
     </div>
 
@@ -782,14 +853,42 @@ function renderReports(c) {
         Income Statement
       </h3>
       <div class="space-y-1">
-        ${reportLine('Total Revenue', fmt.currency(is.revenue), 'font-semibold text-emerald-600')}
-        <div class="h-px bg-slate-100 my-2"></div>
-        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Operating Expenses</p>
-        ${Object.entries(is.expense_breakdown || {}).map(([cat, amt]) => reportLine(cat, fmt.currency(amt), 'text-slate-600')).join('')}
-        ${reportLine('Total Expenses', fmt.currency(is.expenses), 'font-semibold text-red-500')}
-        <div class="h-px bg-slate-100 my-2"></div>
-        ${reportLine('Net Profit / (Loss)', fmt.currency(is.net_profit), `font-extrabold text-lg ${(is.net_profit||0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`)}
-        ${reportLine('Profit Margin', fmt.pct(is.profit_margin), 'text-slate-500 text-sm')}
+        ${(()=>{
+          const baseRevenue  = parseFloat(is.revenue)  || state.invoices.reduce((s,inv)=>s+(parseFloat(inv.total)||0),0);
+          const baseExpenses = parseFloat(is.expenses) || state.expenses.reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+          const billsTotal   = state.bills.reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
+
+          // Cross-module costs
+          const payrollTotal = state.modules.payroll.installed
+            ? state.modules.payroll.data.reduce((s,p)=>s+(parseFloat(p.net_pay||p.amount||0)),0) : 0;
+          const maintTotal   = state.modules.assets.installed
+            ? state.modules.assets.data.reduce((s,m)=>s+(parseFloat(m.cost||m.amount||0)),0) : 0;
+          const taskTotal    = state.modules.tasks.installed
+            ? state.modules.tasks.data.reduce((s,t)=>s+(parseFloat(t.cost||t.estimated_cost||0)),0) : 0;
+
+          const totalAllExpenses = baseExpenses + billsTotal + payrollTotal + maintTotal + taskTotal;
+          const netProfit  = baseRevenue - totalAllExpenses;
+          const profitMargin = baseRevenue > 0 ? (netProfit / baseRevenue * 100) : 0;
+
+          // Build expense breakdown from server + local data
+          const expBreakdown = { ...(is.expense_breakdown || {}) };
+          if (!Object.keys(expBreakdown).length) {
+            state.expenses.forEach(e => { if(e.category) expBreakdown[e.category]=(expBreakdown[e.category]||0)+(parseFloat(e.amount)||0); });
+          }
+          if (billsTotal > 0)   expBreakdown['Bills & Payables']  = (expBreakdown['Bills & Payables']||0) + billsTotal;
+          if (payrollTotal > 0) expBreakdown['Payroll']           = (expBreakdown['Payroll']||0) + payrollTotal;
+          if (maintTotal > 0)   expBreakdown['Asset Maintenance'] = (expBreakdown['Asset Maintenance']||0) + maintTotal;
+          if (taskTotal > 0)    expBreakdown['Task Costs']        = (expBreakdown['Task Costs']||0) + taskTotal;
+
+          return reportLine('Total Revenue', fmt.currency(baseRevenue), 'font-semibold text-emerald-600')
+            + '<div class="h-px bg-slate-100 my-2"></div>'
+            + '<p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Operating Expenses</p>'
+            + Object.entries(expBreakdown).map(([cat, amt]) => reportLine(cat, fmt.currency(amt), 'text-slate-600')).join('')
+            + reportLine('Total Expenses', fmt.currency(totalAllExpenses), 'font-semibold text-red-500')
+            + '<div class="h-px bg-slate-100 my-2"></div>'
+            + reportLine('Net Profit / (Loss)', fmt.currency(netProfit), `font-extrabold text-lg ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`)
+            + reportLine('Profit Margin', fmt.pct(profitMargin), 'text-slate-500 text-sm');
+        })()}
       </div>
     </div>
 
@@ -906,10 +1005,11 @@ function renderCrossModuleReport() {
           <span class="ml-2 text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Connected</span>
         </h3>
         <div class="space-y-1">
-          ${reportLine('Total Payroll Processed', fmt.currency(totalPayroll), 'font-semibold text-slate-700')}
+          ${reportLine('Total Payroll Processed', fmt.currency(totalPayroll), 'font-semibold text-red-500')}
           ${reportLine('Pending Payments', fmt.currency(pending), 'text-amber-600')}
           ${reportLine('Payroll Records', String(payments.length), 'text-slate-500')}
         </div>
+        ${totalPayroll > 0 ? `<p class="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100"><i class="fas fa-info-circle mr-1"></i>Payroll costs are deducted in the Net Profit calculation.</p>` : ''}
       </div>`);
   }
 
@@ -926,53 +1026,34 @@ function renderCrossModuleReport() {
           <span class="ml-2 text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Connected</span>
         </h3>
         <div class="space-y-1">
-          ${reportLine('Total Maintenance Cost', fmt.currency(totalMaint), 'font-semibold text-slate-700')}
+          ${reportLine('Total Maintenance Cost', fmt.currency(totalMaint), 'font-semibold text-red-500')}
           ${reportLine('Scheduled Tasks', String(scheduled), 'text-amber-600')}
           ${reportLine('Maintenance Records', String(maintenance.length), 'text-slate-500')}
         </div>
+        ${totalMaint > 0 ? `<p class="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100"><i class="fas fa-info-circle mr-1"></i>Maintenance costs are deducted in the Net Profit calculation.</p>` : ''}
       </div>`);
   }
 
-  // Projects (budgets / costs)
-  if (mods.projects.installed) {
-    const projects = mods.projects.data;
-    const totalBudget = projects.reduce((s,p) => s + (parseFloat(p.budget || 0)), 0);
-    const totalSpent  = projects.reduce((s,p) => s + (parseFloat(p.spent || p.actual_cost || 0)), 0);
-    sections.push(`
-      <div class="bg-white rounded-xl border border-slate-200 p-6">
-        <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
-          <span class="w-7 h-7 bg-violet-100 rounded-lg flex items-center justify-center"><i class="fas fa-project-diagram text-violet-600 text-xs"></i></span>
-          Project Financials
-          <span class="ml-2 text-xs font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">Connected</span>
-        </h3>
-        <div class="space-y-1">
-          ${reportLine('Total Project Budgets', fmt.currency(totalBudget), 'font-semibold text-slate-700')}
-          ${reportLine('Total Spent', fmt.currency(totalSpent), 'text-slate-600')}
-          ${reportLine('Remaining', fmt.currency(totalBudget - totalSpent), (totalBudget - totalSpent) >= 0 ? 'text-emerald-600' : 'text-red-500')}
-          ${reportLine('Active Projects', String(projects.filter(p=>p.status==='Active'||p.status==='In Progress').length), 'text-slate-500')}
-        </div>
-      </div>`);
-  }
-
-  // Tasks (billable hours/costs)
+  // Tasks (costs)
   if (mods.tasks.installed) {
     const tasks = mods.tasks.data;
-    const billable   = tasks.filter(t => t.billable === 'true' || t.billable === true);
-    const totalHours = billable.reduce((s,t) => s + (parseFloat(t.estimated_hours || t.hours || 0)), 0);
+    const totalCost  = tasks.reduce((s,t) => s + (parseFloat(t.cost||t.estimated_cost||0)), 0);
     const completed  = tasks.filter(t => t.status === 'Completed' || t.status === 'Done').length;
+    const inProgress = tasks.filter(t => t.status === 'In Progress').length;
     sections.push(`
       <div class="bg-white rounded-xl border border-slate-200 p-6">
         <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
           <span class="w-7 h-7 bg-teal-100 rounded-lg flex items-center justify-center"><i class="fas fa-tasks text-teal-600 text-xs"></i></span>
-          Task Cost Overview
+          Task Costs
           <span class="ml-2 text-xs font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">Connected</span>
         </h3>
         <div class="space-y-1">
+          ${reportLine('Total Task Cost', fmt.currency(totalCost), 'font-semibold text-red-500')}
           ${reportLine('Total Tasks', String(tasks.length), 'text-slate-500')}
           ${reportLine('Completed', String(completed), 'text-emerald-600')}
-          ${reportLine('Billable Tasks', String(billable.length), 'text-slate-600')}
-          ${reportLine('Billable Hours', fmt.num(totalHours) + ' hrs', 'font-semibold text-slate-700')}
+          ${reportLine('In Progress', String(inProgress), 'text-amber-600')}
         </div>
+        ${totalCost > 0 ? `<p class="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100"><i class="fas fa-info-circle mr-1"></i>Task costs are deducted in the Net Profit calculation.</p>` : ''}
       </div>`);
   }
 
