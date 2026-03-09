@@ -60,6 +60,39 @@ window.WorkVoltPages['assets'] = function(container) {
   function fmtMoney(v)    { var n = parseFloat(v); return isNaN(n) ? '—' : '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); }
   function esc(s)         { return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
+  // Resolve user display name from ID or raw string
+  function getUserName(idOrName) {
+    if (!idOrName) return '—';
+    var u = state.users.find(function(u){ return (u.user_id||u.id||'') === idOrName; });
+    if (u) return u.name || u.email || idOrName;
+    return idOrName; // fallback: already a name or unknown
+  }
+
+  // Render a rich asset cell: name (bold) + id · SN sub-line
+  function assetCell(assetId) {
+    if (!assetId) return '<span class="text-slate-400">—</span>';
+    var a = state.assets.find(function(a){ return a.asset_id === assetId; });
+    if (!a) return '<span class="font-mono text-xs text-slate-500">' + esc(assetId) + '</span>';
+    return '<div class="font-semibold text-slate-900">' + esc(a.asset_name) + '</div>'
+      + '<div class="text-xs text-slate-400 font-mono mt-0.5">asset id: ' + esc(a.asset_id)
+      + (a.serial_number ? ' · SN: ' + esc(a.serial_number) : '') + '</div>';
+  }
+
+  // Build an asset searchable combobox for modals (replaces plain text input)
+  // Returns HTML string; id prefix used for the hidden input and visible input
+  function assetComboField(label, presetId, required) {
+    var presetAsset = presetId ? state.assets.find(function(a){ return a.asset_id === presetId; }) : null;
+    var displayVal  = presetAsset ? presetAsset.asset_name + ' (' + presetAsset.asset_id + ')' : (presetId || '');
+    return '<div class="relative">'
+      + '<label class="block text-xs font-semibold text-slate-600 mb-1.5">' + label
+      + (required ? ' <span class="text-red-500">*</span>' : '') + '</label>'
+      + '<input id="f-asset_search" type="text" autocomplete="off" placeholder="Search or type asset ID..." class="field"'
+      + ' value="' + esc(displayVal) + '">'
+      + '<input type="hidden" id="f-asset_id" value="' + esc(presetId||'') + '">'
+      + '<div id="asset-asset-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 z-[9999] bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto"></div>'
+      + '</div>';
+  }
+
   function emptyState(icon, msg, sub) {
     return '<div class="flex flex-col items-center justify-center py-20 text-center">'
       + '<div class="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">'
@@ -400,7 +433,7 @@ window.WorkVoltPages['assets'] = function(container) {
           + '<div class="text-xs text-slate-400 font-mono mt-0.5">' + esc(r.asset_id) + (r.serial_number ? ' · SN: '+esc(r.serial_number) : '') + '</div></td>'
           + '<td class="px-4 py-3.5 hidden md:table-cell"><div class="text-slate-700">' + esc(r.category||'—') + '</div><div class="text-xs text-slate-400">' + esc(r.asset_type||'') + '</div></td>'
           + '<td class="px-4 py-3.5">' + statusBadge(r.status) + '<div class="mt-1">' + condBadge(r.condition) + '</div></td>'
-          + '<td class="px-4 py-3.5 hidden lg:table-cell text-slate-600 text-sm">' + esc(r.assigned_to||'—') + '</td>'
+          + '<td class="px-4 py-3.5 hidden lg:table-cell text-slate-600 text-sm">' + esc(getUserName(r.assigned_to)) + '</td>'
           + '<td class="px-4 py-3.5 hidden xl:table-cell text-sm ' + (warnWar?'text-amber-600 font-semibold':'text-slate-500') + '">'
           + (r.warranty_expiry ? (warnWar?'<i class="fas fa-triangle-exclamation mr-1"></i>':'')+fmtDate(r.warranty_expiry) : '—') + '</td>'
           + '<td class="px-4 py-3.5"><div class="flex items-center justify-end gap-1">'
@@ -441,8 +474,8 @@ window.WorkVoltPages['assets'] = function(container) {
         var daysAssigned = r.assigned_date ? Math.floor((Date.now() - new Date(r.assigned_date)) / 86400000) : 0;
         var overdue = daysAssigned > 90;
         html += '<tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">'
-          + '<td class="px-4 py-3.5"><div class="font-semibold text-slate-900 font-mono text-xs">' + esc(r.asset_id) + '</div></td>'
-          + '<td class="px-4 py-3.5 font-medium text-slate-700">' + esc(r.assigned_to) + '</td>'
+          + '<td class="px-4 py-3.5">' + assetCell(r.asset_id) + '</td>'
+          + '<td class="px-4 py-3.5 font-medium text-slate-700">' + esc(getUserName(r.assigned_to)) + '</td>'
           + '<td class="px-4 py-3.5 hidden md:table-cell text-slate-500">'
           + fmtDate(r.assigned_date)
           + '<span class="ml-2 text-xs ' + (overdue?'text-red-500 font-semibold':'text-slate-400') + '">(' + daysAssigned + 'd)</span></td>'
@@ -468,8 +501,8 @@ window.WorkVoltPages['assets'] = function(container) {
         + '</tr></thead><tbody>';
       returned.slice(0,30).forEach(function(r) {
         html += '<tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">'
-          + '<td class="px-4 py-3 font-mono text-xs text-slate-700">' + esc(r.asset_id) + '</td>'
-          + '<td class="px-4 py-3 text-slate-600">' + esc(r.assigned_to) + '</td>'
+          + '<td class="px-4 py-3.5">' + assetCell(r.asset_id) + '</td>'
+          + '<td class="px-4 py-3 text-slate-600">' + esc(getUserName(r.assigned_to)) + '</td>'
           + '<td class="px-4 py-3 text-slate-500 hidden md:table-cell">' + fmtDate(r.assigned_date) + '</td>'
           + '<td class="px-4 py-3 text-slate-500 hidden md:table-cell">' + fmtDate(r.return_date) + '</td>'
           + '<td class="px-4 py-3 hidden lg:table-cell">' + condBadge(r.condition_returned) + '</td>'
@@ -513,7 +546,7 @@ window.WorkVoltPages['assets'] = function(container) {
       state.maintenance.forEach(function(r) {
         html += '<tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">'
           + '<td class="px-4 py-3 font-mono text-xs text-slate-500">' + esc(r.maintenance_id) + '</td>'
-          + '<td class="px-4 py-3 font-semibold text-slate-700">' + esc(r.asset_id) + '</td>'
+          + '<td class="px-4 py-3.5">' + assetCell(r.asset_id) + '</td>'
           + '<td class="px-4 py-3 text-slate-600">' + esc(r.type) + '</td>'
           + '<td class="px-4 py-3 text-slate-500 hidden md:table-cell">' + fmtDate(r.date) + '</td>'
           + '<td class="px-4 py-3 text-slate-700 font-medium hidden md:table-cell">' + fmtMoney(r.cost) + '</td>'
@@ -591,7 +624,7 @@ window.WorkVoltPages['assets'] = function(container) {
     } else {
       html += '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden"><div class="overflow-x-auto">'
         + '<table class="w-full text-sm"><thead><tr class="border-b border-slate-100 bg-slate-50">'
-        + '<th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Asset ID</th>'
+        + '<th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Asset</th>'
         + '<th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Method</th>'
         + '<th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Purchase Price</th>'
         + '<th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Useful Life</th>'
@@ -603,7 +636,7 @@ window.WorkVoltPages['assets'] = function(container) {
         var current  = parseFloat(r.current_value) ||0;
         var pctLeft  = purchase > 0 ? Math.round((current/purchase)*100) : 0;
         html += '<tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">'
-          + '<td class="px-4 py-3 font-mono text-xs font-semibold text-slate-700">' + esc(r.asset_id) + '</td>'
+          + '<td class="px-4 py-3.5">' + assetCell(r.asset_id) + '</td>'
           + '<td class="px-4 py-3"><span class="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-semibold">' + esc(r.method) + '</span></td>'
           + '<td class="px-4 py-3 text-slate-700 font-medium">' + fmtMoney(r.purchase_price) + '</td>'
           + '<td class="px-4 py-3 text-slate-500">' + esc(r.useful_life_years) + ' yrs</td>'
@@ -638,7 +671,9 @@ window.WorkVoltPages['assets'] = function(container) {
           + '<i class="fas ' + icon + ' text-white text-sm"></i></div>'
           + '<div class="flex-1 min-w-0">'
           + '<p class="font-semibold text-slate-900 text-sm">' + esc(r.document_type||'Document') + '</p>'
-          + '<p class="text-xs text-slate-400 font-mono mt-0.5">' + esc(r.asset_id) + '</p>'
+          + (function(){ var a = state.assets.find(function(a){ return a.asset_id === r.asset_id; });
+              return '<p class="text-xs text-slate-700 font-medium mt-0.5">' + esc(a ? a.asset_name : r.asset_id) + '</p>'
+                + '<p class="text-xs text-slate-400 font-mono">' + esc(r.asset_id) + '</p>'; })()
           + (r.notes ? '<p class="text-xs text-slate-500 mt-0.5 truncate">' + esc(r.notes) + '</p>' : '')
           + '</div>'
           + '<div class="flex items-center gap-1 flex-shrink-0">'
@@ -696,10 +731,12 @@ window.WorkVoltPages['assets'] = function(container) {
         + row2(field('supplier','Supplier',a.supplier,'text'), field('location','Location',a.location,'text','e.g. NY Office'))
         + row2(
             '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Status</label><select id="f-status" class="field">' + statusOpts + '</select></div>',
-            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Condition</label><select id="f-condition" class="field">' + condOpts + '</select></div>'
+            field('warranty_expiry','Warranty Expiry',a.warranty_expiry,'date')
           )
-        + row2(field('warranty_expiry','Warranty Expiry',a.warranty_expiry,'date'),
-            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Lifecycle Stage</label><select id="f-lifecycle_stage" class="field">' + lcOpts + '</select></div>')
+        + row2(
+            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Condition</label><select id="f-condition" class="field">' + condOpts + '</select></div>',
+            ''
+          )
         + row2(
             '<div class="relative">'
             + '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Assigned To</label>'
@@ -774,9 +811,9 @@ window.WorkVoltPages['assets'] = function(container) {
         .map(function(s){ return '<option value="'+s+'" '+(r.status===s?'selected':'')+'>'+s+'</option>'; }).join('');
       inner = modalHeader(isEdit?'Edit Maintenance':'Log Maintenance','fa-wrench')
         + '<div class="p-5 overflow-y-auto flex-1 space-y-4">'
-        + field('asset_id','Asset ID',r.asset_id,'text','AST-000001',true)
-        + row2('<label class="block text-xs font-semibold text-slate-600 mb-1.5">Type</label><select id="f-type" class="field">'+mntTypeOpts+'</select>',
-               '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Status</label><select id="f-status" class="field">'+mntStatusOpts+'</select>')
+        + assetComboField('Asset', r.asset_id, true)
+        + row2('<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Type</label><select id="f-type" class="field">'+mntTypeOpts+'</select></div>',
+               '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Status</label><select id="f-status" class="field">'+mntStatusOpts+'</select></div>')
         + row2(field('date','Date',r.date||new Date().toISOString().split('T')[0],'date'),
                field('cost','Cost',r.cost,'number','0.00'))
         + field('vendor','Vendor / Service Provider',r.vendor,'text')
@@ -816,7 +853,7 @@ window.WorkVoltPages['assets'] = function(container) {
         .map(function(m){ return '<option value="'+m+'" '+(r.method===m?'selected':'')+'>'+m+'</option>'; }).join('');
       inner = modalHeader('Add Depreciation Record','fa-chart-line-down')
         + '<div class="p-5 overflow-y-auto flex-1 space-y-4">'
-        + field('asset_id','Asset ID',r.asset_id,'text','AST-000001',true)
+        + assetComboField('Asset', r.asset_id, true)
         + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Method</label>'
         + '<select id="f-method" class="field"><option value="">— Select —</option>'+methodOpts+'</select></div>'
         + row2(field('purchase_price','Purchase Price',r.purchase_price,'number','0.00'),
@@ -832,7 +869,7 @@ window.WorkVoltPages['assets'] = function(container) {
     else if (m.type === 'document') {
       inner = modalHeader('Add Document','fa-file-alt')
         + '<div class="p-5 overflow-y-auto flex-1 space-y-4">'
-        + field('asset_id','Asset ID','','text','AST-000001',true)
+        + assetComboField('Asset', '', true)
         + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Document Type</label>'
         + '<select id="f-document_type" class="field"><option value="">— Select —</option>'
         + ['Invoice','Warranty','Manual','Photo','Contract','Other']
@@ -910,6 +947,15 @@ window.WorkVoltPages['assets'] = function(container) {
   };
 
   window.assetSaveAsset = async function(existingId) {
+    var status       = gv('status') || 'Available';
+    var assignedTo   = gv('assigned_to');
+    // Auto-set to Assigned if a user is selected
+    if (assignedTo && status === 'Available') status = 'Assigned';
+    // Lifecycle stage mirrors status
+    var lcMap = {
+      'Available':'Available','Assigned':'Assigned','Maintenance':'Maintenance',
+      'Retired':'Retired','Disposed':'Disposed'
+    };
     var params = {
       asset_name:      gv('asset_name'),
       category:        gv('category'),
@@ -921,11 +967,11 @@ window.WorkVoltPages['assets'] = function(container) {
       purchase_price:  gv('purchase_price'),
       supplier:        gv('supplier'),
       location:        gv('location'),
-      status:          gv('status'),
+      status:          status,
       condition:       gv('condition'),
       warranty_expiry: gv('warranty_expiry'),
-      assigned_to:     gv('assigned_to'),
-      lifecycle_stage: gv('lifecycle_stage'),
+      assigned_to:     assignedTo,
+      lifecycle_stage: lcMap[status] || status,
       notes:           gv('notes'),
     };
     if (!params.asset_name) { toast('Asset name is required','error'); return; }
@@ -1125,6 +1171,57 @@ window.WorkVoltPages['assets'] = function(container) {
       });
     }
 
+    // Asset searchable combobox (modals: maintenance, depreciation, document)
+    var assetSearchEl  = document.getElementById('f-asset_search');
+    var assetHiddenEl  = document.getElementById('f-asset_id');
+    var assetDropEl    = document.getElementById('asset-asset-dropdown');
+    if (assetSearchEl && assetHiddenEl && assetDropEl) {
+      function showAssetDrop(query) {
+        var trimmed = (query || '').trim().toLowerCase();
+        var list = state.assets.filter(function(a) {
+          if (a.status === 'Disposed') return false;
+          return !trimmed
+            || (a.asset_name||'').toLowerCase().includes(trimmed)
+            || (a.asset_id||'').toLowerCase().includes(trimmed)
+            || (a.serial_number||'').toLowerCase().includes(trimmed);
+        }).slice(0, 30);
+        if (!list.length) {
+          assetDropEl.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 italic">No matching assets</div>';
+        } else {
+          assetDropEl.innerHTML = list.map(function(a) {
+            return '<button type="button" data-aid="' + esc(a.asset_id) + '" data-aname="' + esc(a.asset_name + ' (' + a.asset_id + ')') + '"'
+              + ' class="w-full text-left px-4 py-2.5 hover:bg-blue-50 hover:text-blue-700 transition-colors">'
+              + '<div class="font-semibold text-sm text-slate-800">' + esc(a.asset_name) + '</div>'
+              + '<div class="text-xs text-slate-400 font-mono">' + esc(a.asset_id) + (a.serial_number ? ' · SN: '+esc(a.serial_number) : '') + '</div>'
+              + '</button>';
+          }).join('');
+          assetDropEl.querySelectorAll('button').forEach(function(btn) {
+            btn.addEventListener('mousedown', function(ev) {
+              ev.preventDefault();
+              assetHiddenEl.value  = btn.dataset.aid;
+              assetSearchEl.value  = btn.dataset.aname;
+              assetDropEl.classList.add('hidden');
+            });
+          });
+        }
+        assetDropEl.classList.remove('hidden');
+      }
+      assetSearchEl.addEventListener('focus', function() { showAssetDrop(this.value); });
+      assetSearchEl.addEventListener('input', function() {
+        if (!this.value) assetHiddenEl.value = '';
+        showAssetDrop(this.value);
+      });
+      assetSearchEl.addEventListener('blur', function() {
+        // If typed text looks like a raw asset ID (starts with AST-), accept it directly
+        setTimeout(function() {
+          assetDropEl.classList.add('hidden');
+          if (!assetHiddenEl.value && assetSearchEl.value.trim()) {
+            assetHiddenEl.value = assetSearchEl.value.trim();
+          }
+        }, 200);
+      });
+    }
+
     // Assigned To — searchable autocomplete
     var nameEl   = document.getElementById('f-assigned_to_name');
     var hiddenEl = document.getElementById('f-assigned_to');
@@ -1170,7 +1267,18 @@ window.WorkVoltPages['assets'] = function(container) {
         showUserDrop(this.value);
       });
       nameEl.addEventListener('blur', function() {
-        setTimeout(function() { dropEl.classList.add('hidden'); }, 200);
+        setTimeout(function() {
+          dropEl.classList.add('hidden');
+          // Auto-flip status to Assigned if a user was selected
+          var statusSel = document.getElementById('f-status');
+          if (hiddenEl.value && statusSel && statusSel.value === 'Available') {
+            statusSel.value = 'Assigned';
+          }
+          // Auto-clear status back to Available if user was cleared
+          if (!hiddenEl.value && !nameEl.value && statusSel && statusSel.value === 'Assigned') {
+            statusSel.value = 'Available';
+          }
+        }, 200);
       });
       // Show all users immediately when the field is rendered and users are loaded
       if (state.users.length && nameEl === document.activeElement) {
