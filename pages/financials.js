@@ -234,9 +234,9 @@ async function loadReports() {
       cachedApi('financials/balance-sheet'),
       cachedApi('financials/cashflow'),
     ]);
-    state.incomeStmt   = is.value;
-    state.balanceSheet = bs.value;
-    state.cashflow     = cf.value;
+    state.incomeStmt   = is.status  === 'fulfilled' ? is.value  : null;
+    state.balanceSheet = bs.status  === 'fulfilled' ? bs.value  : null;
+    state.cashflow     = cf.status  === 'fulfilled' ? cf.value  : null;
   } catch(e) {}
 }
 
@@ -315,7 +315,7 @@ function renderDashboard(c) {
       ${kpi('Overdue AR',    fmt.currency(d.overdue_ar),    'd.overdue_ar',    'fa-exclamation-circle', 'bg-red-50 text-red-500',    'needs attention')}
       ${kpi('Bills Due',     fmt.currency(d.bills_due),     'd.bills_due',     'fa-file-alt',           'bg-violet-50 text-violet-600','to pay')}
       ${kpi('Overdue Bills', fmt.currency(d.overdue_bills), 'd.overdue_bills', 'fa-clock',              'bg-orange-50 text-orange-500', 'overdue')}
-      ${kpi('Total Invoices', String(state.invoices.length), '', 'fa-list',  'bg-slate-100 text-slate-600', 'all time')}
+      ${kpi('Net Worth', fmt.currency((d.outstanding_ar || 0) - (d.bills_due || 0) + (d.month_profit || 0)), '', 'fa-landmark', (((d.outstanding_ar || 0) - (d.bills_due || 0) + (d.month_profit || 0)) >= 0) ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600', 'assets − liabilities')}
     </div>
 
     <!-- Charts row -->
@@ -803,6 +803,9 @@ function renderReports(c) {
           ${reportLine('Retained Earnings', fmt.currency(bs.equity?.retained_earnings), 'text-slate-600')}
           ${reportLine('Total Equity', fmt.currency(bs.equity?.total), 'font-bold text-slate-800')}
         </div>
+      </div>
+      <div class="mt-4 pt-4 border-t border-slate-100">
+        ${reportLine('Net Worth (Assets − Liabilities)', fmt.currency((bs.assets?.total || 0) - (bs.liabilities?.total || 0)), `font-extrabold text-lg ${((bs.assets?.total||0)-(bs.liabilities?.total||0))>=0?'text-emerald-600':'text-red-500'}`)}
       </div>
     </div>
 
