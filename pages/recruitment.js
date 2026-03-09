@@ -959,8 +959,13 @@ window.WorkVoltPages['recruitment'] = function(container) {
     const overlay = document.getElementById('rec-modal-overlay');
     const box     = document.getElementById('rec-modal-box');
     overlay.classList.remove('hidden');
-    box.innerHTML = buildModalHTML(mode, data);
-    bindModalEvents(mode, data);
+    if (mode === 'appAccess') {
+      box.innerHTML = buildAppAccessHTML(data);
+      bindAppAccessEvents(data);
+    } else {
+      box.innerHTML = buildModalHTML(mode, data);
+      bindModalEvents(mode, data);
+    }
   }
 
   function closeModal() {
@@ -1219,6 +1224,193 @@ window.WorkVoltPages['recruitment'] = function(container) {
     return `<div class="p-6 text-slate-400 text-sm">Unknown modal: ${mode}</div>`;
   }
 
+  // ── App Access modal — shown after choosing "Hired" ──────────────
+  function buildAppAccessHTML(data) {
+    const c = data.candidate || {};
+    const initials = (c.name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+    return `
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="font-extrabold text-slate-900 flex items-center gap-2">
+          <i class="fas fa-user-shield text-emerald-500 text-sm"></i> App Access
+        </h3>
+        <button id="modal-close" class="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700">
+          <i class="fas fa-times text-sm"></i>
+        </button>
+      </div>
+      <div class="p-6 space-y-5">
+
+        <!-- Candidate summary -->
+        <div class="flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-extrabold flex-shrink-0">${initials}</div>
+          <div>
+            <p class="font-extrabold text-slate-900 text-sm">${esc(c.name || '')}</p>
+            <p class="text-xs text-slate-400">${esc(c.email || '')}</p>
+          </div>
+          <span class="ml-auto text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
+            <i class="fas fa-check-circle mr-1"></i>Hired
+          </span>
+        </div>
+
+        <!-- Question -->
+        <div class="text-center space-y-1">
+          <p class="font-extrabold text-slate-800 text-base">Will this employee need app access?</p>
+          <p class="text-xs text-slate-400">This determines whether a user account will be activated in the system.</p>
+        </div>
+
+        <!-- Choice buttons -->
+        <div class="grid grid-cols-2 gap-3">
+          <button id="app-access-no"
+            class="flex flex-col items-center gap-2 px-4 py-5 rounded-2xl border-2 border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all text-slate-600">
+            <i class="fas fa-times-circle text-2xl text-slate-400"></i>
+            <span class="font-extrabold text-sm">No</span>
+            <span class="text-[11px] text-slate-400 text-center leading-tight">Add to Users sheet<br>with access disabled</span>
+          </button>
+          <button id="app-access-yes"
+            class="flex flex-col items-center gap-2 px-4 py-5 rounded-2xl border-2 border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-slate-600">
+            <i class="fas fa-check-circle text-2xl text-blue-400"></i>
+            <span class="font-extrabold text-sm">Yes</span>
+            <span class="text-[11px] text-slate-400 text-center leading-tight">Add to Users sheet<br>and open Add User form</span>
+          </button>
+        </div>
+
+        <div id="app-access-status" class="hidden text-sm text-center py-2"></div>
+
+        <button id="modal-cancel" class="btn-secondary w-full text-sm">Cancel</button>
+      </div>
+    `;
+  }
+
+  // ================================================================
+  //  APP ACCESS MODAL LOGIC
+  // ================================================================
+  function bindAppAccessEvents(data) {
+    const box = document.getElementById('rec-modal-box');
+    if (!box) return;
+
+    box.querySelector('#modal-close')?.addEventListener('click', closeModal);
+    box.querySelector('#modal-cancel')?.addEventListener('click', closeModal);
+    document.getElementById('rec-modal-overlay').onclick = e => {
+      if (e.target === document.getElementById('rec-modal-overlay')) closeModal();
+    };
+
+    const setStatus = (msg, ok) => {
+      const el = box.querySelector('#app-access-status');
+      if (!el) return;
+      el.classList.remove('hidden');
+      el.innerHTML = `<span class="${ok ? 'text-emerald-600' : 'text-red-500'}">${msg}</span>`;
+    };
+
+    const disableBtns = () => {
+      ['#app-access-no', '#app-access-yes', '#modal-cancel'].forEach(sel => {
+        const b = box.querySelector(sel);
+        if (b) b.disabled = true;
+      });
+    };
+
+    // ── Shared: complete the hire first ────────────────────────────
+    async function doCompleteHire(grantAccess) {
+      const c      = data.candidate || {};
+      const reason = data.reason    || '';
+
+      disableBtns();
+      setStatus('<i class="fas fa-circle-notch fa-spin mr-1"></i>Processing hire…', true);
+
+      // Generate a temporary placeholder password for the user record.
+      // If no access, the account will be deactivated immediately after creation.
+      const tempPass = 'WV-' + Math.random().toString(36).slice(2, 8).toUpperCase()
+                     + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+
+      const hireRes = await api('candidates/complete-hire', {
+        candidate_id: c.candidate_id,
+        role:         'Employee',
+        password:     tempPass,
+        reason,
+        moved_by:     user.user_id || '',
+        mover_name:   user.name    || user.email || 'System'
+      });
+
+      if (hireRes.error) throw new Error(hireRes.error);
+      return { hireRes, tempPass };
+    }
+
+    // ── NO — hire + deactivate ──────────────────────────────────────
+    box.querySelector('#app-access-no')?.addEventListener('click', async () => {
+      try {
+        const { hireRes } = await doCompleteHire(false);
+
+        // Deactivate the freshly-created user account if one was made
+        if (hireRes.user_account?.created && hireRes.user_account?.user_id) {
+          try {
+            await window.WorkVolt.api('users/deactivate', { user_id: hireRes.user_account.user_id });
+          } catch(e) { /* Non-fatal — user row was created, deactivation best-effort */ }
+        }
+
+        toast(`${data.candidate?.name || 'Candidate'} hired — app access disabled`, 'success');
+        closeModal();
+        closeDetailPanel();
+        await loadCandidates();
+        await loadDashboard();
+        render();
+      } catch(e) { setStatus(e.message, false); }
+    });
+
+    // ── YES — hire + open Add User form ────────────────────────────
+    box.querySelector('#app-access-yes')?.addEventListener('click', async () => {
+      try {
+        const { hireRes } = await doCompleteHire(true);
+
+        toast(`${data.candidate?.name || 'Candidate'} hired — opening Add User form…`, 'success');
+        closeModal();
+        closeDetailPanel();
+        await loadCandidates();
+        await loadDashboard();
+        render();
+
+        // Navigate to Settings → User Management and open the Add User form.
+        // Pre-fill with candidate info if the Settings page supports it.
+        setTimeout(() => {
+          const c = data.candidate || {};
+          // Switch to settings page and open the add user modal
+          if (window.WorkVolt?.navigate) {
+            window.WorkVolt.navigate('settings');
+          }
+          // After navigation, open the add user modal pre-filled with candidate data
+          setTimeout(() => {
+            if (typeof window.settingsTab === 'function') {
+              window.settingsTab('users');
+            }
+            setTimeout(() => {
+              if (typeof window.usersOpenAdd === 'function') {
+                window.usersOpenAdd();
+                // Pre-fill form fields with candidate data
+                setTimeout(() => {
+                  const fillField = (id, val) => {
+                    const el = document.getElementById(id);
+                    if (el && val) el.value = val;
+                  };
+                  fillField('uf-name',      c.name  || '');
+                  fillField('uf-email',     c.email || '');
+                  fillField('uf-phone',     c.phone || '');
+                  // Set role to Employee by default
+                  const roleEl = document.getElementById('uf-role');
+                  if (roleEl) roleEl.value = 'Employee';
+                  // If user was already created by completeHire, show a notice
+                  if (hireRes.user_account?.created) {
+                    window.WorkVolt?.toast(
+                      'A user account was pre-created. Fill in the full details and set a password below.',
+                      'info'
+                    );
+                  }
+                }, 150);
+              }
+            }, 300);
+          }, 400);
+        }, 600);
+
+      } catch(e) { setStatus(e.message, false); }
+    });
+  }
+
   function bindModalEvents(mode, data) {
     const box = document.getElementById('rec-modal-box');
     if (!box) return;
@@ -1250,6 +1442,14 @@ window.WorkVoltPages['recruitment'] = function(container) {
       box.querySelector('#modal-submit')?.addEventListener('click', async () => {
         if (!pickedStage) return;
         const reason = box.querySelector('#m-reason')?.value?.trim() || '';
+
+        // ── Intercept "Hired" → show app-access prompt first ──
+        if (pickedStage === 'Hired') {
+          closeModal();
+          openModal('appAccess', { candidate: data.candidate, job: data.job, reason });
+          return;
+        }
+
         try {
           const res = await api('candidates/move-stage', {
             candidate_id: data.candidate.candidate_id,
