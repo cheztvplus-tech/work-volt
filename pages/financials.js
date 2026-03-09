@@ -184,6 +184,10 @@ function updateHeaderActions() {
 
 // ── Load all data ─────────────────────────────────────────────────
 async function loadAll() {
+  // 1. Verify server connection & auto-install sheets if needed
+  const ok = await checkConnection();
+  if (!ok) return; // banner already rendered
+
   await Promise.allSettled([
     loadDashboard(),
     loadInvoices(),
@@ -195,6 +199,44 @@ async function loadAll() {
   ]);
   renderTab();
   updateHeaderActions();
+}
+
+async function checkConnection() {
+  try {
+    const res = await api('financials/ping');
+    // If the module returned an error about not being installed, trigger install
+    if (res && res.error && res.error.includes('not installed')) {
+      await api('module/install', { module: 'financials' });
+    }
+    return true;
+  } catch(e) {
+    // Show a clear "not connected" banner with guidance
+    const c = document.getElementById('fin-content');
+    if (c) {
+      c.innerHTML = `
+        <div class="flex items-center justify-center h-full p-8">
+          <div class="bg-white rounded-2xl border border-red-200 shadow-lg p-8 max-w-md w-full text-center">
+            <div class="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i class="fas fa-plug text-red-400 text-2xl"></i>
+            </div>
+            <h2 class="text-lg font-extrabold text-slate-800 mb-2">Not connected to server</h2>
+            <p class="text-sm text-slate-500 mb-5">
+              Work Volt cannot reach the Google Apps Script backend.<br>
+              Check these settings in <strong>Settings → Integrations</strong>:
+            </p>
+            <ul class="text-left text-sm text-slate-600 space-y-2 mb-6 bg-slate-50 rounded-xl p-4">
+              <li class="flex items-start gap-2"><i class="fas fa-check-circle text-emerald-400 mt-0.5"></i><span><strong>GAS URL</strong> — must be your deployed Web App URL (ends in <code class="bg-slate-200 px-1 rounded">/exec</code>)</span></li>
+              <li class="flex items-start gap-2"><i class="fas fa-check-circle text-emerald-400 mt-0.5"></i><span><strong>API Secret</strong> — must match the <code class="bg-slate-200 px-1 rounded">API_SECRET</code> constant in <em>Code.gs</em></span></li>
+              <li class="flex items-start gap-2"><i class="fas fa-check-circle text-emerald-400 mt-0.5"></i><span><strong>Deployment</strong> — Access must be set to <em>Anyone</em> in Apps Script</span></li>
+            </ul>
+            <button onclick="FinPage.refresh()" class="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-colors">
+              <i class="fas fa-sync-alt mr-2"></i>Retry Connection
+            </button>
+          </div>
+        </div>`;
+    }
+    return false;
+  }
 }
 
 async function loadDashboard() {
