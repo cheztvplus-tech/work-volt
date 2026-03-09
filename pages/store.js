@@ -347,8 +347,8 @@ window.WorkVoltPages['store'] = function(container) {
     const sessionId = window.WorkVolt?.session() || localStorage.getItem('wv_session') || '';
     const sheetId   = localStorage.getItem('wv_sheet_id') || '';
 
-    if (!gasUrl || !sessionId || !sheetId) {
-        window.WorkVolt?.toast('Not connected to server', 'error');
+    if (!gasUrl || !apiSecret) {
+        window.WorkVolt?.toast('Not connected to server — please check Settings → Connection', 'error');
         return;
     }
 
@@ -356,9 +356,7 @@ window.WorkVoltPages['store'] = function(container) {
         // Call GAS to uninstall
         const url = new URL(gasUrl);
         url.searchParams.set('path', 'module/uninstall');
-        url.searchParams.set('token', apiSecret);  // FIX: include API secret for auth
-        url.searchParams.set('session_id', sessionId);
-        url.searchParams.set('sheet_id', sheetId);
+        url.searchParams.set('token', apiSecret);
         url.searchParams.set('module', id);
         
         const res = await fetch(url.toString(), { cache: 'no-cache' });
@@ -369,9 +367,7 @@ window.WorkVoltPages['store'] = function(container) {
         // Reload from server to get the updated list
         const modulesUrl = new URL(gasUrl);
         modulesUrl.searchParams.set('path', 'config/modules');
-        modulesUrl.searchParams.set('token', apiSecret);  // FIX: include API secret for auth
-        modulesUrl.searchParams.set('session_id', sessionId);
-        modulesUrl.searchParams.set('sheet_id', sheetId);
+        modulesUrl.searchParams.set('token', apiSecret);
         modulesUrl.searchParams.set('_t', Date.now().toString());
         
         const modulesRes = await fetch(modulesUrl.toString(), { cache: 'no-cache' });
