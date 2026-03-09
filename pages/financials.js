@@ -13,7 +13,12 @@ const user  = ()             => window.WorkVolt.user();
 
 const fmt = {
   currency: (n) => '$' + (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-  date:     (s) => s ? new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—',
+  date: (s) => {
+    if (!s) return '—';
+    // If it's already a full ISO string with time, parse directly; otherwise append time to avoid UTC midnight shift
+    const d = s.includes('T') ? new Date(s) : new Date(s + 'T00:00:00');
+    return isNaN(d) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  },
   pct:      (n) => (parseFloat(n) || 0).toFixed(1) + '%',
   num:      (n) => (parseFloat(n) || 0).toLocaleString('en-US'),
 };
@@ -39,27 +44,6 @@ function badge(status) {
   return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${cls}">${status || '—'}</span>`;
 }
 
-// ── Memoization Cache ─────────────────────────────────────────────
-const CACHE_TTL = 60_000; // 60 seconds
-const _cache = {};
-
-async function cachedApi(path, params) {
-  const key = path + (params ? JSON.stringify(params) : '');
-  const hit = _cache[key];
-  if (hit && (Date.now() - hit.ts < CACHE_TTL)) return hit.data;
-  const data = await api(path, params);
-  _cache[key] = { ts: Date.now(), data };
-  return data;
-}
-
-function invalidateCache(...prefixes) {
-  Object.keys(_cache).forEach(k => {
-    if (!prefixes.length || prefixes.some(p => k.startsWith(p))) {
-      delete _cache[k];
-    }
-  });
-}
-
 // ── State ─────────────────────────────────────────────────────────
 let state = {
   tab:          'dashboard',
@@ -79,6 +63,13 @@ let state = {
     invoices:  { status: '', search: '' },
     expenses:  { status: '', search: '' },
     bills:     { status: '', search: '' },
+  },
+  // Cross-module data (populated only if modules installed)
+  modules: {
+    payroll:  { installed: false, data: [] },
+    assets:   { installed: false, data: [] },
+    tasks:    { installed: false, data: [] },
+    projects: { installed: false, data: [] },
   },
 };
 
@@ -184,10 +175,6 @@ function updateHeaderActions() {
 
 // ── Load all data ─────────────────────────────────────────────────
 async function loadAll() {
-  // 1. Verify server connection & auto-install sheets if needed
-  const ok = await checkConnection();
-  if (!ok) return; // banner already rendered
-
   await Promise.allSettled([
     loadDashboard(),
     loadInvoices(),
@@ -196,89 +183,75 @@ async function loadAll() {
     loadBudgets(),
     loadAccounts(),
     loadCostCenters(),
+    loadCrossModuleData(),
   ]);
   renderTab();
   updateHeaderActions();
 }
 
-async function checkConnection() {
-  try {
-    const res = await api('financials/ping');
-    // If the module returned an error about not being installed, trigger install
-    if (res && res.error && res.error.includes('not installed')) {
-      await api('module/install', { module: 'financials' });
-    }
-    return true;
-  } catch(e) {
-    // Show a clear "not connected" banner with guidance
-    const c = document.getElementById('fin-content');
-    if (c) {
-      c.innerHTML = `
-        <div class="flex items-center justify-center h-full p-8">
-          <div class="bg-white rounded-2xl border border-red-200 shadow-lg p-8 max-w-md w-full text-center">
-            <div class="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <i class="fas fa-plug text-red-400 text-2xl"></i>
-            </div>
-            <h2 class="text-lg font-extrabold text-slate-800 mb-2">Not connected to server</h2>
-            <p class="text-sm text-slate-500 mb-5">
-              Work Volt cannot reach the Google Apps Script backend.<br>
-              Check these settings in <strong>Settings → Integrations</strong>:
-            </p>
-            <ul class="text-left text-sm text-slate-600 space-y-2 mb-6 bg-slate-50 rounded-xl p-4">
-              <li class="flex items-start gap-2"><i class="fas fa-check-circle text-emerald-400 mt-0.5"></i><span><strong>GAS URL</strong> — must be your deployed Web App URL (ends in <code class="bg-slate-200 px-1 rounded">/exec</code>)</span></li>
-              <li class="flex items-start gap-2"><i class="fas fa-check-circle text-emerald-400 mt-0.5"></i><span><strong>API Secret</strong> — must match the <code class="bg-slate-200 px-1 rounded">API_SECRET</code> constant in <em>Code.gs</em></span></li>
-              <li class="flex items-start gap-2"><i class="fas fa-check-circle text-emerald-400 mt-0.5"></i><span><strong>Deployment</strong> — Access must be set to <em>Anyone</em> in Apps Script</span></li>
-            </ul>
-            <button onclick="FinPage.refresh()" class="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-colors">
-              <i class="fas fa-sync-alt mr-2"></i>Retry Connection
-            </button>
-          </div>
-        </div>`;
-    }
-    return false;
-  }
-}
-
 async function loadDashboard() {
-  try { state.dashboard = await cachedApi('financials/dashboard'); } catch(e) {}
+  try { state.dashboard = await api('financials/dashboard'); } catch(e) {}
 }
 async function loadInvoices() {
-  try { const d = await cachedApi('financials/invoices/list'); state.invoices = d.rows || []; } catch(e) {}
+  try { const d = await api('financials/invoices/list'); state.invoices = d.rows || []; } catch(e) {}
 }
 async function loadExpenses() {
-  try { const d = await cachedApi('financials/expenses/list'); state.expenses = d.rows || []; } catch(e) {}
+  try { const d = await api('financials/expenses/list'); state.expenses = d.rows || []; } catch(e) {}
 }
 async function loadBills() {
-  try { const d = await cachedApi('financials/bills/list'); state.bills = d.rows || []; } catch(e) {}
+  try { const d = await api('financials/bills/list'); state.bills = d.rows || []; } catch(e) {}
 }
 async function loadBudgets() {
   try {
     const now = new Date();
-    const params = {
+    const d = await api('financials/budget-vs-actual', {
       year: String(now.getFullYear()),
       month: String(now.getMonth() + 1).padStart(2, '0'),
-    };
-    state.budgetVA = await cachedApi('financials/budget-vs-actual', params);
-    const bd = await cachedApi('financials/budgets/list');
+    });
+    state.budgetVA = d;
+    const bd = await api('financials/budgets/list');
     state.budgets = bd.rows || [];
   } catch(e) {}
 }
 async function loadAccounts() {
-  try { const d = await cachedApi('financials/accounts/list'); state.accounts = d.rows || []; } catch(e) {}
+  try { const d = await api('financials/accounts/list'); state.accounts = d.rows || []; } catch(e) {}
 }
 async function loadCostCenters() {
-  try { const d = await cachedApi('financials/cost-centers/list'); state.costCenters = d.rows || []; } catch(e) {}
+  try { const d = await api('financials/cost-centers/list'); state.costCenters = d.rows || []; } catch(e) {}
+}
+
+// ── Cross-module integration ──────────────────────────────────────
+// Try each module; silently skip if not installed (api will throw)
+async function loadCrossModuleData() {
+  const tryLoad = async (module, apiPath, stateKey) => {
+    try {
+      const d = await api(apiPath);
+      if (d && !d.error) {
+        state.modules[module].installed = true;
+        state.modules[module].data = d.rows || d.payments || d.items || d || [];
+      }
+    } catch(e) {
+      state.modules[module].installed = false;
+    }
+  };
+
+  await Promise.allSettled([
+    tryLoad('payroll',  'payroll/payments/list',    'payroll'),
+    tryLoad('assets',   'assets/maintenance/list',  'assets'),
+    tryLoad('tasks',    'tasks/list',               'tasks'),
+    tryLoad('projects', 'projects/list',            'projects'),
+  ]);
 }
 async function loadReports() {
   try {
     const [is, bs, cf] = await Promise.allSettled([
-      cachedApi('financials/income-statement'),
-      cachedApi('financials/balance-sheet'),
-      cachedApi('financials/cashflow'),
+      api('financials/income-statement'),
+      api('financials/balance-sheet'),
+      api('financials/cashflow'),
     ]);
-    state.incomeStmt   = is.status  === 'fulfilled' ? is.value  : null;
-    state.balanceSheet = bs.status  === 'fulfilled' ? bs.value  : null;
-    state.cashflow     = cf.status  === 'fulfilled' ? cf.value  : null;
+    state.incomeStmt   = is.value;
+    state.balanceSheet = bs.value;
+    state.cashflow     = cf.value;
   } catch(e) {}
 }
 
@@ -357,7 +330,7 @@ function renderDashboard(c) {
       ${kpi('Overdue AR',    fmt.currency(d.overdue_ar),    'd.overdue_ar',    'fa-exclamation-circle', 'bg-red-50 text-red-500',    'needs attention')}
       ${kpi('Bills Due',     fmt.currency(d.bills_due),     'd.bills_due',     'fa-file-alt',           'bg-violet-50 text-violet-600','to pay')}
       ${kpi('Overdue Bills', fmt.currency(d.overdue_bills), 'd.overdue_bills', 'fa-clock',              'bg-orange-50 text-orange-500', 'overdue')}
-      ${kpi('Net Worth', fmt.currency((d.outstanding_ar || 0) - (d.bills_due || 0) + (d.month_profit || 0)), '', 'fa-landmark', (((d.outstanding_ar || 0) - (d.bills_due || 0) + (d.month_profit || 0)) >= 0) ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600', 'assets − liabilities')}
+      ${kpi('Total Invoices', String(state.invoices.length), '', 'fa-list',  'bg-slate-100 text-slate-600', 'all time')}
     </div>
 
     <!-- Charts row -->
@@ -553,10 +526,10 @@ function renderInvoices(c) {
     renderInvoices(c);
   };
   window.FinPage._sendInv = async (id) => {
-    try { await api('financials/invoices/send', {id}); invalidateCache('financials/invoices','financials/dashboard'); toast('Invoice sent!','success'); await loadInvoices(); renderInvoices(c); } catch(e) { toast(e.message,'error'); }
+    try { await api('financials/invoices/send', {id}); toast('Invoice sent!','success'); await loadInvoices(); renderInvoices(c); } catch(e) { toast(e.message,'error'); }
   };
   window.FinPage._payInv = async (id) => {
-    try { await api('financials/invoices/mark-paid', {id}); invalidateCache('financials/invoices','financials/dashboard'); toast('Invoice marked as paid!','success'); await loadInvoices(); renderInvoices(c); } catch(e) { toast(e.message,'error'); }
+    try { await api('financials/invoices/mark-paid', {id}); toast('Invoice marked as paid!','success'); await loadInvoices(); renderInvoices(c); } catch(e) { toast(e.message,'error'); }
   };
   window.FinPage._editInv = (id) => {
     const inv = state.invoices.find(r => r.id === id);
@@ -564,7 +537,7 @@ function renderInvoices(c) {
   };
   window.FinPage._deleteInv = async (id) => {
     if (!confirm('Delete this invoice?')) return;
-    try { await api('financials/invoices/delete', {id}); invalidateCache('financials/invoices','financials/dashboard'); toast('Deleted','success'); await loadInvoices(); renderInvoices(c); } catch(e) { toast(e.message,'error'); }
+    try { await api('financials/invoices/delete', {id}); toast('Deleted','success'); await loadInvoices(); renderInvoices(c); } catch(e) { toast(e.message,'error'); }
   };
 }
 
@@ -636,15 +609,15 @@ function renderExpenses(c) {
 
   window.FinPage._filterExp  = (u) => { Object.assign(state.filter.expenses, u); renderExpenses(c); };
   window.FinPage._approveExp = async (id) => {
-    try { await api('financials/expenses/approve', {id, approved_by: user()?.name || ''}); invalidateCache('financials/expenses','financials/dashboard'); toast('Approved','success'); await loadExpenses(); renderExpenses(c); } catch(e) { toast(e.message,'error'); }
+    try { await api('financials/expenses/approve', {id, approved_by: user()?.name || ''}); toast('Approved','success'); await loadExpenses(); renderExpenses(c); } catch(e) { toast(e.message,'error'); }
   };
   window.FinPage._rejectExp  = async (id) => {
-    try { await api('financials/expenses/reject', {id, approved_by: user()?.name || ''}); invalidateCache('financials/expenses'); toast('Rejected','info'); await loadExpenses(); renderExpenses(c); } catch(e) { toast(e.message,'error'); }
+    try { await api('financials/expenses/reject', {id, approved_by: user()?.name || ''}); toast('Rejected','info'); await loadExpenses(); renderExpenses(c); } catch(e) { toast(e.message,'error'); }
   };
   window.FinPage._editExp    = (id) => { const e = state.expenses.find(r=>r.id===id); if(e) showExpenseModal(e); };
   window.FinPage._deleteExp  = async (id) => {
     if (!confirm('Delete this expense?')) return;
-    try { await api('financials/expenses/delete',{id}); invalidateCache('financials/expenses','financials/dashboard'); toast('Deleted','success'); await loadExpenses(); renderExpenses(c); } catch(e) { toast(e.message,'error'); }
+    try { await api('financials/expenses/delete',{id}); toast('Deleted','success'); await loadExpenses(); renderExpenses(c); } catch(e) { toast(e.message,'error'); }
   };
 }
 
@@ -715,7 +688,7 @@ function renderBills(c) {
   window.FinPage._editBill   = (id) => { const b = state.bills.find(r=>r.id===id); if(b) showBillModal(b); };
   window.FinPage._deleteBill = async (id) => {
     if (!confirm('Delete this bill?')) return;
-    try { await api('financials/bills/delete',{id}); invalidateCache('financials/bills','financials/dashboard'); toast('Deleted','success'); await loadBills(); renderBills(c); } catch(e) { toast(e.message,'error'); }
+    try { await api('financials/bills/delete',{id}); toast('Deleted','success'); await loadBills(); renderBills(c); } catch(e) { toast(e.message,'error'); }
   };
 }
 
@@ -846,9 +819,6 @@ function renderReports(c) {
           ${reportLine('Total Equity', fmt.currency(bs.equity?.total), 'font-bold text-slate-800')}
         </div>
       </div>
-      <div class="mt-4 pt-4 border-t border-slate-100">
-        ${reportLine('Net Worth (Assets − Liabilities)', fmt.currency((bs.assets?.total || 0) - (bs.liabilities?.total || 0)), `font-extrabold text-lg ${((bs.assets?.total||0)-(bs.liabilities?.total||0))>=0?'text-emerald-600':'text-red-500'}`)}
-      </div>
     </div>
 
     <!-- Cash Flow -->
@@ -880,12 +850,134 @@ function renderReports(c) {
       </div>
     </div>
 
+    <!-- Bills Summary -->
+    <div class="bg-white rounded-xl border border-slate-200 p-6">
+      <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
+        <span class="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center">
+          <i class="fas fa-file-alt text-amber-600 text-xs"></i>
+        </span>
+        Bills Summary
+      </h3>
+      <div class="space-y-1">
+        ${(()=>{
+          const bills = state.bills;
+          const total     = bills.reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
+          const paid      = bills.filter(b=>b.status==='Paid').reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
+          const unpaid    = bills.filter(b=>b.status==='Unpaid'||b.status==='Partial').reduce((s,b)=>s+(parseFloat(b.balance_due)||0),0);
+          const overdue   = bills.filter(b=>b.status==='Overdue').reduce((s,b)=>s+(parseFloat(b.balance_due)||0),0);
+          const byVendor  = {};
+          bills.forEach(b=>{ if(b.vendor){ byVendor[b.vendor]=(byVendor[b.vendor]||0)+(parseFloat(b.amount)||0); } });
+          const topVendors = Object.entries(byVendor).sort((a,b)=>b[1]-a[1]).slice(0,5);
+          return reportLine('Total Bills',fmt.currency(total),'font-semibold text-slate-700')
+            + reportLine('Paid',fmt.currency(paid),'text-emerald-600')
+            + reportLine('Outstanding',fmt.currency(unpaid),'text-amber-600')
+            + reportLine('Overdue',fmt.currency(overdue),'font-semibold text-red-500')
+            + (topVendors.length ? '<div class="h-px bg-slate-100 my-2"></div><p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Top Vendors</p>'
+              + topVendors.map(([v,a])=>reportLine(v,fmt.currency(a),'text-slate-600')).join('') : '');
+        })()}
+      </div>
+    </div>
+
+    <!-- Cross-Module Financial Impact -->
+    ${renderCrossModuleReport()}
+
     <div class="text-center">
       <button onclick="loadReports().then(()=>renderReports(document.getElementById('fin-content')))" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 bg-white border border-slate-200 rounded-lg font-semibold transition-colors">
         <i class="fas fa-sync-alt mr-2"></i>Refresh Reports
       </button>
     </div>
   </div>`;
+}
+
+function renderCrossModuleReport() {
+  const mods = state.modules;
+  const sections = [];
+
+  // Payroll
+  if (mods.payroll.installed) {
+    const payments = mods.payroll.data;
+    const totalPayroll = payments.reduce((s,p) => s + (parseFloat(p.net_pay || p.amount || 0)), 0);
+    const pending = payments.filter(p => p.status === 'Pending' || p.status === 'Processing').reduce((s,p) => s + (parseFloat(p.net_pay || p.amount || 0)), 0);
+    sections.push(`
+      <div class="bg-white rounded-xl border border-slate-200 p-6">
+        <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
+          <span class="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center"><i class="fas fa-users text-blue-600 text-xs"></i></span>
+          Payroll Impact
+          <span class="ml-2 text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Connected</span>
+        </h3>
+        <div class="space-y-1">
+          ${reportLine('Total Payroll Processed', fmt.currency(totalPayroll), 'font-semibold text-slate-700')}
+          ${reportLine('Pending Payments', fmt.currency(pending), 'text-amber-600')}
+          ${reportLine('Payroll Records', String(payments.length), 'text-slate-500')}
+        </div>
+      </div>`);
+  }
+
+  // Assets (maintenance costs)
+  if (mods.assets.installed) {
+    const maintenance = mods.assets.data;
+    const totalMaint = maintenance.reduce((s,m) => s + (parseFloat(m.cost || m.amount || 0)), 0);
+    const scheduled  = maintenance.filter(m => m.status === 'Scheduled').length;
+    sections.push(`
+      <div class="bg-white rounded-xl border border-slate-200 p-6">
+        <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
+          <span class="w-7 h-7 bg-orange-100 rounded-lg flex items-center justify-center"><i class="fas fa-tools text-orange-600 text-xs"></i></span>
+          Asset Maintenance Costs
+          <span class="ml-2 text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Connected</span>
+        </h3>
+        <div class="space-y-1">
+          ${reportLine('Total Maintenance Cost', fmt.currency(totalMaint), 'font-semibold text-slate-700')}
+          ${reportLine('Scheduled Tasks', String(scheduled), 'text-amber-600')}
+          ${reportLine('Maintenance Records', String(maintenance.length), 'text-slate-500')}
+        </div>
+      </div>`);
+  }
+
+  // Projects (budgets / costs)
+  if (mods.projects.installed) {
+    const projects = mods.projects.data;
+    const totalBudget = projects.reduce((s,p) => s + (parseFloat(p.budget || 0)), 0);
+    const totalSpent  = projects.reduce((s,p) => s + (parseFloat(p.spent || p.actual_cost || 0)), 0);
+    sections.push(`
+      <div class="bg-white rounded-xl border border-slate-200 p-6">
+        <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
+          <span class="w-7 h-7 bg-violet-100 rounded-lg flex items-center justify-center"><i class="fas fa-project-diagram text-violet-600 text-xs"></i></span>
+          Project Financials
+          <span class="ml-2 text-xs font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">Connected</span>
+        </h3>
+        <div class="space-y-1">
+          ${reportLine('Total Project Budgets', fmt.currency(totalBudget), 'font-semibold text-slate-700')}
+          ${reportLine('Total Spent', fmt.currency(totalSpent), 'text-slate-600')}
+          ${reportLine('Remaining', fmt.currency(totalBudget - totalSpent), (totalBudget - totalSpent) >= 0 ? 'text-emerald-600' : 'text-red-500')}
+          ${reportLine('Active Projects', String(projects.filter(p=>p.status==='Active'||p.status==='In Progress').length), 'text-slate-500')}
+        </div>
+      </div>`);
+  }
+
+  // Tasks (billable hours/costs)
+  if (mods.tasks.installed) {
+    const tasks = mods.tasks.data;
+    const billable   = tasks.filter(t => t.billable === 'true' || t.billable === true);
+    const totalHours = billable.reduce((s,t) => s + (parseFloat(t.estimated_hours || t.hours || 0)), 0);
+    const completed  = tasks.filter(t => t.status === 'Completed' || t.status === 'Done').length;
+    sections.push(`
+      <div class="bg-white rounded-xl border border-slate-200 p-6">
+        <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
+          <span class="w-7 h-7 bg-teal-100 rounded-lg flex items-center justify-center"><i class="fas fa-tasks text-teal-600 text-xs"></i></span>
+          Task Cost Overview
+          <span class="ml-2 text-xs font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">Connected</span>
+        </h3>
+        <div class="space-y-1">
+          ${reportLine('Total Tasks', String(tasks.length), 'text-slate-500')}
+          ${reportLine('Completed', String(completed), 'text-emerald-600')}
+          ${reportLine('Billable Tasks', String(billable.length), 'text-slate-600')}
+          ${reportLine('Billable Hours', fmt.num(totalHours) + ' hrs', 'font-semibold text-slate-700')}
+        </div>
+      </div>`);
+  }
+
+  if (!sections.length) return '';
+  return `<div class="space-y-5">${sections.join('')}</div>`;
 }
 
 function reportLine(label, value, cls = '') {
@@ -931,7 +1023,10 @@ function renderAccounts(c) {
                     ${a.is_active !== 'false' ? '<span class="text-xs text-emerald-600 font-semibold">Active</span>' : '<span class="text-xs text-slate-400">Inactive</span>'}
                   </td>
                   <td class="px-4 py-3 text-center">
-                    <button onclick="FinPage._editAcc('${a.id}')" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"><i class="fas fa-edit text-xs"></i></button>
+                    <div class="flex items-center justify-center gap-1">
+                      <button onclick="FinPage._editAcc('${a.id}')" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"><i class="fas fa-edit text-xs"></i></button>
+                      <button onclick="FinPage._deleteAcc('${a.id}')" class="p-1.5 text-red-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"><i class="fas fa-trash text-xs"></i></button>
+                    </div>
                   </td>
                 </tr>`).join('')}
             </tbody>
@@ -942,6 +1037,11 @@ function renderAccounts(c) {
   </div>`;
 
   window.FinPage._editAcc = (id) => { const a = state.accounts.find(r=>r.id===id); if(a) showAccountModal(a); };
+  window.FinPage._deleteAcc = async (id) => {
+    const a = state.accounts.find(r=>r.id===id);
+    if (!confirm(`Delete account "${a?.account_name || id}"? This cannot be undone.`)) return;
+    try { await api('financials/accounts/delete', {id}); toast('Account deleted','success'); await loadAccounts(); renderAccounts(document.getElementById('fin-content')); } catch(e) { toast(e.message,'error'); }
+  };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1012,10 +1112,11 @@ function showInvoiceModal(inv = null) {
         ${field('Due Date', 'due_date', 'date', inv?.due_date)}
       </div>
       <div class="grid grid-cols-2 gap-3">
-        ${field('Subtotal ($)', 'subtotal', 'number', inv?.subtotal, 'step="0.01" min="0"')}
-        ${field('Tax Rate (%)', 'tax_rate', 'number', inv?.tax_rate || '0', 'step="0.1" min="0" max="100"')}
+        ${field('Subtotal ($)', 'subtotal', 'number', inv?.subtotal, 'step="0.01" min="0" oninput="FinPage._calcInvTotal()"')}
+        ${field('Tax Rate (%)', 'tax_rate', 'number', inv?.tax_rate || '0', 'step="0.1" min="0" max="100" oninput="FinPage._calcInvTotal()"')}
       </div>
-      ${field('Total ($)', 'total', 'number', inv?.total, 'step="0.01" min="0"')}
+      <div id="inv-tax-preview" class="text-xs text-slate-500 -mt-1 px-1"></div>
+      ${field('Total ($)', 'total', 'number', inv?.total, 'step="0.01" min="0" readonly style="background:#f8fafc;cursor:default"')}
       ${sel('Status', 'status', ['Draft','Sent','Unpaid','Paid'], inv?.status || 'Draft')}
       <div>
         <label class="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
@@ -1030,15 +1131,32 @@ function showInvoiceModal(inv = null) {
     const data = getForm('inv-form');
     if (!data.customer) { toast('Customer is required','error'); return; }
     if (!data.total)    { toast('Total is required','error'); return; }
+    // Compute tax_amount from subtotal + tax_rate
+    const sub = parseFloat(data.subtotal) || 0;
+    const rate = parseFloat(data.tax_rate) || 0;
+    data.tax_amount = (sub * rate / 100).toFixed(2);
+    if (!data.total || parseFloat(data.total) === 0) data.total = (sub + parseFloat(data.tax_amount)).toFixed(2);
     try {
       if (id) { data.id = id; await api('financials/invoices/update', data); toast('Invoice updated','success'); }
       else { await api('financials/invoices/create', data); toast('Invoice created','success'); }
-      invalidateCache('financials/invoices', 'financials/dashboard');
       closeModal();
       await loadInvoices();
       const c = document.getElementById('fin-content'); if(c) renderInvoices(c);
     } catch(e) { toast(e.message,'error'); }
   };
+
+  window.FinPage._calcInvTotal = () => {
+    const sub  = parseFloat(document.querySelector('#inv-form [name=subtotal]')?.value) || 0;
+    const rate = parseFloat(document.querySelector('#inv-form [name=tax_rate]')?.value) || 0;
+    const tax  = sub * rate / 100;
+    const total = sub + tax;
+    const totalEl = document.querySelector('#inv-form [name=total]');
+    if (totalEl) totalEl.value = total.toFixed(2);
+    const preview = document.getElementById('inv-tax-preview');
+    if (preview) preview.textContent = rate > 0 ? `Tax (${rate}%): $${tax.toFixed(2)}  →  Total: $${total.toFixed(2)}` : '';
+  };
+  // Run once to initialize total if editing
+  setTimeout(() => window.FinPage._calcInvTotal?.(), 50);
 }
 
 // Expense Modal
@@ -1069,7 +1187,6 @@ function showExpenseModal(exp = null) {
     try {
       if (id) { data.id = id; await api('financials/expenses/update', data); toast('Updated','success'); }
       else { await api('financials/expenses/create', data); toast('Expense logged','success'); }
-      invalidateCache('financials/expenses', 'financials/dashboard', 'financials/budget-vs-actual', 'financials/income-statement');
       closeModal();
       await loadExpenses();
       const c = document.getElementById('fin-content'); if(c) renderExpenses(c);
@@ -1107,7 +1224,6 @@ function showBillModal(bill = null) {
     try {
       if (id) { data.id = id; await api('financials/bills/update', data); toast('Updated','success'); }
       else { await api('financials/bills/create', data); toast('Bill added','success'); }
-      invalidateCache('financials/bills', 'financials/dashboard');
       closeModal();
       await loadBills();
       const c = document.getElementById('fin-content'); if(c) renderBills(c);
@@ -1144,7 +1260,6 @@ function showPaymentModal(refId, refType = 'bill') {
     try {
       data.created_by = user()?.name || '';
       await api('financials/payments/create', data);
-      invalidateCache('financials/bills', 'financials/invoices', 'financials/dashboard');
       toast('Payment recorded','success');
       closeModal();
       await Promise.all([loadBills(), loadInvoices()]);
@@ -1181,7 +1296,6 @@ function showBudgetModal(budget = null) {
     try {
       if (id) { data.id = id; await api('financials/budgets/update', data); toast('Budget updated','success'); }
       else { await api('financials/budgets/create', data); toast('Budget set','success'); }
-      invalidateCache('financials/budgets', 'financials/budget-vs-actual');
       closeModal();
       await loadBudgets();
       const c = document.getElementById('fin-content'); if(c) renderBudgets(c);
@@ -1212,7 +1326,6 @@ function showAccountModal(acc = null) {
     try {
       if (id) { data.id = id; await api('financials/accounts/update', data); toast('Updated','success'); }
       else { await api('financials/accounts/create', data); toast('Account created','success'); }
-      invalidateCache('financials/accounts');
       closeModal();
       await loadAccounts();
       const c = document.getElementById('fin-content'); if(c) renderAccounts(c);
