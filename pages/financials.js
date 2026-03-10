@@ -1182,6 +1182,21 @@ function getForm(id) {
   return Object.fromEntries(new FormData(form).entries());
 }
 
+// Normalize any date string to YYYY-MM-DD for <input type="date"> value attributes
+function dateVal(s) {
+  if (!s) return '';
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // ISO timestamp: 2025-03-01T00:00:00.000Z  →  2025-03-01
+  if (s.includes('T')) return s.split('T')[0];
+  // Fallback: try parsing
+  try {
+    const d = new Date(s);
+    if (!isNaN(d)) return d.toISOString().split('T')[0];
+  } catch(e) {}
+  return '';
+}
+
 // Invoice Modal
 function showInvoiceModal(inv = null) {
   const isEdit = !!inv;
@@ -1192,8 +1207,8 @@ function showInvoiceModal(inv = null) {
       ${field('Customer Name', 'customer', 'text', inv?.customer)}
       ${field('Customer Email', 'customer_email', 'email', inv?.customer_email)}
       <div class="grid grid-cols-2 gap-3">
-        ${field('Issue Date', 'issue_date', 'date', inv?.issue_date || today)}
-        ${field('Due Date', 'due_date', 'date', inv?.due_date)}
+        ${field('Issue Date', 'issue_date', 'date', dateVal(inv?.issue_date) || today)}
+        ${field('Due Date', 'due_date', 'date', dateVal(inv?.due_date))}
       </div>
       <div class="grid grid-cols-2 gap-3">
         ${field('Subtotal ($)', 'subtotal', 'number', inv?.subtotal, 'step="0.01" min="0" oninput="FinPage._calcInvTotal()"')}
@@ -1251,7 +1266,7 @@ function showExpenseModal(exp = null) {
   modal(
     exp ? 'Edit Expense' : 'Log Expense',
     `<form id="exp-form" class="space-y-3">
-      ${field('Date', 'date', 'date', exp?.date || today)}
+      ${field('Date', 'date', 'date', dateVal(exp?.date) || today)}
       ${field('Vendor', 'vendor', 'text', exp?.vendor)}
       ${sel('Category', 'category', EXP_CATS, exp?.category || EXP_CATS[0])}
       ${field('Description', 'description', 'text', exp?.description)}
@@ -1287,8 +1302,8 @@ function showBillModal(bill = null) {
       ${field('Vendor', 'vendor', 'text', bill?.vendor)}
       ${field('Vendor Email', 'vendor_email', 'email', bill?.vendor_email)}
       <div class="grid grid-cols-2 gap-3">
-        ${field('Issue Date', 'issue_date', 'date', bill?.issue_date || today)}
-        ${field('Due Date', 'due_date', 'date', bill?.due_date)}
+        ${field('Issue Date', 'issue_date', 'date', dateVal(bill?.issue_date) || today)}
+        ${field('Due Date', 'due_date', 'date', dateVal(bill?.due_date))}
       </div>
       ${sel('Category', 'category', EXP_CATS, bill?.category || EXP_CATS[0])}
       ${field('Amount ($)', 'amount', 'number', bill?.amount, 'step="0.01" min="0"')}
