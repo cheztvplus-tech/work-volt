@@ -241,13 +241,13 @@ async function loadCrossModuleData() {
   ]);
 }
 
-// Calculate net pay from a payroll run record (mirrors payroll module logic)
+// Calculate net pay from a payroll run record
+// The payroll module stores computed net directly in r.net
+// Fall back to gross - deductions for older records
 function calcPayrollNet(r) {
-  const gross = (parseFloat(r.gross_salary)||0) + (parseFloat(r.bonus||r.bonuses)||0)
-              + (parseFloat(r.overtime_pay)||0)  + (parseFloat(r.extra_pay)||0);
-  const ded   = (parseFloat(r.deductions)||0) + (parseFloat(r.tax_total||r.tax)||0)
-              + (parseFloat(r.health_insurance)||0) + (parseFloat(r.pension)||0)
-              + (parseFloat(r.other_deductions)||0);
+  if (r.net !== undefined && r.net !== '') return parseFloat(r.net) || 0;
+  const gross = (parseFloat(r.gross) || 0) + (parseFloat(r.bonuses || r.bonus) || 0);
+  const ded   = (parseFloat(r.deductions) || 0) + (parseFloat(r.tax_total || r.tax) || 0);
   return Math.max(0, gross - ded);
 }
 async function loadReports() {
