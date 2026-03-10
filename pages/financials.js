@@ -222,12 +222,12 @@ async function loadCostCenters() {
 // ── Cross-module integration ──────────────────────────────────────
 // Try each module; silently skip if not installed (api will throw)
 async function loadCrossModuleData() {
-  const tryLoad = async (module, apiPath, stateKey) => {
+  const tryLoad = async (module, apiPath) => {
     try {
       const d = await api(apiPath);
       if (d && !d.error) {
         state.modules[module].installed = true;
-        state.modules[module].data = d.rows || d.payments || d.items || d || [];
+        state.modules[module].data = d.rows || d.items || (Array.isArray(d) ? d : []);
       }
     } catch(e) {
       state.modules[module].installed = false;
@@ -235,10 +235,20 @@ async function loadCrossModuleData() {
   };
 
   await Promise.allSettled([
-    tryLoad('payroll',  'payroll/payments/list',    'payroll'),
-    tryLoad('assets',   'assets/maintenance/list',  'assets'),
-    tryLoad('tasks',    'tasks/list',               'tasks'),
+    tryLoad('payroll', 'payroll/runs/list'),       // correct endpoint
+    tryLoad('assets',  'assets/maintenance/list'),
+    tryLoad('tasks',   'tasks/list'),
   ]);
+}
+
+// Calculate net pay from a payroll run record (mirrors payroll module logic)
+function calcPayrollNet(r) {
+  const gross = (parseFloat(r.gross_salary)||0) + (parseFloat(r.bonus||r.bonuses)||0)
+              + (parseFloat(r.overtime_pay)||0)  + (parseFloat(r.extra_pay)||0);
+  const ded   = (parseFloat(r.deductions)||0) + (parseFloat(r.tax_total||r.tax)||0)
+              + (parseFloat(r.health_insurance)||0) + (parseFloat(r.pension)||0)
+              + (parseFloat(r.other_deductions)||0);
+  return Math.max(0, gross - ded);
 }
 async function loadReports() {
   try {
@@ -295,7 +305,7 @@ function renderDashboard(c) {
 
   // Cross-module costs this month
   const payrollCost = state.modules.payroll.installed
-    ? state.modules.payroll.data.reduce((s,p) => s + (parseFloat(p.net_pay||p.amount||0)), 0) : 0;
+    ? state.modules.payroll.data.reduce((s,p) => s + calcPayrollNet(p), 0) : 0;
   const maintCost = state.modules.assets.installed
     ? state.modules.assets.data.reduce((s,m) => s + (parseFloat(m.cost||m.amount||0)), 0) : 0;
   const taskCost = state.modules.tasks.installed
@@ -323,8 +333,7 @@ function renderDashboard(c) {
   state.expenses.forEach(e => {
     if (e.category) expBreakRaw[e.category] = (expBreakRaw[e.category]||0) + (parseFloat(e.amount)||0);
   });
-  if (payrollCost > 0)  expBreakRaw['Payroll']           = (expBreakRaw['Payroll']||0) + payrollCost;
-  if (maintCost > 0)    expBreakRaw['Asset Maintenance']  = (expBreakRaw['Asset Maintenance']||0) + maintCost;
+  if (payrollCost > 0)  expBreakRaw['Payroll']           = (expBreakRaw['Payroll']||0) + payrollCost;  if (maintCost > 0)    expBreakRaw['Asset Maintenance']  = (expBreakRaw['Asset Maintenance']||0) + maintCost;
   if (taskCost > 0)     expBreakRaw['Task Costs']         = (expBreakRaw['Task Costs']||0) + taskCost;
   if (monthBills > 0)   expBreakRaw['Bills']              = (expBreakRaw['Bills']||0) + monthBills;
 
@@ -863,7 +872,7 @@ function renderReports(c) {
 
           // Cross-module costs
           const payrollTotal = state.modules.payroll.installed
-            ? state.modules.payroll.data.reduce((s,p)=>s+(parseFloat(p.net_pay||p.amount||0)),0) : 0;
+            ? state.modules.payroll.data.reduce((s,p)=>s+calcPayrollNet(p),0) : 0;
           const maintTotal   = state.modules.assets.installed
             ? state.modules.assets.data.reduce((s,m)=>s+(parseFloat(m.cost||m.amount||0)),0) : 0;
           const taskTotal    = state.modules.tasks.installed
@@ -998,8 +1007,11 @@ function renderCrossModuleReport() {
   // Payroll
   if (mods.payroll.installed) {
     const payments = mods.payroll.data;
-    const totalPayroll = payments.reduce((s,p) => s + (parseFloat(p.net_pay || p.amount || 0)), 0);
-    const pending = payments.filter(p => p.status === 'Pending' || p.status === 'Processing').reduce((s,p) => s + (parseFloat(p.net_pay || p.amount || 0)), 0);
+    const totalPayroll = payments.reduce((s,p) => s + calcPayrollNet(p), 0);
+    const pending = payments.filter(p => p.status === 'Pending' || p.status === 'Draft')
+                            .reduce((s,p) => s + calcPayrollNet(p), 0);
+    const paid    = payments.filter(p => p.status === 'Paid')
+                            .reduce((s,p) => s + calcPayrollNet(p), 0);
     sections.push(`
       <div class="bg-white rounded-xl border border-slate-200 p-6">
         <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
@@ -1008,9 +1020,10 @@ function renderCrossModuleReport() {
           <span class="ml-2 text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Connected</span>
         </h3>
         <div class="space-y-1">
-          ${reportLine('Total Payroll Processed', fmt.currency(totalPayroll), 'font-semibold text-red-500')}
-          ${reportLine('Pending Payments', fmt.currency(pending), 'text-amber-600')}
-          ${reportLine('Payroll Records', String(payments.length), 'text-slate-500')}
+          ${reportLine('Total Net Payroll', fmt.currency(totalPayroll), 'font-semibold text-red-500')}
+          ${reportLine('Paid', fmt.currency(paid), 'text-emerald-600')}
+          ${reportLine('Pending / Draft', fmt.currency(pending), 'text-amber-600')}
+          ${reportLine('Pay Runs', String(payments.length), 'text-slate-500')}
         </div>
         ${totalPayroll > 0 ? `<p class="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100"><i class="fas fa-info-circle mr-1"></i>Payroll costs are deducted in the Net Profit calculation.</p>` : ''}
       </div>`);
