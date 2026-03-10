@@ -698,16 +698,29 @@ window.WorkVoltPages['settings'] = function(container) {
     var newPass = document.getElementById('uf-new-password')?.value || '';
     var confirm = document.getElementById('uf-confirm-password')?.value || '';
 
-    if (!newPass)            return setFormStatus('Please enter a new password.', false);
-    if (newPass !== confirm)  return setFormStatus('Passwords do not match.', false);
+    if (!newPass)           return setFormStatus('Please enter a new password.', false);
+    if (newPass !== confirm) return setFormStatus('Passwords do not match.', false);
 
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Saving…'; }
 
     try {
-      var user = usersCache.find(function(u) { return u.user_id === userId; });
-      if (!user) throw new Error('User not found');
-      var tokenData = await api('users/reset-token', { email: user.email });
-      await api('users/set-password', { token: tokenData.token, password: newPass });
+      // Use the admin-set-password route which is authenticated by session_id,
+      // not the API secret. This works for admins who logged in via the login page
+      // and do not have (or need) the raw API secret stored in their browser.
+      var sessionId = sessionStorage.getItem('wv_session') || '';
+      if (!sessionId) throw new Error('No active session found. Please log in again.');
+      if (!savedUrl)  throw new Error('GAS URL not configured. Check Settings → Connection.');
+
+      var reqUrl = new URL(savedUrl);
+      reqUrl.searchParams.set('path',       'users/admin-set-password');
+      reqUrl.searchParams.set('session_id', sessionId);
+      reqUrl.searchParams.set('user_id',    userId);
+      reqUrl.searchParams.set('password',   newPass);
+
+      var res  = await fetch(reqUrl.toString(), { cache: 'no-cache' });
+      var data = await res.json();
+      if (data.error) throw new Error(data.error);
+
       setFormStatus('Password updated successfully.', true);
       setTimeout(function() { window.usersCloseModal(); }, 900);
     } catch(e) {
