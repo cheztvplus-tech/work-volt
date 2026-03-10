@@ -41,21 +41,54 @@ window.WorkVoltPages['scheduler'] = function(container) {
   var toast = window.WorkVolt.toast.bind(window.WorkVolt);
   var me = window.WorkVolt.user();
 
-  // ── Utility: get Monday of a given week ───────────────────────
+  // ── Utility: timezone-safe local date helpers ─────────────────
+  // IMPORTANT: Never use toISOString() for date-only values — it shifts
+  // to UTC and can move the date back by 1 day in negative-offset timezones.
+  // All date strings are kept as YYYY-MM-DD in LOCAL time.
+  function _localDateStr(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + dd;
+  }
   function _getMondayOf(d) {
-    var day = d.getDay(), diff = (day === 0) ? -6 : 1 - day;
-    var m = new Date(d); m.setDate(d.getDate() + diff);
-    return m.toISOString().substring(0, 10);
+    var day = d.getDay();                    // 0=Sun … 6=Sat
+    var diff = (day === 0) ? -6 : 1 - day;  // roll back to Monday
+    var m = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diff);
+    return _localDateStr(m);
   }
   function _addDays(dateStr, n) {
-    var d = new Date(dateStr); d.setDate(d.getDate() + n);
-    return d.toISOString().substring(0, 10);
+    // Parse YYYY-MM-DD without timezone conversion
+    var parts = dateStr.split('-');
+    var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]) + n);
+    return _localDateStr(d);
   }
   function _fmtDate(dateStr) {
     if (!dateStr) return '';
-    try { return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); } catch(e) { return dateStr; }
+    try {
+      var parts = String(dateStr).substring(0,10).split('-');
+      var d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch(e) { return dateStr; }
   }
-  function _today() { return new Date().toISOString().substring(0, 10); }
+  function _today() { return _localDateStr(new Date()); }
+  // Format a time value from Google Sheets (may come back as a Date object
+  // serialised to ISO string like "1899-12-30T13:00:00.000Z") into HH:MM
+  function _fmtTime(val) {
+    if (!val) return '';
+    var s = String(val);
+    // Already a clean HH:MM or HH:MM:SS
+    if (/^\d{1,2}:\d{2}/.test(s)) return s.substring(0, 5);
+    // ISO date-time string from Sheets time cell
+    if (s.indexOf('T') !== -1) {
+      var t = new Date(s);
+      // Sheets stores times as offsets from 1899-12-30; read hours/minutes from UTC
+      var hh = String(t.getUTCHours()).padStart(2, '0');
+      var mm = String(t.getUTCMinutes()).padStart(2, '0');
+      return hh + ':' + mm;
+    }
+    return s;
+  }
 
   // Status badge helper
   function _badge(status) {
@@ -302,12 +335,20 @@ window.WorkVoltPages['scheduler'] = function(container) {
     var days   = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     var dates  = days.map(function(_, i) { return _addDays(state.weekStart, i); });
 
-    // Group by employee
+    // Group by employee — sanitise date/time values from Sheets
     var empMap = {};
     rows.forEach(function(r) {
+      // Normalise date (may be a full ISO string from Sheets)
+      r._safeDate = String(r.date || '').substring(0, 10);
+      // Normalise times (Sheets can return 1899-12-30T... Date objects)
+      r._safeStart = _fmtTime(r.start_time);
+      r._safeEnd   = _fmtTime(r.end_time);
+
       if (!empMap[r.employee_id]) empMap[r.employee_id] = { name: r.employee_name, shifts: {} };
-      var d = new Date(r.date);
-      var di = (d.getDay() + 6) % 7; // Mon=0
+      // Map to Mon=0 … Sun=6 using local date parsing to avoid UTC shift
+      var parts = r._safeDate.split('-');
+      var d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+      var di = (d.getDay() + 6) % 7;
       if (!empMap[r.employee_id].shifts[di]) empMap[r.employee_id].shifts[di] = [];
       empMap[r.employee_id].shifts[di].push(r);
     });
@@ -375,8 +416,8 @@ window.WorkVoltPages['scheduler'] = function(container) {
                         return '<div class="mb-1 px-2 py-1 rounded-lg border cursor-pointer text-left ' + lc + '" ' +
                           'style="background:#eff6ff;border-color:#bfdbfe;" ' +
                           'onclick="schOpenEditShift(\'' + s.id + '\')" title="' + s.shift_name + ' · ' + s.total_hours + 'h">' +
-                          '<div class="font-bold text-blue-700 text-[10px]">' + (s.shift_name || '') + '</div>' +
-                          '<div class="text-[10px] text-blue-500">' + (s.start_time || '') + '–' + (s.end_time || '') + '</div>' +
+                          '<div class="font-bold text-blue-700 text-[10px]">' + (s.shift_name || 'Shift') + '</div>' +
+                          '<div class="text-[10px] text-blue-500">' + (s._safeStart || s.start_time || '') + (s._safeEnd ? '–'+s._safeEnd : '') + '</div>' +
                           '<div class="text-[10px] text-slate-400">' + (s.location || '') + '</div>' +
                         '</div>';
                       }).join('') +
@@ -440,11 +481,15 @@ window.WorkVoltPages['scheduler'] = function(container) {
           No shifts found. <button onclick="schOpenCreateShift()" class="text-blue-600 font-semibold hover:underline">Add one</button>
         </td></tr>` :
         filtered.slice().sort(function(a,b){ return String(a.date) < String(b.date) ? 1 : -1; }).map(function(r) {
+          var safeDate  = String(r.date || '').substring(0, 10);
+          var safeStart = _fmtTime(r.start_time);
+          var safeEnd   = _fmtTime(r.end_time);
+          var timeStr   = safeStart ? (safeStart + (safeEnd ? ' – ' + safeEnd : '')) : '—';
           return '<tr class="border-b border-slate-50 hover:bg-slate-50 text-sm">' +
-            '<td class="px-4 py-3 font-mono text-xs text-slate-400">' + String(r.date).substring(0,10) + '</td>' +
+            '<td class="px-4 py-3 font-mono text-xs text-slate-400">' + safeDate + '</td>' +
             '<td class="px-4 py-3 font-semibold text-slate-800">' + (r.employee_name || r.employee_id || '—') + '</td>' +
             '<td class="px-4 py-3">' + (r.shift_name || '—') + '</td>' +
-            '<td class="px-4 py-3 text-slate-500">' + (r.start_time || '') + ' – ' + (r.end_time || '') + '</td>' +
+            '<td class="px-4 py-3 text-slate-500">' + timeStr + '</td>' +
             '<td class="px-4 py-3 text-slate-500">' + (r.total_hours ? r.total_hours + 'h' : '—') + '</td>' +
             '<td class="px-4 py-3">' + (r.location || '—') + '</td>' +
             '<td class="px-4 py-3">' + _badge(r.status) + '</td>' +
@@ -535,15 +580,26 @@ window.WorkVoltPages['scheduler'] = function(container) {
 
   // ================================================================
   //  SHIFT CREATE / EDIT MODAL
+  //  Features:
+  //   • Full-day toggle (no fixed times required)
+  //   • Optional start/end/break
+  //   • Repeat: None | This week | Whole month | Custom days of week
   // ================================================================
   function openShiftModal(shift) {
     shift = shift || {};
     var isEdit = !!shift.id;
+
+    // Sanitise incoming time values from Sheets
+    var safeStart = _fmtTime(shift.start_time) || '';
+    var safeEnd   = _fmtTime(shift.end_time)   || '';
+    var safeDate  = shift.date ? String(shift.date).substring(0,10) : _today();
+    var isFullDay = !safeStart && !safeEnd && !isEdit ? false : (!safeStart && !safeEnd);
+
     var empOptions = state.users.map(function(u) {
       var sel = (u.user_id === shift.employee_id) ? 'selected' : '';
       return '<option value="' + u.user_id + '" data-name="' + (u.name || '') + '" ' + sel + '>' + (u.name || u.user_id) + '</option>';
     }).join('');
-    var tplOptions = '<option value="">Custom</option>' + state.templates.map(function(t) {
+    var tplOptions = '<option value="">— No template —</option>' + state.templates.map(function(t) {
       return '<option value="' + t.id + '" data-start="' + t.start_time + '" data-end="' + t.end_time + '" data-break="' + t.break_minutes + '">' + t.shift_name + '</option>';
     }).join('');
     var locOptions = '<option value="">None</option>' + state.locations.map(function(l) {
@@ -561,6 +617,8 @@ window.WorkVoltPages['scheduler'] = function(container) {
         </div>
 
         <div class="space-y-3">
+
+          <!-- Employee -->
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">Employee <span class="text-red-400">*</span></label>
             <select id="sch-emp" class="field text-sm" required>
@@ -568,30 +626,51 @@ window.WorkVoltPages['scheduler'] = function(container) {
               ${empOptions}
             </select>
           </div>
-          <div>
+
+          <!-- Date (single) — hidden when repeat covers it -->
+          <div id="sch-single-date-row">
             <label class="block text-xs font-semibold text-slate-600 mb-1">Date <span class="text-red-400">*</span></label>
-            <input type="date" id="sch-date" class="field text-sm" value="${shift.date ? String(shift.date).substring(0,10) : _today()}" required>
+            <input type="date" id="sch-date" class="field text-sm" value="${safeDate}" required>
           </div>
+
+          <!-- Shift Template -->
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Shift Template</label>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Shift Template <span class="text-slate-400 font-normal">(optional)</span></label>
             <select id="sch-tpl" class="field text-sm" onchange="schApplyTemplate(this)">
               ${tplOptions}
             </select>
           </div>
-          <div class="grid grid-cols-3 gap-2">
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 mb-1">Start</label>
-              <input type="time" id="sch-start" class="field text-sm" value="${shift.start_time || '08:00'}">
+
+          <!-- Full-day toggle -->
+          <label class="flex items-center gap-2.5 cursor-pointer select-none">
+            <div class="relative">
+              <input type="checkbox" id="sch-fullday" class="sr-only" ${isFullDay ? 'checked' : ''} onchange="schToggleFullDay(this.checked)">
+              <div id="sch-fullday-track" class="w-9 h-5 rounded-full transition-colors ${isFullDay ? 'bg-blue-500' : 'bg-slate-300'}"></div>
+              <div id="sch-fullday-thumb" class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isFullDay ? 'translate-x-4' : ''}"></div>
             </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 mb-1">End</label>
-              <input type="time" id="sch-end" class="field text-sm" value="${shift.end_time || '16:00'}">
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 mb-1">Break (min)</label>
-              <input type="number" id="sch-break" class="field text-sm" value="${shift.break_minutes || 30}" min="0">
+            <span class="text-xs font-semibold text-slate-700">Full Day / No fixed hours</span>
+            <span class="text-xs text-slate-400">(time fields optional)</span>
+          </label>
+
+          <!-- Time fields — collapsible -->
+          <div id="sch-time-fields" class="${isFullDay ? 'hidden' : ''}">
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Start</label>
+                <input type="time" id="sch-start" class="field text-sm" value="${safeStart}">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">End</label>
+                <input type="time" id="sch-end" class="field text-sm" value="${safeEnd}">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Break (min)</label>
+                <input type="number" id="sch-break" class="field text-sm" value="${shift.break_minutes || 0}" min="0">
+              </div>
             </div>
           </div>
+
+          <!-- Location + Status -->
           <div class="grid grid-cols-2 gap-2">
             <div>
               <label class="block text-xs font-semibold text-slate-600 mb-1">Location</label>
@@ -601,69 +680,250 @@ window.WorkVoltPages['scheduler'] = function(container) {
               <label class="block text-xs font-semibold text-slate-600 mb-1">Status</label>
               <select id="sch-status" class="field text-sm">
                 ${['Scheduled','Confirmed','Completed','Cancelled','No Show'].map(function(s){
-                  return '<option ' + (s===shift.status?'selected':'') + '>' + s + '</option>';
+                  return '<option ' + (s===(shift.status||'Scheduled')?'selected':'') + '>' + s + '</option>';
                 }).join('')}
               </select>
             </div>
           </div>
+
+          <!-- Notes -->
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
             <textarea id="sch-notes" class="field text-sm" rows="2" placeholder="Optional notes…">${shift.notes || ''}</textarea>
           </div>
+
+          ${!isEdit ? `
+          <!-- ── REPEAT / BULK SCHEDULING ─────────────────────── -->
+          <div class="border-t border-slate-100 pt-3">
+            <label class="block text-xs font-semibold text-slate-600 mb-2">
+              <i class="fas fa-redo text-slate-400 mr-1"></i>Repeat / Bulk Schedule
+            </label>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg border border-slate-200 hover:border-blue-300 has-repeat-opt">
+                <input type="radio" name="sch-repeat" value="none" checked class="accent-blue-600" onchange="schRepeatMode('none')">
+                <span class="text-xs font-semibold text-slate-700">Single day</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg border border-slate-200 hover:border-blue-300">
+                <input type="radio" name="sch-repeat" value="week" class="accent-blue-600" onchange="schRepeatMode('week')">
+                <span class="text-xs font-semibold text-slate-700">Whole week</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg border border-slate-200 hover:border-blue-300">
+                <input type="radio" name="sch-repeat" value="month" class="accent-blue-600" onchange="schRepeatMode('month')">
+                <span class="text-xs font-semibold text-slate-700">Whole month</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg border border-slate-200 hover:border-blue-300">
+                <input type="radio" name="sch-repeat" value="custom" class="accent-blue-600" onchange="schRepeatMode('custom')">
+                <span class="text-xs font-semibold text-slate-700">Custom days</span>
+              </label>
+            </div>
+
+            <!-- Week mode info -->
+            <div id="sch-repeat-week" class="hidden mt-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-xs text-blue-700">
+              <i class="fas fa-info-circle mr-1"></i>
+              Will create a shift on every day of the week containing the selected date.
+            </div>
+
+            <!-- Month mode info -->
+            <div id="sch-repeat-month" class="hidden mt-2 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-2 text-xs text-indigo-700">
+              <i class="fas fa-info-circle mr-1"></i>
+              Will create a shift on every day of the selected month.
+              <label class="flex items-center gap-2 mt-2 cursor-pointer">
+                <input type="checkbox" id="sch-skip-weekends" class="accent-indigo-600" checked>
+                <span class="font-semibold">Skip weekends</span>
+              </label>
+            </div>
+
+            <!-- Custom days of week -->
+            <div id="sch-repeat-custom" class="hidden mt-2">
+              <p class="text-xs text-slate-500 mb-2">Pick days of the week — shifts created from the selected date's week onward for a date range you choose:</p>
+              <div class="flex flex-wrap gap-1.5 mb-2" id="sch-custom-days">
+                ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(function(d,i){
+                  return '<label class="cursor-pointer"><input type="checkbox" class="sr-only sch-dow" value="'+i+'">' +
+                    '<span class="inline-block px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:border-blue-400 hover:text-blue-600 sch-dow-label transition">' + d + '</span></label>';
+                }).join('')}
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div><label class="block text-xs font-semibold text-slate-600 mb-1">From</label>
+                  <input type="date" id="sch-custom-from" class="field text-xs" value="${safeDate}"></div>
+                <div><label class="block text-xs font-semibold text-slate-600 mb-1">To</label>
+                  <input type="date" id="sch-custom-to" class="field text-xs" value="${_addDays(safeDate, 27)}"></div>
+              </div>
+            </div>
+          </div>
+          ` : ''}
+
           <div id="sch-shift-alert" class="hidden"></div>
         </div>
 
         <div class="flex gap-2 mt-5">
           <button onclick="schCloseModal()" class="btn-secondary flex-1 text-sm">Cancel</button>
-          <button onclick="schSaveShift('${shift.id || ''}')" class="btn-primary flex-1 text-sm">
-            <i class="fas fa-${isEdit ? 'save' : 'plus'} text-xs"></i> ${isEdit ? 'Save Changes' : 'Create Shift'}
+          <button onclick="schSaveShift('${shift.id || ''}')" class="btn-primary flex-1 text-sm" id="sch-save-btn">
+            <i class="fas fa-${isEdit ? 'save' : 'plus'} text-xs"></i>
+            <span id="sch-save-label">${isEdit ? 'Save Changes' : 'Create Shift'}</span>
           </button>
         </div>
       </div>
     `);
 
+    // ── Toggle full-day ──────────────────────────────────────────
+    window.schToggleFullDay = function(checked) {
+      document.getElementById('sch-time-fields').classList.toggle('hidden', checked);
+      var track = document.getElementById('sch-fullday-track');
+      var thumb = document.getElementById('sch-fullday-thumb');
+      if (track) track.className = track.className.replace(checked ? 'bg-slate-300' : 'bg-blue-500', checked ? 'bg-blue-500' : 'bg-slate-300');
+      if (thumb) thumb.classList.toggle('translate-x-4', checked);
+    };
+
+    // ── Repeat mode toggle ───────────────────────────────────────
+    window.schRepeatMode = function(mode) {
+      ['week','month','custom'].forEach(function(m) {
+        var el = document.getElementById('sch-repeat-' + m);
+        if (el) el.classList.toggle('hidden', m !== mode);
+      });
+      // Show/hide the single-date row label
+      var sdRow = document.getElementById('sch-single-date-row');
+      if (sdRow) {
+        var lbl = sdRow.querySelector('label');
+        if (lbl) lbl.textContent = (mode === 'week' || mode === 'month') ? 'Any date in the target week/month' :
+                                    mode === 'custom' ? 'Reference date (week alignment)' : 'Date *';
+      }
+      // Update save button label
+      var lbl = document.getElementById('sch-save-label');
+      if (lbl) lbl.textContent = mode === 'none' ? 'Create Shift' : 'Create Shifts';
+    };
+
+    // ── Custom day-of-week label styling ─────────────────────────
+    document.querySelectorAll('.sch-dow').forEach(function(cb) {
+      cb.addEventListener('change', function() {
+        var lbl = this.parentElement.querySelector('.sch-dow-label');
+        if (lbl) lbl.className = lbl.className.replace(
+          this.checked ? 'border-slate-200 text-slate-600' : 'border-blue-500 bg-blue-50 text-blue-700',
+          this.checked ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600'
+        );
+      });
+    });
+
+    // ── Apply template ───────────────────────────────────────────
     window.schApplyTemplate = function(sel) {
       var opt = sel.options[sel.selectedIndex];
       if (!opt || !opt.dataset.start) return;
+      // Uncheck full-day if a template with times is applied
+      document.getElementById('sch-fullday').checked = false;
+      schToggleFullDay(false);
       document.getElementById('sch-start').value = opt.dataset.start;
       document.getElementById('sch-end').value   = opt.dataset.end;
       document.getElementById('sch-break').value = opt.dataset.break;
     };
 
+    // ── Save ─────────────────────────────────────────────────────
     window.schSaveShift = async function(id) {
-      var empSel = document.getElementById('sch-emp');
-      var empId  = empSel.value;
-      var empName = empSel.options[empSel.selectedIndex]?.dataset?.name || empSel.options[empSel.selectedIndex]?.text || '';
-      var date   = document.getElementById('sch-date').value;
+      var empSel   = document.getElementById('sch-emp');
+      var empId    = empSel.value;
+      var empName  = (empSel.options[empSel.selectedIndex] || {}).dataset?.name ||
+                     (empSel.options[empSel.selectedIndex] || {}).text || '';
+      var date     = document.getElementById('sch-date').value;
+      var fullDay  = document.getElementById('sch-fullday').checked;
+
       if (!empId || !date) { toast('Employee and date are required', 'error'); return; }
 
       var alertEl = document.getElementById('sch-shift-alert');
       alertEl.className = 'hidden';
 
-      var params = {
+      var startTime = fullDay ? '' : (document.getElementById('sch-start') || {}).value || '';
+      var endTime   = fullDay ? '' : (document.getElementById('sch-end')   || {}).value || '';
+      var breakMin  = fullDay ? '0' : (document.getElementById('sch-break') || {}).value || '0';
+
+      // Calculate hours only when we have valid times
+      var totalHours = '';
+      if (startTime && endTime) {
+        var s = startTime.split(':').map(Number), e = endTime.split(':').map(Number);
+        var sm = s[0]*60 + (s[1]||0), em = e[0]*60 + (e[1]||0);
+        if (em <= sm) em += 1440;
+        var calc = (em - sm - (parseInt(breakMin)||0)) / 60;
+        if (calc > 0) totalHours = Math.round(calc * 100) / 100;
+      }
+
+      var tplSel   = document.getElementById('sch-tpl');
+      var tplText  = (tplSel.options[tplSel.selectedIndex] || {}).text || '';
+      var shiftName = (tplText && tplText !== '— No template —') ? tplText : (fullDay ? 'Full Day' : 'Custom');
+
+      var baseParams = {
         employee_id:   empId,
         employee_name: empName,
-        date:          date,
-        shift_name:    document.getElementById('sch-tpl').options[document.getElementById('sch-tpl').selectedIndex]?.text || 'Custom',
-        start_time:    document.getElementById('sch-start').value,
-        end_time:      document.getElementById('sch-end').value,
-        break_minutes: document.getElementById('sch-break').value,
-        location:      document.getElementById('sch-loc').value,
-        status:        document.getElementById('sch-status').value,
-        notes:         document.getElementById('sch-notes').value,
+        shift_name:    shiftName,
+        start_time:    startTime,
+        end_time:      endTime,
+        break_minutes: breakMin,
+        total_hours:   totalHours,
+        location:      (document.getElementById('sch-loc') || {}).value || '',
+        status:        (document.getElementById('sch-status') || {}).value || 'Scheduled',
+        notes:         (document.getElementById('sch-notes') || {}).value || '',
         created_by:    me?.user_id || '',
       };
 
-      try {
-        var res;
-        if (id) {
-          res = await api('scheduler/schedule/update', Object.assign({ id: id }, params));
+      // ── Edit path (single shift) ────────────────────────────
+      if (id) {
+        try {
+          await api('scheduler/schedule/update', Object.assign({ id: id }, baseParams));
           toast('Shift updated', 'success');
-        } else {
-          res = await api('scheduler/schedule/create', params);
+          schCloseModal();
+          renderTab();
+        } catch(e) { toast(e.message, 'error'); }
+        return;
+      }
+
+      // ── Determine dates to create ───────────────────────────
+      var repeatEl = document.querySelector('input[name="sch-repeat"]:checked');
+      var mode     = repeatEl ? repeatEl.value : 'none';
+      var dates    = [];
+
+      if (mode === 'none') {
+        dates = [date];
+
+      } else if (mode === 'week') {
+        var wStart = _getMondayOf(new Date(date + 'T12:00:00'));
+        for (var i = 0; i < 7; i++) dates.push(_addDays(wStart, i));
+
+      } else if (mode === 'month') {
+        var parts   = date.split('-');
+        var y = parseInt(parts[0]), mo = parseInt(parts[1]);
+        var skipWE  = document.getElementById('sch-skip-weekends').checked;
+        var daysInMonth = new Date(y, mo, 0).getDate();
+        for (var i = 1; i <= daysInMonth; i++) {
+          var d = new Date(y, mo-1, i);
+          if (skipWE && (d.getDay() === 0 || d.getDay() === 6)) continue;
+          dates.push(_localDateStr(d));
+        }
+
+      } else if (mode === 'custom') {
+        var selectedDows = Array.from(document.querySelectorAll('.sch-dow:checked')).map(function(cb){ return parseInt(cb.value); });
+        if (!selectedDows.length) { toast('Select at least one day of week', 'error'); return; }
+        var fromStr = document.getElementById('sch-custom-from').value;
+        var toStr   = document.getElementById('sch-custom-to').value;
+        var cur = fromStr;
+        var safety = 0;
+        while (cur <= toStr && safety++ < 400) {
+          var parts = cur.split('-');
+          var d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+          var dow = (d.getDay() + 6) % 7; // Mon=0
+          if (selectedDows.indexOf(dow) !== -1) dates.push(cur);
+          cur = _addDays(cur, 1);
+        }
+      }
+
+      if (!dates.length) { toast('No dates calculated — check your settings', 'error'); return; }
+
+      var btn = document.getElementById('sch-save-btn');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Creating…'; }
+
+      // ── Single date ─────────────────────────────────────────
+      if (dates.length === 1) {
+        try {
+          var res = await api('scheduler/schedule/create', Object.assign({ date: dates[0] }, baseParams));
           if (res.conflict) {
             alertEl.className = 'bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl px-3 py-2';
             alertEl.textContent = res.error;
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-plus text-xs"></i> Create Shift'; }
             return;
           }
           if (res.overtime_alert) {
@@ -671,11 +931,24 @@ window.WorkVoltPages['scheduler'] = function(container) {
             alertEl.textContent = '⚠️ ' + res.overtime_alert.alerts.join(' · ');
           }
           toast('Shift created', 'success');
-        }
+          schCloseModal();
+          renderTab();
+        } catch(e) { toast(e.message, 'error'); if (btn) btn.disabled = false; }
+        return;
+      }
+
+      // ── Bulk (multiple dates) via bulk-create ───────────────
+      try {
+        var shifts = dates.map(function(d) { return Object.assign({ date: d }, baseParams); });
+        var res = await api('scheduler/schedule/bulk-create', { shifts: JSON.stringify(shifts) });
+        var msg = res.created + ' shift' + (res.created !== 1 ? 's' : '') + ' created';
+        if (res.conflicts && res.conflicts.length) msg += ' · ' + res.conflicts.length + ' skipped (conflict)';
+        toast(msg, 'success');
         schCloseModal();
         renderTab();
       } catch(e) {
         toast(e.message, 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-plus text-xs"></i> Create Shifts'; }
       }
     };
   }
