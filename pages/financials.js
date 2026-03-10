@@ -225,17 +225,24 @@ async function loadCrossModuleData() {
   const tryLoad = async (module, apiPath) => {
     try {
       const d = await api(apiPath);
-      if (d && !d.error) {
-        state.modules[module].installed = true;
-        state.modules[module].data = d.rows || d.items || (Array.isArray(d) ? d : []);
+      // A valid response is anything that came back without an error key
+      if (d && d.error) {
+        console.warn('[Financials] ' + module + ' API error:', d.error);
+        state.modules[module].installed = false;
+        return;
       }
+      state.modules[module].installed = true;
+      state.modules[module].data = d.rows || d.items || (Array.isArray(d) ? d : []);
+      console.log('[Financials] ' + module + ' loaded:', state.modules[module].data.length, 'records');
     } catch(e) {
+      // Module not installed or network error — silent skip is fine
+      console.warn('[Financials] ' + module + ' not available:', e.message || e);
       state.modules[module].installed = false;
     }
   };
 
   await Promise.allSettled([
-    tryLoad('payroll', 'payroll/runs/list'),       // correct endpoint
+    tryLoad('payroll', 'payroll/runs/list'),
     tryLoad('assets',  'assets/maintenance/list'),
     tryLoad('tasks',   'tasks/list'),
   ]);
@@ -846,7 +853,7 @@ function renderBudgets(c) {
 function renderReports(c) {
   if (!state.incomeStmt) {
     c.innerHTML = `<div class="flex items-center justify-center h-48"><i class="fas fa-circle-notch fa-spin text-emerald-500 text-2xl opacity-50"></i></div>`;
-    loadReports().then(() => renderReports(c));
+    Promise.all([loadReports(), loadCrossModuleData()]).then(() => renderReports(c));
     return;
   }
   const is = state.incomeStmt || {};
@@ -993,7 +1000,7 @@ function renderReports(c) {
     ${renderCrossModuleReport()}
 
     <div class="text-center">
-      <button onclick="loadReports().then(()=>renderReports(document.getElementById('fin-content')))" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 bg-white border border-slate-200 rounded-lg font-semibold transition-colors">
+      <button onclick="Promise.all([loadReports(),loadCrossModuleData()]).then(()=>renderReports(document.getElementById('fin-content')))" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 bg-white border border-slate-200 rounded-lg font-semibold transition-colors">
         <i class="fas fa-sync-alt mr-2"></i>Refresh Reports
       </button>
     </div>
