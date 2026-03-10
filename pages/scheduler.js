@@ -1,6 +1,6 @@
 // ================================================================
 //  WORK VOLT — pages/scheduler.js
-//  Shift Scheduler UI Module  |  Version 2.0.0
+//  Shift Scheduler UI Module  |  Version 1.0.0
 //
 //  Registered as: WorkVoltPages['scheduler']
 //  Loaded by main.html when user navigates to #scheduler
