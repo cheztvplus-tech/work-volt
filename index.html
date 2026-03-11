@@ -15,8 +15,8 @@
     .btn-primary:hover { background:#1d4ed8; }
     .btn-primary:active { transform:scale(.98); }
     .btn-primary:disabled { opacity:.6; cursor:not-allowed; }
-    .btn-lang { display:inline-flex; align-items:center; gap:.4rem; padding:.4rem .9rem; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:9px; font-size:.75rem; font-weight:700; color:#fff; cursor:pointer; transition:background .15s; backdrop-filter:blur(4px); letter-spacing:.03em; font-family:inherit; }
-    .btn-lang:hover { background:rgba(255,255,255,0.25); }
+    .wv-lang-float { position:fixed; top:1rem; right:1rem; z-index:50; display:inline-flex; align-items:center; gap:.4rem; padding:.4rem .85rem; background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.3); border-radius:8px; font-size:.75rem; font-weight:700; color:#fff; cursor:pointer; font-family:inherit; transition:background .15s; }
+    .wv-lang-float:hover { background:rgba(255,255,255,.25); }
     @keyframes shake {
       0%, 100% { transform: translateX(0); }
       25% { transform: translateX(-5px); }
@@ -24,17 +24,12 @@
     }
     .shake { animation: shake 0.3s ease-in-out; }
   </style>
-<script src="translations.js"></script>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 flex items-center justify-center p-4">
 
-  <!-- Language toggle -->
-  <div class="fixed top-4 right-4 z-50">
-    <button id="lang-btn" onclick="toggleIndexLang()" class="btn-lang">
-      <i class="fas fa-globe text-xs"></i>
-      <span id="lang-btn-label">Français</span>
-    </button>
-  </div>
+  <button id="wv-lang-btn" onclick="wvToggleLang()" class="wv-lang-float">
+    <i class="fas fa-globe text-xs"></i><span id="wv-lang-lbl">Français</span>
+  </button>
 
   <div class="w-full max-w-md">
     <!-- Logo -->
@@ -43,14 +38,14 @@
         <i class="fas fa-bolt text-white text-3xl"></i>
       </div>
       <h1 class="text-3xl font-extrabold text-white tracking-tight">Work Volt</h1>
-      <p id="txt-tagline" class="text-blue-200 mt-1 text-sm font-medium">Power your operations</p>
+      <p id="wv-tagline" class="text-blue-200 mt-1 text-sm font-medium">Power your operations</p>
     </div>
 
     <!-- Login Card -->
     <div class="bg-white rounded-2xl shadow-2xl overflow-hidden">
       <div class="bg-blue-50 border-b border-blue-100 px-6 py-3 flex items-center gap-2">
         <i class="fas fa-shield-alt text-blue-500"></i>
-        <span id="txt-secure" class="text-xs font-bold text-blue-700 uppercase tracking-wide">Secure Sign In</span>
+        <span id="wv-secure" class="text-xs font-bold text-blue-700 uppercase tracking-wide">Secure Sign In</span>
       </div>
 
       <div class="p-6 space-y-4">
@@ -62,20 +57,20 @@
 
         <!-- GAS URL ONLY -->
         <div>
-          <label id="lbl-url" class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Work Volt URL</label>
+          <label id="wv-lbl-url" class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Work Volt URL</label>
           <input id="gas-url" type="url" class="field" placeholder="https://script.google.com/macros/s/.../exec">
-          <p id="lbl-url-hint" class="text-xs text-slate-400 mt-1">Your Google Apps Script Web App URL</p>
+          <p id="wv-hint-url" class="text-xs text-slate-400 mt-1">Your Google Apps Script Web App URL</p>
         </div>
 
         <!-- Username -->
         <div>
-          <label id="lbl-email" class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Username (Email)</label>
+          <label id="wv-lbl-email" class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Username (Email)</label>
           <input id="username" type="email" class="field" placeholder="admin@workvolt.app" autocomplete="off">
         </div>
 
         <!-- Password -->
         <div>
-          <label id="lbl-password" class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Password</label>
+          <label id="wv-lbl-pass" class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Password</label>
           <div class="relative">
             <input id="password" type="password" class="field pr-10" placeholder="••••••••" autocomplete="off">
             <button type="button" onclick="togglePassword()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -87,55 +82,79 @@
         <!-- Login Button -->
         <button onclick="doLogin()" id="login-btn" class="btn-primary w-full mt-2">
           <i class="fas fa-sign-in-alt"></i>
-          <span id="txt-login-btn">Sign In</span>
+          <span id="wv-btn-lbl">Sign In</span>
         </button>
 
         <!-- Hint -->
         <div id="reset-hint" class="hidden mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
           <i class="fas fa-info-circle mr-1"></i>
-          <span id="txt-reset-hint">Contact your SuperAdmin to reset your password.</span>
+          <span id="wv-reset-hint">Contact your SuperAdmin to reset your password.</span>
         </div>
       </div>
     </div>
 
     <!-- Footer -->
-    <p id="txt-footer" class="text-center text-blue-200/60 text-xs mt-6">
+    <p id="wv-footer" class="text-center text-blue-200/60 text-xs mt-6">
       Work Volt v1.0.0 • Secure Business Management
     </p>
   </div>
 
   <script>
     // ─────────────────────────────────────────────
-    //  LANGUAGE HANDLING (index page)
+    //  LANGUAGE — self-contained, no external file
     // ─────────────────────────────────────────────
-    function applyIndexLang() {
-      if (!window.WorkVoltI18n) return;
-      const i18n = window.WorkVoltI18n;
-      const tl   = k => i18n.t(k);
-      document.documentElement.lang = i18n.getLang();
+    const _i18n = {
+      en: {
+        tagline: 'Power your operations', secure: 'Secure Sign In',
+        lbl_url: 'Work Volt URL', hint_url: 'Your Google Apps Script Web App URL',
+        lbl_email: 'Username (Email)', lbl_pass: 'Password',
+        btn: 'Sign In', btn_loading: 'Signing in...',
+        reset_hint: 'Contact your SuperAdmin to reset your password.',
+        footer: 'Work Volt v1.0.0 • Secure Business Management',
+        lang_toggle: 'Français',
+        err_url: 'Please enter your Work Volt URL',
+        err_email: 'Please enter your username (email)',
+        err_pass: 'Please enter your password',
+        err_failed: 'Login failed. Please check your credentials.',
+      },
+      fr: {
+        tagline: 'Optimisez vos opérations', secure: 'Connexion sécurisée',
+        lbl_url: 'URL Work Volt', hint_url: "L'URL de votre application Google Apps Script",
+        lbl_email: "Nom d'utilisateur (e-mail)", lbl_pass: 'Mot de passe',
+        btn: 'Se connecter', btn_loading: 'Connexion en cours...',
+        reset_hint: 'Contactez votre SuperAdmin pour réinitialiser votre mot de passe.',
+        footer: "Work Volt v1.0.0 • Gestion d'entreprise sécurisée",
+        lang_toggle: 'English',
+        err_url: 'Veuillez saisir votre URL Work Volt',
+        err_email: "Veuillez saisir votre nom d'utilisateur (e-mail)",
+        err_pass: 'Veuillez saisir votre mot de passe',
+        err_failed: 'Connexion échouée. Veuillez vérifier vos identifiants.',
+      },
+    };
 
-      document.getElementById('txt-tagline').textContent       = tl('splash.tagline');
-      document.getElementById('txt-secure').textContent        = tl('login.secure');
-      document.getElementById('lbl-url').textContent           = tl('login.url_label');
-      document.getElementById('gas-url').placeholder          = tl('login.url_placeholder');
-      document.getElementById('lbl-url-hint').textContent      = tl('login.url_hint');
-      document.getElementById('lbl-email').textContent         = tl('login.email_label');
-      document.getElementById('username').placeholder          = tl('login.email_placeholder');
-      document.getElementById('lbl-password').textContent      = tl('login.password_label');
-      document.getElementById('txt-login-btn').textContent     = tl('login.btn');
-      document.getElementById('txt-reset-hint').textContent    = tl('login.reset_hint');
-      document.getElementById('txt-footer').textContent        = tl('login.footer');
-      // Button label shows the other language you can switch TO
-      document.getElementById('lang-btn-label').textContent    = tl('login.language');
+    function _getLang() { return localStorage.getItem('wv_lang') || 'en'; }
+    function _s(k) { return _i18n[_getLang()][k] || _i18n.en[k] || k; }
+
+    function wvApplyLang() {
+      document.getElementById('wv-tagline').textContent   = _s('tagline');
+      document.getElementById('wv-secure').textContent    = _s('secure');
+      document.getElementById('wv-lbl-url').textContent   = _s('lbl_url');
+      document.getElementById('gas-url').placeholder      = _s('hint_url');
+      document.getElementById('wv-hint-url').textContent  = _s('hint_url');
+      document.getElementById('wv-lbl-email').textContent = _s('lbl_email');
+      document.getElementById('wv-lbl-pass').textContent  = _s('lbl_pass');
+      document.getElementById('wv-btn-lbl').textContent   = _s('btn');
+      document.getElementById('wv-reset-hint').textContent= _s('reset_hint');
+      document.getElementById('wv-footer').textContent    = _s('footer');
+      document.getElementById('wv-lang-lbl').textContent  = _s('lang_toggle');
     }
 
-    function toggleIndexLang() {
-      if (window.WorkVoltI18n) window.WorkVoltI18n.toggleLang();
-      applyIndexLang();
+    function wvToggleLang() {
+      localStorage.setItem('wv_lang', _getLang() === 'en' ? 'fr' : 'en');
+      wvApplyLang();
     }
 
-    // Apply on load
-    applyIndexLang();
+    wvApplyLang();
 
     // ─────────────────────────────────────────────
     //  LOGIN LOGIC - NO LOCAL STORAGE (Session Only)
@@ -173,7 +192,6 @@
     }
 
     async function doLogin() {
-      const tl  = k => window.WorkVoltI18n ? window.WorkVoltI18n.t(k) : k;
       const btn = document.getElementById('login-btn');
       const url = document.getElementById('gas-url').value.trim();
       const username = document.getElementById('username').value.trim();
@@ -181,13 +199,13 @@
 
       hideError();
 
-      if (!url)      return showError(tl('login.err.no_url'));
-      if (!username) return showError(tl('login.err.no_email'));
-      if (!password) return showError(tl('login.err.no_password'));
+      if (!url) return showError(_s('err_url'));
+      if (!username) return showError(_s('err_email'));
+      if (!password) return showError(_s('err_pass'));
 
       btn.disabled = true;
       const originalContent = btn.innerHTML;
-      btn.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i><span>${tl('login.btn_loading')}</span>`;
+      btn.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i><span>${_s('btn_loading')}</span>`;
 
       try {
         // Hash password (SHA-256)
@@ -197,7 +215,7 @@
           .map(b => b.toString(16).padStart(2, '0'))
           .join('');
 
-        // Call GAS login endpoint
+        // Call GAS login endpoint - NO sheet_id needed!
         const loginUrl = new URL(url);
         loginUrl.searchParams.set('path', 'auth/login');
         loginUrl.searchParams.set('email', username);
@@ -214,6 +232,7 @@
         sessionStorage.setItem('wv_session', data.session_id);
         sessionStorage.setItem('wv_user', JSON.stringify(data.user));
 
+        // Also set in memory for main.html to access immediately
         window.sessionData = {
           gas_url: url,
           session_id: data.session_id,
@@ -223,7 +242,7 @@
         window.location.href = 'main.html';
 
       } catch(e) {
-        showError(e.message || tl('login.err.failed'));
+        showError(e.message || _s('err_failed'));
         btn.disabled = false;
         btn.innerHTML = originalContent;
       }
