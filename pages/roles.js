@@ -8,7 +8,7 @@ window.WorkVoltPages['roles'] = function(container) {
     container.innerHTML = `
       <div class="flex flex-col items-center justify-center h-64 gap-3 text-slate-400">
         <i class="fas fa-lock text-4xl"></i>
-        <p class="font-semibold">Access restricted to Admins only</p>
+        <p class="font-semibold">${t('Access restricted to Admins only')}</p>
       </div>`;
     return;
   }
@@ -304,8 +304,8 @@ window.WorkVoltPages['roles'] = function(container) {
                 <i class="fas fa-shield-alt text-white text-sm"></i>
               </div>
               <div>
-                <h1 class="text-lg font-extrabold text-slate-900 leading-none">Role Permissions</h1>
-                <p class="text-xs text-slate-400 mt-0.5">Control which roles can access each module</p>
+                <h1 class="text-lg font-extrabold text-slate-900 leading-none">${t('Role Permissions')}</h1>
+                <p class="text-xs text-slate-400 mt-0.5">${t('Control which roles can access each module')}</p>
               </div>
             </div>
             <div id="roles-save-area" class="flex items-center gap-3"></div>
@@ -314,9 +314,9 @@ window.WorkVoltPages['roles'] = function(container) {
           <!-- Tabs -->
           <div class="max-w-6xl mx-auto mt-4 flex gap-1 border-b border-transparent">
             ${[
-              { id: 'matrix',    label: 'Permission Matrix', icon: 'fa-table-cells' },
-              { id: 'overrides', label: 'User Overrides',    icon: 'fa-user-cog' },
-              { id: 'preview',   label: 'Role Preview',      icon: 'fa-eye' },
+              { id: 'matrix',    label: t('Permission Matrix'), icon: 'fa-table-cells' },
+              { id: 'overrides', label: t('User Overrides'),    icon: 'fa-user-cog' },
+              { id: 'preview',   label: t('Role Preview'),      icon: 'fa-eye' },
             ].map(t => `
               <button onclick="window._rolesTabSwitch('${t.id}')"
                 class="roles-tab flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors border-b-2 ${activeTab === t.id ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'}"
@@ -332,7 +332,7 @@ window.WorkVoltPages['roles'] = function(container) {
           ${loading ? `
             <div class="flex items-center justify-center h-48 gap-3 text-slate-400">
               <i class="fas fa-circle-notch fa-spin text-2xl text-blue-400"></i>
-              <span class="text-sm font-medium">Loading permissions…</span>
+              <span class="text-sm font-medium">${t('Loading permissions…')}</span>
             </div>
           ` : renderTabContent()}
         </div>
@@ -416,20 +416,20 @@ window.WorkVoltPages['roles'] = function(container) {
 
     const connBadge = !isConnected
       ? `<span class="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg font-medium flex items-center gap-1.5">
-           <i class="fas fa-exclamation-triangle text-[10px]"></i>No Sheet — saves locally
+           <i class="fas fa-exclamation-triangle text-[10px]"></i>${t('No Sheet — saves locally')}
          </span>`
       : '';
 
     el.innerHTML = `
       ${connBadge}
-      ${isDirty ? `<span class="text-xs text-slate-400 font-medium">Unsaved changes</span>` : ''}
+      ${isDirty ? `<span class="text-xs text-slate-400 font-medium">${t('Unsaved changes')}</span>` : ''}
       <button onclick="window._rolesSave()"
         class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all
           ${saving ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : isDirty ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}"
         ${saving || !isDirty ? 'disabled' : ''}>
         ${saving
-          ? '<i class="fas fa-circle-notch fa-spin text-xs"></i> Saving…'
-          : '<i class="fas fa-save text-xs"></i> Save Changes'}
+          ? '<i class="fas fa-circle-notch fa-spin text-xs"></i> ' + t('Saving…')
+          : '<i class="fas fa-save text-xs"></i> ' + t('Save Changes')}
       </button>`;
 
     window._rolesSave = savePermissions;
@@ -444,11 +444,11 @@ window.WorkVoltPages['roles'] = function(container) {
       return `
         <div class="bg-white border border-dashed border-slate-300 rounded-2xl p-10 text-center">
           <i class="fas fa-store text-slate-300 text-3xl mb-3"></i>
-          <p class="text-slate-500 font-semibold mb-1">No modules installed yet</p>
-          <p class="text-slate-400 text-sm mb-4">Install modules from the Module Store first, then configure their role permissions here.</p>
+          <p class="text-slate-500 font-semibold mb-1">${t('No modules installed yet')}</p>
+          <p class="text-slate-400 text-sm mb-4">${t('Install modules from the Module Store first, then configure their role permissions here.')}</p>
           <button onclick="window.WorkVolt.navigate('store')"
             class="inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors">
-            <i class="fas fa-store text-xs"></i> Browse Module Store
+            <i class="fas fa-store text-xs"></i> ${t('Browse Module Store')}
           </button>
         </div>`;
     }
@@ -458,9 +458,9 @@ window.WorkVoltPages['roles'] = function(container) {
 
         <!-- Legend + info -->
         <div class="flex flex-wrap items-center gap-4 text-xs text-slate-500">
-          <div class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-blue-500 inline-block"></span>Has access</div>
-          <div class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-slate-100 border border-slate-200 inline-block"></span>No access</div>
-          <div class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-purple-100 border border-purple-200 inline-block"></span>SuperAdmin (always on)</div>
+          <div class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-blue-500 inline-block"></span>${t('Has access')}</div>
+          <div class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-slate-100 border border-slate-200 inline-block"></span>${t('No access')}</div>
+          <div class="flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-purple-100 border border-purple-200 inline-block"></span>${t('SuperAdmin (always on)')}</div>
         </div>
 
         <!-- Matrix table -->
@@ -470,7 +470,7 @@ window.WorkVoltPages['roles'] = function(container) {
               <thead>
                 <tr class="border-b border-slate-100 bg-slate-50">
                   <th class="text-left px-5 py-3.5 font-bold text-slate-600 text-xs uppercase tracking-wide w-56">
-                    Module
+                    ${t('Module')}
                   </th>
                   ${ALL_ROLES.map(role => {
                     const m = ROLE_META[role];
@@ -482,11 +482,11 @@ window.WorkVoltPages['roles'] = function(container) {
                             group-hover:scale-105 transition-transform">
                             <i class="fas ${m.icon} text-[9px]"></i>${role}
                           </span>
-                          <span class="text-[9px] text-slate-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">click to toggle all</span>
+                          <span class="text-[9px] text-slate-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">${t('click to toggle all')}</span>
                         </div>
                       </th>`;
                   }).join('')}
-                  <th class="text-center px-4 py-3.5 w-20 text-xs text-slate-400 font-medium">All</th>
+                  <th class="text-center px-4 py-3.5 w-20 text-xs text-slate-400 font-medium">${t('All')}</th>
                 </tr>
               </thead>
               <tbody id="roles-matrix-body">
@@ -500,8 +500,8 @@ window.WorkVoltPages['roles'] = function(container) {
         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-start gap-3 text-xs text-slate-500">
           <i class="fas fa-info-circle text-blue-400 mt-0.5 flex-shrink-0"></i>
           <div>
-            <strong class="text-slate-700">Core modules are not shown here</strong> — Dashboard, Settings, Module Store, and Role Permissions have fixed access rules and cannot be changed.
-            SuperAdmin always has access to every module and cannot be unchecked.
+            <strong class="text-slate-700">${t('Core modules are not shown here')}</strong> ${t('— Dashboard, Settings, Module Store, and Role Permissions have fixed access rules and cannot be changed.')}
+            ${t('SuperAdmin always has access to every module and cannot be unchecked.')}
           </div>
         </div>
       </div>`;
@@ -546,7 +546,7 @@ window.WorkVoltPages['roles'] = function(container) {
             <button data-toggle-row="${mod.id}"
               class="text-[10px] font-bold px-2 py-1 rounded-lg transition-colors
                 ${rowAllOn ? 'text-red-500 hover:bg-red-50' : 'text-blue-500 hover:bg-blue-50'}">
-              ${rowAllOn ? 'Revoke all' : 'Grant all'}
+              ${rowAllOn ? t('Revoke all') : t('Grant all')}
             </button>
           </td>
         </tr>`;
@@ -561,11 +561,11 @@ window.WorkVoltPages['roles'] = function(container) {
       return `
         <div class="bg-amber-50 border border-amber-200 rounded-2xl p-8 text-center">
           <i class="fas fa-plug text-amber-400 text-3xl mb-3"></i>
-          <p class="font-bold text-amber-700 mb-1">Google Sheet not connected</p>
-          <p class="text-amber-600 text-sm mb-4">User overrides require a Sheet connection to load the user list.</p>
+          <p class="font-bold text-amber-700 mb-1">${t('Google Sheet not connected')}</p>
+          <p class="text-amber-600 text-sm mb-4">${t('User overrides require a Sheet connection to load the user list.')}</p>
           <button onclick="window.WorkVolt.navigate('settings')"
             class="inline-flex items-center gap-2 bg-amber-500 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-amber-600 transition-colors">
-            <i class="fas fa-plug text-xs"></i> Connect Sheet
+            <i class="fas fa-plug text-xs"></i> ${t('Connect Sheet')}
           </button>
         </div>`;
     }
@@ -574,8 +574,7 @@ window.WorkVoltPages['roles'] = function(container) {
       <div class="space-y-4">
         <div class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-xs text-blue-700 flex items-start gap-2">
           <i class="fas fa-info-circle mt-0.5 flex-shrink-0"></i>
-          <span>User overrides let you grant or restrict access to specific modules for individual users, 
-          overriding their role's default permissions. Users without an override follow their role's settings.</span>
+          <span>${t('User overrides let you grant or restrict access to specific modules for individual users, overriding their role\'s default permissions. Users without an override follow their role\'s settings.')}</span>
         </div>
         <div id="roles-overrides-body">
           ${overridesBodyHTML()}
@@ -587,7 +586,7 @@ window.WorkVoltPages['roles'] = function(container) {
     if (usersCache.length === 0) {
       return `<div class="bg-white border border-slate-200 rounded-2xl p-8 text-center text-slate-400">
         <i class="fas fa-users text-3xl mb-3"></i>
-        <p class="text-sm">No users loaded yet</p>
+        <p class="text-sm">${t('No users loaded yet')}</p>
       </div>`;
     }
 
@@ -627,26 +626,26 @@ window.WorkVoltPages['roles'] = function(container) {
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
                       <p class="text-sm font-semibold text-slate-900">${u.name || '—'}</p>
-                      ${overridden ? `<span class="text-[10px] font-bold px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded border border-orange-200">Custom</span>` : ''}
+                      ${overridden ? `<span class="text-[10px] font-bold px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded border border-orange-200">${t('Custom')}</span>` : ''}
                     </div>
                     <p class="text-xs text-slate-400">${u.email || ''}</p>
                   </div>
                   ${overridden ? `
                     <button data-clear-override="${uid}"
                       class="text-xs text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-red-50">
-                      <i class="fas fa-undo text-[10px]"></i> Reset to role defaults
+                      <i class="fas fa-undo text-[10px]"></i> ${t('Reset to role defaults')}
                     </button>` : ''}
                   <button onclick="this.closest('.border-b').querySelector('.override-modules').classList.toggle('hidden')"
                     class="text-xs text-blue-500 hover:text-blue-700 font-semibold px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-1">
                     <i class="fas fa-sliders-h text-[10px]"></i>
-                    ${overridden ? 'Edit' : 'Override'}
+                    ${overridden ? t('Edit') : t('Override')}
                   </button>
                 </div>
 
                 <!-- Module toggles (collapsed by default) -->
                 <div class="override-modules hidden px-5 pb-4">
                   <div class="bg-slate-50 rounded-xl p-3">
-                    <p class="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-3">Module Access</p>
+                    <p class="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-3">${t('Module Access')}</p>
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
                       ${addons.map(mod => {
                         // Resolve current access: override > role default
@@ -683,7 +682,7 @@ window.WorkVoltPages['roles'] = function(container) {
 
     return `
       <div class="space-y-4">
-        <p class="text-sm text-slate-500">This shows exactly what each role will see in their sidebar after saving.</p>
+        <p class="text-sm text-slate-500">${t('This shows exactly what each role will see in their sidebar after saving.')}</p>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           ${ALL_ROLES.map(role => {
             const rm = ROLE_META[role];
@@ -704,7 +703,7 @@ window.WorkVoltPages['roles'] = function(container) {
                     </div>
                     <span class="font-bold text-slate-900 text-sm">${role}</span>
                   </div>
-                  <span class="text-xs text-slate-400">${coreVisible.length + installedAccessible.length} visible</span>
+                  <span class="text-xs text-slate-400">${coreVisible.length + installedAccessible.length} ${t('visible')}</span>
                 </div>
 
                 <!-- Simulated sidebar -->
@@ -714,12 +713,12 @@ window.WorkVoltPages['roles'] = function(container) {
                     <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white border border-slate-100 text-xs font-medium text-slate-700">
                       <i class="fas ${c.icon} text-blue-400 w-3.5 text-center"></i>
                       ${c.label}
-                      <span class="ml-auto text-[9px] text-slate-300 font-normal">core</span>
+                      <span class="ml-auto text-[9px] text-slate-300 font-normal">${t('core')}</span>
                     </div>`).join('')}
 
                   ${installedAccessible.length > 0 ? `
                     <div class="pt-1.5 pb-0.5 px-3">
-                      <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Modules</p>
+                      <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${t('Modules')}</p>
                     </div>
                     ${installedAccessible.map(m => `
                       <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white border border-slate-100 text-xs font-medium text-slate-700">
@@ -729,7 +728,7 @@ window.WorkVoltPages['roles'] = function(container) {
                   ` : ''}
 
                 ${installedAccessible.length === 0 && coreVisible.length > 0 ? `
-                    <div class="px-3 py-2 text-xs text-slate-400 italic">No add-on modules</div>` : ''}
+                    <div class="px-3 py-2 text-xs text-slate-400 italic">${t('No add-on modules')}</div>` : ''}
                 </div>
               </div>`;
           }).join('')}
