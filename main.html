@@ -81,8 +81,16 @@
       #sidebar { position:fixed; top:0; left:0; height:100vh; z-index:50; transform:translateX(-100%); transition:transform .25s ease; }
       #sidebar.open { transform:translateX(0); }
     }
+
+    /* ─── Language switcher in dropdown ─── */
+    .lang-option { position:relative; display:flex; align-items:center; gap:.5rem; width:100%; padding:.5rem 1rem .5rem 2.75rem; font-size:.8rem; font-weight:500; cursor:pointer; transition:background .12s; color:#374151; background:none; border:none; text-align:left; font-family:inherit; }
+    .lang-option:hover { background:#f1f5f9; }
+    .lang-option.active { color:#2563eb; font-weight:700; }
+    .lang-option.active::before { content:'✓'; position:absolute; left:1rem; color:#2563eb; font-size:.8rem; }
   </style>
 <base target="_blank">
+<!-- Translation system — must load before any scripts below -->
+<script src="translations.js"></script>
 </head>
 
 <body class="min-h-screen">
@@ -100,7 +108,7 @@
       </div>
       <div class="text-center">
         <h1 class="text-4xl font-extrabold text-white tracking-tight">Work Volt</h1>
-        <p class="text-blue-200 mt-1.5 text-base font-medium">Power your operations</p>
+        <p id="splash-tagline" class="text-blue-200 mt-1.5 text-base font-medium">Power your operations</p>
       </div>
       <div class="flex gap-2 mt-1">
         <div class="w-2 h-2 bg-white/70 rounded-full animate-bounce" style="animation-delay:0ms"></div>
@@ -183,7 +191,7 @@
           <!-- Populated by renderNav() -->
         </nav>
         <div class="p-3 border-t border-slate-100 flex items-center justify-between">
-          <p class="text-[10px] text-slate-400 font-medium sidebar-footer-text">Work Volt · v1.0.0</p>
+          <p id="sidebar-version" class="text-[10px] text-slate-400 font-medium sidebar-footer-text">Work Volt · v1.0.0</p>
           <button onclick="toggleSidebarCollapse()" title="Collapse sidebar"
             class="sidebar-collapse-btn w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all flex-shrink-0">
             <i class="fas fa-chevron-left text-xs" style="transition:transform .22s"></i>
@@ -218,7 +226,7 @@
   <div id="global-loading" class="hidden fixed inset-0 bg-white/70 z-50 flex items-center justify-center backdrop-blur-sm">
     <div class="flex flex-col items-center gap-3">
       <i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i>
-      <p class="text-slate-600 text-sm font-medium">Loading...</p>
+      <p id="loading-text" class="text-slate-600 text-sm font-medium">Loading...</p>
     </div>
   </div>
 
@@ -227,6 +235,36 @@
        CORE JAVASCRIPT
   ══════════════════════════════════════════ -->
   <script>
+  // ─────────────────────────────────────────────
+  //  i18n SHORTHAND
+  // ─────────────────────────────────────────────
+  function t(key) {
+    return (window.WorkVoltI18n && window.WorkVoltI18n.t(key)) || key;
+  }
+
+  function applyShellTranslations() {
+    if (!window.WorkVoltI18n) return;
+    document.documentElement.lang = window.WorkVoltI18n.getLang();
+    const el = id => document.getElementById(id);
+    if (el('splash-tagline'))  el('splash-tagline').textContent  = t('splash.tagline');
+    if (el('global-search'))   el('global-search').placeholder   = t('header.search');
+    if (el('loading-text'))    el('loading-text').textContent    = t('loading.text');
+    if (el('sidebar-version')) el('sidebar-version').textContent = t('app.version');
+  }
+
+  // When language changes → re-render nav + dropdown + current page
+  window.addEventListener('wv-lang-change', () => {
+    applyShellTranslations();
+    renderNav();
+    // Re-render the open dropdown if visible
+    if (!document.getElementById('user-dropdown').classList.contains('hidden')) {
+      renderUserDropdown();
+    }
+    // Reload current page so module pages pick up new language if they support it
+    const current = sessionStorage.getItem('lastModule') || 'dashboard';
+    showModule(current, false);
+  });
+
   // ─────────────────────────────────────────────
   //  CONFIG & STATE
   // ─────────────────────────────────────────────
@@ -316,24 +354,24 @@
   }
 
   const ADDON_CATALOGUE = {
-    notifications: { label: 'Notifications', icon: 'fa-bell', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    tasks:       { label: 'Tasks', icon: 'fa-check-circle', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    pipeline:    { label: 'Pipeline', icon: 'fa-users', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    payroll:     { label: 'Payroll', icon: 'fa-money-bill-wave', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    timesheets:  { label: 'Timesheets', icon: 'fa-clock', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    financials:  { label: 'Financials', icon: 'fa-chart-line', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    crm:         { label: 'CRM', icon: 'fa-address-book', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    projects:    { label: 'Projects', icon: 'fa-folder-open', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    reports:     { label: 'Reports', icon: 'fa-chart-pie', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    assets:      { label: 'Assets', icon: 'fa-box-open', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    attendance:  { label: 'Attendance Tracker', icon: 'fa-calendar-check', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    invoices:    { label: 'Invoice Manager', icon: 'fa-file-invoice-dollar', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    inventory:   { label: 'Inventory Control', icon: 'fa-warehouse', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    scheduler:   { label: 'Shift Scheduler', icon: 'fa-calendar-alt', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    expenses:    { label: 'Expense Claims', icon: 'fa-receipt', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    contracts:   { label: 'Contract Hub', icon: 'fa-file-signature', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    helpdesk:    { label: 'Help Desk', icon: 'fa-headset', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    recruitment: { label: 'Recruitment Pipeline', icon: 'fa-user-tie', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    notifications: { label: 'Notifications',         labelKey: 'module.notifications', icon: 'fa-bell',                roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    tasks:       { label: 'Tasks',                   labelKey: 'module.tasks',         icon: 'fa-check-circle',        roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    pipeline:    { label: 'Pipeline',                labelKey: 'module.pipeline',      icon: 'fa-users',               roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    payroll:     { label: 'Payroll',                 labelKey: 'module.payroll',       icon: 'fa-money-bill-wave',     roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    timesheets:  { label: 'Timesheets',              labelKey: 'module.timesheets',    icon: 'fa-clock',               roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    financials:  { label: 'Financials',              labelKey: 'module.financials',    icon: 'fa-chart-line',          roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    crm:         { label: 'CRM',                     labelKey: 'module.crm',           icon: 'fa-address-book',        roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    projects:    { label: 'Projects',                labelKey: 'module.projects',      icon: 'fa-folder-open',         roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    reports:     { label: 'Reports',                 labelKey: 'module.reports',       icon: 'fa-chart-pie',           roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    assets:      { label: 'Assets',                  labelKey: 'module.assets',        icon: 'fa-box-open',            roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    attendance:  { label: 'Attendance Tracker',      labelKey: 'module.attendance',    icon: 'fa-calendar-check',      roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    invoices:    { label: 'Invoice Manager',         labelKey: 'module.invoices',      icon: 'fa-file-invoice-dollar', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    inventory:   { label: 'Inventory Control',       labelKey: 'module.inventory',     icon: 'fa-warehouse',           roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    scheduler:   { label: 'Shift Scheduler',         labelKey: 'module.scheduler',     icon: 'fa-calendar-alt',        roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    expenses:    { label: 'Expense Claims',          labelKey: 'module.expenses',      icon: 'fa-receipt',             roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    contracts:   { label: 'Contract Hub',            labelKey: 'module.contracts',     icon: 'fa-file-signature',      roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    helpdesk:    { label: 'Help Desk',               labelKey: 'module.helpdesk',      icon: 'fa-headset',             roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    recruitment: { label: 'Recruitment Pipeline',    labelKey: 'module.recruitment',   icon: 'fa-user-tie',            roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
   };
 
   let INSTALLED_MODULES = [];
@@ -475,6 +513,7 @@
   async function showApp() {
     hideSplash();
     document.getElementById('app-screen').classList.remove('hidden');
+    applyShellTranslations();
 
     const name = currentUser?.name || 'User';
     const initials = name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
@@ -541,7 +580,7 @@
          class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
          data-module="dashboard">
         <i class="fas fa-th-large w-4 text-slate-400"></i>
-        <span class="nav-label">Dashboard</span>
+        <span class="nav-label">${t('nav.dashboard')}</span>
       </a>`;
 
     let addons = (window.INSTALLED_MODULES || []).filter(m => {
@@ -563,12 +602,13 @@
 
     const addonLinks = addons.length ? `
       <div class="px-3 pt-4 pb-1 flex items-center justify-between">
-        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest nav-section-label">Modules</p>
-        <span class="text-[9px] text-slate-300 font-medium drag-hint">drag to reorder</span>
+        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest nav-section-label">${t('nav.modules')}</p>
+        <span class="text-[9px] text-slate-300 font-medium drag-hint">${t('nav.drag_hint')}</span>
       </div>
       <div id="nav-sortable" class="space-y-0.5">
         ${addons.map(m => {
           const def = ADDON_CATALOGUE[m.id] || {};
+          const label = def.labelKey ? t(def.labelKey) : (def.label || m.label || m.id);
           return `
             <div class="nav-sortable-item" data-module-id="${m.id}" draggable="true">
               <a href="#${m.id}" onclick="showModule('${m.id}'); return false;"
@@ -576,7 +616,7 @@
                  data-module="${m.id}">
                 <i class="fas fa-grip-vertical text-slate-200 group-hover:text-slate-300 text-[10px] flex-shrink-0 cursor-grab"></i>
                 <i class="fas ${def.icon || m.icon} w-4 text-slate-400 flex-shrink-0"></i>
-                <span class="nav-label">${def.label || m.label}</span>
+                <span class="nav-label">${label}</span>
               </a>
             </div>`;
         }).join('')}
@@ -590,21 +630,21 @@
            class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
            data-module="settings">
           <i class="fas fa-cog w-4 text-slate-400"></i>
-          <span class="nav-label">Settings</span>
+          <span class="nav-label">${t('nav.settings')}</span>
         </a>` : ''}
         ${MODULE_ROLES.store.includes(role) ? `
         <a href="#store" onclick="showModule('store'); return false;"
            class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
            data-module="store">
           <i class="fas fa-store w-4 text-slate-400"></i>
-          <span class="nav-label">Module Store</span>
+          <span class="nav-label">${t('nav.store')}</span>
         </a>` : ''}
         ${MODULE_ROLES.roles.includes(role) ? `
         <a href="#roles" onclick="showModule('roles'); return false;"
            class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
            data-module="roles">
           <i class="fas fa-shield-alt w-4 text-slate-400"></i>
-          <span class="nav-label">Role Permissions</span>
+          <span class="nav-label">${t('nav.roles')}</span>
         </a>` : ''}
       </div>`;
 
@@ -723,30 +763,44 @@
     if (!inner) return;
 
     const isSuperAdmin = (currentUser?.role === 'SuperAdmin');
+    const currentLang  = window.WorkVoltI18n ? window.WorkVoltI18n.getLang() : 'en';
 
     inner.innerHTML = `
       <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Account</p>
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">${t('menu.account')}</p>
       </div>
       <button onclick="openProfileModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-        <i class="fas fa-user-circle text-slate-400 w-4"></i>My Profile
+        <i class="fas fa-user-circle text-slate-400 w-4"></i>${t('menu.profile')}
       </button>
       <button onclick="openSecurityModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-        <i class="fas fa-shield-alt text-slate-400 w-4"></i>Security & Password
+        <i class="fas fa-shield-alt text-slate-400 w-4"></i>${t('menu.security')}
       </button>
       
       ${isSuperAdmin ? `
       <div class="border-t border-slate-100"></div>
       <button onclick="openMimicModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-violet-700 hover:bg-violet-50 flex items-center gap-2.5 transition-colors">
-        <i class="fas fa-user-secret text-violet-400 w-4"></i>Mimic Profile
+        <i class="fas fa-user-secret text-violet-400 w-4"></i>${t('menu.mimic')}
         <span class="ml-auto text-[10px] text-violet-400 bg-violet-50 border border-violet-200 rounded px-1 font-bold">SA</span>
       </button>` : ''}
+
+      <div class="border-t border-slate-100"></div>
+      <div class="px-4 py-2 flex items-center gap-2 pointer-events-none">
+        <i class="fas fa-globe text-slate-400 w-4 text-sm"></i>
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">${t('menu.language')}</span>
+      </div>
+      <button onclick="switchLang('en')" class="lang-option ${currentLang === 'en' ? 'active' : ''}">${t('menu.switch_en')}</button>
+      <button onclick="switchLang('fr')" class="lang-option ${currentLang === 'fr' ? 'active' : ''}">${t('menu.switch_fr')}</button>
       
       <div class="border-t border-slate-100"></div>
       <button onclick="handleLogout()" class="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors">
-        <i class="fas fa-sign-out-alt text-red-400 w-4"></i>Logout
+        <i class="fas fa-sign-out-alt text-red-400 w-4"></i>${t('menu.logout')}
       </button>
     `;
+  }
+
+  function switchLang(lang) {
+    if (window.WorkVoltI18n) window.WorkVoltI18n.setLang(lang);
+    closeUserMenu();
   }
 
   function toggleUserMenu(e) {
@@ -761,8 +815,8 @@
     document.getElementById('user-dropdown').classList.add('hidden');
   }
 
-  function openProfileModal() { showToast('Profile modal — coming soon', 'info'); }
-  function openSecurityModal() { showToast('Security modal — coming soon', 'info'); }
+  function openProfileModal() { showToast(t('toast.profile_soon'), 'info'); }
+  function openSecurityModal() { showToast(t('toast.security_soon'), 'info'); }
 
   // ─────────────────────────────────────────────
   //  MOBILE SIDEBAR
@@ -815,6 +869,7 @@
     session: () => currentSession,
     toast: showToast,
     navigate: showModule,
+    t: t,
   };
   window.WorkVoltPages = window.WorkVoltPages || {};
   window.renderNav = renderNav;
