@@ -471,6 +471,25 @@
       'Permissions saved locally (connect Sheet to sync globally)': 'Permissions sauvegardées localement (connectez la feuille pour synchroniser)',
       'Permissions saved successfully': 'Permissions enregistrées avec succès',
 
+      // ── Module Store ────────────────────────────────────────
+      'Extend your workspace with powerful add-on modules. Install once, appears in your sidebar instantly.': 'Étendez votre espace de travail avec des modules puissants. Installez-les une fois, ils apparaissent immédiatement dans votre menu.',
+      'Featured Modules': 'Modules en vedette',
+      'Featured': 'En vedette',
+      'Installed': 'Installés',
+      'Install': 'Installer',
+      'Remove': 'Retirer',
+      'Coming Soon': 'Bientôt disponible',
+      'Coming Soon — Check back later!': 'Bientôt disponible — Revenez plus tard !',
+      'Install Module': 'Installer le module',
+      'No modules found': 'Aucun module trouvé',
+      'Try a different search or category': 'Essayez une autre recherche ou catégorie',
+      "What's Included": 'Ce qui est inclus',
+      'Sidebar navigation entry': 'Entrée dans le menu latéral',
+      'Full module UI page': 'Page UI complète du module',
+      'Google Sheet integration ready': 'Intégration Google Sheet prête',
+      'Role-based access control': 'Contrôle d\'accès par rôle',
+      'by': 'par',
+
       // ── Module catalogue labels (used in store/sidebar) ────
       'Notifications': 'Notifications',
       'Tasks': 'Tâches',
