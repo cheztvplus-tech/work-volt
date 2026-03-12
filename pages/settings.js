@@ -89,7 +89,7 @@ window.WorkVoltPages['settings'] = function(container) {
         '</div>' +
         '<p class="text-xs text-amber-600 mt-2.5">' +
           '<i class="fas fa-exclamation-triangle mr-1"></i>' +
-          '${t('This password is shown')} <strong>${t('once only')}</strong> ${t('— it is not stored anywhere. Copy it now.')}' +
+          t('This password is shown') + ' <strong>' + t('once only') + '</strong> ' + t('— it is not stored anywhere. Copy it now.') +
         '</p>' +
       '</div>'
     );
