@@ -478,7 +478,7 @@ window.WorkVoltPages['store'] = function(container) {
                 class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${activeCategory === cat
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600'}">
-                ${cat}
+                ${t(cat)}
               </button>
             `).join('')}
           </div>
