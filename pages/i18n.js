@@ -244,6 +244,23 @@
       'Permissions saved successfully': 'Permissions saved successfully',
     },
 
+
+      // ── Store ──────────────────────────────────────────────────────
+      "What\'s Included": "What\'s Included",
+      'installed!': 'installed!',
+      'Install failed': 'Install failed',
+      'Uninstall failed': 'Uninstall failed',
+      'Module removed': 'Module removed',
+      'Please connect Google Sheet first': 'Please connect Google Sheet first',
+      'Not connected to server — please check Settings → Connection': 'Not connected to server — please check Settings → Connection',
+      'HR': 'HR',
+      'Finance': 'Finance',
+      'Sales': 'Sales',
+      'Productivity': 'Productivity',
+      'Operations': 'Operations',
+      'Analytics': 'Analytics',
+      'Legal': 'Legal',
+      'Support': 'Support',
     fr: {
       // ── General ───────────────────────────────────────────
       'Work Volt': 'Work Volt',
@@ -543,6 +560,22 @@
       'Passwords do not match.': 'Les mots de passe ne correspondent pas.',
       'Password updated successfully.': 'Mot de passe mis à jour avec succès.',
       'Please fill in all fields': 'Veuillez remplir tous les champs',
+      // ── Store ──────────────────────────────────────────────────────
+      "What\'s Included": 'Ce qui est inclus',
+      'installed!': 'installé !',
+      'Install failed': 'Échec de l\'installation',
+      'Uninstall failed': 'Échec de la désinstallation',
+      'Module removed': 'Module supprimé',
+      'Please connect Google Sheet first': 'Veuillez d\'abord connecter votre Google Sheet',
+      'Not connected to server — please check Settings → Connection': 'Non connecté au serveur — vérifiez Paramètres → Connexion',
+      'HR': 'RH',
+      'Finance': 'Finance',
+      'Sales': 'Ventes',
+      'Productivity': 'Productivité',
+      'Operations': 'Opérations',
+      'Analytics': 'Analyses',
+      'Legal': 'Juridique',
+      'Support': 'Support',
     },
   };
 
