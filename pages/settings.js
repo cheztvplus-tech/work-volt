@@ -83,7 +83,7 @@ window.WorkVoltPages['settings'] = function(container) {
             '<span class="font-semibold text-slate-800">' + provision.admin_email + '</span>' +
           '</div>' +
           '<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 border border-amber-200">' +
-            '<span class="text-amber-600">${t('Temp password')}</span>' +
+            '<span class="text-amber-600">' + t('Temp password') + '</span>' +
             '<span class="font-bold text-amber-800 tracking-wider">' + provision.temp_password + '</span>' +
           '</div>' +
         '</div>' +
