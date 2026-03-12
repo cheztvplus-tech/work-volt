@@ -75,7 +75,7 @@ window.WorkVoltPages['settings'] = function(container) {
       '<div class="mt-3 bg-white border border-amber-300 rounded-xl p-4">' +
         '<div class="flex items-center gap-2 mb-2">' +
           '<i class="fas fa-key text-amber-500"></i>' +
-          '<span class="font-bold text-amber-700 text-sm">${t('First-time credentials — save these now!')}</span>' +
+          '<span class="font-bold text-amber-700 text-sm">' + t('First-time credentials — save these now!') + '</span>' +
         '</div>' +
         '<div class="space-y-1.5 font-mono text-xs">' +
           '<div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">' +
@@ -83,13 +83,13 @@ window.WorkVoltPages['settings'] = function(container) {
             '<span class="font-semibold text-slate-800">' + provision.admin_email + '</span>' +
           '</div>' +
           '<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 border border-amber-200">' +
-            '<span class="text-amber-600">${t('Temp password')}</span>' +
+            '<span class="text-amber-600">' + t('Temp password') + '</span>' +
             '<span class="font-bold text-amber-800 tracking-wider">' + provision.temp_password + '</span>' +
           '</div>' +
         '</div>' +
         '<p class="text-xs text-amber-600 mt-2.5">' +
           '<i class="fas fa-exclamation-triangle mr-1"></i>' +
-          '${t('This password is shown')} <strong>${t('once only')}</strong> ${t('— it is not stored anywhere. Copy it now.')}' +
+          t('This password is shown') + ' <strong>' + t('once only') + '</strong> ' + t('— it is not stored anywhere. Copy it now.') +
         '</p>' +
       '</div>'
     );
@@ -406,7 +406,7 @@ window.WorkVoltPages['settings'] = function(container) {
   function renderUserForm(user) {
     var isEdit    = !!user;
     var title     = isEdit ? t('Edit User') : t('Add User');
-    var btnLabel  = isEdit ? '<i class="fas fa-save text-sm"></i> ' + t('Save Changes') : '<i class="fas fa-user-plus text-sm"></i> ' + t('Create User'';
+    var btnLabel  = isEdit ? '<i class="fas fa-save text-sm"></i> ' + t('Save Changes') : '<i class="fas fa-user-plus text-sm"></i> ' + t('Create User');
     var val       = function(f) { return isEdit && user[f] ? String(user[f]).replace(/"/g, '&quot;') : ''; };
     var roles     = ['SuperAdmin', 'Admin', 'Manager', 'Employee', 'Contractor'];
     var payTypes  = ['', 'hourly', 'salary', 'pay_per_task'];
@@ -433,7 +433,7 @@ window.WorkVoltPages['settings'] = function(container) {
       '<div class="px-6 py-5 space-y-4">' +
         '<div id="user-form-status"></div>' +
         '<div class="grid grid-cols-2 gap-3">' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">${t('Full Name')}</label>' +
+          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">' + t('Full Name') + '</label>' +
           '<input id="uf-name" type="text" placeholder="Jane Smith" value="' + val('name') + '" class="field text-sm"></div>' +
           '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">' + t('Email') + ' <span class="text-red-500">*</span></label>' +
           '<input id="uf-email" type="email" placeholder="jane@company.com" value="' + val('email') + '" class="field text-sm"></div>' +
@@ -475,7 +475,7 @@ window.WorkVoltPages['settings'] = function(container) {
             '</div>' +
           '</div>' +
         '</div>' +
-        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">${t('Avatar URL')}</label>' +
+        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">' + t('Avatar URL') + '</label>' +
         '<input id="uf-avatar_url" type="url" placeholder="https://…" value="' + val('avatar_url') + '" class="field text-sm"></div>' +
         '<div class="flex gap-3 pt-2">' +
           '<button onclick="usersCloseModal()" class="btn-secondary flex-1">Cancel</button>' +
@@ -488,15 +488,15 @@ window.WorkVoltPages['settings'] = function(container) {
   function renderResetModal(userId, email) {
     return (
       '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
-        '<h3 class="font-bold text-slate-900">${t('Reset Password')}</h3>' +
+        '<h3 class="font-bold text-slate-900">' + t('Reset Password') + '</h3>' +
         '<button onclick="usersCloseModal()" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100"><i class="fas fa-times text-sm"></i></button>' +
       '</div>' +
       '<div class="px-6 py-5 space-y-4">' +
         '<div id="user-form-status"></div>' +
         '<p class="text-sm text-slate-600">Set a new password for <strong>' + email + '</strong>.</p>' +
-        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">${t('New Password')} <span class="text-red-500">*</span></label>' +
+        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">' + t('New Password') + ' <span class="text-red-500">*</span></label>' +
         '<input id="uf-new-password" type="password" placeholder="New password" class="field text-sm"></div>' +
-        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">${t('Confirm Password')} <span class="text-red-500">*</span></label>' +
+        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">' + t('Confirm Password') + ' <span class="text-red-500">*</span></label>' +
         '<input id="uf-confirm-password" type="password" placeholder="Confirm password" class="field text-sm"></div>' +
         '<div class="flex gap-3 pt-2">' +
           '<button onclick="usersCloseModal()" class="btn-secondary flex-1">Cancel</button>' +
@@ -509,7 +509,7 @@ window.WorkVoltPages['settings'] = function(container) {
   function renderDeleteModal(userId, displayName) {
     return (
       '<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">' +
-        '<h3 class="font-bold text-red-700">${t('Delete User')}</h3>' +
+        '<h3 class="font-bold text-red-700">' + t('Delete User') + '</h3>' +
         '<button onclick="usersCloseModal()" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100"><i class="fas fa-times text-sm"></i></button>' +
       '</div>' +
       '<div class="px-6 py-5 space-y-4">' +
@@ -598,8 +598,8 @@ window.WorkVoltPages['settings'] = function(container) {
       document.getElementById('users-table-wrap').innerHTML =
         '<div class="flex flex-col items-center justify-center py-16 text-slate-400">' +
           '<i class="fas fa-plug text-3xl mb-3"></i>' +
-          '<p class="text-sm font-medium">${t('Connect your Google Sheet first')}</p>' +
-          '<p class="text-xs mt-1">${t('Go to the Connection tab to set up your GAS URL and secret.')}</p>' +
+          '<p class="text-sm font-medium">' + t('Connect your Google Sheet first') + '</p>' +
+          '<p class="text-xs mt-1">' + t('Go to the Connection tab to set up your GAS URL and secret.') + '</p>' +
         '</div>';
       var countEl = document.getElementById('users-count');
       if (countEl) countEl.textContent = '';
@@ -798,7 +798,7 @@ window.WorkVoltPages['settings'] = function(container) {
             </div>
             <div class="pt-1">
               <button onclick="saveAdminConfig()" id="admin-config-save-btn" class="btn-primary w-full">
-                <i class="fas fa-save text-sm"></i> ' + t('Save Configuration') + '
+                <i class="fas fa-save text-sm"></i> ${t('Save Configuration')}
               </button>
             </div>
           </div>
@@ -832,7 +832,7 @@ window.WorkVoltPages['settings'] = function(container) {
     try {
       await api('config/set', { key: 'user_id_format', value: fmt.value });
       adminConfigCache['user_id_format'] = fmt.value;
-      statusEl.innerHTML = '<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium mb-3 bg-green-50 text-green-700 border border-green-200"><i class="fas fa-check-circle"></i><span>${t('Configuration saved!')}</span></div>';
+      statusEl.innerHTML = '<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium mb-3 bg-green-50 text-green-700 border border-green-200"><i class="fas fa-check-circle"></i><span>' + t('Configuration saved!') + '</span></div>';
     } catch(e) {
       statusEl.innerHTML = '<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium mb-3 bg-red-50 text-red-600 border border-red-200"><i class="fas fa-exclamation-circle"></i><span>' + e.message + '</span></div>';
     }
@@ -882,7 +882,7 @@ window.WorkVoltPages['settings'] = function(container) {
 
         <!-- Installed -->
         <div class="mb-6">
-          <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">' + t('Installed') + '</h3>
+          <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">${t('Installed')}</h3>
           <div id="modules-installed" class="space-y-2">
             <div class="flex items-center justify-center py-8 text-slate-400">
               <i class="fas fa-circle-notch fa-spin text-xl"></i>
@@ -895,7 +895,7 @@ window.WorkVoltPages['settings'] = function(container) {
 
         <!-- Available -->
         <div>
-          <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">' + t('Available') + '</h3>
+          <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">${t('Available')}</h3>
           <div id="modules-available" class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div class="flex items-center justify-center py-8 text-slate-400 col-span-2">
               <i class="fas fa-circle-notch fa-spin text-xl"></i>
@@ -1135,8 +1135,8 @@ window.WorkVoltPages['settings'] = function(container) {
               '<i class="fas fa-money-bill-wave text-emerald-600 text-sm"></i>' +
             '</div>' +
             '<div class="flex-1">' +
-              '<h2 class="font-bold text-slate-900">${t('Payroll Tax Settings')}</h2>' +
-              '<p class="text-xs text-slate-500">${t('Auto-calculate taxes on every pay run. Disable if you enter taxes manually.')}</p>' +
+              '<h2 class="font-bold text-slate-900">' + t('Payroll Tax Settings') + '</h2>' +
+              '<p class="text-xs text-slate-500">' + t('Auto-calculate taxes on every pay run. Disable if you enter taxes manually.') + '</p>' +
             '</div>' +
             // Master on/off toggle
             '<div class="flex items-center gap-2">' +
@@ -1157,7 +1157,7 @@ window.WorkVoltPages['settings'] = function(container) {
 
               // Country selector
               '<div>' +
-                '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">${t('Country / Region')}</label>' +
+                '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">' + t('Country / Region') + '</label>' +
                 '<div class="grid grid-cols-2 gap-3">' +
                   '<label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors ' +
                     (isUSA ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300') + '">' +
@@ -1193,7 +1193,7 @@ window.WorkVoltPages['settings'] = function(container) {
               '<div class="border border-slate-200 rounded-xl overflow-hidden">' +
                 '<div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center gap-2">' +
                   '<i class="fas fa-user-shield text-slate-400 text-xs"></i>' +
-                  '<span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">${t('Who Can View Tax Settings')}</span>' +
+                  '<span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">' + t('Who Can View Tax Settings') + '</span>' +
                 '</div>' +
                 '<div class="p-4">' +
                   '<p class="text-[11px] text-slate-500 mb-3">Choose which roles can view the tax rates panel inside the Payroll module. Admins can always edit; other roles see a read-only view.</p>' +
@@ -1209,7 +1209,7 @@ window.WorkVoltPages['settings'] = function(container) {
                           '<label class="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-slate-50 cursor-pointer ' + (isLocked ? 'opacity-70' : '') + '">' +
                             '<div class="flex items-center gap-2">' +
                               '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-' + col + '-100 text-' + col + '-700">' + r + '</span>' +
-                              (isLocked ? '<span class="text-[10px] text-slate-400">${t('Always has access')}</span>' : '') +
+                              (isLocked ? '<span class="text-[10px] text-slate-400">' + t('Always has access') + '</span>' : '') +
                             '</div>' +
                             '<input type="checkbox" class="ptax-role-check w-4 h-4 accent-emerald-600 rounded" value="' + r + '"' +
                               (isChecked ? ' checked' : '') +
