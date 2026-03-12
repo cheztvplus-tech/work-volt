@@ -289,11 +289,11 @@ window.WorkVoltPages['store'] = function(container) {
     const btn = document.querySelector(`button[data-install="${mod.id}"]`);
     if (btn) { 
         btn.disabled = true; 
-        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Installing…'; 
+        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> ' + t('Installing…'); 
     }
 
     if (!gasUrl) {
-        window.WorkVolt?.toast('Please connect Google Sheet first', 'error');
+        window.WorkVolt?.toast(t('Please connect Google Sheet first'), 'error');
         if (btn) { 
             btn.disabled = false; 
             btn.innerHTML = '<i class="fas fa-download text-xs"></i> ' + t('Install'); 
@@ -326,13 +326,13 @@ window.WorkVoltPages['store'] = function(container) {
         
         if (modulesData.modules) {
             window.INSTALLED_MODULES = modulesData.modules;
-            window.WorkVolt?.toast(`${mod.label} installed!`, 'success');
+            window.WorkVolt?.toast(t(mod.label) + ' ' + t('installed!'), 'success');
             if (typeof renderNav === 'function') renderNav();
             render();
         }
 
     } catch(e) {
-        window.WorkVolt?.toast(`Install failed: ${e.message}`, 'error');
+        window.WorkVolt?.toast(t('Install failed') + ': ' + e.message, 'error');
         if (btn) { 
             btn.disabled = false; 
             btn.innerHTML = '<i class="fas fa-download text-xs"></i> ' + t('Install'); 
@@ -348,7 +348,7 @@ window.WorkVoltPages['store'] = function(container) {
     const sheetId   = localStorage.getItem('wv_sheet_id') || '';
 
     if (!gasUrl || !apiSecret) {
-        window.WorkVolt?.toast('Not connected to server — please check Settings → Connection', 'error');
+        window.WorkVolt?.toast(t('Not connected to server — please check Settings → Connection'), 'error');
         return;
     }
 
@@ -377,10 +377,10 @@ window.WorkVoltPages['store'] = function(container) {
             window.INSTALLED_MODULES = modulesData.modules;
             if (typeof renderNav === 'function') renderNav();
             render();
-            window.WorkVolt?.toast('Module removed', 'info');
+            window.WorkVolt?.toast(t('Module removed'), 'info');
         }
     } catch(e) {
-        window.WorkVolt?.toast(`Uninstall failed: ${e.message}`, 'error');
+        window.WorkVolt?.toast(t('Uninstall failed') + ': ' + e.message, 'error');
         console.error('Uninstall error:', e);
     }
   }
@@ -416,7 +416,7 @@ window.WorkVoltPages['store'] = function(container) {
               </div>
               <div>
                 <p class="text-blue-300 text-xs font-semibold tracking-widest uppercase">Work Volt</p>
-                <h1 class="text-white text-2xl font-extrabold leading-tight">${t('Module Store')}</h1>
+                <h1 class="text-white text-2xl font-extrabold leading-tight">${t(t('Module Store'))}</h1>
               </div>
             </div>
             <p class="text-slate-300 text-sm max-w-lg mb-6">${t('Extend your workspace with powerful add-on modules. Install once, appears in your sidebar instantly.')}</p>
@@ -448,9 +448,9 @@ window.WorkVoltPages['store'] = function(container) {
                   <div class="w-7 h-7 bg-gradient-to-br ${CATALOGUE.find(c=>c.id===m.id)?.gradient||'from-slate-400 to-slate-500'} rounded-lg flex items-center justify-center">
                     <i class="fas ${m.icon} text-white text-xs"></i>
                   </div>
-                  <span class="text-sm font-semibold text-slate-700">${m.label}</span>
+                  <span class="text-sm font-semibold text-slate-700">${t(m.label)}</span>
                   <span class="text-xs text-slate-400">v${m.version}</span>
-                  <button onclick="storeUninstall('${m.id}')" class="ml-1 text-slate-300 hover:text-red-400 transition-colors" title="Uninstall">
+                  <button onclick="storeUninstall('${m.id}')" class="ml-1 text-slate-300 hover:text-red-400 transition-colors" title="${t('Uninstall')}">
                     <i class="fas fa-times text-xs"></i>
                   </button>
                 </div>
@@ -535,12 +535,12 @@ window.WorkVoltPages['store'] = function(container) {
         <div class="absolute -right-4 -bottom-4 opacity-10">
           <i class="fas ${m.icon} text-8xl"></i>
         </div>
-        <span class="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-3 block">${m.category}</span>
+        <span class="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-3 block">${t(m.category)}</span>
         <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-3">
           <i class="fas ${m.icon} text-white text-lg"></i>
         </div>
-        <h3 class="font-bold text-base mb-1">${m.label}</h3>
-        <p class="text-xs opacity-75 leading-relaxed line-clamp-2 mb-4">${m.description}</p>
+        <h3 class="font-bold text-base mb-1">${t(m.label)}</h3>
+        <p class="text-xs opacity-75 leading-relaxed line-clamp-2 mb-4">${t(m.description)}</p>
         <div class="flex items-center justify-between">
           <span class="text-xs opacity-60">v${m.version}</span>
           ${inst
@@ -567,14 +567,14 @@ window.WorkVoltPages['store'] = function(container) {
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-0.5">
-              <h3 class="font-bold text-slate-900 text-sm">${m.label}</h3>
-              <span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">${m.category}</span>
+              <h3 class="font-bold text-slate-900 text-sm">${t(m.label)}</h3>
+              <span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">${t(m.category)}</span>
               ${coming
                 ? `<span class="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-clock text-[8px] mr-0.5"></i>${t('Coming Soon')}</span>`
                 : m.featured ? `<span class="text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-star text-[8px] mr-0.5"></i>${t('Featured')}</span>` : ''
               }
             </div>
-            <p class="text-xs text-slate-500 leading-relaxed line-clamp-2">${m.description}</p>
+            <p class="text-xs text-slate-500 leading-relaxed line-clamp-2">${t(m.description)}</p>
           </div>
         </div>
         <div class="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
@@ -622,9 +622,9 @@ window.WorkVoltPages['store'] = function(container) {
         <div class="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
           <i class="fas ${m.icon} text-2xl"></i>
         </div>
-        <h2 class="text-xl font-extrabold mb-1">${m.label}</h2>
+        <h2 class="text-xl font-extrabold mb-1">${t(m.label)}</h2>
         <div class="flex items-center gap-2 text-xs opacity-80">
-          <span>${m.category}</span>
+          <span>${t(m.category)}</span>
           <span>·</span>
           <span>${t('by')} ${m.author}</span>
           <span>·</span>
@@ -634,7 +634,7 @@ window.WorkVoltPages['store'] = function(container) {
 
       <!-- Body -->
       <div class="p-6 overflow-y-auto flex-1">
-        <p class="text-slate-600 text-sm leading-relaxed mb-5">${m.description}</p>
+        <p class="text-slate-600 text-sm leading-relaxed mb-5">${t(m.description)}</p>
 
         <!-- Tags -->
         <div class="flex flex-wrap gap-2 mb-6">
