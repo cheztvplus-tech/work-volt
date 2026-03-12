@@ -392,7 +392,7 @@ window.WorkVoltPages['store'] = function(container) {
       const matchSearch = !q ||
         m.label.toLowerCase().includes(q) ||
         m.description.toLowerCase().includes(q) ||
-        m.tags.some(t => t.includes(q));
+        m.tags.some(tag => tag.includes(q));
       return matchCat && matchSearch;
     });
   }
@@ -416,7 +416,7 @@ window.WorkVoltPages['store'] = function(container) {
               </div>
               <div>
                 <p class="text-blue-300 text-xs font-semibold tracking-widest uppercase">Work Volt</p>
-                <h1 class="text-white text-2xl font-extrabold leading-tight">${t(t('Module Store'))}</h1>
+                <h1 class="text-white text-2xl font-extrabold leading-tight">${t('Module Store')}</h1>
               </div>
             </div>
             <p class="text-slate-300 text-sm max-w-lg mb-6">${t('Extend your workspace with powerful add-on modules. Install once, appears in your sidebar instantly.')}</p>
@@ -638,7 +638,7 @@ window.WorkVoltPages['store'] = function(container) {
 
         <!-- Tags -->
         <div class="flex flex-wrap gap-2 mb-6">
-          ${m.tags.map(t => `<span class="text-xs bg-slate-100 text-slate-500 px-3 py-1 rounded-full font-medium">#${t}</span>`).join('')}
+          ${m.tags.map(tag => `<span class="text-xs bg-slate-100 text-slate-500 px-3 py-1 rounded-full font-medium">#${tag}</span>`).join('')}
         </div>
 
         <!-- What's included -->
