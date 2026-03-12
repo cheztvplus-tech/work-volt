@@ -242,8 +242,6 @@
       'Access restricted to Admins only': 'Access restricted to Admins only',
       'Permissions saved locally (connect Sheet to sync globally)': 'Permissions saved locally (connect Sheet to sync globally)',
       'Permissions saved successfully': 'Permissions saved successfully',
-    },
-
 
       // ── Store ──────────────────────────────────────────────────────
       "What\'s Included": "What\'s Included",
@@ -261,6 +259,19 @@
       'Analytics': 'Analytics',
       'Legal': 'Legal',
       'Support': 'Support',
+      'by': 'by',
+      'v': 'v',
+      'Featured': 'Featured',
+      'Coming Soon': 'Coming Soon',
+      'Coming Soon — Check back later!': 'Coming Soon — Check back later!',
+      'Install Module': 'Install Module',
+      'Remove': 'Remove',
+      'Sidebar navigation entry': 'Sidebar navigation entry',
+      'Full module UI page': 'Full module UI page',
+      'Google Sheet integration ready': 'Google Sheet integration ready',
+      'Role-based access control': 'Role-based access control',
+      'Extend your workspace with powerful add-on modules. Install once, appears in your sidebar instantly.': 'Extend your workspace with powerful add-on modules. Install once, appears in your sidebar instantly.',
+      'Featured Modules': 'Featured Modules',
 
       // ── Store catalogue descriptions ───────────────────────────────
       'Create, assign and track tasks across your team. Set priorities, due dates and follow progress in one place.': 'Create, assign and track tasks across your team. Set priorities, due dates and follow progress in one place.',
@@ -280,6 +291,7 @@
       'Store, track and manage contracts with expiry alerts, e-signature readiness and version history.': 'Store, track and manage contracts with expiry alerts, e-signature readiness and version history.',
       'Internal support ticketing system. Assign tickets, track resolution times and measure SLA compliance.': 'Internal support ticketing system. Assign tickets, track resolution times and measure SLA compliance.',
       'Track job applications from sourcing to offer. Manage candidates, interviews and hiring decisions.': 'Track job applications from sourcing to offer. Manage candidates, interviews and hiring decisions.',
+    },
     fr: {
       // ── General ───────────────────────────────────────────
       'Work Volt': 'Work Volt',
@@ -525,6 +537,7 @@
       'Google Sheet integration ready': 'Intégration Google Sheet prête',
       'Role-based access control': 'Contrôle d\'accès par rôle',
       'by': 'par',
+      'v': 'v',
 
       // ── Module catalogue labels (used in store/sidebar) ────
       'Notifications': 'Notifications',
@@ -579,6 +592,7 @@
       'Passwords do not match.': 'Les mots de passe ne correspondent pas.',
       'Password updated successfully.': 'Mot de passe mis à jour avec succès.',
       'Please fill in all fields': 'Veuillez remplir tous les champs',
+      
       // ── Store catalogue descriptions ───────────────────────────────
       'Create, assign and track tasks across your team. Set priorities, due dates and follow progress in one place.': 'Créez, assignez et suivez les tâches de votre équipe. Définissez les priorités, les échéances et suivez la progression en un seul endroit.',
       'Visualise and manage your sales pipeline with a Kanban board. Track deals from lead to close.': 'Visualisez et gérez votre pipeline de ventes avec un tableau Kanban. Suivez les affaires du prospect à la conclusion.',
@@ -597,14 +611,8 @@
       'Store, track and manage contracts with expiry alerts, e-signature readiness and version history.': 'Stockez, suivez et gérez les contrats avec alertes d\'expiration, préparation à la signature électronique et historique des versions.',
       'Internal support ticketing system. Assign tickets, track resolution times and measure SLA compliance.': 'Système de tickets d\'assistance interne. Attribuez les tickets, suivez les délais de résolution et mesurez la conformité SLA.',
       'Track job applications from sourcing to offer. Manage candidates, interviews and hiring decisions.': 'Suivez les candidatures de la recherche à l\'offre. Gérez les candidats, les entretiens et les décisions d\'embauche.',
-      // ── Store ──────────────────────────────────────────────────────
-      "What\'s Included": 'Ce qui est inclus',
-      'installed!': 'installé !',
-      'Install failed': 'Échec de l\'installation',
-      'Uninstall failed': 'Échec de la désinstallation',
-      'Module removed': 'Module supprimé',
-      'Please connect Google Sheet first': 'Veuillez d\'abord connecter votre Google Sheet',
-      'Not connected to server — please check Settings → Connection': 'Non connecté au serveur — vérifiez Paramètres → Connexion',
+      
+      // ── Store Categories ─────────────────────────────────
       'HR': 'RH',
       'Finance': 'Finance',
       'Sales': 'Ventes',
