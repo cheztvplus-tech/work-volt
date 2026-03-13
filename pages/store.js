@@ -289,14 +289,14 @@ window.WorkVoltPages['store'] = function(container) {
     const btn = document.querySelector(`button[data-install="${mod.id}"]`);
     if (btn) { 
         btn.disabled = true; 
-        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> ' + t('Installing…'); 
+        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Installing…'; 
     }
 
     if (!gasUrl) {
-        window.WorkVolt?.toast(t('Please connect Google Sheet first'), 'error');
+        window.WorkVolt?.toast('Please connect Google Sheet first', 'error');
         if (btn) { 
             btn.disabled = false; 
-            btn.innerHTML = '<i class="fas fa-download text-xs"></i> ' + t('Install'); 
+            btn.innerHTML = '<i class="fas fa-download text-xs"></i> Install'; 
         }
         return;
     }
@@ -326,16 +326,16 @@ window.WorkVoltPages['store'] = function(container) {
         
         if (modulesData.modules) {
             window.INSTALLED_MODULES = modulesData.modules;
-            window.WorkVolt?.toast(t(mod.label) + ' ' + t('installed!'), 'success');
+            window.WorkVolt?.toast(`${mod.label} installed!`, 'success');
             if (typeof renderNav === 'function') renderNav();
             render();
         }
 
     } catch(e) {
-        window.WorkVolt?.toast(t('Install failed') + ': ' + e.message, 'error');
+        window.WorkVolt?.toast(`Install failed: ${e.message}`, 'error');
         if (btn) { 
             btn.disabled = false; 
-            btn.innerHTML = '<i class="fas fa-download text-xs"></i> ' + t('Install'); 
+            btn.innerHTML = '<i class="fas fa-download text-xs"></i> Install'; 
         }
     }
   }
@@ -348,7 +348,7 @@ window.WorkVoltPages['store'] = function(container) {
     const sheetId   = localStorage.getItem('wv_sheet_id') || '';
 
     if (!gasUrl || !apiSecret) {
-        window.WorkVolt?.toast(t('Not connected to server — please check Settings → Connection'), 'error');
+        window.WorkVolt?.toast('Not connected to server — please check Settings → Connection', 'error');
         return;
     }
 
@@ -377,10 +377,10 @@ window.WorkVoltPages['store'] = function(container) {
             window.INSTALLED_MODULES = modulesData.modules;
             if (typeof renderNav === 'function') renderNav();
             render();
-            window.WorkVolt?.toast(t('Module removed'), 'info');
+            window.WorkVolt?.toast('Module removed', 'info');
         }
     } catch(e) {
-        window.WorkVolt?.toast(t('Uninstall failed') + ': ' + e.message, 'error');
+        window.WorkVolt?.toast(`Uninstall failed: ${e.message}`, 'error');
         console.error('Uninstall error:', e);
     }
   }
@@ -392,7 +392,7 @@ window.WorkVoltPages['store'] = function(container) {
       const matchSearch = !q ||
         m.label.toLowerCase().includes(q) ||
         m.description.toLowerCase().includes(q) ||
-        m.tags.some(tag => tag.includes(q));
+        m.tags.some(t => t.includes(q));
       return matchCat && matchSearch;
     });
   }
@@ -416,15 +416,15 @@ window.WorkVoltPages['store'] = function(container) {
               </div>
               <div>
                 <p class="text-blue-300 text-xs font-semibold tracking-widest uppercase">Work Volt</p>
-                <h1 class="text-white text-2xl font-extrabold leading-tight">${t('Module Store')}</h1>
+                <h1 class="text-white text-2xl font-extrabold leading-tight">Module Store</h1>
               </div>
             </div>
-            <p class="text-slate-300 text-sm max-w-lg mb-6">${t('Extend your workspace with powerful add-on modules. Install once, appears in your sidebar instantly.')}</p>
+            <p class="text-slate-300 text-sm max-w-lg mb-6">Extend your workspace with powerful add-on modules. Install once, appears in your sidebar instantly.</p>
 
             <!-- Search -->
             <div class="relative max-w-md">
               <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-              <input id="store-search" type="text" placeholder="${t('Search...')}"
+              <input id="store-search" type="text" placeholder="Search modules…"
                 value="${searchQuery}"
                 class="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-slate-400 text-sm focus:outline-none focus:border-blue-400 focus:bg-white/15 transition-all backdrop-blur-sm">
             </div>
@@ -439,7 +439,7 @@ window.WorkVoltPages['store'] = function(container) {
             <div class="flex items-center justify-between mb-4">
               <h2 class="font-bold text-slate-900 flex items-center gap-2">
                 <i class="fas fa-check-circle text-green-500 text-sm"></i>
-                ${t('Installed')} (${installed.length})
+                Installed (${installed.length})
               </h2>
             </div>
             <div class="flex flex-wrap gap-2">
@@ -448,9 +448,9 @@ window.WorkVoltPages['store'] = function(container) {
                   <div class="w-7 h-7 bg-gradient-to-br ${CATALOGUE.find(c=>c.id===m.id)?.gradient||'from-slate-400 to-slate-500'} rounded-lg flex items-center justify-center">
                     <i class="fas ${m.icon} text-white text-xs"></i>
                   </div>
-                  <span class="text-sm font-semibold text-slate-700">${t(m.label)}</span>
+                  <span class="text-sm font-semibold text-slate-700">${m.label}</span>
                   <span class="text-xs text-slate-400">v${m.version}</span>
-                  <button onclick="storeUninstall('${m.id}')" class="ml-1 text-slate-300 hover:text-red-400 transition-colors" title="${t('Uninstall')}">
+                  <button onclick="storeUninstall('${m.id}')" class="ml-1 text-slate-300 hover:text-red-400 transition-colors" title="Uninstall">
                     <i class="fas fa-times text-xs"></i>
                   </button>
                 </div>
@@ -463,7 +463,7 @@ window.WorkVoltPages['store'] = function(container) {
           ${!searchQuery && activeCategory === 'All' && featured.length ? `
           <div class="mb-8">
             <h2 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <i class="fas fa-star text-amber-400 text-sm"></i> ${t('Featured Modules')}
+              <i class="fas fa-star text-amber-400 text-sm"></i> Featured Modules
             </h2>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
               ${featured.slice(0,3).map(m => renderFeaturedCard(m)).join('')}
@@ -478,7 +478,7 @@ window.WorkVoltPages['store'] = function(container) {
                 class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${activeCategory === cat
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600'}">
-                ${t(cat)}
+                ${cat}
               </button>
             `).join('')}
           </div>
@@ -491,8 +491,8 @@ window.WorkVoltPages['store'] = function(container) {
           ` : `
           <div class="text-center py-20 text-slate-400">
             <i class="fas fa-search text-4xl mb-3 opacity-30"></i>
-            <p class="font-semibold">${t('No modules found')}</p>
-            <p class="text-sm mt-1">${t('Try a different search or category')}</p>
+            <p class="font-semibold">No modules found</p>
+            <p class="text-sm mt-1">Try a different search or category</p>
           </div>
           `}
 
@@ -535,19 +535,19 @@ window.WorkVoltPages['store'] = function(container) {
         <div class="absolute -right-4 -bottom-4 opacity-10">
           <i class="fas ${m.icon} text-8xl"></i>
         </div>
-        <span class="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-3 block">${t(m.category)}</span>
+        <span class="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-3 block">${m.category}</span>
         <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-3">
           <i class="fas ${m.icon} text-white text-lg"></i>
         </div>
-        <h3 class="font-bold text-base mb-1">${t(m.label)}</h3>
-        <p class="text-xs opacity-75 leading-relaxed line-clamp-2 mb-4">${t(m.description)}</p>
+        <h3 class="font-bold text-base mb-1">${m.label}</h3>
+        <p class="text-xs opacity-75 leading-relaxed line-clamp-2 mb-4">${m.description}</p>
         <div class="flex items-center justify-between">
           <span class="text-xs opacity-60">v${m.version}</span>
           ${inst
-            ? `<span class="text-xs bg-white/20 px-3 py-1 rounded-full font-semibold"><i class="fas fa-check mr-1"></i>${t('Installed')}</span>`
+            ? `<span class="text-xs bg-white/20 px-3 py-1 rounded-full font-semibold"><i class="fas fa-check mr-1"></i>Installed</span>`
             : isComingSoon(m)
-              ? `<span class="text-xs bg-white/20 px-3 py-1 rounded-full font-semibold opacity-80"><i class="fas fa-clock mr-1"></i>${t('Coming Soon')}</span>`
-              : `<button onclick="event.stopPropagation();storeInstall('${m.id}')" class="text-xs bg-white text-slate-800 font-bold px-3 py-1 rounded-full hover:bg-blue-50 transition-colors">${t('Install')}</button>`
+              ? `<span class="text-xs bg-white/20 px-3 py-1 rounded-full font-semibold opacity-80"><i class="fas fa-clock mr-1"></i>Coming Soon</span>`
+              : `<button onclick="event.stopPropagation();storeInstall('${m.id}')" class="text-xs bg-white text-slate-800 font-bold px-3 py-1 rounded-full hover:bg-blue-50 transition-colors">Install</button>`
           }
         </div>
       </div>
@@ -567,34 +567,34 @@ window.WorkVoltPages['store'] = function(container) {
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-0.5">
-              <h3 class="font-bold text-slate-900 text-sm">${t(m.label)}</h3>
-              <span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">${t(m.category)}</span>
+              <h3 class="font-bold text-slate-900 text-sm">${m.label}</h3>
+              <span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">${m.category}</span>
               ${coming
-                ? `<span class="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-clock text-[8px] mr-0.5"></i>${t('Coming Soon')}</span>`
-                : m.featured ? `<span class="text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-star text-[8px] mr-0.5"></i>${t('Featured')}</span>` : ''
+                ? `<span class="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-clock text-[8px] mr-0.5"></i>Coming Soon</span>`
+                : m.featured ? `<span class="text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-star text-[8px] mr-0.5"></i>Featured</span>` : ''
               }
             </div>
-            <p class="text-xs text-slate-500 leading-relaxed line-clamp-2">${t(m.description)}</p>
+            <p class="text-xs text-slate-500 leading-relaxed line-clamp-2">${m.description}</p>
           </div>
         </div>
         <div class="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
           <div class="flex items-center gap-2">
-            <span class="text-xs text-slate-400">${t('by')} ${m.author}</span>
+            <span class="text-xs text-slate-400">by ${m.author}</span>
             <span class="text-slate-200">·</span>
             <span class="text-xs text-slate-400">v${m.version}</span>
           </div>
           ${inst
             ? `<span class="flex items-center gap-1.5 text-xs text-green-600 font-semibold bg-green-50 px-3 py-1.5 rounded-xl">
-                <i class="fas fa-check-circle text-xs"></i> ${t('Installed')}
+                <i class="fas fa-check-circle text-xs"></i> Installed
                </span>`
             : coming
               ? `<span class="flex items-center gap-1.5 text-xs text-amber-600 font-semibold bg-amber-50 px-3 py-1.5 rounded-xl">
-                   <i class="fas fa-clock text-xs"></i> ${t('Coming Soon')}
+                   <i class="fas fa-clock text-xs"></i> Coming Soon
                  </span>`
               : `<button onclick="event.stopPropagation();storeInstall('${m.id}')"
                    data-install="${m.id}"
                    class="flex items-center gap-1.5 text-xs font-bold bg-blue-600 text-white px-3 py-1.5 rounded-xl hover:bg-blue-700 active:scale-95 transition-all">
-                   <i class="fas fa-download text-xs"></i> ${t('Install')}
+                   <i class="fas fa-download text-xs"></i> Install
                  </button>`
           }
         </div>
@@ -622,11 +622,11 @@ window.WorkVoltPages['store'] = function(container) {
         <div class="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
           <i class="fas ${m.icon} text-2xl"></i>
         </div>
-        <h2 class="text-xl font-extrabold mb-1">${t(m.label)}</h2>
+        <h2 class="text-xl font-extrabold mb-1">${m.label}</h2>
         <div class="flex items-center gap-2 text-xs opacity-80">
-          <span>${t(m.category)}</span>
+          <span>${m.category}</span>
           <span>·</span>
-          <span>${t('by')} ${m.author}</span>
+          <span>by ${m.author}</span>
           <span>·</span>
           <span>v${m.version}</span>
         </div>
@@ -634,21 +634,21 @@ window.WorkVoltPages['store'] = function(container) {
 
       <!-- Body -->
       <div class="p-6 overflow-y-auto flex-1">
-        <p class="text-slate-600 text-sm leading-relaxed mb-5">${t(m.description)}</p>
+        <p class="text-slate-600 text-sm leading-relaxed mb-5">${m.description}</p>
 
         <!-- Tags -->
         <div class="flex flex-wrap gap-2 mb-6">
-          ${m.tags.map(tag => `<span class="text-xs bg-slate-100 text-slate-500 px-3 py-1 rounded-full font-medium">#${tag}</span>`).join('')}
+          ${m.tags.map(t => `<span class="text-xs bg-slate-100 text-slate-500 px-3 py-1 rounded-full font-medium">#${t}</span>`).join('')}
         </div>
 
         <!-- What's included -->
         <div class="bg-slate-50 rounded-xl p-4 mb-6">
-          <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3">${t('What\'s Included')}</h3>
+          <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3">What's Included</h3>
           <ul class="space-y-2">
-            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i>${t('Sidebar navigation entry')}</li>
-            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i>${t('Full module UI page')}</li>
-            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i>${t('Google Sheet integration ready')}</li>
-            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i>${t('Role-based access control')}</li>
+            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i>Sidebar navigation entry</li>
+            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i>Full module UI page</li>
+            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i>Google Sheet integration ready</li>
+            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i>Role-based access control</li>
           </ul>
         </div>
 
@@ -656,20 +656,20 @@ window.WorkVoltPages['store'] = function(container) {
         ${inst
           ? `<div class="flex gap-3">
                <div class="flex-1 flex items-center justify-center gap-2 bg-green-50 text-green-700 font-semibold rounded-xl py-3 text-sm">
-                 <i class="fas fa-check-circle"></i> ${t('Installed')}
+                 <i class="fas fa-check-circle"></i> Installed
                </div>
                <button onclick="storeUninstall('${m.id}');storeCloseModal()"
                  class="px-4 py-3 bg-red-50 text-red-500 hover:bg-red-100 font-semibold rounded-xl text-sm transition-colors">
-                 ${t('Remove')}
+                 Remove
                </button>
              </div>`
           : coming
             ? `<div class="flex items-center justify-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 font-semibold rounded-xl py-3.5 text-sm">
-                 <i class="fas fa-clock"></i> ${t('Coming Soon — Check back later!')}
+                 <i class="fas fa-clock"></i> Coming Soon — Check back later!
                </div>`
             : `<button onclick="storeInstall('${m.id}');storeCloseModal()"
                  class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl py-3.5 text-sm transition-all active:scale-[.98] shadow-lg shadow-blue-200">
-                 <i class="fas fa-download"></i> ${t('Install Module')}
+                 <i class="fas fa-download"></i> Install Module
                </button>`
         }
       </div>
