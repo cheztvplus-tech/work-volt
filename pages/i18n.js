@@ -293,59 +293,29 @@
       'Track job applications from sourcing to offer. Manage candidates, interviews and hiring decisions.': 'Track job applications from sourcing to offer. Manage candidates, interviews and hiring decisions.',
     },
     fr: {
-      // ... keep all existing translations ...
-      
-      // ── Module Labels (for pills/cards) ────────────────────
-      'Notifications': 'Notifications',
-      'Tasks': 'Tâches',
-      'Pipeline': 'Pipeline',
-      'Payroll': 'Paie',
-      'Timesheets': 'Feuilles de temps',
-      'Financials': 'Finances',
-      'CRM': 'CRM',
-      'Projects': 'Projets',
-      'Reports': 'Rapports',
-      'Assets': 'Actifs',
-      'Attendance Tracker': 'Suivi des présences',
-      'Invoice Manager': 'Gestionnaire de factures',
-      'Inventory Control': 'Gestion des stocks',
-      'Shift Scheduler': 'Planificateur de quarts',
-      'Expense Claims': 'Notes de frais',
-      'Contract Hub': 'Gestion des contrats',
-      'Help Desk': 'Centre d\'assistance',
-      'Recruitment Pipeline': 'Pipeline de recrutement',
-      
-      // ── Store-specific strings that were missing ───────────
-      'Extend your workspace with powerful add-on modules. Install once, appears in your sidebar instantly.': 'Étendez votre espace de travail avec des modules puissants. Installez-les une fois, ils apparaissent immédiatement dans votre menu.',
-      'Featured Modules': 'Modules en vedette',
-      'by': 'par',
-      'v': 'v',
-      'What\'s Included': 'Ce qui est inclus',
-      'Sidebar navigation entry': 'Entrée dans le menu latéral',
-      'Full module UI page': 'Page UI complète du module',
-      'Google Sheet integration ready': 'Intégration Google Sheet prête',
-      'Role-based access control': 'Contrôle d\'accès par rôle',
-      'Install Module': 'Installer le module',
-      'Remove': 'Retirer',
-      'Coming Soon — Check back later!': 'Bientôt disponible — Revenez plus tard !',
-      'No modules found': 'Aucun module trouvé',
-      'Try a different search or category': 'Essayez une autre recherche ou catégorie',
-      'Installed': 'Installé',
-      'Install': 'Installer',
-      'Coming Soon': 'Bientôt disponible',
-      'Featured': 'En vedette',
-      
-      // ── Store category pills ─────────────────────────────
-      'All': 'Tous',
-      'HR': 'RH',
-      'Finance': 'Finance',
-      'Sales': 'Ventes',
-      'Productivity': 'Productivité',
-      'Operations': 'Opérations',
-      'Analytics': 'Analyses',
-      'Legal': 'Juridique',
-      'Support': 'Support',
-    }
+      // ── General ───────────────────────────────────────────
+      'Work Volt': 'Work Volt',
+      'Power your operations': 'Optimisez vos opérations',
+      'Work Volt v1.0.0 • Secure Business Management': 'Work Volt v1.0.0 · Gestion d\'entreprise sécurisée',
+      'Work Volt · v1.0.0': 'Work Volt · v1.0.0',
+      'Loading...': 'Chargement...',
+      'Search...': 'Rechercher...',
+      'Save': 'Enregistrer',
+      'Cancel': 'Annuler',
+      'Delete': 'Supprimer',
+      'Edit': 'Modifier',
+      'Close': 'Fermer',
+      'Back': 'Retour',
+      'Logout': 'Déconnexion',
+      'Settings': 'Paramètres',
+      'Dashboard': 'Tableau de bord',
+      'Module Store': 'Boutique de modules',
+      'Role Permissions': 'Permissions des rôles',
+      'Saving…': 'Enregistrement…',
+      'Installing…': 'Installation…',
+      'Deleting…': 'Suppression…',
+      'Testing…': 'Test en cours…',
+      'Fetching…': 'Récupération…',
 
       // ── Index (Login) ──────────────────────────────────────
       'Secure Sign In': 'Connexion sécurisée',
@@ -652,6 +622,74 @@
       'Legal': 'Juridique',
       'Support': 'Support',
     },
+      // Module labels
+      'Notifications': 'Notifications',
+      'Tasks': 'Tâches',
+      'Pipeline': 'Pipeline',
+      'Payroll': 'Paie',
+      'Timesheets': 'Feuilles de temps',
+      'Financials': 'Finances',
+      'CRM': 'CRM',
+      'Projects': 'Projets',
+      'Reports': 'Rapports',
+      'Assets': 'Actifs',
+      'Attendance Tracker': 'Suivi des présences',
+      'Invoice Manager': 'Gestionnaire de factures',
+      'Inventory Control': 'Gestion des stocks',
+      'Shift Scheduler': 'Planificateur de quarts',
+      'Expense Claims': 'Notes de frais',
+      'Contract Hub': 'Gestion des contrats',
+      'Help Desk': 'Centre d\'assistance',
+      'Recruitment Pipeline': 'Pipeline de recrutement',
+      
+      // Categories
+      'All': 'Tous',
+      'HR': 'RH',
+      'Finance': 'Finance',
+      'Sales': 'Ventes',
+      'Productivity': 'Productivité',
+      'Operations': 'Opérations',
+      'Analytics': 'Analyses',
+      'Legal': 'Juridique',
+      'Support': 'Support',
+      
+      // Descriptions - copy EXACTLY from CATALOGUE
+      'Full notification center with smart grouping, priority levels, bell alerts, popup toasts, persistent banners, and quiet hours. Wires directly into Tasks, approvals, and mentions.': 'Centre de notifications complet avec groupement intelligent, niveaux de priorité, alertes, toasts persistants et heures silencieuses. Se connecte directement aux Tâches, approbations et mentions.',
+      
+      'Create, assign and track tasks across your team. Set priorities, due dates and follow progress in one place.': 'Créez, assignez et suivez les tâches de votre équipe. Définissez les priorités, les échéances et suivez la progression en un seul endroit.',
+      
+      'Visualise and manage your sales pipeline with a Kanban board. Track deals from lead to close.': 'Visualisez et gérez votre pipeline de ventes avec un tableau Kanban. Suivez les affaires du prospect à la conclusion.',
+      
+      'Run payroll, manage salaries, deductions and bonuses. Generate pay slips directly from your Sheet.': 'Gérez la paie, les salaires, les déductions et les primes. Générez des fiches de paie directement depuis votre feuille.',
+      
+      'Log daily work hours, submit timesheets for approval and track billable vs non-billable time.': 'Enregistrez les heures de travail quotidiennes, soumettez les feuilles de temps pour approbation et suivez le temps facturable.',
+      
+      'Track revenue, costs and profit & loss across periods. Visual dashboards powered by your Sheet data.': 'Suivez les revenus, les coûts et les profits et pertes sur plusieurs périodes. Tableaux de bord visuels alimentés par vos données.',
+      
+      'Manage clients, contacts and interactions. Keep your relationship history in one searchable place.': 'Gérez les clients, les contacts et les interactions. Conservez l\'historique de vos relations en un endroit consultable.',
+      
+      'World-class project management with mission control header, List/Board/Calendar views, team workload, analytics panel, activity feed, and Focus Mode. Links directly with the Tasks module.': 'Gestion de projet de pointe avec en-tête de contrôle de mission, vues Liste/Tableau/Calendrier, charge d\'équipe, panneau d\'analyse, fil d\'activité et mode Focus. Lié directement au module Tâches.',
+      
+      'Generate cross-module reports and analytics. Visualise KPIs, trends and summaries from your data.': 'Générez des rapports et analyses multi-modules. Visualisez les KPI, tendances et résumés à partir de vos données.',
+      
+      'Track company equipment, tools and assets. Assign items to employees and monitor status and condition.': 'Suivez le matériel, les outils et les actifs de l\'entreprise. Attribuez des éléments aux employés et surveillez leur état.',
+      
+      'Track daily check-ins, check-outs, absences and late arrivals. Full attendance history with export support.': 'Suivez les entrées, sorties, absences et retards quotidiens. Historique complet des présences avec prise en charge de l\'export.',
+      
+      'Create, send and track invoices. Manage payment status, overdue reminders and revenue summaries.': 'Créez, envoyez et suivez les factures. Gérez le statut des paiements, les rappels de retard et les résumés de revenus.',
+      
+      'Monitor stock levels, set reorder points and track item movements across locations.': 'Surveillez les niveaux de stock, définissez des points de réapprovisionnement et suivez les mouvements d\'articles.',
+      
+      'Build weekly shift rosters, manage swaps and publish schedules directly to your team.': 'Créez des plannings de quarts hebdomadaires, gérez les échanges et publiez les horaires directement à votre équipe.',
+      
+      'Submit and approve expense claims with receipt uploads, category tagging and budget tracking.': 'Soumettez et approuvez les notes de frais avec téléchargement de reçus, catégorisation et suivi budgétaire.',
+      
+      'Store, track and manage contracts with expiry alerts, e-signature readiness and version history.': 'Stockez, suivez et gérez les contrats avec alertes d\'expiration, préparation à la signature électronique et historique des versions.',
+      
+      'Internal support ticketing system. Assign tickets, track resolution times and measure SLA compliance.': 'Système de tickets d\'assistance interne. Attribuez les tickets, suivez les délais de résolution et mesurez la conformité SLA.',
+      
+      'Track job applications from sourcing to offer. Manage candidates, interviews and hiring decisions.': 'Suivez les candidatures de la recherche à l\'offre. Gérez les candidats, les entretiens et les décisions d\'embauche.',
+    }
   };
 
   // ── Core i18n API ─────────────────────────────────────────────────
