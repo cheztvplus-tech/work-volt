@@ -1,50 +1,48 @@
-// ─────────────────────────────────────────────
-//  LANGUAGE DICTIONARY
-// ─────────────────────────────────────────────
+/* -------------------------
+   LANGUAGE STORAGE
+------------------------- */
 
-window.TRANSLATIONS = {
+window.currentLang = localStorage.getItem("lang") || "en";
 
-  fr: {
 
-    "Sign In":"Se connecter",
-    "Signing in...":"Connexion...",
-    "Username (Email)":"Nom d'utilisateur (courriel)",
-    "Password":"Mot de passe",
-    "Secure Sign In":"Connexion sécurisée",
-    "Work Volt URL":"URL Work Volt",
-    "Search...":"Rechercher...",
-    "Dashboard":"Tableau de bord",
-    "Settings":"Paramètres",
-    "Module Store":"Boutique de modules",
-    "Role Permissions":"Permissions des rôles",
-    "Notifications":"Notifications",
-    "Tasks":"Tâches",
-    "Projects":"Projets",
-    "Reports":"Rapports",
-    "Inventory Control":"Gestion d’inventaire",
-    "Shift Scheduler":"Planificateur d’horaires",
-    "Expense Claims":"Notes de frais",
-    "Contract Hub":"Centre des contrats",
-    "Help Desk":"Support technique",
-    "Recruitment Pipeline":"Pipeline de recrutement",
-    "Logout":"Déconnexion",
-    "Loading...":"Chargement..."
+/* -------------------------
+   TRANSLATION DICTIONARY
+   (KEEP YOUR CURRENT ONE)
+------------------------- */
+
+const TRANSLATIONS = window.TRANSLATIONS || {};
+
+
+/* -------------------------
+   CORE TRANSLATOR
+------------------------- */
+
+function t(key){
+
+  const lang = window.currentLang;
+
+  if(!TRANSLATIONS[lang]) return key;
+
+  if(TRANSLATIONS[lang][key] !== undefined){
+    return TRANSLATIONS[lang][key];
   }
 
-};
+  if(TRANSLATIONS.en && TRANSLATIONS.en[key]){
+    return TRANSLATIONS.en[key];
+  }
+
+  return key;
+
+}
+
+window.t = t;
 
 
-// ─────────────────────────────────────────────
-//  AUTO TRANSLATE
-// ─────────────────────────────────────────────
+/* -------------------------
+   PAGE TRANSLATION ENGINE
+------------------------- */
 
-window.autoTranslatePage = function(){
-
-  const lang = window.currentLang || 'en';
-
-  if(lang === 'en') return;
-
-  const dict = TRANSLATIONS[lang] || {};
+function translatePage(){
 
   const walker = document.createTreeWalker(
     document.body,
@@ -61,25 +59,65 @@ window.autoTranslatePage = function(){
 
     if(!text) continue;
 
-    if(dict[text]){
-      node.nodeValue = dict[text];
+    const translated = t(text);
+
+    if(translated !== text){
+      node.nodeValue = translated;
     }
 
   }
 
-};
+}
 
 
-// ─────────────────────────────────────────────
-//  LANGUAGE SETTER
-// ─────────────────────────────────────────────
+/* -------------------------
+   LANGUAGE SWITCH
+------------------------- */
 
-window.setLanguage = function(lang){
+function setLang(lang){
 
   window.currentLang = lang;
 
-  localStorage.setItem('lang', lang);
+  localStorage.setItem("lang", lang);
 
-  autoTranslatePage();
+  translatePage();
 
+  document.dispatchEvent(
+    new CustomEvent("wv:langchange",{detail:{lang}})
+  );
+
+}
+
+window.setLang = setLang;
+
+window.WVI18n = {
+  setLang,
+  getLang: () => window.currentLang
 };
+
+
+/* -------------------------
+   AUTO TRANSLATE NEW UI
+------------------------- */
+
+const observer = new MutationObserver(() => {
+  translatePage();
+});
+
+observer.observe(document.body,{
+  childList:true,
+  subtree:true
+});
+
+
+/* -------------------------
+   INITIAL LOAD
+------------------------- */
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  window.currentLang = localStorage.getItem("lang") || "en";
+
+  translatePage();
+
+});
