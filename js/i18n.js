@@ -91,6 +91,13 @@ function translatePage() {
   
   // Then try to auto-translate navigation items and buttons
   document.querySelectorAll('.nav-label, button span, h1, h2, h3, p, label').forEach(translateElement);
+
+   // Handle placeholder translation for inputs
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    const translated = t(key);
+    if (translated !== key) el.placeholder = translated;
+  });
 }
 
 
