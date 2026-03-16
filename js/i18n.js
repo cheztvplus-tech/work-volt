@@ -7,7 +7,6 @@ window.currentLang = localStorage.getItem("lang") || "en";
 
 /* -------------------------
    TRANSLATION DICTIONARY
-   (KEEP YOUR CURRENT ONE)
 ------------------------- */
 
 const TRANSLATIONS = window.TRANSLATIONS || {};
@@ -18,6 +17,7 @@ const TRANSLATIONS = window.TRANSLATIONS || {};
 ------------------------- */
 
 function t(key) {
+  if (!key) return '';
   const lang = window.currentLang;
   if (!TRANSLATIONS[lang]) return key;
   if (TRANSLATIONS[lang][key] !== undefined) return TRANSLATIONS[lang][key];
@@ -32,73 +32,67 @@ window.t = t;
    PAGE TRANSLATION ENGINE
 ------------------------- */
 
-// Track which elements we've already translated to avoid infinite loops
-const translatedElements = new WeakSet();
-
 function translateElement(el) {
-  // Skip if already translated this session
-  if (translatedElements.has(el)) return;
-  
-  // Skip if no data-i18n attribute and no text content to translate
   const key = el.getAttribute('data-i18n');
-  const text = el.textContent.trim();
+  if (!key) return;
   
-  if (key) {
-    // Use explicit key
-    const translated = t(key);
-    if (translated !== key) {
-      // Preserve child elements (like icons) by only replacing text nodes
-      const textNodes = [];
+  const translated = t(key);
+  if (translated === key) return; // No translation found
+  
+  // Don't re-translate if already translated
+  if (el.getAttribute('data-translated') === 'true') return;
+  
+  // Handle different element types
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+    // For inputs, translate placeholder or value
+    if (el.getAttribute('data-i18n-placeholder')) {
+      el.placeholder = translated;
+    } else {
+      el.value = translated;
+    }
+  } else {
+    // For regular elements, translate text content
+    // Preserve child elements (icons, etc.)
+    if (el.children.length > 0) {
+      // Has child elements, find text nodes
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+      const textNodes = [];
       let node;
       while (node = walker.nextNode()) {
         if (node.nodeValue.trim()) textNodes.push(node);
       }
-      
-      // Replace only the last text node (usually the label after icons)
       if (textNodes.length > 0) {
-        const lastNode = textNodes[textNodes.length - 1];
-        lastNode.nodeValue = translated;
-        translatedElements.add(el);
+        // Replace the last text node (usually the label after icons)
+        textNodes[textNodes.length - 1].nodeValue = ' ' + translated;
       } else {
         el.textContent = translated;
-        translatedElements.add(el);
       }
-    }
-  } else if (text && TRANSLATIONS[window.currentLang] && TRANSLATIONS[window.currentLang][text]) {
-    // Auto-translate by text content match
-    const translated = t(text);
-    if (translated !== text) {
-      const textNodes = [];
-      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-      let node;
-      while (node = walker.nextNode()) {
-        if (node.nodeValue.trim()) textNodes.push(node);
-      }
-      
-      if (textNodes.length > 0) {
-        const lastNode = textNodes[textNodes.length - 1];
-        lastNode.nodeValue = translated;
-        translatedElements.add(el);
-      }
+    } else {
+      el.textContent = translated;
     }
   }
+  
+  el.setAttribute('data-translated', 'true');
 }
 
 function translatePage() {
-  // Translate elements with data-i18n attributes first
+  // Remove translated markers to allow re-translation
+  document.querySelectorAll('[data-translated="true"]').forEach(el => {
+    el.removeAttribute('data-translated');
+  });
+  
+  // Translate all elements with data-i18n
   document.querySelectorAll('[data-i18n]').forEach(translateElement);
   
-  // Then try to auto-translate navigation items and buttons
-  document.querySelectorAll('.nav-label, button span, h1, h2, h3, p, label').forEach(translateElement);
-
-   // Handle placeholder translation for inputs
+  // Handle placeholder translations
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     const key = el.getAttribute('data-i18n-placeholder');
     const translated = t(key);
     if (translated !== key) el.placeholder = translated;
   });
 }
+
+window.translatePage = translatePage;
 
 
 /* -------------------------
@@ -108,13 +102,8 @@ function translatePage() {
 function setLang(lang) {
   window.currentLang = lang;
   localStorage.setItem("lang", lang);
-  
-  // Clear translated set when switching languages
   translatePage();
-  
-  document.dispatchEvent(
-    new CustomEvent("wv:langchange", { detail: { lang } })
-  );
+  document.dispatchEvent(new CustomEvent("wv:langchange", { detail: { lang } }));
 }
 
 window.setLang = setLang;
@@ -127,47 +116,39 @@ window.WVI18n = {
 
 
 /* -------------------------
-   AUTO TRANSLATE NEW UI (SAFE VERSION)
+   AUTO TRANSLATE DYNAMIC CONTENT
 ------------------------- */
 
-let isTranslating = false;
-
+// Watch for new elements being added and translate them
 const observer = new MutationObserver((mutations) => {
-  // Prevent infinite loops
-  if (isTranslating) return;
+  let shouldTranslate = false;
   
-  const hasSignificantChanges = mutations.some(m => 
-    m.type === 'childList' && 
-    Array.from(m.addedNodes).some(n => 
-      n.nodeType === Node.ELEMENT_NODE || 
-      (n.nodeType === Node.TEXT_NODE && n.nodeValue.trim())
-    )
-  );
-  
-  if (hasSignificantChanges) {
-    isTranslating = true;
-    requestAnimationFrame(() => {
-      translatePage();
-      isTranslating = false;
+  mutations.forEach(mutation => {
+    mutation.addedNodes.forEach(node => {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        // Check if new element has data-i18n or contains elements with data-i18n
+        if (node.hasAttribute && node.hasAttribute('data-i18n')) {
+          shouldTranslate = true;
+        } else if (node.querySelector && node.querySelector('[data-i18n]')) {
+          shouldTranslate = true;
+        }
+      }
     });
+  });
+  
+  if (shouldTranslate) {
+    // Small delay to ensure DOM is ready
+    setTimeout(translatePage, 10);
   }
 });
-
-// Start observing after initial load
-function startObserver() {
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-}
-
-
-/* -------------------------
-   INITIAL LOAD
-------------------------- */
 
 document.addEventListener("DOMContentLoaded", () => {
   window.currentLang = localStorage.getItem("lang") || "en";
   translatePage();
-  startObserver();
+  
+  // Start watching for dynamic content
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
 });
