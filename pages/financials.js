@@ -449,7 +449,7 @@ function renderDashboard(c) {
             <span class="flex items-center gap-1"><span class="w-3 h-1.5 rounded bg-red-400 inline-block"></span>Expenses</span>
           </div>
         </div>
-        <div class="flex items-end gap-1 px-2">
+        <div class="flex items-end gap-1 h-24 px-2">
           ${trendBars || '<p class="text-xs text-slate-400 m-auto">No trend data yet</p>'}
         </div>
         <div class="mt-3 pt-3 border-t border-slate-100 grid grid-cols-3 gap-3">
@@ -966,9 +966,10 @@ function renderReports(c) {
         const invoiceInflow = state.invoices
           .filter(inv => inv.status === 'Paid' || inv.status === 'Partial' || inv.status === 'Sent')
           .reduce((s, inv) => s + (parseFloat(inv.status === 'Partial' ? (inv.total - (inv.balance_due||0)) : inv.total) || 0), 0);
-        const cfInflow  = parseFloat(cf.operating?.inflow)  || invoiceInflow;
-        const cfOutflow = parseFloat(cf.operating?.outflow) || state.expenses.reduce((s,e)=>s+(parseFloat(e.amount)||0),0) + state.bills.filter(b=>b.status==='Paid').reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
-        const cfNet     = parseFloat(cf.operating?.net)     || (cfInflow - cfOutflow);
+        const localOutflow = state.expenses.reduce((s,e)=>s+(parseFloat(e.amount)||0),0) + state.bills.filter(b=>b.status==='Paid').reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
+        const cfInflow  = (cf.operating?.inflow  != null && cf.operating.inflow  !== '') ? parseFloat(cf.operating.inflow)  : invoiceInflow;
+        const cfOutflow = (cf.operating?.outflow != null && cf.operating.outflow !== '') ? parseFloat(cf.operating.outflow) : localOutflow;
+        const cfNet     = cfInflow - cfOutflow;
         return `
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div>
@@ -987,9 +988,19 @@ function renderReports(c) {
         </div>
       </div>`;
       })()}
-      <div class="mt-4 pt-4 border-t border-slate-100">
-        ${reportLine('Net Cash Flow', fmt.currency(cf.net_cash_flow), `font-extrabold text-lg ${(cf.net_cash_flow||0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`)}
-      </div>
+      ${(()=>{
+        const invoiceInflow2 = state.invoices
+          .filter(inv => inv.status === 'Paid' || inv.status === 'Partial' || inv.status === 'Sent')
+          .reduce((s, inv) => s + (parseFloat(inv.status === 'Partial' ? (inv.total - (inv.balance_due||0)) : inv.total) || 0), 0);
+        const localOutflow2 = state.expenses.reduce((s,e)=>s+(parseFloat(e.amount)||0),0) + state.bills.filter(b=>b.status==='Paid').reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
+        const cfInflow2  = (cf.operating?.inflow  != null && cf.operating.inflow  !== '') ? parseFloat(cf.operating.inflow)  : invoiceInflow2;
+        const cfOutflow2 = (cf.operating?.outflow != null && cf.operating.outflow !== '') ? parseFloat(cf.operating.outflow) : localOutflow2;
+        const cfNet2     = cfInflow2 - cfOutflow2;
+        const netCashFlow = cfNet2 + (parseFloat(cf.investing?.net) || 0) + (parseFloat(cf.financing?.net) || 0);
+        return `<div class="mt-4 pt-4 border-t border-slate-100">
+          ${reportLine('Net Cash Flow', fmt.currency(netCashFlow), `font-extrabold text-lg ${netCashFlow >= 0 ? 'text-emerald-600' : 'text-red-500'}`)}
+        </div>`;
+      })()}
     </div>
 
     <!-- Bills Summary -->
