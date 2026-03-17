@@ -7,6 +7,7 @@ window.currentLang = localStorage.getItem("lang") || "en";
 
 /* -------------------------
    TRANSLATION DICTIONARY
+   (LOADED FROM translations.js)
 ------------------------- */
 
 const TRANSLATIONS = window.TRANSLATIONS || {};
@@ -37,23 +38,17 @@ function translateElement(el) {
   if (!key) return;
   
   const translated = t(key);
-  if (translated === key) return; // No translation found
-  
-  // Don't re-translate if already translated
-  if (el.getAttribute('data-translated') === 'true') return;
   
   // Handle different element types
   if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-    // For inputs, translate placeholder or value
-    if (el.getAttribute('data-i18n-placeholder')) {
-      el.placeholder = translated;
-    } else {
-      el.value = translated;
+    const placeholderKey = el.getAttribute('data-i18n-placeholder');
+    if (placeholderKey) {
+      el.placeholder = t(placeholderKey);
     }
   } else {
     // For regular elements, translate text content
     // Preserve child elements (icons, etc.)
-    if (el.children.length > 0) {
+    if (el.children.length > 0 || el.querySelector('i, svg, img')) {
       // Has child elements, find text nodes
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
       const textNodes = [];
@@ -63,7 +58,11 @@ function translateElement(el) {
       }
       if (textNodes.length > 0) {
         // Replace the last text node (usually the label after icons)
-        textNodes[textNodes.length - 1].nodeValue = ' ' + translated;
+        const originalText = textNodes[textNodes.length - 1].nodeValue.trim();
+        // Only update if the translation is different
+        if (translated !== key) {
+          textNodes[textNodes.length - 1].nodeValue = ' ' + translated;
+        }
       } else {
         el.textContent = translated;
       }
@@ -71,17 +70,10 @@ function translateElement(el) {
       el.textContent = translated;
     }
   }
-  
-  el.setAttribute('data-translated', 'true');
 }
 
 function translatePage() {
-  // Remove translated markers to allow re-translation
-  document.querySelectorAll('[data-translated="true"]').forEach(el => {
-    el.removeAttribute('data-translated');
-  });
-  
-  // Translate all elements with data-i18n
+  // Translate all elements with data-i18n - always re-translate on language change
   document.querySelectorAll('[data-i18n]').forEach(translateElement);
   
   // Handle placeholder translations
@@ -100,6 +92,7 @@ window.translatePage = translatePage;
 ------------------------- */
 
 function setLang(lang) {
+  console.log('Switching language from', window.currentLang, 'to', lang);
   window.currentLang = lang;
   localStorage.setItem("lang", lang);
   translatePage();
@@ -127,9 +120,9 @@ const observer = new MutationObserver((mutations) => {
     mutation.addedNodes.forEach(node => {
       if (node.nodeType === Node.ELEMENT_NODE) {
         // Check if new element has data-i18n or contains elements with data-i18n
-        if (node.hasAttribute && node.hasAttribute('data-i18n')) {
+        if (node.hasAttribute && (node.hasAttribute('data-i18n') || node.hasAttribute('data-i18n-placeholder'))) {
           shouldTranslate = true;
-        } else if (node.querySelector && node.querySelector('[data-i18n]')) {
+        } else if (node.querySelector && (node.querySelector('[data-i18n]') || node.querySelector('[data-i18n-placeholder]'))) {
           shouldTranslate = true;
         }
       }
@@ -143,6 +136,7 @@ const observer = new MutationObserver((mutations) => {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
+  console.log('i18n: DOM loaded, current lang:', window.currentLang);
   window.currentLang = localStorage.getItem("lang") || "en";
   translatePage();
   
