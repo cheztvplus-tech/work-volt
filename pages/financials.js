@@ -449,7 +449,7 @@ function renderDashboard(c) {
             <span class="flex items-center gap-1"><span class="w-3 h-1.5 rounded bg-red-400 inline-block"></span>Expenses</span>
           </div>
         </div>
-        <div class="flex items-end gap-1 h-24 px-2">
+        <div class="flex items-end gap-1 px-2" style="height:96px">
           ${trendBars || '<p class="text-xs text-slate-400 m-auto">No trend data yet</p>'}
         </div>
         <div class="mt-3 pt-3 border-t border-slate-100 grid grid-cols-3 gap-3">
