@@ -31,6 +31,7 @@ window.WorkVoltPages['shop'] = function(container) {
     { id: 'customers', icon: 'fa-users',         label: 'Customers' },
     { id: 'discounts', icon: 'fa-tag',           label: 'Discounts' },
     { id: 'pos',       icon: 'fa-cash-register', label: 'POS'       },
+    { id: 'layout',    icon: 'fa-layer-group',   label: 'Layout'    },
     { id: 'settings',  icon: 'fa-sliders-h',     label: 'Settings'  },
   ];
 
@@ -184,6 +185,7 @@ window.WorkVoltPages['shop'] = function(container) {
       if (activeTab === 'customers') { await loadCustomers(); renderCustomers(c); }
       if (activeTab === 'discounts') { await loadDiscounts(); renderDiscounts(c); }
       if (activeTab === 'pos')       { await loadData();      renderPOS(); }
+      if (activeTab === 'layout')    { await loadSettings();  renderLayout(c); }
       if (activeTab === 'settings')  {                        renderSettings(c); }
     } catch(e) {
       c.innerHTML = `<div class="p-8 text-center text-red-500">
@@ -1046,6 +1048,402 @@ window.WorkVoltPages['shop'] = function(container) {
   }
 
   // ══════════════════════════════════════════════════════════════
+  //  LAYOUT TAB
+  // ══════════════════════════════════════════════════════════════
+
+  // Section metadata
+  const SECTION_META = {
+    hero:         { label: 'Hero Banner',       icon: 'fa-image',        color: 'from-indigo-500 to-purple-600', fixed: false },
+    featured:     { label: 'Featured Products', icon: 'fa-star',         color: 'from-amber-400 to-orange-500',  fixed: false },
+    trending:     { label: 'Trending Now',      icon: 'fa-fire',         color: 'from-red-400 to-rose-500',      fixed: false },
+    all_products: { label: 'All Products Grid', icon: 'fa-th',           color: 'from-emerald-500 to-teal-600',  fixed: true  },
+  };
+
+  // Parse layout state from settings
+  function getLayoutOrder() {
+    try { return settings.layout_order ? JSON.parse(settings.layout_order) : ['hero','featured','trending','all_products']; }
+    catch(e) { return ['hero','featured','trending','all_products']; }
+  }
+  function getBanners() {
+    try { return settings.banners ? JSON.parse(settings.banners) : []; }
+    catch(e) { return []; }
+  }
+
+  // Save layout + banners back to settings
+  async function saveLayout(order, banners) {
+    const r = await api('settings/save', {
+      layout_order: JSON.stringify(order),
+      banners:      JSON.stringify(banners),
+    });
+    if (r.error) throw new Error(r.error);
+    settings.layout_order = JSON.stringify(order);
+    settings.banners      = JSON.stringify(banners);
+  }
+
+  function renderLayout(c) {
+    let order   = getLayoutOrder();
+    let banners = getBanners();
+    let layoutDragSrc = null;
+
+    c.innerHTML = `
+      <div class="p-6 space-y-6">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 class="font-bold text-slate-900 text-lg flex items-center gap-2">
+              <i class="fas fa-layer-group text-blue-500"></i> Layout Builder
+            </h2>
+            <p class="text-sm text-slate-500 mt-0.5">Drag sections to reorder. Add banners anywhere in the layout.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <a href="${STORE_URL}" target="_blank" class="btn-secondary text-xs gap-1.5">
+              <i class="fas fa-eye text-xs"></i>Preview Store
+            </a>
+            <button onclick="shopSaveLayout()" class="btn-primary text-xs gap-1.5">
+              <i class="fas fa-save text-xs"></i>Save Layout
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          <!-- LEFT: Section order -->
+          <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <i class="fas fa-sort text-blue-400 text-xs"></i>Section Order
+              </h3>
+              <span class="text-xs text-slate-400">Drag to reorder</span>
+            </div>
+            <div class="p-4" id="layout-sections-list">
+              ${renderSectionList(order, banners)}
+            </div>
+            <div class="px-4 pb-4">
+              <button onclick="shopAddBannerSlot()"
+                class="w-full py-2.5 border-2 border-dashed border-slate-300 rounded-xl text-sm text-slate-400
+                       hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50 transition-all flex items-center justify-center gap-2">
+                <i class="fas fa-plus text-xs"></i> Add Banner Slot
+              </button>
+            </div>
+          </div>
+
+          <!-- RIGHT: Banners manager -->
+          <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <i class="fas fa-rectangle-ad text-blue-400 text-xs"></i>Banners
+                <span class="text-slate-400 font-normal">(${banners.length})</span>
+              </h3>
+              <button onclick="shopShowModal('banner')" class="btn-primary text-xs gap-1">
+                <i class="fas fa-plus text-xs"></i>New Banner
+              </button>
+            </div>
+            <div class="p-4 space-y-3" id="banners-list">
+              ${renderBannerList(banners)}
+            </div>
+          </div>
+        </div>
+
+        <!-- Layout preview map -->
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+          <div class="px-5 py-4 border-b border-slate-100">
+            <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+              <i class="fas fa-mobile-screen text-blue-400 text-xs"></i>Layout Preview
+            </h3>
+          </div>
+          <div class="p-5 flex items-start gap-4 overflow-x-auto">
+            <div class="flex-shrink-0 w-48 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200">
+              <div class="bg-slate-800 h-8 flex items-center px-3 gap-1.5">
+                <div class="w-2 h-2 rounded-full bg-red-400"></div>
+                <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+                <div class="w-2 h-2 rounded-full bg-green-400"></div>
+              </div>
+              <div class="p-2 space-y-1.5">
+                <!-- Header bar -->
+                <div class="bg-white rounded h-5 flex items-center px-1.5 gap-1">
+                  <div class="w-3 h-1.5 bg-blue-400 rounded-sm"></div>
+                  <div class="flex-1 bg-slate-200 rounded-sm h-1.5"></div>
+                  <div class="w-5 h-1.5 bg-blue-500 rounded-full"></div>
+                </div>
+                ${order.map(sid => {
+                  const isBanner = sid.startsWith('banner_');
+                  const b = isBanner ? banners.find(b => b.id === sid) : null;
+                  const m = !isBanner ? SECTION_META[sid] : null;
+                  if (isBanner && !b) return '';
+                  const isActive = isBanner ? (String(b.active) === 'true') : true;
+                  return `<div class="rounded text-[8px] font-bold flex items-center gap-1 px-1.5 py-1
+                    ${isActive
+                      ? (isBanner ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700')
+                      : 'bg-slate-200 text-slate-400'}">
+                    <i class="fas ${isBanner ? 'fa-rectangle-ad' : (m?.icon || 'fa-square')}"></i>
+                    ${isBanner ? (b.title || 'Banner').slice(0,16) : (m?.label || sid)}
+                  </div>`;
+                }).join('')}
+              </div>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm text-slate-500 mb-3">Current section order:</p>
+              <ol class="space-y-1.5">
+                ${order.map((sid, i) => {
+                  const isBanner = sid.startsWith('banner_');
+                  const b = isBanner ? banners.find(b => b.id === sid) : null;
+                  const m = !isBanner ? SECTION_META[sid] : null;
+                  return `<li class="flex items-center gap-2.5 text-sm">
+                    <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center flex-shrink-0">${i+1}</span>
+                    <i class="fas ${isBanner ? 'fa-rectangle-ad text-amber-500' : (m?.icon + ' text-blue-500' || '')} text-xs"></i>
+                    <span class="text-slate-700 font-medium">${isBanner ? (b ? (b.title || 'Banner') : 'Deleted Banner') : (m?.label || sid)}</span>
+                    ${isBanner && b && String(b.active) !== 'true' ? '<span class="text-xs text-slate-400">(inactive)</span>' : ''}
+                  </li>`;
+                }).join('')}
+              </ol>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    `;
+
+    // Expose layout handlers
+    window.shopSaveLayout = async function() {
+      try {
+        const currentOrder   = getCurrentSectionOrder();
+        const currentBanners = getBanners();
+        await saveLayout(currentOrder, currentBanners);
+        WorkVolt.toast('Layout saved! Storefront will update within 60s.', 'success');
+        await loadSettings();
+        renderLayout(document.getElementById('shop-content'));
+      } catch(e) { WorkVolt.toast(e.message, 'error'); }
+    };
+
+    window.shopAddBannerSlot = function() {
+      const currentBanners = getBanners();
+      const newId = 'banner_' + Date.now();
+      // Add a placeholder to both order and banners
+      const currentOrder = getCurrentSectionOrder();
+      // Insert before all_products
+      const apIdx = currentOrder.indexOf('all_products');
+      currentOrder.splice(apIdx > -1 ? apIdx : currentOrder.length, 0, newId);
+      currentBanners.push({
+        id:        newId,
+        title:     'New Banner',
+        subtitle:  '',
+        eyebrow:   '',
+        style:     'solid',
+        bg_color:  'linear-gradient(135deg,#1e3a5f,#1d4ed8)',
+        text_color:'#ffffff',
+        cta_text:  'Shop Now',
+        cta_bg:    '#ffffff',
+        cta_color: '#1d4ed8',
+        cta_link:  '',
+        image_url: '',
+        overlay_color: 'rgba(0,0,0,0.45)',
+        active:    'true',
+        start_date:'',
+        end_date:  '',
+      });
+      settings.layout_order = JSON.stringify(currentOrder);
+      settings.banners      = JSON.stringify(currentBanners);
+      renderLayout(document.getElementById('shop-content'));
+    };
+
+    window.shopDeleteBannerSlot = async function(bid) {
+      if (!confirm('Remove this banner and its slot from the layout?')) return;
+      let currentOrder   = getCurrentSectionOrder().filter(s => s !== bid);
+      let currentBanners = getBanners().filter(b => b.id !== bid);
+      try {
+        await saveLayout(currentOrder, currentBanners);
+        WorkVolt.toast('Banner removed', 'success');
+        await loadSettings();
+        renderLayout(document.getElementById('shop-content'));
+      } catch(e) { WorkVolt.toast(e.message, 'error'); }
+    };
+
+    window.shopToggleSection = async function(sid) {
+      // For sections it means toggle hidden state in order
+      let currentOrder = getCurrentSectionOrder();
+      if (currentOrder.includes(sid)) {
+        currentOrder = currentOrder.filter(s => s !== sid);
+      } else {
+        // Re-add before all_products
+        const apIdx = currentOrder.indexOf('all_products');
+        currentOrder.splice(apIdx > -1 ? apIdx : currentOrder.length, 0, sid);
+      }
+      settings.layout_order = JSON.stringify(currentOrder);
+      renderLayout(document.getElementById('shop-content'));
+    };
+
+    window.shopToggleBanner = async function(bid) {
+      let currentBanners = getBanners();
+      const b = currentBanners.find(x => x.id === bid);
+      if (!b) return;
+      b.active = String(b.active) === 'true' ? 'false' : 'true';
+      settings.banners = JSON.stringify(currentBanners);
+      renderLayout(document.getElementById('shop-content'));
+    };
+
+    // Section drag-and-drop
+    window.shopLayoutDrag = function(type, event, sid) {
+      if (type === 'start') {
+        layoutDragSrc = sid;
+        event.dataTransfer.effectAllowed = 'move';
+        event.currentTarget.style.opacity = '.4';
+      }
+      if (type === 'over')  { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }
+      if (type === 'drop')  {
+        event.preventDefault();
+        if (!layoutDragSrc || layoutDragSrc === sid) return;
+        let currentOrder = getCurrentSectionOrder();
+        const srcIdx  = currentOrder.indexOf(layoutDragSrc);
+        const dstIdx  = currentOrder.indexOf(sid);
+        if (srcIdx === -1 || dstIdx === -1) return;
+        currentOrder.splice(srcIdx, 1);
+        currentOrder.splice(dstIdx, 0, layoutDragSrc);
+        settings.layout_order = JSON.stringify(currentOrder);
+        renderLayout(document.getElementById('shop-content'));
+      }
+      if (type === 'end') {
+        event.currentTarget.style.opacity = '1';
+        layoutDragSrc = null;
+      }
+    };
+  }
+
+  function getCurrentSectionOrder() {
+    try { return settings.layout_order ? JSON.parse(settings.layout_order) : ['hero','featured','trending','all_products']; }
+    catch(e) { return ['hero','featured','trending','all_products']; }
+  }
+
+  function renderSectionList(order, banners) {
+    const bannerMap = {};
+    banners.forEach(b => { bannerMap[b.id] = b; });
+
+    const allSections = ['hero','featured','trending','all_products'];
+    const hiddenBuiltIn = allSections.filter(s => !order.includes(s));
+
+    let html = order.map(sid => {
+      const isBanner = sid.startsWith('banner_');
+      const b = isBanner ? bannerMap[sid] : null;
+      const m = !isBanner ? SECTION_META[sid] : null;
+      const isActive = isBanner ? (String(b?.active) === 'true') : true;
+      const label = isBanner ? (b?.title || 'Banner') : (m?.label || sid);
+      const icon  = isBanner ? 'fa-rectangle-ad' : (m?.icon || 'fa-square');
+      const grad  = isBanner ? 'from-amber-400 to-orange-500' : (m?.color || 'from-slate-400 to-slate-600');
+      const isFixed = !isBanner && m?.fixed;
+
+      return `
+        <div class="flex items-center gap-3 p-3 border border-slate-200 rounded-xl mb-2 bg-white
+             ${isFixed ? '' : 'cursor-grab hover:border-blue-300'} transition-all group"
+             ${isFixed ? '' : `draggable="true"
+               ondragstart="shopLayoutDrag('start',event,'${sid}')"
+               ondragover="shopLayoutDrag('over',event)"
+               ondrop="shopLayoutDrag('drop',event,'${sid}')"
+               ondragend="shopLayoutDrag('end',event)"`}
+             data-section="${sid}">
+          ${isFixed
+            ? '<i class="fas fa-lock text-slate-300 text-xs flex-shrink-0 w-4"></i>'
+            : '<i class="fas fa-grip-vertical text-slate-300 group-hover:text-slate-500 text-sm flex-shrink-0 w-4 transition-colors"></i>'}
+          <div class="w-8 h-8 bg-gradient-to-br ${grad} rounded-lg flex items-center justify-center flex-shrink-0">
+            <i class="fas ${icon} text-white text-xs"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-slate-800 truncate">${label}</p>
+            <p class="text-xs text-slate-400">${isBanner ? 'Banner · ' + (b?.style || 'hero') : (isFixed ? 'Always last' : 'Built-in section')}</p>
+          </div>
+          <div class="flex items-center gap-1.5 flex-shrink-0">
+            ${isActive
+              ? '<span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>'
+              : '<span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span>'}
+            ${isBanner ? `
+              <button onclick="shopToggleBanner('${sid}')"
+                class="text-xs px-2 py-1 rounded-lg ${isActive ? 'bg-green-50 text-green-700 hover:bg-red-50 hover:text-red-600' : 'bg-slate-100 text-slate-500 hover:bg-green-50 hover:text-green-600'} transition-colors font-semibold">
+                ${isActive ? 'On' : 'Off'}
+              </button>
+              <button onclick="shopShowModal('banner','${sid}')"
+                class="text-xs px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-colors font-semibold">
+                Edit
+              </button>
+              <button onclick="shopDeleteBannerSlot('${sid}')"
+                class="w-7 h-7 flex items-center justify-center rounded-lg bg-red-50 text-red-400 hover:bg-red-100 transition-colors text-xs">
+                <i class="fas fa-trash"></i>
+              </button>` : `
+              ${!isFixed ? `<button onclick="shopToggleSection('${sid}')"
+                class="text-xs px-2 py-1 rounded-lg bg-green-50 text-green-700 hover:bg-red-50 hover:text-red-600 transition-colors font-semibold">
+                Hide
+              </button>` : ''}`}
+          </div>
+        </div>`;
+    }).join('');
+
+    // Show hidden built-in sections that can be re-added
+    if (hiddenBuiltIn.length) {
+      html += '<div class="mt-3 pt-3 border-t border-slate-100">';
+      html += '<p class="text-xs text-slate-400 mb-2 font-medium">Hidden sections:</p>';
+      html += hiddenBuiltIn.map(sid => {
+        const m = SECTION_META[sid];
+        return `<div class="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border border-dashed border-slate-200 mb-1.5 opacity-60">
+          <i class="fas ${m?.icon} text-slate-400 text-xs w-4"></i>
+          <span class="flex-1 text-xs text-slate-500 font-medium">${m?.label}</span>
+          <button onclick="shopToggleSection('${sid}')"
+            class="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors font-semibold">
+            Show
+          </button>
+        </div>`;
+      }).join('');
+      html += '</div>';
+    }
+
+    return html;
+  }
+
+  function renderBannerList(banners) {
+    if (!banners.length) {
+      return `<div class="text-center py-10 text-slate-400">
+        <i class="fas fa-rectangle-ad text-3xl mb-2 opacity-40"></i>
+        <p class="text-sm">No banners yet</p>
+        <p class="text-xs mt-1">Create a banner then drag its slot into position</p>
+      </div>`;
+    }
+    return banners.map(b => {
+      const isActive = String(b.active) === 'true';
+      const styleLabel = { hero:'Image+Text', solid:'Solid Color', strip:'Strip' }[b.style] || b.style;
+      return `
+        <div class="border border-slate-200 rounded-xl overflow-hidden">
+          <!-- Mini preview -->
+          <div class="h-16 relative flex items-center px-4 overflow-hidden"
+               style="background:${b.style === 'hero' && b.image_url ? 'url(' + b.image_url + ') center/cover' : (b.bg_color || 'linear-gradient(135deg,#1e3a5f,#1d4ed8)')}">
+            ${b.style === 'hero' && b.image_url ? '<div style="position:absolute;inset:0;background:' + (b.overlay_color || 'rgba(0,0,0,.45)') + '"></div>' : ''}
+            <div class="relative z-1">
+              ${b.eyebrow ? '<p style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:' + (b.text_color||'#fff') + ';opacity:.8">' + b.eyebrow + '</p>' : ''}
+              <p style="font-size:.85rem;font-weight:800;color:' + (b.text_color||'#fff') + ';line-height:1.2">' + (b.title || 'Banner') + '</p>
+            </div>
+          </div>
+          <!-- Controls -->
+          <div class="px-3 py-2.5 flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? 'bg-green-500' : 'bg-slate-300'}"></span>
+                <span class="text-xs font-semibold text-slate-700 truncate">${b.title || 'Untitled'}</span>
+              </div>
+              <p class="text-[10px] text-slate-400 mt-0.5">${styleLabel}${b.cta_text ? ' · CTA: ' + b.cta_text : ''}${b.end_date ? ' · Ends ' + b.end_date.slice(0,10) : ''}</p>
+            </div>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <button onclick="shopToggleBanner('${b.id}')"
+                class="text-xs px-2 py-1 rounded-lg font-semibold transition-colors
+                  ${isActive ? 'bg-green-50 text-green-700 hover:bg-red-50 hover:text-red-600' : 'bg-slate-100 text-slate-500 hover:bg-green-50 hover:text-green-600'}">
+                ${isActive ? 'Live' : 'Off'}
+              </button>
+              <button onclick="shopShowModal('banner','${b.id}')"
+                class="text-xs px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-colors font-semibold">
+                Edit
+              </button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ══════════════════════════════════════════════════════════════
   //  SETTINGS
   // ══════════════════════════════════════════════════════════════
   function renderSettings(c) {
@@ -1174,6 +1572,7 @@ window.WorkVoltPages['shop'] = function(container) {
     if (type === 'category')    inner.innerHTML = categoryForm(id ? categories.find(x => x.id === id) : null);
     if (type === 'discount')    inner.innerHTML = discountForm(id ? discounts.find(x => x.id === id) : null);
     if (type === 'bulk-upload') inner.innerHTML = bulkUploadForm();
+    if (type === 'banner')      inner.innerHTML = bannerForm(id ? getBanners().find(x => x.id === id) : null, id);
 
     // Track inventory toggle
     if (type === 'product') {
@@ -1372,6 +1771,186 @@ window.WorkVoltPages['shop'] = function(container) {
     </div>`;
   }
 
+  function bannerForm(b, slotId) {
+    const isEdit = !!b;
+    const d = b || {
+      id:            slotId || ('banner_' + Date.now()),
+      title:         '', subtitle:  '', eyebrow: '',
+      style:         'solid',
+      bg_color:      'linear-gradient(135deg,#1e3a5f,#1d4ed8)',
+      text_color:    '#ffffff',
+      cta_text:      'Shop Now', cta_bg: '#ffffff', cta_color: '#1d4ed8', cta_link: '',
+      image_url:     '', overlay_color: 'rgba(0,0,0,0.45)',
+      active: 'true', start_date: '', end_date: '',
+    };
+    return `
+      <div class="p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-bold text-slate-900 text-lg">${isEdit ? 'Edit Banner' : 'New Banner'}</h2>
+          <button onclick="shopCloseModal()" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center">
+            <i class="fas fa-times text-sm"></i>
+          </button>
+        </div>
+
+        <!-- Live mini-preview -->
+        <div id="banner-preview" class="rounded-xl overflow-hidden mb-5 min-h-[80px] flex items-center relative"
+             style="background:${d.style==='hero' && d.image_url ? 'url('+d.image_url+') center/cover' : d.bg_color}">
+          ${d.style==='hero' && d.image_url ? `<div style="position:absolute;inset:0;background:${d.overlay_color}"></div>` : ''}
+          <div class="relative z-10 p-4" style="color:${d.text_color}">
+            ${d.eyebrow ? `<p style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;opacity:.8">${d.eyebrow}</p>` : ''}
+            <p style="font-size:1rem;font-weight:800;line-height:1.2">${d.title || 'Banner Preview'}</p>
+            ${d.subtitle ? `<p style="font-size:.8rem;opacity:.8;margin-top:.25rem">${d.subtitle}</p>` : ''}
+            ${d.cta_text ? `<span style="display:inline-block;margin-top:.6rem;padding:.3rem .9rem;border-radius:50px;background:${d.cta_bg};color:${d.cta_color};font-size:.72rem;font-weight:700">${d.cta_text}</span>` : ''}
+          </div>
+        </div>
+
+        <input type="hidden" id="bf-id" value="${d.id}">
+        <div class="space-y-4">
+
+          <!-- Style -->
+          <div>
+            <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-2">Style</label>
+            <div class="grid grid-cols-3 gap-2">
+              ${[{val:'solid',icon:'fa-fill',label:'Solid'},{val:'hero',icon:'fa-image',label:'Image+Text'},{val:'strip',icon:'fa-minus',label:'Strip'}].map(s=>`
+                <button type="button" onclick="bfSetStyle('${s.val}')" id="bfstyle-${s.val}"
+                  class="flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 text-xs font-semibold transition-all
+                    ${d.style===s.val ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}">
+                  <i class="fas ${s.icon} text-base"></i>${s.label}
+                </button>`).join('')}
+            </div>
+          </div>
+
+          <!-- Content -->
+          <div class="grid grid-cols-2 gap-3">
+            ${mfld('Eyebrow','bf-eyebrow',d.eyebrow,'text','SALE · LIMITED TIME')}
+            ${mfld('Title *','bf-title',d.title,'text','Summer Sale is Here')}
+          </div>
+          ${mfld('Subtitle','bf-subtitle',d.subtitle,'text','Up to 50% off selected items')}
+
+          <!-- Image URL (hero only) -->
+          <div id="bf-image-row" ${d.style!=='hero'?'style="display:none"':''}>
+            ${mfld('Background Image URL','bf-image_url',d.image_url,'url','https://example.com/banner.jpg')}
+            <div class="mt-2">
+              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Overlay Color</label>
+              <input id="bf-overlay_color" type="text" value="${d.overlay_color}"
+                placeholder="rgba(0,0,0,0.45)" class="field text-sm font-mono" oninput="bfUpdatePreview()">
+            </div>
+          </div>
+
+          <!-- Background (solid + strip) -->
+          <div id="bf-bg-row" ${d.style==='hero'?'style="display:none"':''}>
+            <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Background</label>
+            <input id="bf-bg_color" type="text" value="${d.bg_color}"
+              placeholder="linear-gradient(135deg,#1e3a5f,#1d4ed8) or #2563eb"
+              class="field text-sm font-mono" oninput="bfUpdatePreview()">
+            <p class="text-xs text-slate-400 mt-1">CSS color, hex, or gradient</p>
+          </div>
+
+          <!-- Text color -->
+          <div>
+            <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Text Color</label>
+            <div class="flex items-center gap-2">
+              <input id="bf-text_color" type="color" value="${d.text_color}"
+                class="w-10 h-10 rounded-lg border border-slate-200 cursor-pointer p-0.5" oninput="bfUpdatePreview()">
+              <input type="text" value="${d.text_color}"
+                oninput="document.getElementById('bf-text_color').value=this.value;bfUpdatePreview()"
+                class="field text-sm flex-1 font-mono">
+            </div>
+          </div>
+
+          <!-- CTA -->
+          <div class="border border-slate-200 rounded-xl p-4 space-y-3">
+            <p class="text-xs font-bold text-slate-600 uppercase tracking-wide">Call-to-Action Button</p>
+            <div class="grid grid-cols-2 gap-3">
+              ${mfld('Button Text','bf-cta_text',d.cta_text,'text','Shop Now')}
+              ${mfld('Button Link','bf-cta_link',d.cta_link,'url','https://…')}
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Button Background</label>
+                <input id="bf-cta_bg" type="text" value="${d.cta_bg}" placeholder="#ffffff"
+                  class="field text-sm font-mono" oninput="bfUpdatePreview()">
+              </div>
+              <div>
+                <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Button Text Color</label>
+                <input id="bf-cta_color" type="text" value="${d.cta_color}" placeholder="#1d4ed8"
+                  class="field text-sm font-mono" oninput="bfUpdatePreview()">
+              </div>
+            </div>
+          </div>
+
+          <!-- Schedule -->
+          <div class="border border-slate-200 rounded-xl p-4 space-y-3">
+            <p class="text-xs font-bold text-slate-600 uppercase tracking-wide">Schedule (optional)</p>
+            <div class="grid grid-cols-2 gap-3">
+              ${mfld('Show From','bf-start_date',d.start_date?.split('T')[0],'date')}
+              ${mfld('Hide After','bf-end_date',d.end_date?.split('T')[0],'date')}
+            </div>
+            <p class="text-xs text-slate-400">Leave blank for no schedule — banner shows whenever Active is on.</p>
+          </div>
+
+          <label class="flex items-center gap-2.5 cursor-pointer">
+            <input id="bf-active" type="checkbox" ${String(d.active)==='true'?'checked':''}
+              class="w-4 h-4 rounded accent-blue-600">
+            <span class="text-sm font-medium text-slate-700">Active (visible on storefront)</span>
+          </label>
+        </div>
+
+        <div class="flex gap-3 mt-6">
+          <button onclick="shopCloseModal()" class="btn-secondary flex-1">Cancel</button>
+          <button onclick="shopSave('banner','${d.id}')" class="btn-primary flex-1">
+            ${isEdit ? 'Save Banner' : 'Create Banner'}
+          </button>
+        </div>
+      </div>`;
+  }
+
+  // ── Banner form live helpers (globals so onclick can reach them) ──
+  window.bfSetStyle = function(style) {
+    ['solid','hero','strip'].forEach(s => {
+      const btn = document.getElementById('bfstyle-' + s);
+      if (btn) btn.className = btn.className
+        .replace('border-blue-500 bg-blue-50 text-blue-700','border-slate-200 text-slate-500 hover:border-slate-300')
+        .replace('border-slate-200 text-slate-500 hover:border-slate-300','border-slate-200 text-slate-500 hover:border-slate-300');
+    });
+    const active = document.getElementById('bfstyle-' + style);
+    if (active) active.className = active.className
+      .replace('border-slate-200 text-slate-500 hover:border-slate-300','border-blue-500 bg-blue-50 text-blue-700');
+    const imgRow = document.getElementById('bf-image-row');
+    const bgRow  = document.getElementById('bf-bg-row');
+    if (imgRow) imgRow.style.display = style === 'hero'  ? '' : 'none';
+    if (bgRow)  bgRow.style.display  = style !== 'hero'  ? '' : 'none';
+    bfUpdatePreview();
+  };
+
+  window.bfUpdatePreview = function() {
+    const preview = document.getElementById('banner-preview');
+    if (!preview) return;
+    const style    = (() => { for (const s of ['solid','hero','strip']) { const b = document.getElementById('bfstyle-'+s); if (b && b.className.includes('blue-500')) return s; } return 'solid'; })();
+    const imgUrl   = document.getElementById('bf-image_url')?.value || '';
+    const bgColor  = document.getElementById('bf-bg_color')?.value  || 'linear-gradient(135deg,#1e3a5f,#1d4ed8)';
+    const overlay  = document.getElementById('bf-overlay_color')?.value || 'rgba(0,0,0,0.45)';
+    const textCol  = document.getElementById('bf-text_color')?.value || '#ffffff';
+    const eyebrow  = document.getElementById('bf-eyebrow')?.value  || '';
+    const title    = document.getElementById('bf-title')?.value    || 'Banner Preview';
+    const subtitle = document.getElementById('bf-subtitle')?.value || '';
+    const ctaText  = document.getElementById('bf-cta_text')?.value || '';
+    const ctaBg    = document.getElementById('bf-cta_bg')?.value   || '#ffffff';
+    const ctaCol   = document.getElementById('bf-cta_color')?.value || '#1d4ed8';
+
+    preview.style.background = (style === 'hero' && imgUrl)
+      ? 'url(' + imgUrl + ') center/cover' : bgColor;
+
+    preview.innerHTML = (style === 'hero' && imgUrl
+      ? `<div style="position:absolute;inset:0;background:${overlay}"></div>` : '')
+      + `<div class="relative z-10 p-4" style="color:${textCol}">`
+      + (eyebrow  ? `<p style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;opacity:.8">${eyebrow}</p>` : '')
+      + `<p style="font-size:1rem;font-weight:800;line-height:1.2">${title}</p>`
+      + (subtitle ? `<p style="font-size:.8rem;opacity:.8;margin-top:.25rem">${subtitle}</p>` : '')
+      + (ctaText  ? `<span style="display:inline-block;margin-top:.6rem;padding:.3rem .9rem;border-radius:50px;background:${ctaBg};color:${ctaCol};font-size:.72rem;font-weight:700">${ctaText}</span>` : '')
+      + `</div>`;
+  };
+
   // ── Download sample CSV ─────────────────────────────────────────
   window.downloadSampleCsv = function() {
     const csv = [
@@ -1451,6 +2030,55 @@ window.WorkVoltPages['shop'] = function(container) {
         closeModal();
         await loadDiscounts();
         renderDiscounts(document.getElementById('shop-content'));
+      }
+
+      if (type === 'banner') {
+        const bid        = document.getElementById('bf-id')?.value;
+        const styleEl    = ['solid','hero','strip'].find(s => {
+          const b = document.getElementById('bfstyle-' + s);
+          return b && b.className.includes('blue-500');
+        }) || 'solid';
+        const updated = {
+          id:            bid,
+          title:         document.getElementById('bf-title')?.value         || '',
+          subtitle:      document.getElementById('bf-subtitle')?.value      || '',
+          eyebrow:       document.getElementById('bf-eyebrow')?.value       || '',
+          style:         styleEl,
+          bg_color:      document.getElementById('bf-bg_color')?.value      || 'linear-gradient(135deg,#1e3a5f,#1d4ed8)',
+          text_color:    document.getElementById('bf-text_color')?.value    || '#ffffff',
+          image_url:     document.getElementById('bf-image_url')?.value     || '',
+          overlay_color: document.getElementById('bf-overlay_color')?.value || 'rgba(0,0,0,0.45)',
+          cta_text:      document.getElementById('bf-cta_text')?.value      || '',
+          cta_link:      document.getElementById('bf-cta_link')?.value      || '',
+          cta_bg:        document.getElementById('bf-cta_bg')?.value        || '#ffffff',
+          cta_color:     document.getElementById('bf-cta_color')?.value     || '#1d4ed8',
+          start_date:    document.getElementById('bf-start_date')?.value    || '',
+          end_date:      document.getElementById('bf-end_date')?.value      || '',
+          active:        document.getElementById('bf-active')?.checked ? 'true' : 'false',
+        };
+        if (!updated.title) { WorkVolt.toast('Banner title is required', 'error'); return; }
+
+        // Merge into banners array (upsert by id)
+        let currentBanners = getBanners();
+        const existingIdx  = currentBanners.findIndex(b => b.id === bid);
+        if (existingIdx > -1) currentBanners[existingIdx] = updated;
+        else currentBanners.push(updated);
+
+        // If new banner and no slot in order yet, add slot before all_products
+        let currentOrder = getCurrentSectionOrder();
+        if (!currentOrder.includes(bid)) {
+          const apIdx = currentOrder.indexOf('all_products');
+          currentOrder.splice(apIdx > -1 ? apIdx : currentOrder.length, 0, bid);
+        }
+
+        try {
+          await saveLayout(currentOrder, currentBanners);
+          WorkVolt.toast('Banner saved!', 'success');
+          closeModal();
+          await loadSettings();
+          renderLayout(document.getElementById('shop-content'));
+        } catch(e) { throw e; }
+        return;
       }
 
       if (type === 'settings') {
