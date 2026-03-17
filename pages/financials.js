@@ -1054,7 +1054,7 @@ function renderReports(c) {
           const revenueSection = collapsibleSection(
             `Revenue (${Object.keys(revBreakdown).length} sources)`,
             revLines,
-            true
+            false
           );
 
           return revenueSection
