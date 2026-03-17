@@ -1314,6 +1314,85 @@
     .stagger-3 { animation-delay: .15s; }
     .stagger-4 { animation-delay: .20s; }
 
+    /* ── Layout sections spacing ────────────────────────────────── */
+    .layout-section { margin-bottom: 2.5rem; }
+    .layout-section:first-child { margin-top: 1.5rem; }
+
+    /* ── Commercial Banner ──────────────────────────────────────── */
+    .sf-banner {
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      position: relative;
+      min-height: 180px;
+      display: flex; align-items: center;
+      text-decoration: none;
+      cursor: default;
+    }
+    .sf-banner.clickable { cursor: pointer; }
+    .sf-banner.clickable:hover .sf-banner-content { transform: translateX(6px); }
+    .sf-banner.clickable:hover { box-shadow: var(--shadow-lg); }
+    .sf-banner-bg-img {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transition: transform .6s ease;
+    }
+    .sf-banner.clickable:hover .sf-banner-bg-img { transform: scale(1.04); }
+    .sf-banner-overlay {
+      position: absolute; inset: 0;
+    }
+    .sf-banner-content {
+      position: relative; z-index: 1;
+      padding: 2.25rem 2.5rem;
+      max-width: 600px;
+      transition: transform var(--transition);
+    }
+    .sf-banner-eyebrow {
+      font-size: .7rem; font-weight: 800;
+      text-transform: uppercase; letter-spacing: .12em;
+      margin-bottom: .6rem; opacity: .85;
+    }
+    .sf-banner-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.25rem, 2.5vw, 2rem);
+      font-weight: 800; line-height: 1.2;
+      letter-spacing: -.02em;
+      margin-bottom: .6rem;
+    }
+    .sf-banner-subtitle {
+      font-size: .9rem; line-height: 1.6;
+      margin-bottom: 1.25rem; opacity: .85;
+      max-width: 400px;
+    }
+    .sf-banner-cta {
+      display: inline-flex; align-items: center; gap: .5rem;
+      padding: .65rem 1.5rem;
+      border-radius: 50px;
+      font-size: .875rem; font-weight: 700;
+      font-family: var(--font);
+      border: none; cursor: pointer;
+      transition: all var(--transition);
+    }
+    .sf-banner-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+
+    /* Announcement strip banner */
+    .sf-banner-strip {
+      border-radius: var(--radius);
+      padding: .75rem 1.5rem;
+      display: flex; align-items: center; justify-content: center;
+      gap: .75rem; text-align: center;
+      font-size: .875rem; font-weight: 600;
+      min-height: unset;
+    }
+    .sf-banner-strip .sf-banner-title {
+      font-size: .875rem; font-weight: 700;
+      font-family: var(--font); letter-spacing: 0;
+      margin: 0;
+    }
+    .sf-banner-strip .sf-banner-cta {
+      padding: .35rem 1rem; font-size: .8rem;
+    }
+
     /* ── Responsive ─────────────────────────────────────────────── */
     @media (max-width: 768px) {
       .header-search { display: none; }
@@ -1387,84 +1466,8 @@
 
 <!-- ── MAIN ── -->
 <main id="sf-main" style="display:none">
-
-  <!-- Hero -->
-  <section id="hero-section">
-    <div class="hero-bg-dots"></div>
-    <div class="hero-glow"></div>
-    <div class="hero-content">
-      <div class="hero-badge"><i class="fas fa-bolt"></i> <span id="hero-badge-text">New Arrivals</span></div>
-      <h1 class="hero-title" id="hero-title">Shop <span>Premium</span><br>Products</h1>
-      <p class="hero-subtitle" id="hero-subtitle">Discover our curated collection of top-quality products, delivered right to your door.</p>
-      <button class="hero-btn" onclick="scrollToProducts()">
-        <i class="fas fa-shopping-bag"></i> Shop Now
-      </button>
-    </div>
-  </section>
-
-  <!-- Featured -->
-  <section id="featured-section" style="margin-top:2.5rem">
-    <div class="section-head">
-      <h2 class="section-title">
-        <span class="icon"><i class="fas fa-star"></i></span>
-        Featured Products
-      </h2>
-      <a href="#" class="section-link" onclick="filterCategory('');return false">
-        View All <i class="fas fa-arrow-right"></i>
-      </a>
-    </div>
-    <div class="product-row" id="featured-row"></div>
-  </section>
-
-  <!-- Trending -->
-  <section id="trending-section">
-    <div class="section-head">
-      <h2 class="section-title">
-        <span class="icon"><i class="fas fa-fire"></i></span>
-        Trending Now
-      </h2>
-    </div>
-    <div class="product-row" id="trending-row"></div>
-  </section>
-
-  <!-- All Products -->
-  <section id="all-products-section">
-    <div id="filter-bar">
-      <div class="filter-group">
-        <span class="filter-label">Sort:</span>
-        <select class="filter-select" id="sort-select" onchange="applyFilters()">
-          <option value="default">Featured</option>
-          <option value="price-asc">Price: Low to High</option>
-          <option value="price-desc">Price: High to Low</option>
-          <option value="name-asc">Name: A–Z</option>
-          <option value="newest">Newest First</option>
-        </select>
-        <select class="filter-select" id="price-filter" onchange="applyFilters()">
-          <option value="">All Prices</option>
-          <option value="0-25">Under $25</option>
-          <option value="25-50">$25–$50</option>
-          <option value="50-100">$50–$100</option>
-          <option value="100-999">$100+</option>
-        </select>
-        <select class="filter-select" id="avail-filter" onchange="applyFilters()">
-          <option value="">All Items</option>
-          <option value="instock">In Stock Only</option>
-          <option value="sale">On Sale</option>
-        </select>
-      </div>
-      <div class="results-count" id="results-count"></div>
-    </div>
-    <div id="products-grid"></div>
-    <div id="no-results">
-      <div class="nr-icon"><i class="fas fa-search"></i></div>
-      <h3>No products found</h3>
-      <p>Try adjusting your search or filters</p>
-    </div>
-  </section>
-
-  <!-- Pagination -->
-  <div id="pagination" style="display:flex;justify-content:center;gap:.5rem;margin-top:2rem;flex-wrap:wrap"></div>
-
+  <!-- Sections injected dynamically by renderLayout() based on layout_order from settings -->
+  <div id="layout-root"></div>
 </main>
 
 <!-- ── FOOTER ── -->
@@ -1687,6 +1690,27 @@ function applyTheme() {
 }
 
 // ── Boot ────────────────────────────────────────────────────────
+// ── Layout & Banner globals ─────────────────────────────────────
+var LAYOUT_ORDER = ['hero','featured','trending','all_products'];
+var BANNERS      = [];
+
+// Default section order
+var DEFAULT_LAYOUT = ['hero','featured','trending','all_products'];
+
+// ── Parse layout & banners from settings ────────────────────────
+function parseLayoutSettings() {
+  try {
+    if (S.layout_order) LAYOUT_ORDER = JSON.parse(S.layout_order);
+    else LAYOUT_ORDER = DEFAULT_LAYOUT.slice();
+  } catch(e) { LAYOUT_ORDER = DEFAULT_LAYOUT.slice(); }
+
+  try {
+    if (S.banners) BANNERS = JSON.parse(S.banners);
+    else BANNERS = [];
+  } catch(e) { BANNERS = []; }
+}
+
+// ── Boot ────────────────────────────────────────────────────────
 async function boot() {
   // Use GAS-injected data if available (preferred — no extra fetch)
   if (__STORE__) {
@@ -1720,7 +1744,7 @@ async function boot() {
 
   CURRENCY = S.currency_cad === 'true' ? 'CAD' : 'USD';
   document.title = S.store_name || 'Store';
-
+  parseLayoutSettings();
   applyTheme();
 
   if (S.maintenance_mode === 'true') {
@@ -1739,11 +1763,6 @@ async function boot() {
     logoText.style.display = 'none';
   }
 
-  // Hero
-  if (S.store_name) document.getElementById('hero-title').innerHTML =
-    'Shop <span>' + S.store_name + '</span>';
-  if (S.store_tagline) document.getElementById('hero-subtitle').textContent = S.store_tagline;
-
   // Announce bar
   if (S.shipping_enabled === 'true' && parseFloat(S.free_shipping_min) > 0) {
     var bar = document.getElementById('announce-bar');
@@ -1753,8 +1772,7 @@ async function boot() {
   }
 
   // Footer
-  var footer = document.getElementById('footer-text-el');
-  footer.textContent = S.footer_text ||
+  document.getElementById('footer-text-el').textContent = S.footer_text ||
     ('© ' + new Date().getFullYear() + ' ' + (S.store_name || 'My Store') + '. All rights reserved.');
 
   // Show UI
@@ -1765,9 +1783,7 @@ async function boot() {
   document.getElementById('sf-footer').style.display  = '';
 
   renderCategoryPills();
-  renderFeaturedRow();
-  renderTrendingRow();
-  renderProducts();
+  renderLayout();        // ← renders all sections in order
   updateCartUI();
   initScrollEffect();
   startPolling();
@@ -1787,21 +1803,289 @@ function initScrollEffect() {
   }, { passive: true });
 }
 
-// ── Real-time polling (every 60s) ───────────────────────────────
+// ── Real-time polling (every 60s) — also re-checks layout+banners ─
 function startPolling() {
   if (!GAS_URL) return;
   syncTimer = setInterval(async function() {
     try {
-      var r = await fetch(GAS_URL + '?path=storefront/products&_t=' + Date.now());
-      var d = await r.json();
-      if (d.rows && d.rows.length) {
-        PRODUCTS = d.rows;
-        renderFeaturedRow();
-        renderTrendingRow();
-        renderProducts();
+      var [sr, pr] = await Promise.all([
+        fetch(GAS_URL + '?path=storefront/settings&_t=' + Date.now()).then(r => r.json()),
+        fetch(GAS_URL + '?path=storefront/products&_t=' + Date.now()).then(r => r.json()),
+      ]);
+      var changed = false;
+
+      if (pr.rows && pr.rows.length) {
+        PRODUCTS = pr.rows;
+        changed = true;
       }
+      if (sr.settings) {
+        var newLayout  = sr.settings.layout_order || '';
+        var newBanners = sr.settings.banners       || '';
+        if (newLayout  !== (S.layout_order || '') ||
+            newBanners !== (S.banners       || '')) {
+          S = sr.settings;
+          parseLayoutSettings();
+          changed = true;
+        } else {
+          S = sr.settings;
+        }
+        applyTheme();
+      }
+      if (changed) renderLayout();
+
     } catch(e) { /* silent */ }
   }, 60000);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  LAYOUT ENGINE
+// ════════════════════════════════════════════════════════════════
+
+// Renders all sections in order, inserting banners at their slot positions
+function renderLayout() {
+  var root = document.getElementById('layout-root');
+  if (!root) return;
+
+  // Build a map of banner_id → banner for quick lookup
+  var bannerMap = {};
+  BANNERS.forEach(function(b) { bannerMap[b.id] = b; });
+
+  var html = '';
+  LAYOUT_ORDER.forEach(function(sectionId) {
+    // Is this a banner slot?
+    if (sectionId.startsWith('banner_')) {
+      var b = bannerMap[sectionId];
+      if (b && isBannerActive(b)) {
+        html += '<div class="layout-section" data-section="' + sectionId + '">' + renderBannerHTML(b) + '</div>';
+      }
+      return;
+    }
+
+    // Built-in sections
+    switch (sectionId) {
+      case 'hero':
+        html += '<div class="layout-section" data-section="hero">' + renderHeroHTML() + '</div>';
+        break;
+      case 'featured':
+        var featuredProds = PRODUCTS.slice(0, 8);
+        if (featuredProds.length) {
+          html += '<div class="layout-section" data-section="featured">' + renderFeaturedHTML(featuredProds) + '</div>';
+        }
+        break;
+      case 'trending':
+        var trendingProds = getTrendingProducts();
+        if (trendingProds.length) {
+          html += '<div class="layout-section" data-section="trending">' + renderTrendingHTML(trendingProds) + '</div>';
+        }
+        break;
+      case 'all_products':
+        html += '<div class="layout-section" data-section="all_products">' + renderAllProductsHTML() + '</div>';
+        break;
+    }
+  });
+
+  root.innerHTML = html;
+
+  // Re-bind dynamic elements after innerHTML set
+  bindProductGridEvents();
+}
+
+// ── Hero HTML ───────────────────────────────────────────────────
+function renderHeroHTML() {
+  var title    = S.store_name ? 'Shop <span>' + S.store_name + '</span>' : 'Shop <span>Premium</span><br>Products';
+  var subtitle = S.store_tagline || 'Discover our curated collection of top-quality products.';
+  return '<section id="hero-section">'
+    + '<div class="hero-bg-dots"></div>'
+    + '<div class="hero-glow"></div>'
+    + '<div class="hero-content">'
+    + '<div class="hero-badge"><i class="fas fa-bolt"></i> New Arrivals</div>'
+    + '<h1 class="hero-title">' + title + '</h1>'
+    + '<p class="hero-subtitle">' + subtitle + '</p>'
+    + '<button class="hero-btn" onclick="scrollToProducts()">'
+    + '<i class="fas fa-shopping-bag"></i> Shop Now</button>'
+    + '</div></section>';
+}
+
+// ── Featured row HTML ───────────────────────────────────────────
+function renderFeaturedHTML(prods) {
+  return '<section id="featured-section">'
+    + '<div class="section-head">'
+    + '<h2 class="section-title"><span class="icon"><i class="fas fa-star"></i></span>Featured Products</h2>'
+    + '<a href="#" class="section-link" onclick="filterCategory(\'\');return false">View All <i class="fas fa-arrow-right"></i></a>'
+    + '</div>'
+    + '<div class="product-row" id="featured-row">'
+    + prods.map(function(p) { return renderCard(p, true); }).join('')
+    + '</div></section>';
+}
+
+// ── Trending row HTML ───────────────────────────────────────────
+function getTrendingProducts() {
+  return PRODUCTS.slice().sort(function(a, b) {
+    return (viewCounts[b.id] || 0) - (viewCounts[a.id] || 0);
+  }).slice(0, 8);
+}
+
+function renderTrendingHTML(prods) {
+  return '<section id="trending-section">'
+    + '<div class="section-head">'
+    + '<h2 class="section-title"><span class="icon"><i class="fas fa-fire"></i></span>Trending Now</h2>'
+    + '</div>'
+    + '<div class="product-row" id="trending-row">'
+    + prods.map(function(p) { return renderCard(p, true); }).join('')
+    + '</div></section>';
+}
+
+// ── All products HTML ───────────────────────────────────────────
+function renderAllProductsHTML() {
+  var filtered = getFilteredProducts();
+  var total    = filtered.length;
+  var start    = (currentPage - 1) * PAGE_SIZE;
+  var page     = filtered.slice(start, start + PAGE_SIZE);
+  var pages    = Math.ceil(total / PAGE_SIZE);
+
+  var countText = '<span>' + total + '</span> product' + (total !== 1 ? 's' : '') + ' found';
+
+  var grid = !page.length
+    ? '<div id="no-results" style="display:block"><div class="nr-icon"><i class="fas fa-search"></i></div><h3>No products found</h3><p>Try adjusting your search or filters</p></div>'
+    : '<div id="products-grid">' + page.map(function(p, i) {
+        return '<div class="fade-up stagger-' + ((i % 4) + 1) + '">' + renderCard(p, false) + '</div>';
+      }).join('') + '</div>';
+
+  var pag = '';
+  if (pages > 1) {
+    pag = '<div id="pagination" style="display:flex;justify-content:center;gap:.5rem;margin-top:2rem;flex-wrap:wrap">';
+    for (var i = 1; i <= pages; i++) {
+      var active = i === currentPage;
+      pag += '<button onclick="goPage(' + i + ')" style="'
+        + 'width:36px;height:36px;border-radius:8px;border:1.5px solid ' + (active ? 'var(--primary)' : 'var(--border)') + ';'
+        + 'background:' + (active ? 'var(--primary)' : 'var(--surface)') + ';'
+        + 'color:' + (active ? '#fff' : 'var(--text-2)') + ';'
+        + 'font-weight:700;font-size:.85rem;cursor:pointer;font-family:var(--font);'
+        + 'transition:all var(--transition)">' + i + '</button>';
+    }
+    pag += '</div>';
+  }
+
+  return '<section id="all-products-section">'
+    + '<div id="filter-bar">'
+    + '<div class="filter-group">'
+    + '<span class="filter-label">Sort:</span>'
+    + '<select class="filter-select" id="sort-select" onchange="applyFilters()">'
+    + '<option value="default">Featured</option>'
+    + '<option value="price-asc">Price: Low to High</option>'
+    + '<option value="price-desc">Price: High to Low</option>'
+    + '<option value="name-asc">Name: A–Z</option>'
+    + '<option value="newest">Newest First</option>'
+    + '</select>'
+    + '<select class="filter-select" id="price-filter" onchange="applyFilters()">'
+    + '<option value="">All Prices</option>'
+    + '<option value="0-25">Under $25</option>'
+    + '<option value="25-50">$25–$50</option>'
+    + '<option value="50-100">$50–$100</option>'
+    + '<option value="100-999">$100+</option>'
+    + '</select>'
+    + '<select class="filter-select" id="avail-filter" onchange="applyFilters()">'
+    + '<option value="">All Items</option>'
+    + '<option value="instock">In Stock Only</option>'
+    + '<option value="sale">On Sale</option>'
+    + '</select>'
+    + '</div>'
+    + '<div class="results-count" id="results-count">' + countText + '</div>'
+    + '</div>'
+    + grid
+    + '</section>'
+    + pag;
+}
+
+// Restore select states after re-render
+function bindProductGridEvents() {
+  var ss = document.getElementById('sort-select');
+  var pf = document.getElementById('price-filter');
+  var af = document.getElementById('avail-filter');
+  if (ss) ss.value = sortMode;
+  if (pf) pf.value = priceFilter;
+  if (af) af.value = availFilter;
+}
+
+// ── Banner rendering ────────────────────────────────────────────
+function isBannerActive(b) {
+  if (String(b.active) !== 'true') return false;
+  var now = new Date();
+  if (b.start_date && new Date(b.start_date) > now) return false;
+  if (b.end_date   && new Date(b.end_date)   < now) return false;
+  return true;
+}
+
+function renderBannerHTML(b) {
+  var style = b.style || 'hero'; // 'hero' | 'solid' | 'strip'
+  var link  = b.cta_link || '';
+  var tag   = link ? 'a' : 'div';
+  var linkAttr = link ? ' href="' + link + '" target="_blank" rel="noopener"' : '';
+  var clickClass = link ? ' clickable' : '';
+
+  if (style === 'strip') {
+    // Announcement strip
+    var bg   = b.bg_color || 'linear-gradient(90deg, var(--primary), var(--primary-dark))';
+    var col  = b.text_color || '#ffffff';
+    return '<' + tag + linkAttr + ' class="sf-banner sf-banner-strip" style="background:' + bg + ';color:' + col + clickClass + '">'
+      + (b.title ? '<div class="sf-banner-title">' + b.title + '</div>' : '')
+      + (b.cta_text ? '<button class="sf-banner-cta" style="background:' + (b.cta_bg || 'rgba(255,255,255,.2)') + ';color:' + col + '">' + b.cta_text + '</button>' : '')
+      + '</' + tag + '>';
+  }
+
+  if (style === 'solid') {
+    // Solid color background
+    var bg  = b.bg_color || 'linear-gradient(135deg,#1e3a5f,#1d4ed8)';
+    var col = b.text_color || '#ffffff';
+    return '<' + tag + linkAttr + ' class="sf-banner' + clickClass + '" style="background:' + bg + ';color:' + col + '">'
+      + (b.eyebrow ? '<div class="sf-banner-content"><div class="sf-banner-eyebrow">' + b.eyebrow + '</div>' : '<div class="sf-banner-content">')
+      + (b.title    ? '<div class="sf-banner-title">' + b.title + '</div>'        : '')
+      + (b.subtitle ? '<div class="sf-banner-subtitle">' + b.subtitle + '</div>' : '')
+      + (b.cta_text ? '<button class="sf-banner-cta" style="background:' + (b.cta_bg || '#fff') + ';color:' + (b.cta_color || '#1d4ed8') + '">' + b.cta_text + '</button>' : '')
+      + '</div></' + tag + '>';
+  }
+
+  // Default: hero style with image overlay
+  var col = b.text_color || '#ffffff';
+  var overlayColor = b.overlay_color || 'rgba(0,0,0,0.45)';
+  return '<' + tag + linkAttr + ' class="sf-banner' + clickClass + '">'
+    + (b.image_url ? '<img class="sf-banner-bg-img" src="' + b.image_url + '" alt="">' : '')
+    + '<div class="sf-banner-overlay" style="background:' + overlayColor + '"></div>'
+    + '<div class="sf-banner-content" style="color:' + col + '">'
+    + (b.eyebrow  ? '<div class="sf-banner-eyebrow">' + b.eyebrow + '</div>'      : '')
+    + (b.title    ? '<div class="sf-banner-title">' + b.title + '</div>'          : '')
+    + (b.subtitle ? '<div class="sf-banner-subtitle">' + b.subtitle + '</div>'    : '')
+    + (b.cta_text ? '<button class="sf-banner-cta" style="background:' + (b.cta_bg || '#fff') + ';color:' + (b.cta_color || '#1d4ed8') + '">' + b.cta_text + ' <i class=\'fas fa-arrow-right\' style=\'font-size:.8rem\'></i></button>' : '')
+    + '</div>'
+    + '</' + tag + '>';
+}
+
+// ── Patch renderProducts to use renderLayout instead ────────────
+function renderProducts() {
+  renderLayout();
+}
+
+// ── Patch renderFeaturedRow / renderTrendingRow (legacy compat) ─
+function renderFeaturedRow() { /* handled by renderLayout */ }
+function renderTrendingRow() { /* handled by renderLayout */ }
+
+// ── Patch goPage / applyFilters ─────────────────────────────────
+function goPage(n) {
+  currentPage = n;
+  renderLayout();
+  var sec = document.getElementById('all-products-section');
+  if (sec) sec.scrollIntoView({ behavior: 'smooth' });
+}
+
+function applyFilters() {
+  var ss = document.getElementById('sort-select');
+  var pf = document.getElementById('price-filter');
+  var af = document.getElementById('avail-filter');
+  if (ss) sortMode    = ss.value;
+  if (pf) priceFilter = pf.value;
+  if (af) availFilter = af.value;
+  currentPage = 1;
+  renderLayout();
 }
 
 // ── Category pills ──────────────────────────────────────────────
@@ -1814,65 +2098,18 @@ function renderCategoryPills() {
   }).join('');
 }
 
-function filterCategory(id) {
-  activeCat = id;
-  currentPage = 1;
-  renderCategoryPills();
-  renderProducts();
-  document.getElementById('all-products-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function scrollToProducts() {
-  document.getElementById('all-products-section').scrollIntoView({ behavior: 'smooth' });
-}
-
-// ── Featured row (first 8 products) ────────────────────────────
-function renderFeaturedRow() {
-  var featured = PRODUCTS.slice(0, 8);
-  var el = document.getElementById('featured-row');
-  if (!el) return;
-  var section = document.getElementById('featured-section');
-  if (!featured.length) { if (section) section.style.display = 'none'; return; }
-  if (section) section.style.display = '';
-  el.innerHTML = featured.map(function(p) { return renderCard(p, true); }).join('');
-}
-
-// ── Trending row (random 6 or by most viewed) ──────────────────
-function renderTrendingRow() {
-  var sorted = PRODUCTS.slice().sort(function(a, b) {
-    var av = viewCounts[a.id] || 0;
-    var bv = viewCounts[b.id] || 0;
-    return bv - av;
-  }).slice(0, 8);
-  var el = document.getElementById('trending-row');
-  if (!el) return;
-  var section = document.getElementById('trending-section');
-  if (!sorted.length) { if (section) section.style.display = 'none'; return; }
-  if (section) section.style.display = '';
-  el.innerHTML = sorted.map(function(p) { return renderCard(p, true); }).join('');
-}
-
 // ── Search ──────────────────────────────────────────────────────
 function handleSearch(val) {
   searchQuery = val;
   currentPage = 1;
   var clearBtn = document.getElementById('search-clear');
   if (clearBtn) clearBtn.classList.toggle('visible', val.length > 0);
-  renderProducts();
+  renderLayout();
 }
 
 function clearSearch() {
   document.getElementById('search-input').value = '';
   handleSearch('');
-}
-
-// ── Filters ─────────────────────────────────────────────────────
-function applyFilters() {
-  sortMode    = document.getElementById('sort-select').value;
-  priceFilter = document.getElementById('price-filter').value;
-  availFilter = document.getElementById('avail-filter').value;
-  currentPage = 1;
-  renderProducts();
 }
 
 // ── Product filtering + sorting pipeline ───────────────────────
@@ -1913,61 +2150,9 @@ function getFilteredProducts() {
   return filtered;
 }
 
-// ── Render products grid ────────────────────────────────────────
-function renderProducts() {
-  var filtered = getFilteredProducts();
-  var grid     = document.getElementById('products-grid');
-  var noRes    = document.getElementById('no-results');
-  var countEl  = document.getElementById('results-count');
 
-  // Count
-  if (countEl) {
-    countEl.innerHTML = '<span>' + filtered.length + '</span> product' + (filtered.length !== 1 ? 's' : '') + ' found';
-  }
-
-  if (!filtered.length) {
-    grid.innerHTML = ''; noRes.style.display = 'block';
-    renderPagination(0);
-    return;
-  }
-  noRes.style.display = 'none';
-
-  // Pagination
-  var total = filtered.length;
-  var start = (currentPage - 1) * PAGE_SIZE;
-  var page  = filtered.slice(start, start + PAGE_SIZE);
-
-  grid.innerHTML = page.map(function(p, i) {
-    return '<div class="fade-up stagger-' + ((i % 4) + 1) + '">' + renderCard(p, false) + '</div>';
-  }).join('');
-
-  renderPagination(total);
-}
-
-// ── Pagination ──────────────────────────────────────────────────
-function renderPagination(total) {
-  var pag  = document.getElementById('pagination');
-  var pages = Math.ceil(total / PAGE_SIZE);
-  if (pages <= 1) { pag.style.display = 'none'; return; }
-  pag.style.display = 'flex';
-  var html = '';
-  for (var i = 1; i <= pages; i++) {
-    var active = i === currentPage;
-    html += '<button onclick="goPage(' + i + ')" style="'
-      + 'width:36px;height:36px;border-radius:8px;border:1.5px solid ' + (active ? 'var(--primary)' : 'var(--border)') + ';'
-      + 'background:' + (active ? 'var(--primary)' : 'var(--surface)') + ';'
-      + 'color:' + (active ? '#fff' : 'var(--text-2)') + ';'
-      + 'font-weight:700;font-size:.85rem;cursor:pointer;font-family:var(--font);'
-      + 'transition:all var(--transition)">' + i + '</button>';
-  }
-  pag.innerHTML = html;
-}
-
-function goPage(n) {
-  currentPage = n;
-  renderProducts();
-  document.getElementById('all-products-section').scrollIntoView({ behavior: 'smooth' });
-}
+// ── Legacy renderPagination stub (pagination now inside renderAllProductsHTML) ──
+function renderPagination(total) { /* no-op — pagination built inside renderLayout */ }
 
 // ── Render a single product card ────────────────────────────────
 function renderCard(p, compact) {
