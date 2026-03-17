@@ -758,21 +758,30 @@ function renderBills(c) {
           <th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Bill #</th>
           <th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Vendor</th>
           <th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide hidden md:table-cell">Category</th>
-          <th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide hidden md:table-cell">Due Date</th>
-          <th class="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Amount</th>
+          <th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide hidden md:table-cell">Next Due</th>
+          <th class="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Total</th>
           <th class="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide hidden lg:table-cell">Balance</th>
+          <th class="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide hidden lg:table-cell">Monthly</th>
           <th class="text-center px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Status</th>
           <th class="text-center px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Actions</th>
         </tr></thead>
         <tbody>
-          ${rows.length ? rows.map(b => `
+          ${rows.length ? rows.map(b => {
+            const isRecurring = b.recurring === 'true' || b.recurring === true;
+            const balance = parseFloat(b.balance_due) || parseFloat(b.amount) || 0;
+            const monthly = parseFloat(b.monthly_payment) || 0;
+            const recurringBadge = isRecurring
+              ? `<span class="ml-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-600"><i class="fas fa-sync-alt text-[8px]"></i> Day ${b.recurring_day||'—'}</span>`
+              : '';
+            return `
             <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
               <td class="px-4 py-3 font-semibold text-slate-800">${b.bill_number || '—'}</td>
-              <td class="px-4 py-3 text-slate-600">${b.vendor || '—'}</td>
+              <td class="px-4 py-3 text-slate-600">${b.vendor || '—'}${recurringBadge}</td>
               <td class="px-4 py-3 text-slate-500 hidden md:table-cell">${b.category || '—'}</td>
               <td class="px-4 py-3 text-slate-500 hidden md:table-cell">${fmt.date(b.due_date)}</td>
               <td class="px-4 py-3 text-right font-bold text-slate-800">${fmt.currency(b.amount)}</td>
-              <td class="px-4 py-3 text-right text-slate-600 hidden lg:table-cell">${fmt.currency(b.balance_due)}</td>
+              <td class="px-4 py-3 text-right hidden lg:table-cell ${balance > 0 ? 'text-red-500 font-semibold' : 'text-slate-400'}">${fmt.currency(balance)}</td>
+              <td class="px-4 py-3 text-right text-slate-500 hidden lg:table-cell">${monthly > 0 ? fmt.currency(monthly)+'/mo' : '—'}</td>
               <td class="px-4 py-3 text-center">${badge(b.status)}</td>
               <td class="px-4 py-3 text-center">
                 <div class="flex items-center justify-center gap-1">
@@ -781,8 +790,9 @@ function renderBills(c) {
                   <button onclick="FinPage._deleteBill('${b.id}')" class="p-1.5 text-red-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"><i class="fas fa-trash text-xs"></i></button>
                 </div>
               </td>
-            </tr>`).join('') : `
-            <tr><td colspan="8" class="px-4 py-12 text-center text-slate-400">
+            </tr>`;
+          }).join('') : `
+            <tr><td colspan="9" class="px-4 py-12 text-center text-slate-400">
               <i class="fas fa-file-alt text-3xl mb-2 block opacity-30"></i>
               No bills found. <button onclick="showBillModal()" class="text-emerald-600 font-semibold hover:underline">Add one</button>
             </td></tr>`}
@@ -792,7 +802,13 @@ function renderBills(c) {
   </div>`;
 
   window.FinPage._filterBill = (u) => { Object.assign(state.filter.bills, u); renderBills(c); };
-  window.FinPage._payBill    = (id) => showPaymentModal(id, 'bill');
+  window.FinPage._payBill    = (id) => {
+    const b = state.bills.find(r => r.id === id);
+    const isRecurring = b?.recurring === 'true' || b?.recurring === true;
+    const monthlyAmt  = parseFloat(b?.monthly_payment) || 0;
+    // For recurring bills pre-fill the monthly payment amount, not the full balance
+    showPaymentModal(id, 'bill', isRecurring && monthlyAmt > 0 ? monthlyAmt : null);
+  };
   window.FinPage._editBill   = (id) => { const b = state.bills.find(r=>r.id===id); if(b) showBillModal(b); };
   window.FinPage._deleteBill = async (id) => {
     if (!confirm('Delete this bill?')) return;
@@ -1413,6 +1429,7 @@ function showExpenseModal(exp = null) {
 // Bill Modal
 function showBillModal(bill = null) {
   const today = new Date().toISOString().split('T')[0];
+  const isRecurring = bill?.recurring === 'true' || bill?.recurring === true;
   modal(
     bill ? 'Edit Bill' : 'New Bill',
     `<form id="bill-form" class="space-y-3">
@@ -1423,7 +1440,58 @@ function showBillModal(bill = null) {
         ${field('Due Date', 'due_date', 'date', dateVal(bill?.due_date))}
       </div>
       ${sel('Category', 'category', EXP_CATS, bill?.category || EXP_CATS[0])}
-      ${field('Amount ($)', 'amount', 'number', bill?.amount, 'step="0.01" min="0"')}
+
+      <!-- Total amount & balance -->
+      <div class="grid grid-cols-2 gap-3">
+        ${field('Total Bill Amount ($)', 'amount', 'number', bill?.amount, 'step="0.01" min="0" oninput="FinPage._syncBillBalance()"')}
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Balance Due ($)</label>
+          <input type="number" name="balance_due" step="0.01" min="0"
+            value="${bill?.balance_due ?? bill?.amount ?? ''}"
+            class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
+          <p class="text-[10px] text-slate-400 mt-0.5">Remaining balance — auto-filled from total, reduces with each payment.</p>
+        </div>
+      </div>
+
+      <!-- Recurring toggle -->
+      <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" name="recurring" id="bill-recurring-toggle" value="true"
+            ${isRecurring ? 'checked' : ''}
+            onchange="FinPage._toggleRecurring(this.checked)"
+            class="w-4 h-4 accent-violet-600 rounded">
+          <div>
+            <span class="text-sm font-semibold text-slate-700">Recurring Monthly Bill</span>
+            <p class="text-[11px] text-slate-400">Auto-due every month on a set day. Balance reduces by monthly payment each time Pay is clicked.</p>
+          </div>
+        </label>
+      </div>
+
+      <!-- Recurring options — shown only when toggle is on -->
+      <div id="bill-recurring-opts" class="${isRecurring ? '' : 'hidden'} space-y-3 pl-1">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Monthly Payment Amount ($)</label>
+            <input type="number" name="monthly_payment" step="0.01" min="0"
+              value="${bill?.monthly_payment || ''}"
+              placeholder="e.g. 100.00"
+              class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 outline-none bg-white">
+            <p class="text-[10px] text-slate-400 mt-0.5">Amount deducted from balance each month.</p>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Due Day of Month</label>
+            <input type="number" name="recurring_day" min="1" max="31"
+              value="${bill?.recurring_day || ''}"
+              placeholder="e.g. 15"
+              class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 outline-none bg-white">
+            <p class="text-[10px] text-slate-400 mt-0.5">Bill re-activates on this day each month.</p>
+          </div>
+        </div>
+        ${bill?.recurring_day ? `<p class="text-xs text-violet-600 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
+          <i class="fas fa-sync-alt mr-1"></i>Next due date will be automatically set to day <strong>${bill.recurring_day}</strong> of next month when marked paid.
+        </p>` : ''}
+      </div>
+
       ${sel('Status', 'status', ['Unpaid','Partial','Paid','Overdue'], bill?.status || 'Unpaid')}
       <div>
         <label class="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
@@ -1434,9 +1502,31 @@ function showBillModal(bill = null) {
      <button onclick="FinPage._saveBill(${bill ? `'${bill.id}'` : 'null'})" class="btn-primary" style="background:#10b981">${bill ? 'Save' : 'Add Bill'}</button>`
   );
 
+  // Sync balance_due to match amount when amount changes and balance_due is empty
+  window.FinPage._syncBillBalance = () => {
+    const amt = document.querySelector('#bill-form [name=amount]')?.value;
+    const bal = document.querySelector('#bill-form [name=balance_due]');
+    if (bal && !bal.value) bal.value = amt;
+  };
+
+  // Show/hide recurring options
+  window.FinPage._toggleRecurring = (on) => {
+    const opts = document.getElementById('bill-recurring-opts');
+    if (opts) opts.classList.toggle('hidden', !on);
+  };
+
   window.FinPage._saveBill = async (id) => {
     const data = getForm('bill-form');
     if (!data.vendor) { toast('Vendor is required','error'); return; }
+
+    // Ensure balance_due defaults to amount on creation
+    if (!id && (!data.balance_due || parseFloat(data.balance_due) === 0)) {
+      data.balance_due = data.amount;
+    }
+
+    // If recurring checkbox is unchecked it won't appear in getForm — default to false
+    if (!data.recurring) data.recurring = 'false';
+
     try {
       if (id) { data.id = id; await api('financials/bills/update', data); toast('Updated','success'); }
       else { await api('financials/bills/create', data); toast('Bill added','success'); }
@@ -1448,18 +1538,30 @@ function showBillModal(bill = null) {
 }
 
 // Payment Modal
-function showPaymentModal(refId, refType = 'bill') {
+function showPaymentModal(refId, refType = 'bill', overrideAmount = null) {
   const today = new Date().toISOString().split('T')[0];
   const ref = refType === 'bill' ? state.bills.find(r => r.id === refId) : state.invoices.find(r => r.id === refId);
+  const isRecurring = refType === 'bill' && (ref?.recurring === 'true' || ref?.recurring === true);
+  const payAmt = overrideAmount ?? ref?.balance_due ?? '';
+  const balance = parseFloat(ref?.balance_due) || parseFloat(ref?.amount) || 0;
+  const monthly = parseFloat(ref?.monthly_payment) || 0;
+
   modal(
     'Record Payment',
     `<form id="pay-form" class="space-y-3">
       <div class="p-3 bg-slate-50 rounded-lg text-sm text-slate-600">
         Recording payment for: <span class="font-bold text-slate-800">${ref ? (ref.bill_number || ref.invoice_number || ref.vendor || ref.customer) : refId}</span>
-        ${ref ? `— Balance: <span class="font-bold text-red-500">${fmt.currency(ref.balance_due)}</span>` : ''}
+        ${ref ? `— Balance: <span class="font-bold text-red-500">${fmt.currency(balance)}</span>` : ''}
+        ${isRecurring && monthly > 0 ? `<span class="ml-2 text-xs font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full"><i class="fas fa-sync-alt mr-1"></i>Monthly: ${fmt.currency(monthly)}</span>` : ''}
       </div>
+      ${isRecurring && monthly > 0 ? `
+      <div class="p-3 bg-violet-50 border border-violet-200 rounded-lg text-xs text-violet-700">
+        <i class="fas fa-info-circle mr-1"></i>
+        This is a recurring bill. Paying <strong>${fmt.currency(monthly)}</strong> will reduce the balance to <strong>${fmt.currency(Math.max(0, balance - monthly))}</strong>.
+        ${ref?.recurring_day ? `Next due date will be set to day <strong>${ref.recurring_day}</strong> of next month.` : ''}
+      </div>` : ''}
       ${field('Payment Date', 'date', 'date', today)}
-      ${field('Amount ($)', 'amount', 'number', ref?.balance_due || '', 'step="0.01" min="0"')}
+      ${field('Amount ($)', 'amount', 'number', payAmt, 'step="0.01" min="0"')}
       ${sel('Method', 'method', ['Bank Transfer','Cash','Credit Card','PayPal','Stripe','Check'], '')}
       ${field('Account', 'account', 'text', 'Cash & Bank')}
       ${field('Reference / Notes', 'notes', 'text', '')}
@@ -1475,6 +1577,27 @@ function showPaymentModal(refId, refType = 'bill') {
     if (!data.amount) { toast('Amount required','error'); return; }
     try {
       data.created_by = user()?.name || '';
+
+      // For recurring bills: compute new balance and next due date before saving
+      if (isRecurring && refType === 'bill' && ref) {
+        const paid       = parseFloat(data.amount) || 0;
+        const newBalance = Math.max(0, balance - paid);
+        data.balance_due = newBalance.toFixed(2);
+        data.status      = newBalance <= 0 ? 'Paid' : 'Partial';
+
+        // Advance due date to recurring_day of next month
+        if (ref.recurring_day && newBalance > 0) {
+          const now   = new Date();
+          const year  = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+          const month = now.getMonth() === 11 ? 0 : now.getMonth() + 1;
+          const day   = Math.min(parseInt(ref.recurring_day), new Date(year, month + 1, 0).getDate());
+          data.due_date = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        }
+
+        // Save bill update first (balance + new due date)
+        await api('financials/bills/update', { id: refId, balance_due: data.balance_due, status: data.status, due_date: data.due_date });
+      }
+
       await api('financials/payments/create', data);
       toast('Payment recorded','success');
       closeModal();
