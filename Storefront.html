@@ -1791,7 +1791,7 @@ async function boot() {
   // PayPal return
   var params = new URLSearchParams(window.location.search);
   if (params.get('paid') === '1') {
-    showSuccess('Payment successful! Your order has been confirmed.', params.get('order'));
+    showSuccess('Payment successful! Your order has been confirmed.', params.get('order'), [], []);
   }
 }
 
@@ -2159,15 +2159,24 @@ function renderCard(p, compact) {
   var catMap = {};
   CATEGORIES.forEach(function(c) { catMap[c.id] = c.name; });
 
-  var isOos   = String(p.track_inventory) === 'true' && parseInt(p.stock || 0) <= 0;
-  var hasDisc = p.compare_price && parseFloat(p.compare_price) > parseFloat(p.price);
-  var discPct = hasDisc ? Math.round((1 - parseFloat(p.price)/parseFloat(p.compare_price)) * 100) : 0;
-  var isNew   = p.created_at && (new Date() - new Date(p.created_at)) < 7 * 24 * 3600 * 1000;
-  var stock   = parseInt(p.stock || 99);
-  var lowStock = String(p.track_inventory) === 'true' && stock > 0 && stock <= parseInt(p.low_stock_alert || 5);
-
-  // Fake view count for urgency (7–23 range, seeded by id)
+  var ptype    = p.product_type || 'physical';
+  var isOos    = ptype === 'physical' && String(p.track_inventory) === 'true' && parseInt(p.stock || 0) <= 0;
+  var hasDisc  = p.compare_price && parseFloat(p.compare_price) > parseFloat(p.price);
+  var discPct  = hasDisc ? Math.round((1 - parseFloat(p.price)/parseFloat(p.compare_price)) * 100) : 0;
+  var isNew    = p.created_at && (new Date() - new Date(p.created_at)) < 7 * 24 * 3600 * 1000;
+  var stock    = parseInt(p.stock || 99);
+  var lowStock = ptype === 'physical' && String(p.track_inventory) === 'true' && stock > 0 && stock <= parseInt(p.low_stock_alert || 5);
   var viewSeed = p.id ? p.id.charCodeAt(0) % 17 + 7 : 12;
+
+  // Type config
+  var typeLabel = { physical: '📦 Physical', digital: '💾 Digital', subscription: '🔄 Subscription' }[ptype] || '';
+  var typeCls   = { physical: '', digital: 'badge-digital', subscription: 'badge-subscription' }[ptype] || '';
+
+  // Price label — subscriptions show interval
+  var intervalLabel = { week:'/ week', mo:'/ month', year:'/ year' }[p.billing_interval || 'mo'] || '/ month';
+  var priceDisplay  = fmt(p.price, p.currency) + (ptype === 'subscription'
+    ? '<span style="font-size:.65rem;font-weight:600;color:var(--text-3);margin-left:1px">' + intervalLabel + '</span>'
+    : '');
 
   var html = '<div class="product-card" onclick="openProductModal(\'' + p.id + '\')">';
 
@@ -2176,21 +2185,32 @@ function renderCard(p, compact) {
   if (p.image_url) {
     html += '<img src="' + p.image_url + '" alt="' + p.name + '" loading="lazy">';
   } else {
-    html += '<div class="card-img-placeholder"><i class="fas fa-image"></i></div>';
+    // Placeholder icon varies by type
+    var placeholderIcon = ptype === 'digital' ? 'fa-download' : ptype === 'subscription' ? 'fa-rotate' : 'fa-image';
+    html += '<div class="card-img-placeholder"><i class="fas ' + placeholderIcon + '"></i></div>';
   }
 
-  // Badges
+  // Top-left badges
   html += '<div class="card-badges">';
   if (discPct > 0) html += '<span class="badge badge-sale">-' + discPct + '%</span>';
   if (isNew)       html += '<span class="badge badge-new">New</span>';
   if (lowStock)    html += '<span class="badge badge-low"><i class="fas fa-fire"></i> Low Stock</span>';
   html += '</div>';
 
-  // Quick add overlay
+  // Type badge — bottom-left, only for digital + subscription
+  if (ptype !== 'physical') {
+    var typeBgCls = ptype === 'digital' ? 'background:rgba(139,92,246,.85)' : 'background:rgba(37,99,235,.85)';
+    html += '<div style="position:absolute;bottom:.6rem;left:.6rem;z-index:2">'
+      + '<span style="' + typeBgCls + ';color:#fff;font-size:.6rem;font-weight:800;padding:.2rem .5rem;border-radius:5px;backdrop-filter:blur(4px)">'
+      + typeLabel + '</span></div>';
+  }
+
+  // Quick-add overlay
   if (!isOos) {
+    var quickLabel = ptype === 'digital' ? 'Get It Now' : ptype === 'subscription' ? 'Subscribe' : 'Quick Add';
     html += '<div class="card-overlay">'
       + '<button class="quick-add-btn" onclick="event.stopPropagation();addToCart(\'' + p.id + '\')">'
-      + '<i class="fas fa-cart-plus"></i> Quick Add</button></div>';
+      + '<i class="fas fa-cart-plus"></i> ' + quickLabel + '</button></div>';
   }
 
   // Wishlist
@@ -2211,8 +2231,8 @@ function renderCard(p, compact) {
   html += '<div class="card-name">' + p.name + '</div>';
 
   // Stars (simulated — seeded by product id)
-  var starSeed = p.id ? (p.id.charCodeAt(2) % 10) : 5;
-  var stars = 3 + (starSeed % 3); // 3, 4, or 5
+  var starSeed    = p.id ? (p.id.charCodeAt(2) % 10) : 5;
+  var stars       = 3 + (starSeed % 3);
   var reviewCount = 12 + (p.id ? p.id.charCodeAt(1) % 88 : 40);
   html += '<div class="card-stars"><div class="stars-wrap">';
   for (var s = 1; s <= 5; s++) {
@@ -2220,21 +2240,32 @@ function renderCard(p, compact) {
   }
   html += '</div><span class="stars-count">(' + reviewCount + ')</span></div>';
 
-  // Price
+  // Price + add button
   html += '<div class="card-price"><div class="price-group">';
-  html += '<span class="price-main">' + fmt(p.price, p.currency) + '</span>';
+  html += '<span class="price-main">' + priceDisplay + '</span>';
   if (hasDisc) html += '<span class="price-compare">' + fmt(p.compare_price, p.currency) + '</span>';
   html += '</div>';
   if (!isOos) {
+    var cartIcon = ptype === 'subscription' ? 'fa-rotate' : 'fa-cart-plus';
     html += '<button class="add-btn" onclick="event.stopPropagation();addToCart(\'' + p.id + '\')" title="Add to cart">'
-      + '<i class="fas fa-cart-plus"></i></button>';
+      + '<i class="fas ' + cartIcon + '"></i></button>';
   }
   html += '</div>';
   html += '</div>'; // card-body
 
-  // Urgency bar
+  // Urgency / delivery bar
   if (!compact && !isOos) {
-    if (lowStock) {
+    if (ptype === 'digital') {
+      html += '<div class="urgency-bar"><i class="fas fa-bolt" style="color:#8b5cf6"></i>'
+        + '<span style="color:#8b5cf6;font-weight:600">Instant delivery</span>'
+        + '<span style="color:var(--text-3);margin-left:.25rem">— download right after purchase</span></div>';
+    } else if (ptype === 'subscription') {
+      var trialDays = parseInt(p.trial_days || 0);
+      html += '<div class="urgency-bar"><i class="fas fa-rotate" style="color:var(--primary)"></i>'
+        + (trialDays > 0
+          ? '<span style="color:var(--primary);font-weight:600">' + trialDays + '-day free trial</span>'
+          : '<span style="color:var(--primary);font-weight:600">Cancel anytime</span>') + '</div>';
+    } else if (lowStock) {
       html += '<div class="urgency-bar"><i class="fas fa-exclamation-circle urgent"></i>'
         + '<span><span class="urgent">Only ' + stock + ' left</span> in stock — order soon</span></div>';
     } else {
@@ -2259,17 +2290,21 @@ function openProductModal(id) {
   var catMap = {};
   CATEGORIES.forEach(function(c) { catMap[c.id] = c.name; });
 
-  var isOos   = String(p.track_inventory) === 'true' && parseInt(p.stock || 0) <= 0;
-  var hasDisc = p.compare_price && parseFloat(p.compare_price) > parseFloat(p.price);
-  var discPct = hasDisc ? Math.round((1 - parseFloat(p.price)/parseFloat(p.compare_price)) * 100) : 0;
-  var stock   = parseInt(p.stock || 0);
-  var lowStock = String(p.track_inventory) === 'true' && stock > 0 && stock <= parseInt(p.low_stock_alert || 5);
+  var ptype    = p.product_type || 'physical';
+  var isOos    = ptype === 'physical' && String(p.track_inventory) === 'true' && parseInt(p.stock || 0) <= 0;
+  var hasDisc  = p.compare_price && parseFloat(p.compare_price) > parseFloat(p.price);
+  var discPct  = hasDisc ? Math.round((1 - parseFloat(p.price)/parseFloat(p.compare_price)) * 100) : 0;
+  var stock    = parseInt(p.stock || 0);
+  var lowStock = ptype === 'physical' && String(p.track_inventory) === 'true' && stock > 0 && stock <= parseInt(p.low_stock_alert || 5);
   var viewSeed = p.id ? p.id.charCodeAt(0) % 17 + 7 : 12;
 
   // Stars
-  var starSeed   = p.id ? (p.id.charCodeAt(2) % 10) : 5;
-  var stars      = 3 + (starSeed % 3);
+  var starSeed    = p.id ? (p.id.charCodeAt(2) % 10) : 5;
+  var stars       = 3 + (starSeed % 3);
   var reviewCount = 12 + (p.id ? p.id.charCodeAt(1) % 88 : 40);
+
+  // Interval label for subscriptions
+  var intervalLabel = { week:'/ week', mo:'/ month', year:'/ year' }[p.billing_interval || 'mo'] || '/ month';
 
   // Related products (same category, exclude self)
   var related = PRODUCTS.filter(function(x) {
@@ -2281,13 +2316,16 @@ function openProductModal(id) {
   var specs = [];
   if (p.sku)     specs.push(['SKU', p.sku]);
   if (p.barcode) specs.push(['Barcode', p.barcode]);
-  if (p.weight)  specs.push(['Weight', p.weight + 'g']);
+  if (p.weight && ptype === 'physical') specs.push(['Weight', p.weight + 'g']);
   if (p.tags)    specs.push(['Tags', p.tags]);
   if (p.category_id && catMap[p.category_id]) specs.push(['Category', catMap[p.category_id]]);
+  if (ptype === 'digital'      && p.file_description) specs.push(['File Type', p.file_description]);
+  if (ptype === 'subscription' && p.billing_interval) specs.push(['Billing', (p.billing_interval === 'mo' ? 'Monthly' : p.billing_interval === 'year' ? 'Yearly' : 'Weekly')]);
+  if (ptype === 'subscription' && parseInt(p.trial_days||0) > 0) specs.push(['Free Trial', p.trial_days + ' days']);
 
-  // Fake reviews seeded by id
-  var reviewNames  = ['Alex M.', 'Sarah L.', 'Mike R.', 'Emma T.', 'Chris K.'];
-  var reviewTexts  = [
+  // Reviews (seeded)
+  var reviewNames = ['Alex M.', 'Sarah L.', 'Mike R.', 'Emma T.', 'Chris K.'];
+  var reviewTexts = [
     'Absolutely love this product! Exceeded my expectations.',
     'Great quality and fast shipping. Would definitely buy again.',
     'Perfect for what I needed. Very happy with my purchase.',
@@ -2299,20 +2337,32 @@ function openProductModal(id) {
   var html = '<div class="modal-grid">';
 
   // Gallery side
-  html += '<div class="modal-gallery">';
-  html += '<div class="gallery-main">';
+  html += '<div class="modal-gallery"><div class="gallery-main">';
   if (p.image_url) {
     html += '<img src="' + p.image_url + '" alt="' + p.name + '" id="modal-main-img">';
   } else {
-    html += '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--border-2);font-size:4rem"><i class="fas fa-image"></i></div>';
+    var phIcon = ptype === 'digital' ? 'fa-download' : ptype === 'subscription' ? 'fa-rotate' : 'fa-image';
+    html += '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;color:var(--border-2)">'
+      + '<i class="fas ' + phIcon + '" style="font-size:3.5rem"></i></div>';
   }
   html += '<div class="zoom-hint"><i class="fas fa-search-plus"></i> Hover to zoom</div>';
-  html += '</div>';
-  html += '</div>'; // modal-gallery
+  html += '</div></div>'; // gallery-main, modal-gallery
 
   // Info side
   html += '<div class="modal-info">';
-  if (catMap[p.category_id]) html += '<div class="modal-cat">' + catMap[p.category_id] + '</div>';
+
+  // Type pill + category
+  html += '<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem">';
+  if (catMap[p.category_id]) html += '<div class="modal-cat" style="margin:0">' + catMap[p.category_id] + '</div>';
+  var typePillCfg = {
+    physical:     { bg:'#f1f5f9', color:'#475569', icon:'fa-box',      label:'Physical'     },
+    digital:      { bg:'#f5f3ff', color:'#7c3aed', icon:'fa-download', label:'Digital'      },
+    subscription: { bg:'#eff6ff', color:'#2563eb', icon:'fa-rotate',   label:'Subscription' },
+  }[ptype] || { bg:'#f1f5f9', color:'#475569', icon:'fa-box', label:'Physical' };
+  html += '<span style="background:' + typePillCfg.bg + ';color:' + typePillCfg.color + ';font-size:.68rem;font-weight:700;padding:.2rem .6rem;border-radius:50px;display:inline-flex;align-items:center;gap:.3rem">'
+    + '<i class="fas ' + typePillCfg.icon + '" style="font-size:.6rem"></i>' + typePillCfg.label + '</span>';
+  html += '</div>';
+
   html += '<h2 class="modal-name">' + p.name + '</h2>';
 
   // Stars
@@ -2325,6 +2375,9 @@ function openProductModal(id) {
   // Price
   html += '<div class="modal-price-row">';
   html += '<span class="modal-price">' + fmt(p.price, p.currency) + '</span>';
+  if (ptype === 'subscription') {
+    html += '<span style="font-size:.95rem;color:var(--text-3);font-weight:500">' + intervalLabel + '</span>';
+  }
   if (hasDisc) {
     html += '<span class="modal-compare">' + fmt(p.compare_price, p.currency) + '</span>';
     html += '<span class="modal-save">Save ' + discPct + '%</span>';
@@ -2336,21 +2389,45 @@ function openProductModal(id) {
     html += '<div class="modal-desc">' + p.description.replace(/\n/g, '<br>') + '</div>';
   }
 
-  // Urgency signals
+  // Type-specific info block
   html += '<div class="modal-urgency">';
-  if (isOos) {
-    html += '<div class="urgency-item danger"><i class="fas fa-circle-xmark u-icon"></i>Currently out of stock</div>';
-  } else if (lowStock) {
-    html += '<div class="urgency-item danger"><i class="fas fa-triangle-exclamation u-icon"></i>Only <strong style="margin:0 .2rem">' + stock + '</strong> left in stock!</div>';
-    html += '<div class="urgency-item warning"><i class="fas fa-fire u-icon"></i>Selling fast — don\'t miss out</div>';
+  if (ptype === 'digital') {
+    html += '<div class="urgency-item" style="background:#f5f3ff;color:#6d28d9">'
+      + '<i class="fas fa-bolt u-icon"></i>'
+      + '<span><strong>Instant digital delivery</strong> — download link shown immediately after purchase</span></div>';
+    if (p.file_description) {
+      html += '<div class="urgency-item"><i class="fas fa-file u-icon" style="color:var(--primary)"></i>'
+        + '<span>' + p.file_description + '</span></div>';
+    }
+  } else if (ptype === 'subscription') {
+    var trialDays = parseInt(p.trial_days || 0);
+    if (trialDays > 0) {
+      html += '<div class="urgency-item" style="background:#f0fdf4;color:#15803d">'
+        + '<i class="fas fa-gift u-icon"></i>'
+        + '<span><strong>' + trialDays + '-day free trial</strong> — no charge until trial ends</span></div>';
+    }
+    html += '<div class="urgency-item" style="background:#eff6ff;color:#1d4ed8">'
+      + '<i class="fas fa-rotate u-icon"></i>'
+      + '<span>Billed <strong>' + (p.billing_interval === 'week' ? 'weekly' : p.billing_interval === 'year' ? 'yearly' : 'monthly') + '</strong> · Cancel anytime</span></div>';
   } else {
-    html += '<div class="urgency-item"><i class="fas fa-check-circle u-icon" style="color:#16a34a"></i>In stock — ready to ship</div>';
+    // Physical
+    if (isOos) {
+      html += '<div class="urgency-item danger"><i class="fas fa-circle-xmark u-icon"></i>Currently out of stock</div>';
+    } else if (lowStock) {
+      html += '<div class="urgency-item danger"><i class="fas fa-triangle-exclamation u-icon"></i>Only <strong style="margin:0 .2rem">' + stock + '</strong> left in stock!</div>';
+      html += '<div class="urgency-item warning"><i class="fas fa-fire u-icon"></i>Selling fast — don\'t miss out</div>';
+    } else {
+      html += '<div class="urgency-item"><i class="fas fa-check-circle u-icon" style="color:#16a34a"></i>In stock — ready to ship</div>';
+    }
   }
-  html += '<div class="urgency-item"><i class="fas fa-eye u-icon" style="color:var(--primary)"></i><span><strong>' + (viewSeed + viewCounts[id]) + ' people</strong> are viewing this right now</span></div>';
-  html += '</div>';
+  html += '<div class="urgency-item"><i class="fas fa-eye u-icon" style="color:var(--primary)"></i>'
+    + '<span><strong>' + (viewSeed + viewCounts[id]) + ' people</strong> viewing this right now</span></div>';
+  html += '</div>'; // modal-urgency
 
   // Qty + Add
   if (!isOos) {
+    var addLabel = ptype === 'digital' ? 'Buy & Download' : ptype === 'subscription' ? 'Subscribe Now' : 'Add to Cart';
+    var addIcon  = ptype === 'digital' ? 'fa-download'   : ptype === 'subscription' ? 'fa-rotate'     : 'fa-cart-plus';
     html += '<div class="modal-actions">'
       + '<div class="qty-ctrl">'
       + '<button class="qty-btn" onclick="modalQty(-1)">−</button>'
@@ -2358,17 +2435,17 @@ function openProductModal(id) {
       + '<button class="qty-btn" onclick="modalQty(1)">+</button>'
       + '</div>'
       + '<button class="modal-add-btn" onclick="modalAddToCart(\'' + id + '\')">'
-      + '<i class="fas fa-cart-plus"></i> Add to Cart</button>'
+      + '<i class="fas ' + addIcon + '"></i> ' + addLabel + '</button>'
       + '</div>';
   }
+
   html += '</div>'; // modal-info
   html += '</div>'; // modal-grid
 
   // Specs table
   if (specs.length) {
     html += '<div style="padding:0 1.5rem 1.5rem">';
-    html += '<div class="specs-table">';
-    html += '<div class="specs-table-head">Product Details</div>';
+    html += '<div class="specs-table"><div class="specs-table-head">Product Details</div>';
     specs.forEach(function(spec) {
       html += '<div class="specs-row"><span class="spec-key">' + spec[0] + '</span><span class="spec-val">' + spec[1] + '</span></div>';
     });
@@ -2379,18 +2456,16 @@ function openProductModal(id) {
   html += '<div class="reviews-section">';
   html += '<div style="font-family:var(--font-display);font-size:1rem;font-weight:800;margin-bottom:1rem">Customer Reviews</div>';
   for (var rv = 0; rv < 3; rv++) {
-    var ri = (seed + rv) % 5;
+    var ri     = (seed + rv) % 5;
     var rStars = 4 + (ri % 2);
-    html += '<div class="review-card">';
-    html += '<div class="review-header"><span class="reviewer-name">' + reviewNames[ri] + '</span>';
-    html += '<span class="review-date">Verified Purchase</span></div>';
-    html += '<div class="stars-wrap" style="margin-bottom:.4rem">';
+    html += '<div class="review-card"><div class="review-header">'
+      + '<span class="reviewer-name">' + reviewNames[ri] + '</span>'
+      + '<span class="review-date">Verified Purchase</span></div>'
+      + '<div class="stars-wrap" style="margin-bottom:.4rem">';
     for (var rs = 1; rs <= 5; rs++) {
       html += '<i class="fas fa-star' + (rs > rStars ? ' empty' : '') + '"></i>';
     }
-    html += '</div>';
-    html += '<div class="review-text">' + reviewTexts[ri] + '</div>';
-    html += '</div>';
+    html += '</div><div class="review-text">' + reviewTexts[ri] + '</div></div>';
   }
   html += '</div>';
 
@@ -2399,9 +2474,7 @@ function openProductModal(id) {
     html += '<div class="related-section">';
     html += '<div style="font-family:var(--font-display);font-size:1rem;font-weight:800;margin-bottom:1rem">You May Also Like</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem">';
-    related.forEach(function(rp) {
-      html += renderCard(rp, true);
-    });
+    related.forEach(function(rp) { html += renderCard(rp, true); });
     html += '</div></div>';
   }
 
@@ -2440,13 +2513,17 @@ function addToCart(id) {
     existing.qty++;
   } else {
     cart.push({
-      id: p.id, name: p.name,
-      price: parseFloat(p.price),
-      currency: p.currency,
-      image_url: p.image_url || '',
-      qty: 1,
+      id:           p.id,
+      name:         p.name,
+      price:        parseFloat(p.price),
+      currency:     p.currency,
+      image_url:    p.image_url || '',
+      qty:          1,
+      product_type: p.product_type || 'physical',
+      download_url: p.download_url || '',
+      billing_interval: p.billing_interval || 'mo',
       track_inventory: p.track_inventory,
-      stock: parseInt(p.stock || 99),
+      stock:        parseInt(p.stock || 99),
     });
   }
   saveCart();
@@ -2492,9 +2569,10 @@ function getTotal() {
   var disc = appliedDisc
     ? (appliedDisc.type === 'percent' ? sub * parseFloat(appliedDisc.value)/100 : parseFloat(appliedDisc.value))
     : 0;
-  var tax  = S.tax_included === 'true' ? 0 : Math.max(0, sub - disc) * parseFloat(S.tax_rate || 0) / 100;
+  var tax     = S.tax_included === 'true' ? 0 : Math.max(0, sub - disc) * parseFloat(S.tax_rate || 0) / 100;
   var freeMin = parseFloat(S.free_shipping_min || 0);
-  var ship = S.shipping_enabled === 'true' && sub < freeMin ? parseFloat(S.shipping_rate || 0) : 0;
+  var hasPhysical = cart.some(function(i) { return (i.product_type || 'physical') === 'physical'; });
+  var ship    = hasPhysical && S.shipping_enabled === 'true' && sub < freeMin ? parseFloat(S.shipping_rate || 0) : 0;
   return Math.max(0, sub - disc + tax + ship);
 }
 
@@ -2502,6 +2580,7 @@ function updateCartTotals() {
   var sub     = getSubtotal();
   var taxRate = parseFloat(S.tax_rate || 0) / 100;
   var freeMin = parseFloat(S.free_shipping_min || 0);
+  var hasPhysical = cart.some(function(i) { return (i.product_type || 'physical') === 'physical'; });
 
   var discAmt = 0;
   if (appliedDisc) {
@@ -2511,7 +2590,7 @@ function updateCartTotals() {
   }
   var taxBase = Math.max(0, sub - discAmt);
   var tax     = S.tax_included === 'true' ? 0 : taxBase * taxRate;
-  var ship    = S.shipping_enabled === 'true' && sub < freeMin ? parseFloat(S.shipping_rate || 0) : 0;
+  var ship    = hasPhysical && S.shipping_enabled === 'true' && sub < freeMin ? parseFloat(S.shipping_rate || 0) : 0;
   var total   = Math.max(0, sub - discAmt + tax + ship);
 
   document.getElementById('cart-subtotal').textContent  = fmt(sub);
@@ -2542,15 +2621,32 @@ function renderCartItems() {
     return;
   }
 
+  var typeIcon  = { physical:'fa-box', digital:'fa-download', subscription:'fa-rotate' };
+  var typeColor = { physical:'#94a3b8', digital:'#8b5cf6', subscription:'#2563eb' };
+  var intervalLabel = { week:'/ wk', mo:'/ mo', year:'/ yr' };
+
   el.innerHTML = cart.map(function(item) {
+    var ptype    = item.product_type || 'physical';
+    var icon     = typeIcon[ptype]   || 'fa-box';
+    var color    = typeColor[ptype]  || '#94a3b8';
+    var subLabel = ptype === 'subscription'
+      ? '<span style="font-size:.68rem;color:#2563eb;font-weight:600"> '
+        + (intervalLabel[item.billing_interval || 'mo'] || '/ mo') + '</span>'
+      : '';
+    var priceLabel = ptype === 'digital'
+      ? 'Instant download'
+      : ptype === 'subscription'
+        ? 'Recurring · ' + fmt(item.price, item.currency) + (intervalLabel[item.billing_interval||'mo']||'/mo')
+        : fmt(item.price, item.currency) + ' each';
+
     return '<div class="cart-item">'
       + (item.image_url
           ? '<img class="cart-item-img" src="' + item.image_url + '" alt="' + item.name + '">'
-          : '<div class="cart-item-img-placeholder"><i class="fas fa-box"></i></div>')
+          : '<div class="cart-item-img-placeholder" style="color:' + color + '"><i class="fas ' + icon + '"></i></div>')
       + '<div class="cart-item-info">'
       + '<div class="cart-item-name">' + item.name + '</div>'
-      + '<div class="cart-item-price">' + fmt(item.price, item.currency) + ' each</div>'
-      + '<div class="cart-item-total">' + fmt(item.price * item.qty, item.currency) + '</div>'
+      + '<div class="cart-item-price">' + priceLabel + '</div>'
+      + '<div class="cart-item-total">' + fmt(item.price * item.qty, item.currency) + subLabel + '</div>'
       + '</div>'
       + '<div class="cart-qty-ctrl">'
       + '<button class="cart-qty-btn" onclick="changeQty(\'' + item.id + '\',-1)">−</button>'
@@ -2630,21 +2726,32 @@ function selectPayment(id) {
 }
 
 function buildOrderSummary() {
-  var sub  = getSubtotal();
-  var disc = appliedDisc ? (appliedDisc.type === 'percent' ? sub * parseFloat(appliedDisc.value)/100 : parseFloat(appliedDisc.value)) : 0;
-  var tax  = S.tax_included === 'true' ? 0 : Math.max(0, sub - disc) * parseFloat(S.tax_rate||0) / 100;
-  var freeMin = parseFloat(S.free_shipping_min || 0);
-  var ship = S.shipping_enabled === 'true' && sub < freeMin ? parseFloat(S.shipping_rate||0) : 0;
-  var total = Math.max(0, sub - disc + tax + ship);
+  var sub       = getSubtotal();
+  var disc      = appliedDisc ? (appliedDisc.type === 'percent' ? sub * parseFloat(appliedDisc.value)/100 : parseFloat(appliedDisc.value)) : 0;
+  var tax       = S.tax_included === 'true' ? 0 : Math.max(0, sub - disc) * parseFloat(S.tax_rate||0) / 100;
+  var freeMin   = parseFloat(S.free_shipping_min || 0);
+  var hasPhysical = cart.some(function(i) { return (i.product_type || 'physical') === 'physical'; });
+  var ship      = hasPhysical && S.shipping_enabled === 'true' && sub < freeMin ? parseFloat(S.shipping_rate||0) : 0;
+  var total     = Math.max(0, sub - disc + tax + ship);
+
+  var typeIcon = { physical:'📦', digital:'💾', subscription:'🔄' };
 
   var rows = cart.map(function(i) {
-    return '<div class="co-summary-item"><span>' + i.name + ' × ' + i.qty + '</span><span>' + fmt(i.price * i.qty, i.currency) + '</span></div>';
+    var ptype     = i.product_type || 'physical';
+    var icon      = typeIcon[ptype] || '📦';
+    var priceStr  = ptype === 'subscription'
+      ? fmt(i.price, i.currency) + '/' + (i.billing_interval || 'mo')
+      : fmt(i.price * i.qty, i.currency);
+    return '<div class="co-summary-item">'
+      + '<span>' + icon + ' ' + i.name + ' × ' + i.qty + '</span>'
+      + '<span>' + priceStr + '</span>'
+      + '</div>';
   }).join('');
 
   var extras = '';
-  if (disc > 0)  extras += '<div class="co-summary-item" style="color:#16a34a"><span>Discount</span><span>-' + fmt(disc) + '</span></div>';
-  if (tax > 0)   extras += '<div class="co-summary-item"><span>' + (S.tax_label||'Tax') + '</span><span>' + fmt(tax) + '</span></div>';
-  if (ship > 0)  extras += '<div class="co-summary-item"><span>Shipping</span><span>' + fmt(ship) + '</span></div>';
+  if (disc > 0) extras += '<div class="co-summary-item" style="color:#16a34a"><span>Discount</span><span>-' + fmt(disc) + '</span></div>';
+  if (tax  > 0) extras += '<div class="co-summary-item"><span>' + (S.tax_label||'Tax') + '</span><span>' + fmt(tax) + '</span></div>';
+  if (ship > 0) extras += '<div class="co-summary-item"><span>Shipping</span><span>' + fmt(ship) + '</span></div>';
 
   document.getElementById('co-summary').innerHTML = rows + extras
     + '<div class="co-summary-total"><span>Total</span><span style="color:var(--primary)">' + fmt(total) + '</span></div>';
@@ -2655,6 +2762,12 @@ function openCheckout() {
   closeCart();
   buildPaymentOptions();
   buildOrderSummary();
+
+  // Hide shipping section if no physical items in cart
+  var hasPhysical = cart.some(function(i) { return (i.product_type || 'physical') === 'physical'; });
+  var shipSection = document.getElementById('shipping-section');
+  if (shipSection) shipSection.style.display = hasPhysical ? '' : 'none';
+
   document.getElementById('checkout-form').style.display = '';
   document.getElementById('success-screen').style.display = 'none';
   document.getElementById('co-error').style.display = 'none';
@@ -2673,19 +2786,25 @@ async function placeOrder() {
   if (!name || !email) { showError('Please enter your name and email.'); return; }
   if (!selectedPay)    { showError('Please select a payment method.'); return; }
 
-  var address = [
-    document.getElementById('co-address').value,
-    document.getElementById('co-city').value,
-    document.getElementById('co-province').value,
-    document.getElementById('co-postal').value,
-    document.getElementById('co-country').value,
-  ].filter(Boolean).join(', ');
+  // Only collect address if physical items are in the cart
+  var hasPhysical = cart.some(function(i) { return (i.product_type || 'physical') === 'physical'; });
+  var address = '';
+  if (hasPhysical) {
+    address = [
+      document.getElementById('co-address').value,
+      document.getElementById('co-city').value,
+      document.getElementById('co-province').value,
+      document.getElementById('co-postal').value,
+      document.getElementById('co-country').value,
+    ].filter(Boolean).join(', ');
+  }
 
   var sub   = getSubtotal();
   var disc  = appliedDisc ? (appliedDisc.type === 'percent' ? sub * parseFloat(appliedDisc.value)/100 : parseFloat(appliedDisc.value)) : 0;
   var tax   = S.tax_included === 'true' ? 0 : Math.max(0, sub - disc) * parseFloat(S.tax_rate||0) / 100;
   var freeMin = parseFloat(S.free_shipping_min || 0);
-  var ship  = S.shipping_enabled === 'true' && sub < freeMin ? parseFloat(S.shipping_rate||0) : 0;
+  // Only charge shipping if there are physical items
+  var ship  = hasPhysical && S.shipping_enabled === 'true' && sub < freeMin ? parseFloat(S.shipping_rate||0) : 0;
   var total = Math.max(0, sub - disc + tax + ship);
 
   var items = cart.map(function(i) {
@@ -2717,16 +2836,20 @@ async function placeOrder() {
     var r    = await fetch(GAS_URL, { method: 'POST', body: params });
     var data = await r.json();
     if (data.error) throw new Error(data.error);
-
     if (data.redirect) { window.location.href = data.redirect; return; }
 
-    showSuccess(
-      selectedPay === 'Interac'
-        ? 'Your order ' + data.order_number + ' has been placed! Please send your Interac e-Transfer of ' + fmt(total) + ' to ' + (S.interac_email || 'our email') + ' with your Order ID.'
-        : 'Your order ' + data.order_number + ' is confirmed! You\'ll receive a confirmation email shortly.',
-      data.order_number
-    );
+    // Collect digital download links from cart
+    var digitalItems = cart.filter(function(i) { return i.product_type === 'digital' && i.download_url; });
+    var subscriptionItems = cart.filter(function(i) { return i.product_type === 'subscription'; });
+
+    // Build success message based on cart contents
+    var baseMsg = selectedPay === 'Interac'
+      ? 'Your order ' + data.order_number + ' has been placed! Please send ' + fmt(total) + ' to ' + (S.interac_email || 'our email') + ' with your Order ID.'
+      : 'Your order ' + data.order_number + ' is confirmed!';
+
     cart = []; saveCart(); updateCartUI();
+    showSuccess(baseMsg, data.order_number, digitalItems, subscriptionItems);
+
   } catch(e) {
     showError(e.message || 'Something went wrong. Please try again.');
     btn.disabled = false;
@@ -2740,12 +2863,62 @@ function showError(msg) {
   el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function showSuccess(msg, orderNum) {
+function showSuccess(msg, orderNum, digitalItems, subscriptionItems) {
   document.getElementById('checkout-form').style.display = 'none';
   var ss = document.getElementById('success-screen');
   ss.style.display = 'block';
   document.getElementById('success-title').textContent = orderNum ? 'Order ' + orderNum + ' Placed!' : 'Order Placed!';
   document.getElementById('success-msg').textContent = msg;
+
+  // Remove any previous extras
+  var prev = document.getElementById('success-extras');
+  if (prev) prev.parentNode.removeChild(prev);
+
+  // Build digital download section
+  var extras = '';
+  if (digitalItems && digitalItems.length) {
+    extras += '<div style="margin-top:1.25rem;background:#f5f3ff;border:1.5px solid #ddd6fe;border-radius:14px;padding:1.25rem;text-align:left">'
+      + '<p style="font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#7c3aed;margin-bottom:.875rem;display:flex;align-items:center;gap:.4rem">'
+      + '<i class="fas fa-download"></i> Your Downloads</p>';
+    digitalItems.forEach(function(item) {
+      extras += '<a href="' + item.download_url + '" target="_blank" rel="noopener"'
+        + ' style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.75rem 1rem;'
+        + 'background:#fff;border:1.5px solid #ddd6fe;border-radius:10px;text-decoration:none;margin-bottom:.5rem;'
+        + 'color:#1e1b4b;transition:all .15s" '
+        + 'onmouseover="this.style.background=\'#ede9fe\'" onmouseout="this.style.background=\'#fff\'">'
+        + '<div style="display:flex;align-items:center;gap:.6rem">'
+        + '<div style="width:34px;height:34px;background:#ede9fe;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'
+        + '<i class="fas fa-file-arrow-down" style="color:#7c3aed;font-size:.85rem"></i></div>'
+        + '<div><p style="font-size:.85rem;font-weight:700">' + item.name + '</p>'
+        + '<p style="font-size:.72rem;color:#7c3aed;margin-top:.1rem">Click to download</p></div></div>'
+        + '<i class="fas fa-arrow-right" style="color:#a78bfa;font-size:.8rem"></i>'
+        + '</a>';
+    });
+    extras += '</div>';
+  }
+
+  // Subscription reminder
+  if (subscriptionItems && subscriptionItems.length) {
+    var intervalMap = { week:'weekly', mo:'monthly', year:'yearly' };
+    extras += '<div style="margin-top:1rem;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:14px;padding:1rem;text-align:left">'
+      + '<p style="font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#1d4ed8;margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem">'
+      + '<i class="fas fa-rotate"></i> Your Subscriptions</p>';
+    subscriptionItems.forEach(function(item) {
+      var interval = intervalMap[item.billing_interval || 'mo'] || 'monthly';
+      extras += '<div style="font-size:.82rem;color:#1e3a8a;padding:.4rem 0;border-bottom:1px solid #bfdbfe;last-child:border:none">'
+        + '<strong>' + item.name + '</strong> — billed ' + interval + ' at ' + fmt(item.price, item.currency)
+        + '. We\'ll be in touch to set up your recurring payment.</div>';
+    });
+    extras += '</div>';
+  }
+
+  if (extras) {
+    var extrasEl = document.createElement('div');
+    extrasEl.id = 'success-extras';
+    extrasEl.innerHTML = extras;
+    ss.appendChild(extrasEl);
+  }
+
   if (!document.getElementById('checkout-modal').classList.contains('open')) {
     document.getElementById('checkout-modal').classList.add('open');
   }
