@@ -236,23 +236,63 @@ window.WorkVoltPages['dashboard'] = function(container) {
         </div>
 
         ${installedCount > 0 ? `
-        <!-- ── Installed add-ons ── -->
-        <div>
-          <h2 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
-            <i class="fas fa-puzzle-piece text-slate-400 text-sm"></i>
-            Installed add-ons
-          </h2>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            ${(window.INSTALLED_MODULES || []).map(m => `
-              <button onclick="window.WorkVolt.navigate('${m.id}')"
-                class="group bg-white border border-slate-200 hover:border-blue-200 hover:shadow-md rounded-2xl p-4 text-left transition-all hover:-translate-y-0.5">
-                <div class="w-9 h-9 bg-gradient-to-br from-slate-600 to-slate-800 rounded-xl flex items-center justify-center mb-3 shadow-sm group-hover:scale-110 transition-transform">
-                  <i class="fas ${m.icon} text-white text-sm"></i>
+        <!-- ── Communications board (Work Volt team → all users) ── -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-satellite-dish text-white text-sm"></i>
+            </div>
+            <div class="flex-1">
+              <h2 class="font-bold text-slate-900 text-sm">Work Volt — Platform Updates</h2>
+              <p class="text-xs text-slate-400">Messages from the Work Volt team</p>
+            </div>
+            <span class="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded-full">2 updates</span>
+          </div>
+
+          <div class="divide-y divide-slate-100">
+
+            <!-- Update 1: Language switcher -->
+            <div class="px-6 py-4 flex gap-4">
+              <div class="flex-shrink-0 mt-0.5">
+                <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                  <i class="fas fa-language text-amber-600 text-sm"></i>
                 </div>
-                <p class="text-sm font-bold text-slate-800">${m.label}</p>
-                <p class="text-xs text-slate-400 mt-0.5">v${m.version}</p>
-              </button>
-            `).join('')}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-sm font-bold text-slate-800">Language Switcher — EN / FR</span>
+                  <span class="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">In Progress</span>
+                </div>
+                <p class="text-xs text-slate-500 leading-relaxed">
+                  We're actively working on the English → French language switcher. The toggle is visible but some labels and module content aren't fully translated yet. A complete French translation pass is underway — expect this to be resolved in an upcoming update. Thank you for your patience.
+                </p>
+                <p class="text-[11px] text-slate-400 mt-2"><i class="fas fa-clock mr-1"></i>Ongoing — update coming soon</p>
+              </div>
+            </div>
+
+            <!-- Update 2: Mobile view -->
+            <div class="px-6 py-4 flex gap-4">
+              <div class="flex-shrink-0 mt-0.5">
+                <div class="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center">
+                  <i class="fas fa-mobile-alt text-violet-600 text-sm"></i>
+                </div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-sm font-bold text-slate-800">Mobile View — Cards & Modules</span>
+                  <span class="text-[10px] font-bold text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full">In Progress</span>
+                </div>
+                <p class="text-xs text-slate-500 leading-relaxed">
+                  We're aware that cards and module layouts don't display correctly on smaller screens. This affects several views including the dashboard grid, module cards, and table layouts. A responsive layout fix is currently being worked on and will be pushed as a patch update shortly.
+                </p>
+                <p class="text-[11px] text-slate-400 mt-2"><i class="fas fa-clock mr-1"></i>Ongoing — patch in progress</p>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="px-6 py-3 bg-slate-50 border-t border-slate-100">
+            <p class="text-[11px] text-slate-400"><i class="fas fa-info-circle mr-1"></i>This board is managed by the Work Volt team. Updates appear here as fixes are released.</p>
           </div>
         </div>
         ` : ''}
