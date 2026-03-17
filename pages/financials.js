@@ -371,22 +371,24 @@ function renderDashboard(c) {
   const expBreak = (d.expense_breakdown && Object.keys(d.expense_breakdown).length) ? d.expense_breakdown : expBreakRaw;
 
   // Sparkline bars
-  const MAX_BAR_PX = 80;
-  const maxBar = Math.max(...trend.map(t => Math.max(t.revenue, t.expenses)), 1);
-  const trendBars = trend.map(t => {
-    const revH = Math.max(Math.round((t.revenue  / maxBar) * MAX_BAR_PX), t.revenue  > 0 ? 2 : 0);
-    const expH = Math.max(Math.round((t.expenses / maxBar) * MAX_BAR_PX), t.expenses > 0 ? 2 : 0);
+  const MAX_BAR_PX = 64;
+  const maxBar = Math.max(...trend.map(t => Math.max(parseFloat(t.revenue) || 0, parseFloat(t.expenses) || 0)), 1);
+  const trendBars = trend.length ? trend.map(t => {
+    const rev = parseFloat(t.revenue) || 0;
+    const exp = parseFloat(t.expenses) || 0;
+    const revH = rev > 0 ? Math.max(Math.round((rev / maxBar) * MAX_BAR_PX), 2) : 0;
+    const expH = exp > 0 ? Math.max(Math.round((exp / maxBar) * MAX_BAR_PX), 2) : 0;
     const label = t.month ? t.month.substring(5) : '';
     const isCurrentMonth = t.month === ym;
     return `
-      <div class="flex flex-col items-center gap-1 flex-1">
-        <div class="w-full flex items-end justify-center gap-0.5" style="height:${MAX_BAR_PX}px">
-          <div class="w-3 rounded-t transition-all" style="height:${revH}px;background:${isCurrentMonth ? '#059669' : '#10b981'}" title="Revenue ${fmt.currency(t.revenue)}"></div>
-          <div class="w-3 rounded-t transition-all" style="height:${expH}px;background:${isCurrentMonth ? '#dc2626' : '#f87171'}" title="Expenses ${fmt.currency(t.expenses)}"></div>
+      <div class="flex flex-col items-center gap-1 flex-1 min-w-0">
+        <div class="w-full flex items-end justify-center gap-1" style="height:${MAX_BAR_PX}px">
+          <div class="w-3 rounded-t transition-all hover:opacity-80" style="height:${revH}px;background:${isCurrentMonth ? '#059669' : '#10b981'}" title="Revenue ${fmt.currency(rev)}"></div>
+          <div class="w-3 rounded-t transition-all hover:opacity-80" style="height:${expH}px;background:${isCurrentMonth ? '#dc2626' : '#f87171'}" title="Expenses ${fmt.currency(exp)}"></div>
         </div>
         <span class="text-[10px] font-medium ${isCurrentMonth ? 'text-slate-700 font-bold' : 'text-slate-400'}">${label}</span>
       </div>`;
-  }).join('');
+  }).join('') : '<p class="text-xs text-slate-400 m-auto">No trend data available</p>';
 
   // Bottom summary always uses current-month computed values (reliable)
   const trendSummary = `
@@ -449,8 +451,8 @@ function renderDashboard(c) {
             <span class="flex items-center gap-1"><span class="w-3 h-1.5 rounded bg-red-400 inline-block"></span>Expenses</span>
           </div>
         </div>
-        <div class="flex items-end gap-1 px-2" style="height:96px">
-          ${trendBars || '<p class="text-xs text-slate-400 m-auto">No trend data yet</p>'}
+        <div class="flex items-end gap-2 px-2 min-h-[80px]" style="height:80px">
+          ${trendBars}
         </div>
         <div class="mt-3 pt-3 border-t border-slate-100 grid grid-cols-3 gap-3">
           ${trendSummary}
