@@ -67,7 +67,6 @@ function translateElement(el) {
       el.textContent = translated;
     }
   }
-}
 
 function translatePage() {
   // Translate all elements with data-i18n - always re-translate on language change
