@@ -1156,34 +1156,35 @@ function reportLine(label, value, cls = '') {
 }
 
 function collapsibleSection(title, content, defaultOpen = true) {
-  const id = 'collapsible-' + Math.random().toString(36).substr(2, 9);
+  // Use a deterministic ID based on title to avoid duplicates on re-renders
+  const id = 'collapsible-' + title.toLowerCase().replace(/[^a-z0-9]/g, '-');
   return `
     <div style="margin-bottom:8px;">
-      <div class="collapsible-header" onclick="FinPage._toggleCollapsible('${id}', this)">
+      <div class="collapsible-header" onclick="window.toggleCollapsibleSection('${id}', this)" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:8px 0;user-select:none;">
         <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">${title}</span>
-        <i class="fas fa-chevron-right collapsible-icon ${defaultOpen ? 'open' : ''}"></i>
+        <i class="fas fa-chevron-right collapsible-icon ${defaultOpen ? 'open' : ''}" style="transition:transform 0.2s;font-size:12px;color:#64748b;${defaultOpen ? 'transform:rotate(90deg);' : ''}"></i>
       </div>
-      <div id="${id}" class="collapsible-content ${defaultOpen ? 'expanded' : 'collapsed'}" style="padding-left:12px;border-left:2px solid #e2e8f0;">
+      <div id="${id}" class="collapsible-content" style="padding-left:12px;border-left:2px solid #e2e8f0;overflow:hidden;transition:max-height 0.3s ease-out;${defaultOpen ? 'max-height:500px;' : 'max-height:0;'}">
         ${content}
       </div>
     </div>`;
 }
 
-// Add toggle handler to FinPage
-if (!window.FinPage._toggleCollapsible) {
-  window.FinPage._toggleCollapsible = function(id, header) {
+// Define globally once - check if already defined to avoid re-creating
+if (!window.toggleCollapsibleSection) {
+  window.toggleCollapsibleSection = function(id, header) {
     const content = document.getElementById(id);
     const icon = header.querySelector('.collapsible-icon');
-    const isExpanded = content.classList.contains('expanded');
+    if (!content || !icon) return;
+    
+    const isExpanded = content.style.maxHeight !== '0px' && content.style.maxHeight !== '';
     
     if (isExpanded) {
-      content.classList.remove('expanded');
-      content.classList.add('collapsed');
-      icon.classList.remove('open');
+      content.style.maxHeight = '0px';
+      icon.style.transform = 'rotate(0deg)';
     } else {
-      content.classList.remove('collapsed');
-      content.classList.add('expanded');
-      icon.classList.add('open');
+      content.style.maxHeight = '500px';
+      icon.style.transform = 'rotate(90deg)';
     }
   };
 }
