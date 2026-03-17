@@ -12,7 +12,7 @@ window.TRANSLATIONS = {
     "Mimic Profile": "Mimic Profile",
     "Logout": "Logout",
     "English": "English",
-    "Français": "French",
+    "Français": "Français",
     "Search": "Search",
     "Work Volt · v1.0.0": "Work Volt · v1.0.0",
     
@@ -102,7 +102,7 @@ window.TRANSLATIONS = {
     "Security & Password": "Sécurité et mot de passe",
     "Mimic Profile": "Imiter le profil",
     "Logout": "Déconnexion",
-    "English": "Anglais",
+    "English": "English",
     "Français": "Français",
     "Search": "Rechercher",
     "Work Volt · v1.0.0": "Work Volt · v1.0.0",
