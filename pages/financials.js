@@ -156,12 +156,21 @@ function updateHeaderActions() {
     budgets:  `<button onclick="FinPage.newBudget()" class="btn-fin-primary"><i class="fas fa-plus text-xs"></i>Set Budget</button>`,
     accounts: `<button onclick="FinPage.newAccount()" class="btn-fin-primary"><i class="fas fa-plus text-xs"></i>New Account</button>`,
   };
-  el.innerHTML = (actions[state.tab] || '') + `
+    el.innerHTML = (actions[state.tab] || '') + `
     <style>
       .btn-fin-primary{display:flex;align-items:center;gap:.4rem;padding:.5rem 1rem;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:.8125rem;font-weight:600;cursor:pointer;transition:background .15s;font-family:inherit}
       .btn-fin-primary:hover{background:#059669}
       .btn-fin-secondary{display:flex;align-items:center;gap:.4rem;padding:.5rem 1rem;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:.8125rem;font-weight:600;cursor:pointer;transition:background .15s;font-family:inherit}
       .btn-fin-secondary:hover{background:#e2e8f0}
+      
+      /* Collapsible sections */
+      .collapsible-header{cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:8px 0;user-select:none}
+      .collapsible-header:hover{opacity:0.8}
+      .collapsible-icon{transition:transform 0.2s;font-size:12px;color:#64748b}
+      .collapsible-icon.open{transform:rotate(90deg)}
+      .collapsible-content{overflow:hidden;transition:max-height 0.3s ease-out,max-width 0.3s ease-out}
+      .collapsible-content.collapsed{max-height:0;max-width:0}
+      .collapsible-content.expanded{max-height:500px;max-width:100%}
     </style>`;
 
   // Attach handlers
@@ -917,10 +926,15 @@ function renderReports(c) {
             });
           }
           const revLines = Object.entries(revBreakdown).sort((a,b) => b[1]-a[1])
-            .map(([src, amt]) => reportLine(src, fmt.currency(amt), 'text-slate-600 pl-4')).join('');
+            .map(([src, amt]) => reportLine(src, fmt.currency(amt), 'text-slate-600')).join('');
 
-          return '<p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Revenue</p>'
-            + revLines
+          const revenueSection = collapsibleSection(
+            `Revenue (${Object.keys(revBreakdown).length} sources)`,
+            revLines,
+            true
+          );
+
+          return revenueSection
             + reportLine('Total Revenue', fmt.currency(baseRevenue), 'font-semibold text-emerald-600')
             + '<div class="h-px bg-slate-100 my-2"></div>'
             + '<p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Operating Expenses</p>'
@@ -1011,7 +1025,7 @@ function renderReports(c) {
       })()}
     </div>
 
-    <!-- Bills Summary -->
+        <!-- Bills Summary -->
     <div class="bg-white rounded-xl border border-slate-200 p-6">
       <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
         <span class="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center">
@@ -1029,12 +1043,18 @@ function renderReports(c) {
           const byVendor  = {};
           bills.forEach(b=>{ if(b.vendor){ byVendor[b.vendor]=(byVendor[b.vendor]||0)+(parseFloat(b.amount)||0); } });
           const topVendors = Object.entries(byVendor).sort((a,b)=>b[1]-a[1]).slice(0,5);
+          
+          const vendorSection = topVendors.length ? collapsibleSection(
+            `Top Vendors (${topVendors.length})`,
+            topVendors.map(([v,a])=>reportLine(v,fmt.currency(a),'text-slate-600')).join(''),
+            false
+          ) : '';
+          
           return reportLine('Total Bills',fmt.currency(total),'font-semibold text-slate-700')
             + reportLine('Paid',fmt.currency(paid),'text-emerald-600')
             + reportLine('Outstanding',fmt.currency(unpaid),'text-amber-600')
             + reportLine('Overdue',fmt.currency(overdue),'font-semibold text-red-500')
-            + (topVendors.length ? '<div class="h-px bg-slate-100 my-2"></div><p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Top Vendors</p>'
-              + topVendors.map(([v,a])=>reportLine(v,fmt.currency(a),'text-slate-600')).join('') : '');
+            + (topVendors.length ? '<div class="h-px bg-slate-100 my-2"></div>' + vendorSection : '');
         })()}
       </div>
     </div>
@@ -1135,6 +1155,39 @@ function reportLine(label, value, cls = '') {
     </div>`;
 }
 
+function collapsibleSection(title, content, defaultOpen = true) {
+  const id = 'collapsible-' + Math.random().toString(36).substr(2, 9);
+  return `
+    <div style="margin-bottom:8px;">
+      <div class="collapsible-header" onclick="FinPage._toggleCollapsible('${id}', this)">
+        <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">${title}</span>
+        <i class="fas fa-chevron-right collapsible-icon ${defaultOpen ? 'open' : ''}"></i>
+      </div>
+      <div id="${id}" class="collapsible-content ${defaultOpen ? 'expanded' : 'collapsed'}" style="padding-left:12px;border-left:2px solid #e2e8f0;">
+        ${content}
+      </div>
+    </div>`;
+}
+
+// Add toggle handler to FinPage
+if (!window.FinPage._toggleCollapsible) {
+  window.FinPage._toggleCollapsible = function(id, header) {
+    const content = document.getElementById(id);
+    const icon = header.querySelector('.collapsible-icon');
+    const isExpanded = content.classList.contains('expanded');
+    
+    if (isExpanded) {
+      content.classList.remove('expanded');
+      content.classList.add('collapsed');
+      icon.classList.remove('open');
+    } else {
+      content.classList.remove('collapsed');
+      content.classList.add('expanded');
+      icon.classList.add('open');
+    }
+  };
+}
+  
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ACCOUNTS (Chart of Accounts)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
