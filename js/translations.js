@@ -71,7 +71,7 @@ window.TRANSLATIONS = {
     "Help Desk": "Help Desk",
     "Recruitment Pipeline": "Recruitment Pipeline",
     
-    // Module descriptions (truncated for brevity - use full descriptions)
+    // Module descriptions
     "Full notification center with smart grouping, priority levels, bell alerts, popup toasts, persistent banners, and quiet hours. Wires directly into Tasks, approvals, and mentions.": "Full notification center with smart grouping, priority levels, bell alerts, popup toasts, persistent banners, and quiet hours. Wires directly into Tasks, approvals, and mentions.",
     "Create, assign and track tasks across your team. Set priorities, due dates and follow progress in one place.": "Create, assign and track tasks across your team. Set priorities, due dates and follow progress in one place.",
     "Visualise and manage your sales pipeline with a Kanban board. Track deals from lead to close.": "Visualise and manage your sales pipeline with a Kanban board. Track deals from lead to close.",
