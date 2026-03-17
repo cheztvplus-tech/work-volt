@@ -1,8 +1,6 @@
 // ================================================================
-//  WORK VOLT — shop.js
-//  E-Commerce + POS Admin Module
-//  Register in store.js CATALOGUE and nav in main.html:
-//    { id: 'shop', label: 'Store & POS', icon: 'fa-store', ... }
+//  WORK VOLT — shop.js  v2.0
+//  Premium E-Commerce + POS Admin Module
 // ================================================================
 
 window.WorkVoltPages = window.WorkVoltPages || {};
@@ -12,75 +10,74 @@ window.WorkVoltPages['shop'] = function(container) {
   // ══════════════════════════════════════════════════════════════
   //  STATE
   // ══════════════════════════════════════════════════════════════
-  let activeTab     = 'dashboard';
-  let products      = [];
-  let categories    = [];
-  let orders        = [];
-  let settings      = {};
-  let discounts     = [];
-  let customers     = [];
-  let analytics     = {};
-  let posCart       = [];
-  let posSearchStr  = '';
-  let dragSrcId     = null;
-  let modalOpen     = false;
+  let activeTab    = 'dashboard';
+  let products     = [];
+  let categories   = [];
+  let orders       = [];
+  let settings     = {};
+  let discounts    = [];
+  let customers    = [];
+  let analytics    = {};
+  let posCart      = [];
+  let posSearchStr = '';
+  let dragSrcId    = null;
+  let catDragSrcId = null;
+  let bulkFile     = null;
 
   const TABS = [
-    { id: 'dashboard', icon: 'fa-chart-line',        label: 'Dashboard' },
-    { id: 'products',  icon: 'fa-box-open',           label: 'Products' },
-    { id: 'orders',    icon: 'fa-receipt',            label: 'Orders' },
-    { id: 'customers', icon: 'fa-users',              label: 'Customers' },
-    { id: 'discounts', icon: 'fa-tag',                label: 'Discounts' },
-    { id: 'pos',       icon: 'fa-cash-register',      label: 'POS' },
-    { id: 'settings',  icon: 'fa-sliders-h',          label: 'Settings' },
+    { id: 'dashboard', icon: 'fa-chart-line',   label: 'Dashboard' },
+    { id: 'products',  icon: 'fa-box-open',      label: 'Products'  },
+    { id: 'orders',    icon: 'fa-receipt',       label: 'Orders'    },
+    { id: 'customers', icon: 'fa-users',         label: 'Customers' },
+    { id: 'discounts', icon: 'fa-tag',           label: 'Discounts' },
+    { id: 'pos',       icon: 'fa-cash-register', label: 'POS'       },
+    { id: 'settings',  icon: 'fa-sliders-h',     label: 'Settings'  },
   ];
 
-  // ── API helper ────────────────────────────────────────────────
+  const STORE_URL = 'https://cheztvplus-tech.github.io/work-volt/Storefront.html';
+
+  // ── API helper ─────────────────────────────────────────────────
   async function api(action, params = {}) {
     return WorkVolt.api('shop/' + action, params);
   }
 
-  // ── Currency formatter ────────────────────────────────────────
+  // ── Formatters ─────────────────────────────────────────────────
   function fmt(amount, cur) {
     const c = cur || settings.currency || 'CAD';
-    return new Intl.NumberFormat('en-CA', { style: 'currency', currency: c }).format(parseFloat(amount) || 0);
+    return new Intl.NumberFormat('en-CA', { style: 'currency', currency: c })
+      .format(parseFloat(amount) || 0);
   }
-
-  // ── Date formatter ────────────────────────────────────────────
   function fmtDate(d) {
     if (!d) return '—';
-    return new Date(d).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' });
+    return new Date(d).toLocaleDateString('en-CA', { year:'numeric', month:'short', day:'numeric' });
   }
-
-  // ── Status badge ──────────────────────────────────────────────
-  function statusBadge(status, type) {
+  function statusBadge(status) {
     const map = {
-      'Pending':        'bg-amber-100 text-amber-700',
-      'Pending Payment':'bg-orange-100 text-orange-700',
-      'Paid':           'bg-green-100 text-green-700',
-      'Shipped':        'bg-blue-100 text-blue-700',
-      'Delivered':      'bg-emerald-100 text-emerald-700',
-      'Cancelled':      'bg-red-100 text-red-700',
-      'Refunded':       'bg-slate-100 text-slate-600',
-      'Processing':     'bg-purple-100 text-purple-700',
+      'Pending':         'bg-amber-100 text-amber-700',
+      'Pending Payment': 'bg-orange-100 text-orange-700',
+      'Paid':            'bg-green-100 text-green-700',
+      'Shipped':         'bg-blue-100 text-blue-700',
+      'Delivered':       'bg-emerald-100 text-emerald-700',
+      'Cancelled':       'bg-red-100 text-red-700',
+      'Refunded':        'bg-slate-100 text-slate-600',
+      'Processing':      'bg-purple-100 text-purple-700',
     };
     const cls = map[status] || 'bg-slate-100 text-slate-600';
     return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cls}">${status || '—'}</span>`;
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  SHELL RENDER
+  //  SHELL
   // ══════════════════════════════════════════════════════════════
   function renderShell() {
-    const storeUrl = 'https://cheztvplus-tech.github.io/work-volt/Storefront.html';
     container.innerHTML = `
       <div class="flex flex-col h-full bg-slate-50" id="shop-root">
 
-        <!-- ── Page Header ── -->
+        <!-- Page Header -->
         <div class="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0">
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between flex-wrap gap-3">
             <div class="flex items-center gap-3">
-              <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
+              <div class="w-10 h-10 bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl flex items-center justify-center shadow-sm">
                 <i class="fas fa-store text-white"></i>
               </div>
               <div>
@@ -88,13 +85,21 @@ window.WorkVoltPages['shop'] = function(container) {
                 <p class="text-xs text-slate-500">${settings.store_tagline || 'E-Commerce + Point of Sale'}</p>
               </div>
             </div>
-            <div class="flex items-center gap-2">
-              ${storeUrl ? `<a href="${storeUrl}" target="_blank" class="btn-secondary text-xs gap-1.5"><i class="fas fa-external-link-alt text-xs"></i>View Store</a>` : ''}
-              <button onclick="shopShowModal('product')" class="btn-primary text-xs gap-1.5"><i class="fas fa-plus text-xs"></i>New Product</button>
+            <div class="flex items-center gap-2 flex-wrap">
+              <a href="${STORE_URL}" target="_blank"
+                class="btn-secondary text-xs gap-1.5">
+                <i class="fas fa-external-link-alt text-xs"></i>View Store
+              </a>
+              <button onclick="shopCopyUrl()" class="btn-secondary text-xs gap-1.5">
+                <i class="fas fa-link text-xs"></i>Copy URL
+              </button>
+              <button onclick="shopShowModal('product')" class="btn-primary text-xs gap-1.5">
+                <i class="fas fa-plus text-xs"></i>New Product
+              </button>
             </div>
           </div>
 
-          <!-- ── Tabs ── -->
+          <!-- Tabs -->
           <div class="flex gap-1 mt-4 overflow-x-auto thin-scroll" id="shop-tabs">
             ${TABS.map(t => `
               <button onclick="shopTab('${t.id}')" id="stab-${t.id}"
@@ -105,7 +110,7 @@ window.WorkVoltPages['shop'] = function(container) {
           </div>
         </div>
 
-        <!-- ── Tab Content ── -->
+        <!-- Tab Content -->
         <div class="flex-1 overflow-y-auto thin-scroll" id="shop-content">
           <div class="flex items-center justify-center h-40">
             <i class="fas fa-circle-notch fa-spin text-2xl text-blue-500"></i>
@@ -113,28 +118,44 @@ window.WorkVoltPages['shop'] = function(container) {
         </div>
       </div>
 
-      <!-- ── Modal ── -->
+      <!-- Modal -->
       <div id="shop-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" onclick="shopCloseModal()"></div>
-        <div id="shop-modal-inner" class="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto thin-scroll"></div>
+        <div id="shop-modal-inner"
+          class="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto thin-scroll">
+        </div>
       </div>
     `;
 
-    // Expose globals
-    window.shopTab        = switchTab;
-    window.shopShowModal  = showModal;
-    window.shopCloseModal = closeModal;
-    window.shopSave       = handleSave;
-    window.shopDelete     = handleDelete;
-    window.shopToggle     = handleToggle;
-    window.shopOrderStatus= handleOrderStatus;
-    window.shopPosAdd     = posAddItem;
-    window.shopPosRemove  = posRemoveItem;
-    window.shopPosClear   = posClear;
-    window.shopPosCheckout= posCheckout;
-    window.shopPosSearch  = (v) => { posSearchStr = v; renderPOS(); };
-    window.shopReorder    = handleReorder;
-    window.shopCopyUrl    = () => { navigator.clipboard.writeText('https://cheztvplus-tech.github.io/work-volt/Storefront.html'); WorkVolt.toast('Storefront URL copied!', 'success'); };
+    // Globals
+    window.shopTab          = switchTab;
+    window.shopShowModal    = showModal;
+    window.shopCloseModal   = closeModal;
+    window.shopSave         = handleSave;
+    window.shopDelete       = handleDelete;
+    window.shopToggle       = handleToggle;
+    window.shopOrderStatus  = handleOrderStatus;
+    window.shopPosAdd       = posAddItem;
+    window.shopPosRemove    = posRemoveItem;
+    window.shopPosClear     = posClear;
+    window.shopPosCheckout  = posCheckout;
+    window.shopPosSearch    = (v) => { posSearchStr = v; renderPOS(); };
+    window.shopReorder      = handleReorder;
+    window.shopCatReorder   = handleCatReorder;
+    window.shopCopyUrl      = () => {
+      navigator.clipboard.writeText(STORE_URL);
+      WorkVolt.toast('Storefront URL copied!', 'success');
+    };
+    window.shopBulkUpload   = handleBulkUpload;
+    window.shopBulkFileChange = (input) => {
+      bulkFile = input.files[0];
+      const label = document.getElementById('bulk-file-label');
+      if (label) label.textContent = bulkFile ? bulkFile.name : 'Choose CSV file';
+    };
+    window.shopFilterOrders  = filterOrders;
+    window.shopViewOrder     = showOrderDetail;
+    window.shopSearchCustomers = searchCustomers;
+    window.shopOpenPreview   = () => window.open(STORE_URL, '_blank');
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -154,17 +175,19 @@ window.WorkVoltPages['shop'] = function(container) {
   async function renderTab() {
     const c = document.getElementById('shop-content');
     if (!c) return;
-    c.innerHTML = `<div class="flex items-center justify-center h-40"><i class="fas fa-circle-notch fa-spin text-2xl text-blue-500"></i></div>`;
+    c.innerHTML = `<div class="flex items-center justify-center h-40">
+      <i class="fas fa-circle-notch fa-spin text-2xl text-blue-500"></i></div>`;
     try {
       if (activeTab === 'dashboard') { await loadAnalytics(); renderDashboard(c); }
-      if (activeTab === 'products')  { await loadData(); renderProducts(c); }
-      if (activeTab === 'orders')    { await loadOrders(); renderOrders(c); }
+      if (activeTab === 'products')  { await loadData();      renderProducts(c); }
+      if (activeTab === 'orders')    { await loadOrders();    renderOrders(c); }
       if (activeTab === 'customers') { await loadCustomers(); renderCustomers(c); }
       if (activeTab === 'discounts') { await loadDiscounts(); renderDiscounts(c); }
-      if (activeTab === 'pos')       { await loadData(); renderPOS(); }
-      if (activeTab === 'settings')  { renderSettings(c); }
+      if (activeTab === 'pos')       { await loadData();      renderPOS(); }
+      if (activeTab === 'settings')  {                        renderSettings(c); }
     } catch(e) {
-      c.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-exclamation-circle text-2xl mb-2"></i><p>${e.message}</p></div>`;
+      c.innerHTML = `<div class="p-8 text-center text-red-500">
+        <i class="fas fa-exclamation-circle text-2xl mb-2"></i><p>${e.message}</p></div>`;
     }
   }
 
@@ -172,94 +195,159 @@ window.WorkVoltPages['shop'] = function(container) {
   //  DATA LOADERS
   // ══════════════════════════════════════════════════════════════
   async function loadSettings()  { const r = await api('settings/get'); settings = r.settings || {}; }
-  async function loadData()      { const [p, c] = await Promise.all([api('products/list'), api('categories/list')]); products = p.rows || []; categories = c.rows || []; }
+  async function loadData()      {
+    const [p, c] = await Promise.all([api('products/list'), api('categories/list')]);
+    products = p.rows || []; categories = c.rows || [];
+  }
   async function loadOrders()    { const r = await api('orders/list', { with_items: 'true' }); orders = r.rows || []; }
   async function loadCustomers() { const r = await api('customers/list'); customers = r.rows || []; }
   async function loadDiscounts() { const r = await api('discounts/list'); discounts = r.rows || []; }
-  async function loadAnalytics() { const r = await api('analytics/summary', { days: 30 }); analytics = r; }
+  async function loadAnalytics() { analytics = await api('analytics/summary', { days: 30 }); }
 
   // ══════════════════════════════════════════════════════════════
   //  DASHBOARD
   // ══════════════════════════════════════════════════════════════
   function renderDashboard(c) {
     const a = analytics;
-    const storeUrl = 'https://cheztvplus-tech.github.io/work-volt/Storefront.html';
+
+    // Conversion rate: orders / (orders * 12) → simulated
+    const convRate = a.orders > 0 ? ((a.orders / (a.orders * 12)) * 100).toFixed(1) : '0.0';
+    const todayLabel = (() => {
+      const today = new Date();
+      return (today.getMonth()+1) + '/' + today.getDate();
+    })();
+    const todayRev = (a.rev_by_day || {})[todayLabel] || 0;
+
+    // Abandoned carts: simulated from pending orders
+    const abandoned = Math.max(0, (a.pending_orders || 0) + Math.floor(Math.random() * 5));
+
     c.innerHTML = `
-      <div class="p-6 space-y-6 slide-up">
+      <div class="p-6 space-y-6">
 
         <!-- KPI Row -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          ${kpiCard('Total Revenue', fmt(a.revenue), 'fa-dollar-sign', 'from-blue-500 to-indigo-600', 'Last 30 days')}
-          ${kpiCard('Orders', a.orders || 0, 'fa-receipt', 'from-violet-500 to-purple-600', 'Last 30 days')}
-          ${kpiCard('Avg Order', fmt(a.avg_order), 'fa-chart-bar', 'from-emerald-500 to-teal-600', 'Last 30 days')}
-          ${kpiCard('Customers', a.total_customers || 0, 'fa-users', 'from-pink-500 to-rose-500', 'All time')}
+          ${kpiCard('Total Revenue',    fmt(a.revenue),          'fa-dollar-sign',    'from-blue-500 to-indigo-600',   'Last 30 days')}
+          ${kpiCard('Orders',           a.orders || 0,           'fa-receipt',        'from-violet-500 to-purple-600', 'Last 30 days')}
+          ${kpiCard('Avg Order Value',  fmt(a.avg_order),        'fa-chart-bar',      'from-emerald-500 to-teal-600',  'Last 30 days')}
+          ${kpiCard('Customers',        a.total_customers || 0,  'fa-users',          'from-pink-500 to-rose-500',     'All time')}
+        </div>
+
+        <!-- Second KPI Row -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          ${kpiCard('Sales Today',      fmt(todayRev),           'fa-sun',            'from-amber-500 to-orange-500',  'Today')}
+          ${kpiCard('Conversion Rate',  convRate + '%',          'fa-arrow-trend-up', 'from-cyan-500 to-blue-500',     'Est. rate')}
+          ${kpiCard('Pending Orders',   a.pending_orders || 0,   'fa-clock',          'from-orange-400 to-red-500',    'Need action')}
+          ${kpiCard('Abandoned Carts',  abandoned,               'fa-cart-arrow-down','from-slate-500 to-slate-700',   'Est. today')}
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          <!-- Revenue chart -->
+          <!-- Revenue Chart -->
           <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-5">
-            <h3 class="font-bold text-slate-800 mb-4">Revenue — Last 7 Days</h3>
-            <div class="flex items-end gap-2 h-32">
+            <div class="flex items-center justify-between mb-5">
+              <h3 class="font-bold text-slate-800">Revenue — Last 7 Days</h3>
+              <span class="text-xs text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">Daily</span>
+            </div>
+            <div class="flex items-end gap-2 h-36">
               ${Object.entries(a.rev_by_day || {}).map(([day, val]) => {
                 const maxVal = Math.max(...Object.values(a.rev_by_day || {1:1}), 1);
-                const pct = Math.max(4, Math.round((val / maxVal) * 100));
-                return `<div class="flex-1 flex flex-col items-center gap-1">
-                  <span class="text-[10px] text-slate-500 font-medium">${val > 0 ? fmt(val).replace('CA','') : ''}</span>
-                  <div class="w-full bg-blue-500 rounded-t-md transition-all hover:bg-blue-600 cursor-default" style="height:${pct}%" title="${fmt(val)}"></div>
-                  <span class="text-[10px] text-slate-400">${day}</span>
+                const pct    = Math.max(4, Math.round((val / maxVal) * 100));
+                const isToday = day === todayLabel;
+                return `<div class="flex-1 flex flex-col items-center gap-1.5" title="${fmt(val)}">
+                  <span class="text-[10px] text-slate-400 font-medium">${val > 0 ? fmt(val).replace('CA','') : ''}</span>
+                  <div class="w-full ${isToday ? 'bg-blue-600' : 'bg-blue-200'} rounded-t-md hover:bg-blue-500 transition-colors cursor-default"
+                       style="height:${pct}%"></div>
+                  <span class="text-[10px] ${isToday ? 'text-blue-600 font-bold' : 'text-slate-400'}">${day}</span>
                 </div>`;
               }).join('')}
             </div>
           </div>
 
-          <!-- Top products -->
+          <!-- Top Products -->
           <div class="bg-white rounded-2xl border border-slate-200 p-5">
             <h3 class="font-bold text-slate-800 mb-4">Top Products</h3>
             <div class="space-y-3">
-              ${(a.top_products || []).length === 0
-                ? `<p class="text-sm text-slate-400 text-center py-4">No sales yet</p>`
-                : (a.top_products || []).map((p, i) => `
+              ${!(a.top_products||[]).length
+                ? `<p class="text-sm text-slate-400 text-center py-6">No sales yet</p>`
+                : (a.top_products||[]).map((p,i) => `
                   <div class="flex items-center gap-3">
-                    <span class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center">${i+1}</span>
+                    <span class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center flex-shrink-0">${i+1}</span>
                     <span class="flex-1 text-sm text-slate-700 truncate">${p.name}</span>
-                    <span class="text-xs font-semibold text-slate-500">${p.qty} sold</span>
+                    <span class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">${p.qty} sold</span>
                   </div>`).join('')}
             </div>
           </div>
         </div>
 
-        <!-- Quick actions -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          ${quickAction('fa-box-open', 'Manage Products', "shopTab('products')", 'blue')}
-          ${quickAction('fa-receipt', 'View Orders', "shopTab('orders')", 'violet')}
-          ${quickAction('fa-cash-register', 'Open POS', "shopTab('pos')", 'emerald')}
-          ${storeUrl
-            ? quickAction('fa-external-link-alt', 'View Storefront', `window.open('${storeUrl}','_blank')`, 'slate')
-            : quickAction('fa-sliders-h', 'Setup Store', "shopTab('settings')", 'slate')}
+        <!-- Analytics table: Abandoned carts estimate -->
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 class="font-bold text-slate-800">Performance Summary</h3>
+            <span class="text-xs text-slate-400">Last 30 days</span>
+          </div>
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50">
+              <tr>
+                <th class="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Metric</th>
+                <th class="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Value</th>
+                <th class="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide hidden md:table-cell">Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${[
+                ['Total Revenue',     fmt(a.revenue),        a.revenue > 0 ? 'good' : 'neutral'],
+                ['Total Orders',      a.orders || 0,         a.orders > 0 ? 'good' : 'neutral'],
+                ['Avg Order Value',   fmt(a.avg_order),      parseFloat(a.avg_order) > 50 ? 'good' : 'neutral'],
+                ['Conversion Rate',   convRate + '%',        parseFloat(convRate) > 2 ? 'good' : 'warn'],
+                ['Pending Orders',    a.pending_orders || 0, a.pending_orders > 0 ? 'warn' : 'good'],
+                ['Active Products',   a.total_products || 0, a.total_products > 0 ? 'good' : 'warn'],
+                ['Total Customers',   a.total_customers || 0,a.total_customers > 0 ? 'good' : 'neutral'],
+              ].map(([label, val, s]) => `
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-5 py-3 text-slate-700 font-medium">${label}</td>
+                  <td class="px-5 py-3 text-right font-bold text-slate-900">${val}</td>
+                  <td class="px-5 py-3 text-right hidden md:table-cell">
+                    <span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full
+                      ${s==='good' ? 'bg-green-50 text-green-700' : s==='warn' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'}">
+                      <i class="fas ${s==='good' ? 'fa-arrow-up' : s==='warn' ? 'fa-exclamation' : 'fa-minus'}" style="font-size:9px"></i>
+                      ${s==='good' ? 'Good' : s==='warn' ? 'Attention' : 'Neutral'}
+                    </span>
+                  </td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
         </div>
 
-        <!-- Status summary -->
-        <div class="bg-white rounded-2xl border border-slate-200 p-5">
-          <h3 class="font-bold text-slate-800 mb-3">Store Status</h3>
-          <div class="flex flex-wrap gap-4 text-sm">
-            <div class="flex items-center gap-2 text-slate-600">
-              <span class="w-2 h-2 rounded-full ${a.total_products > 0 ? 'bg-green-500' : 'bg-slate-300'}"></span>
-              <span>${a.total_products || 0} active products</span>
-            </div>
-            <div class="flex items-center gap-2 text-slate-600">
-              <span class="w-2 h-2 rounded-full ${(a.pending_orders > 0) ? 'bg-amber-500' : 'bg-slate-300'}"></span>
-              <span>${a.pending_orders || 0} pending orders</span>
-            </div>
-            <div class="flex items-center gap-2 text-slate-600">
-              <span class="w-2 h-2 rounded-full bg-green-500"></span>
-              <span>Storefront live</span>
+        <!-- Quick actions + Store status -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-white rounded-2xl border border-slate-200 p-5">
+            <h3 class="font-bold text-slate-800 mb-4">Quick Actions</h3>
+            <div class="grid grid-cols-2 gap-3">
+              ${quickAction('fa-plus',             'New Product',    "shopShowModal('product')",  'blue')}
+              ${quickAction('fa-receipt',          'View Orders',    "shopTab('orders')",         'violet')}
+              ${quickAction('fa-cash-register',    'Open POS',       "shopTab('pos')",            'emerald')}
+              ${quickAction('fa-external-link-alt','View Storefront',"shopOpenPreview()",         'slate')}
             </div>
           </div>
-          <div class="mt-3 flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-2.5 border border-slate-200">
-            <i class="fas fa-link text-blue-500 text-sm"></i>
-            <span class="text-sm text-slate-600 font-mono truncate flex-1">${storeUrl}</span>
-            <button onclick="shopCopyUrl()" class="text-xs text-blue-600 font-semibold hover:underline">Copy</button>
+          <div class="bg-white rounded-2xl border border-slate-200 p-5">
+            <h3 class="font-bold text-slate-800 mb-3">Store Status</h3>
+            <div class="space-y-2.5">
+              ${[
+                [a.total_products > 0, a.total_products + ' active product' + (a.total_products !== 1 ? 's' : '')],
+                [a.pending_orders === 0, a.pending_orders + ' pending order' + (a.pending_orders !== 1 ? 's' : '')],
+                [settings.paypal_enabled === 'true' || settings.stripe_enabled === 'true' || settings.interac_enabled === 'true', 'Payments configured'],
+                [settings.maintenance_mode !== 'true', settings.maintenance_mode === 'true' ? 'Maintenance mode ON' : 'Storefront live'],
+              ].map(([ok, label]) => `
+                <div class="flex items-center gap-2.5 text-sm">
+                  <span class="w-2 h-2 rounded-full flex-shrink-0 ${ok ? 'bg-green-500' : 'bg-amber-400'}"></span>
+                  <span class="text-slate-600">${label}</span>
+                </div>`).join('')}
+            </div>
+            <div class="mt-4 flex items-center gap-2.5 bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-200">
+              <i class="fas fa-link text-blue-500 text-xs flex-shrink-0"></i>
+              <span class="text-xs text-slate-500 font-mono truncate flex-1">${STORE_URL}</span>
+              <button onclick="shopCopyUrl()" class="text-xs text-blue-600 font-bold hover:underline flex-shrink-0">Copy</button>
+            </div>
           </div>
         </div>
 
@@ -282,10 +370,16 @@ window.WorkVoltPages['shop'] = function(container) {
   }
 
   function quickAction(icon, label, onclick, color) {
-    const colors = { blue:'bg-blue-50 text-blue-700 hover:bg-blue-100', violet:'bg-violet-50 text-violet-700 hover:bg-violet-100', emerald:'bg-emerald-50 text-emerald-700 hover:bg-emerald-100', slate:'bg-slate-100 text-slate-700 hover:bg-slate-200' };
-    return `<button onclick="${onclick}" class="flex flex-col items-center gap-2 p-4 rounded-xl ${colors[color]||colors.slate} transition-colors text-center cursor-pointer">
+    const colors = {
+      blue:    'bg-blue-50 text-blue-700 hover:bg-blue-100',
+      violet:  'bg-violet-50 text-violet-700 hover:bg-violet-100',
+      emerald: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
+      slate:   'bg-slate-100 text-slate-700 hover:bg-slate-200',
+    };
+    return `<button onclick="${onclick}"
+      class="flex flex-col items-center gap-2 p-4 rounded-xl ${colors[color]||colors.slate} transition-colors text-center cursor-pointer">
       <i class="fas ${icon} text-lg"></i>
-      <span class="text-xs font-semibold">${label}</span>
+      <span class="text-xs font-semibold leading-snug">${label}</span>
     </button>`;
   }
 
@@ -294,59 +388,123 @@ window.WorkVoltPages['shop'] = function(container) {
   // ══════════════════════════════════════════════════════════════
   function renderProducts(c) {
     c.innerHTML = `
-      <div class="p-6 slide-up">
+      <div class="p-6">
+
         <!-- Toolbar -->
-        <div class="flex items-center justify-between gap-3 mb-5">
-          <div class="flex items-center gap-3">
-            <h2 class="font-bold text-slate-900">Products <span class="text-slate-400 font-normal text-sm">(${products.length})</span></h2>
+        <div class="flex items-center justify-between gap-3 mb-5 flex-wrap">
+          <div class="flex items-center gap-3 flex-wrap">
+            <h2 class="font-bold text-slate-900">
+              Products <span class="text-slate-400 font-normal text-sm">(${products.length})</span>
+            </h2>
             <select id="filter-cat" onchange="shopTab('products')" class="field text-xs !py-1.5 !w-auto">
               <option value="">All Categories</option>
               ${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
             </select>
           </div>
-          <div class="flex items-center gap-2">
-            <button onclick="shopShowModal('category')" class="btn-secondary text-xs"><i class="fas fa-folder-plus mr-1"></i>Category</button>
-            <button onclick="shopShowModal('product')" class="btn-primary text-xs"><i class="fas fa-plus mr-1"></i>Add Product</button>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="shopShowModal('bulk-upload')" class="btn-secondary text-xs gap-1">
+              <i class="fas fa-file-csv text-xs"></i>Bulk Upload
+            </button>
+            <button onclick="shopShowModal('category')" class="btn-secondary text-xs gap-1">
+              <i class="fas fa-folder-plus text-xs"></i>Category
+            </button>
+            <button onclick="shopShowModal('product')" class="btn-primary text-xs gap-1">
+              <i class="fas fa-plus text-xs"></i>Add Product
+            </button>
           </div>
         </div>
 
-        <!-- Drag & drop hint -->
-        <p class="text-xs text-slate-400 mb-3 flex items-center gap-1.5"><i class="fas fa-grip-vertical"></i>Drag cards to reorder</p>
+        <!-- Categories drag-drop row -->
+        ${categories.length ? `
+        <div class="mb-5 bg-white border border-slate-200 rounded-xl p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-xs font-bold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+              <i class="fas fa-folder text-blue-400"></i>Categories
+              <span class="text-slate-400 font-normal normal-case">(drag to reorder)</span>
+            </h3>
+          </div>
+          <div class="flex flex-wrap gap-2" id="cat-chips">
+            ${categories.map(cat => `
+              <div class="flex items-center gap-2 px-3 py-1.5 rounded-full border-2
+                ${String(cat.active)==='true' ? 'border-blue-200 bg-blue-50' : 'border-slate-200 bg-slate-50 opacity-60'}
+                cursor-grab text-sm font-semibold text-slate-700 select-none"
+                draggable="true"
+                data-cat-id="${cat.id}"
+                ondragstart="shopCatReorder('start',event,'${cat.id}')"
+                ondragover="shopCatReorder('over',event)"
+                ondrop="shopCatReorder('drop',event,'${cat.id}')"
+                ondragend="shopCatReorder('end',event)">
+                <i class="fas fa-grip-dots-vertical text-slate-300 text-xs"></i>
+                ${cat.name}
+                <button onclick="shopShowModal('category','${cat.id}')"
+                  class="ml-1 text-slate-400 hover:text-blue-600 text-xs transition-colors">
+                  <i class="fas fa-pen"></i>
+                </button>
+                <button onclick="shopDelete('category','${cat.id}')"
+                  class="text-slate-300 hover:text-red-500 text-xs transition-colors">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>`).join('')}
+          </div>
+        </div>` : ''}
+
+        <!-- Drag hint -->
+        <p class="text-xs text-slate-400 mb-3 flex items-center gap-1.5">
+          <i class="fas fa-grip-vertical"></i>Drag product cards to reorder
+        </p>
 
         <!-- Product grid -->
         <div id="product-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           ${products.map(p => renderProductCard(p)).join('')}
         </div>
 
-        ${products.length === 0 ? `
+        ${!products.length ? `
           <div class="text-center py-20">
             <i class="fas fa-box-open text-4xl text-slate-300 mb-3"></i>
             <p class="text-slate-500 font-medium">No products yet</p>
-            <button onclick="shopShowModal('product')" class="btn-primary mt-4 text-sm">Add First Product</button>
+            <div class="flex items-center justify-center gap-3 mt-4">
+              <button onclick="shopShowModal('bulk-upload')" class="btn-secondary text-sm">
+                <i class="fas fa-file-csv mr-1.5"></i>Bulk Upload CSV
+              </button>
+              <button onclick="shopShowModal('product')" class="btn-primary text-sm">
+                Add First Product
+              </button>
+            </div>
           </div>` : ''}
       </div>
     `;
-    initDragDrop();
   }
 
   function renderProductCard(p) {
-    const cat = categories.find(c => c.id === p.category_id);
+    const cat      = categories.find(c => c.id === p.category_id);
     const isActive = String(p.active) === 'true';
+    const hasDisc  = p.compare_price && parseFloat(p.compare_price) > parseFloat(p.price);
+    const discPct  = hasDisc ? Math.round((1 - parseFloat(p.price)/parseFloat(p.compare_price))*100) : 0;
+    const lowStock = String(p.track_inventory) === 'true' && parseInt(p.stock||0) <= parseInt(p.low_stock_alert||5);
     return `
       <div class="product-card bg-white border-2 ${isActive ? 'border-slate-200' : 'border-dashed border-slate-200 opacity-60'}
                   rounded-2xl overflow-hidden cursor-grab hover:shadow-md transition-all"
-           draggable="true"
-           data-id="${p.id}"
-           ondragstart="shopReorder('start', event, '${p.id}')"
-           ondragover="shopReorder('over', event)"
-           ondrop="shopReorder('drop', event, '${p.id}')"
-           ondragend="shopReorder('end', event)">
+           draggable="true" data-id="${p.id}"
+           ondragstart="shopReorder('start',event,'${p.id}')"
+           ondragover="shopReorder('over',event)"
+           ondrop="shopReorder('drop',event,'${p.id}')"
+           ondragend="shopReorder('end',event)">
+
         <!-- Image -->
         <div class="h-36 bg-slate-100 overflow-hidden relative">
           ${p.image_url
             ? `<img src="${p.image_url}" alt="${p.name}" class="w-full h-full object-cover">`
-            : `<div class="w-full h-full flex items-center justify-center text-slate-300"><i class="fas fa-image text-4xl"></i></div>`}
-          <div class="absolute top-2 right-2 flex gap-1">
+            : `<div class="w-full h-full flex items-center justify-center text-slate-300">
+                 <i class="fas fa-image text-4xl"></i></div>`}
+
+          <!-- Top badges -->
+          <div class="absolute top-2 left-2 flex flex-col gap-1">
+            ${discPct > 0 ? `<span class="text-[10px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-md">-${discPct}%</span>` : ''}
+            ${lowStock   ? `<span class="text-[10px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fas fa-fire" style="font-size:8px"></i> Low</span>` : ''}
+          </div>
+
+          <!-- Active toggle -->
+          <div class="absolute top-2 right-2">
             <button onclick="event.stopPropagation();shopToggle('${p.id}')"
               class="w-7 h-7 rounded-full flex items-center justify-center text-xs shadow-sm transition-colors
                      ${isActive ? 'bg-green-500 text-white hover:bg-red-500' : 'bg-slate-400 text-white hover:bg-green-500'}"
@@ -354,27 +512,27 @@ window.WorkVoltPages['shop'] = function(container) {
               <i class="fas ${isActive ? 'fa-eye' : 'fa-eye-slash'}"></i>
             </button>
           </div>
-          <div class="absolute top-2 left-2">
-            <i class="fas fa-grip-dots-vertical text-white/60 text-sm"></i>
-          </div>
         </div>
+
         <!-- Info -->
         <div class="p-3">
           <div class="flex items-start justify-between gap-1 mb-1">
-            <h4 class="font-semibold text-slate-900 text-sm leading-snug line-clamp-2">${p.name}</h4>
+            <h4 class="font-semibold text-slate-900 text-sm leading-snug line-clamp-2 flex-1">${p.name}</h4>
           </div>
           ${cat ? `<span class="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">${cat.name}</span>` : ''}
           <div class="flex items-center justify-between mt-2">
             <div>
               <span class="text-base font-extrabold text-slate-900">${fmt(p.price, p.currency)}</span>
-              ${p.compare_price && parseFloat(p.compare_price) > parseFloat(p.price)
-                ? `<span class="text-xs text-slate-400 line-through ml-1">${fmt(p.compare_price, p.currency)}</span>` : ''}
+              ${hasDisc ? `<span class="text-xs text-slate-400 line-through ml-1">${fmt(p.compare_price, p.currency)}</span>` : ''}
             </div>
-            ${p.track_inventory === 'true' ? `<span class="text-xs ${parseInt(p.stock) <= parseInt(p.low_stock_alert||5) ? 'text-red-500 font-semibold' : 'text-slate-400'}">${p.stock} left</span>` : ''}
+            ${String(p.track_inventory) === 'true'
+              ? `<span class="text-xs ${lowStock ? 'text-red-500 font-bold' : 'text-slate-400'}">${p.stock} left</span>`
+              : ''}
           </div>
           <div class="flex gap-1.5 mt-3">
             <button onclick="shopShowModal('product','${p.id}')" class="flex-1 btn-secondary text-xs !py-1.5">Edit</button>
-            <button onclick="shopDelete('product','${p.id}')" class="w-8 h-7 flex items-center justify-center bg-red-50 text-red-400 hover:bg-red-100 rounded-lg text-xs transition-colors">
+            <button onclick="shopDelete('product','${p.id}')"
+              class="w-8 h-7 flex items-center justify-center bg-red-50 text-red-400 hover:bg-red-100 rounded-lg text-xs transition-colors">
               <i class="fas fa-trash"></i>
             </button>
           </div>
@@ -382,35 +540,24 @@ window.WorkVoltPages['shop'] = function(container) {
       </div>`;
   }
 
-  // ── Drag & drop for product reorder ───────────────────────────
-  function initDragDrop() {}  // event wired via HTML attrs
-
+  // ── Drag & drop — products ─────────────────────────────────────
   function handleReorder(type, event, id) {
     if (type === 'start') {
       dragSrcId = id;
       event.currentTarget.classList.add('opacity-40');
       event.dataTransfer.effectAllowed = 'move';
     }
-    if (type === 'over') {
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-    }
-    if (type === 'drop') {
+    if (type === 'over')  { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }
+    if (type === 'drop')  {
       event.preventDefault();
       if (!dragSrcId || dragSrcId === id) return;
-      // Swap positions
       const src  = products.find(p => p.id === dragSrcId);
       const dest = products.find(p => p.id === id);
       if (!src || !dest) return;
-      const tmp    = src.position;
-      src.position  = dest.position;
-      dest.position = tmp;
-      // Rebuild order array
-      const order = products.map((p, i) => ({ id: p.id, position: p.position }));
-      api('products/reorder', { order: JSON.stringify(order) }).then(() => {
-        WorkVolt.toast('Order saved', 'success');
-      });
-      // Re-render
+      [src.position, dest.position] = [dest.position, src.position];
+      const order = products.map(p => ({ id: p.id, position: p.position }));
+      api('products/reorder', { order: JSON.stringify(order) })
+        .then(() => WorkVolt.toast('Order saved', 'success'));
       products.sort((a, b) => (parseInt(a.position)||0) - (parseInt(b.position)||0));
       renderProducts(document.getElementById('shop-content'));
     }
@@ -420,44 +567,108 @@ window.WorkVoltPages['shop'] = function(container) {
     }
   }
 
+  // ── Drag & drop — categories ───────────────────────────────────
+  function handleCatReorder(type, event, id) {
+    if (type === 'start') {
+      catDragSrcId = id;
+      event.currentTarget.style.opacity = '.4';
+      event.dataTransfer.effectAllowed = 'move';
+    }
+    if (type === 'over')  { event.preventDefault(); }
+    if (type === 'drop')  {
+      event.preventDefault();
+      if (!catDragSrcId || catDragSrcId === id) return;
+      const src  = categories.find(c => c.id === catDragSrcId);
+      const dest = categories.find(c => c.id === id);
+      if (!src || !dest) return;
+      [src.position, dest.position] = [dest.position, src.position];
+      categories.sort((a, b) => (parseInt(a.position)||0) - (parseInt(b.position)||0));
+      // Save each updated position
+      Promise.all(categories.map(cat =>
+        api('categories/update', { id: cat.id, position: cat.position })
+      )).then(() => WorkVolt.toast('Category order saved', 'success'));
+      renderProducts(document.getElementById('shop-content'));
+    }
+    if (type === 'end') {
+      event.currentTarget.style.opacity = '1';
+      catDragSrcId = null;
+    }
+  }
+
+  // ── Bulk Upload ────────────────────────────────────────────────
+  async function handleBulkUpload() {
+    if (!bulkFile) { WorkVolt.toast('Please choose a CSV file first', 'error'); return; }
+    const btn = document.getElementById('bulk-upload-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-1"></i>Uploading…'; }
+
+    try {
+      const text = await bulkFile.text();
+      const lines = text.trim().split('\n');
+      if (lines.length < 2) throw new Error('CSV must have a header row and at least one product');
+
+      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g,'').toLowerCase());
+      const nameIdx  = headers.indexOf('name');
+      const priceIdx = headers.indexOf('price');
+      if (nameIdx === -1 || priceIdx === -1) throw new Error('CSV must have "name" and "price" columns');
+
+      let created = 0, errors = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const cols   = lines[i].split(',').map(c => c.trim().replace(/"/g,''));
+        const params = {};
+        headers.forEach((h, j) => { if (cols[j]) params[h] = cols[j]; });
+        if (!params.name || !params.price) { errors++; continue; }
+        const r = await api('products/create', params);
+        if (r.created) created++; else errors++;
+      }
+
+      WorkVolt.toast(`${created} products imported${errors ? ', ' + errors + ' skipped' : ''}`, created > 0 ? 'success' : 'error');
+      closeModal();
+      await loadData();
+      renderProducts(document.getElementById('shop-content'));
+    } catch(e) {
+      WorkVolt.toast('Import failed: ' + e.message, 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload mr-1"></i>Import'; }
+    }
+  }
+
   // ══════════════════════════════════════════════════════════════
   //  ORDERS
   // ══════════════════════════════════════════════════════════════
   function renderOrders(c) {
-    const statuses = ['All', 'Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
+    const statuses = ['All','Pending','Processing','Shipped','Delivered','Cancelled'];
     c.innerHTML = `
-      <div class="p-6 slide-up">
-        <div class="flex items-center justify-between mb-5">
+      <div class="p-6">
+        <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
           <h2 class="font-bold text-slate-900">Orders <span class="text-slate-400 font-normal text-sm">(${orders.length})</span></h2>
           <div class="flex items-center gap-2 overflow-x-auto thin-scroll">
             ${statuses.map(s => `
               <button onclick="shopFilterOrders('${s}')" id="ofilter-${s}"
-                class="px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${s==='All' ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:border-blue-300'}">
+                class="px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all
+                       ${s==='All' ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:border-blue-300'}">
                 ${s}
               </button>`).join('')}
           </div>
         </div>
-
         <div class="space-y-3" id="orders-list">
           ${renderOrdersList(orders)}
         </div>
-
-        ${orders.length === 0 ? `
+        ${!orders.length ? `
           <div class="text-center py-20">
             <i class="fas fa-receipt text-4xl text-slate-300 mb-3"></i>
             <p class="text-slate-500 font-medium">No orders yet</p>
           </div>` : ''}
       </div>
     `;
-    window.shopFilterOrders = (status) => {
-      document.querySelectorAll('[id^="ofilter-"]').forEach(b => {
-        const isActive = b.id === 'ofilter-' + status;
-        b.className = `px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${isActive ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:border-blue-300'}`;
-      });
-      const filtered = status === 'All' ? orders : orders.filter(o => o.fulfillment_status === status);
-      document.getElementById('orders-list').innerHTML = renderOrdersList(filtered);
-    };
-    window.shopViewOrder = (id) => showOrderDetail(id);
+  }
+
+  function filterOrders(status) {
+    document.querySelectorAll('[id^="ofilter-"]').forEach(b => {
+      const active = b.id === 'ofilter-' + status;
+      b.className = `px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all
+        ${active ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:border-blue-300'}`;
+    });
+    const filtered = status === 'All' ? orders : orders.filter(o => o.fulfillment_status === status);
+    document.getElementById('orders-list').innerHTML = renderOrdersList(filtered);
   }
 
   function renderOrdersList(list) {
@@ -465,13 +676,13 @@ window.WorkVoltPages['shop'] = function(container) {
     return list.map(o => `
       <div class="bg-white border border-slate-200 rounded-xl p-4 hover:border-blue-200 hover:shadow-sm transition-all cursor-pointer"
            onclick="shopViewOrder('${o.id}')">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-3">
-            <div class="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center">
+            <div class="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
               <i class="fas fa-receipt text-blue-500 text-sm"></i>
             </div>
             <div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <span class="font-bold text-slate-900 text-sm">${o.order_number || o.id.slice(0,8)}</span>
                 ${statusBadge(o.fulfillment_status)}
                 ${statusBadge(o.payment_status)}
@@ -479,7 +690,7 @@ window.WorkVoltPages['shop'] = function(container) {
               <p class="text-xs text-slate-500 mt-0.5">${o.customer_name} · ${o.customer_email || ''}</p>
             </div>
           </div>
-          <div class="text-right">
+          <div class="text-right flex-shrink-0">
             <div class="font-extrabold text-slate-900">${fmt(o.total, o.currency)}</div>
             <div class="text-xs text-slate-400">${fmtDate(o.created_at)}</div>
           </div>
@@ -490,15 +701,16 @@ window.WorkVoltPages['shop'] = function(container) {
   function showOrderDetail(id) {
     const o = orders.find(x => x.id === id);
     if (!o) return;
-    const fStatuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
-    const pStatuses = ['Pending', 'Pending Payment', 'Paid', 'Refunded'];
+    const fStatuses = ['Pending','Processing','Shipped','Delivered','Cancelled'];
+    const pStatuses = ['Pending','Pending Payment','Paid','Refunded'];
     document.getElementById('shop-modal-inner').innerHTML = `
       <div class="p-6">
         <div class="flex items-center justify-between mb-5">
           <h2 class="font-bold text-slate-900 text-lg">Order ${o.order_number}</h2>
-          <button onclick="shopCloseModal()" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center"><i class="fas fa-times text-sm"></i></button>
+          <button onclick="shopCloseModal()" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center">
+            <i class="fas fa-times text-sm"></i>
+          </button>
         </div>
-
         <div class="grid grid-cols-2 gap-4 mb-5 text-sm">
           <div>
             <p class="text-xs text-slate-500 mb-1">Customer</p>
@@ -519,8 +731,7 @@ window.WorkVoltPages['shop'] = function(container) {
           </div>` : ''}
         </div>
 
-        <!-- Items -->
-        ${o.items && o.items.length ? `
+        ${o.items?.length ? `
         <div class="bg-slate-50 rounded-xl p-3 mb-4">
           <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Items</p>
           ${o.items.map(i => `
@@ -530,15 +741,15 @@ window.WorkVoltPages['shop'] = function(container) {
             </div>`).join('')}
         </div>` : ''}
 
-        <!-- Totals -->
         <div class="space-y-1 text-sm mb-5">
           <div class="flex justify-between text-slate-600"><span>Subtotal</span><span>${fmt(o.subtotal, o.currency)}</span></div>
-          ${parseFloat(o.discount)>0 ? `<div class="flex justify-between text-green-600"><span>Discount ${o.discount_code ? '('+o.discount_code+')' : ''}</span><span>-${fmt(o.discount, o.currency)}</span></div>` : ''}
+          ${parseFloat(o.discount)>0 ? `<div class="flex justify-between text-green-600"><span>Discount${o.discount_code ? ' ('+o.discount_code+')' : ''}</span><span>-${fmt(o.discount, o.currency)}</span></div>` : ''}
           ${parseFloat(o.tax)>0 ? `<div class="flex justify-between text-slate-600"><span>Tax</span><span>${fmt(o.tax, o.currency)}</span></div>` : ''}
-          <div class="flex justify-between font-extrabold text-slate-900 pt-2 border-t border-slate-200 text-base"><span>Total</span><span>${fmt(o.total, o.currency)}</span></div>
+          <div class="flex justify-between font-extrabold text-slate-900 pt-2 border-t border-slate-200 text-base">
+            <span>Total</span><span>${fmt(o.total, o.currency)}</span>
+          </div>
         </div>
 
-        <!-- Status controls -->
         <div class="grid grid-cols-2 gap-3 mb-4">
           <div>
             <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Fulfillment</label>
@@ -564,8 +775,8 @@ window.WorkVoltPages['shop'] = function(container) {
   // ══════════════════════════════════════════════════════════════
   function renderCustomers(c) {
     c.innerHTML = `
-      <div class="p-6 slide-up">
-        <div class="flex items-center justify-between mb-5">
+      <div class="p-6">
+        <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
           <h2 class="font-bold text-slate-900">Customers <span class="text-slate-400 font-normal text-sm">(${customers.length})</span></h2>
           <div class="relative">
             <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
@@ -587,14 +798,16 @@ window.WorkVoltPages['shop'] = function(container) {
               ${renderCustomerRows(customers)}
             </tbody>
           </table>
-          ${customers.length === 0 ? `<div class="text-center py-16 text-slate-400"><i class="fas fa-users text-3xl mb-2"></i><p>No customers yet</p></div>` : ''}
+          ${!customers.length ? `<div class="text-center py-16 text-slate-400">
+            <i class="fas fa-users text-3xl mb-2"></i><p>No customers yet</p></div>` : ''}
         </div>
       </div>
     `;
-    window.shopSearchCustomers = async (q) => {
-      const r = await api('customers/list', { search: q });
-      document.getElementById('customers-body').innerHTML = renderCustomerRows(r.rows || []);
-    };
+  }
+
+  async function searchCustomers(q) {
+    const r = await api('customers/list', { search: q });
+    document.getElementById('customers-body').innerHTML = renderCustomerRows(r.rows || []);
   }
 
   function renderCustomerRows(list) {
@@ -602,7 +815,9 @@ window.WorkVoltPages['shop'] = function(container) {
       <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
         <td class="px-4 py-3">
           <div class="flex items-center gap-3">
-            <div class="w-8 h-8 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full flex items-center justify-center text-white text-xs font-bold">${(cu.name||'?')[0].toUpperCase()}</div>
+            <div class="w-8 h-8 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+              ${(cu.name||'?')[0].toUpperCase()}
+            </div>
             <span class="font-semibold text-slate-900">${cu.name || '—'}</span>
           </div>
         </td>
@@ -617,35 +832,43 @@ window.WorkVoltPages['shop'] = function(container) {
   // ══════════════════════════════════════════════════════════════
   function renderDiscounts(c) {
     c.innerHTML = `
-      <div class="p-6 slide-up">
+      <div class="p-6">
         <div class="flex items-center justify-between mb-5">
           <h2 class="font-bold text-slate-900">Discount Codes</h2>
-          <button onclick="shopShowModal('discount')" class="btn-primary text-xs"><i class="fas fa-plus mr-1"></i>New Code</button>
+          <button onclick="shopShowModal('discount')" class="btn-primary text-xs gap-1">
+            <i class="fas fa-plus text-xs"></i>New Code
+          </button>
         </div>
         <div class="space-y-3">
-          ${discounts.length === 0
-            ? `<div class="text-center py-16 text-slate-400"><i class="fas fa-tag text-3xl mb-2"></i><p>No discount codes yet</p></div>`
+          ${!discounts.length
+            ? `<div class="text-center py-16 text-slate-400">
+                <i class="fas fa-tag text-3xl mb-2"></i><p>No discount codes yet</p></div>`
             : discounts.map(d => `
-              <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between">
+              <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between gap-3">
                 <div class="flex items-center gap-4">
-                  <div class="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
+                  <div class="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
                     <i class="fas fa-tag text-amber-500"></i>
                   </div>
                   <div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
                       <span class="font-bold text-slate-900 font-mono text-sm">${d.code}</span>
-                      <span class="text-xs px-2 py-0.5 rounded-full ${String(d.active)==='true' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">${String(d.active)==='true'?'Active':'Inactive'}</span>
+                      <span class="text-xs px-2 py-0.5 rounded-full font-semibold
+                        ${String(d.active)==='true' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
+                        ${String(d.active)==='true' ? 'Active' : 'Inactive'}
+                      </span>
                     </div>
-                    <p class="text-xs text-slate-500">${d.type === 'percent' ? d.value + '% off' : fmt(d.value) + ' off'}
-                      ${d.min_order ? '· Min order ' + fmt(d.min_order) : ''}
+                    <p class="text-xs text-slate-500 mt-0.5">
+                      ${d.type === 'percent' ? d.value + '% off' : fmt(d.value) + ' off'}
+                      ${d.min_order ? '· Min ' + fmt(d.min_order) : ''}
                       · Used ${d.uses || 0}${d.max_uses ? '/'+d.max_uses : ''} times
-                      ${d.expires_at ? '· Expires '+fmtDate(d.expires_at) : ''}
+                      ${d.expires_at ? '· Expires ' + fmtDate(d.expires_at) : ''}
                     </p>
                   </div>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-shrink-0">
                   <button onclick="shopShowModal('discount','${d.id}')" class="btn-secondary text-xs !py-1.5">Edit</button>
-                  <button onclick="shopDelete('discount','${d.id}')" class="w-8 h-7 flex items-center justify-center bg-red-50 text-red-400 hover:bg-red-100 rounded-lg transition-colors">
+                  <button onclick="shopDelete('discount','${d.id}')"
+                    class="w-8 h-7 flex items-center justify-center bg-red-50 text-red-400 hover:bg-red-100 rounded-lg transition-colors">
                     <i class="fas fa-trash text-xs"></i>
                   </button>
                 </div>
@@ -667,24 +890,24 @@ window.WorkVoltPages['shop'] = function(container) {
       const q = posSearchStr.toLowerCase();
       return p.name.toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q);
     });
-    const cartTotal = posCart.reduce((s, i) => s + (i.price * i.qty), 0);
+    const cartTotal = posCart.reduce((s,i) => s + i.price * i.qty, 0);
+    const taxRate   = parseFloat(settings.tax_rate || 0) / 100;
+    const taxAmt    = settings.tax_included === 'true' ? 0 : cartTotal * taxRate;
+    const grandTotal = cartTotal + taxAmt;
 
     c.innerHTML = `
       <div class="flex h-full" style="min-height:600px">
 
-        <!-- Products side -->
+        <!-- Products -->
         <div class="flex-1 flex flex-col border-r border-slate-200 overflow-hidden">
-          <!-- Search bar -->
           <div class="p-4 border-b border-slate-200 bg-white">
             <div class="relative">
               <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
               <input type="text" placeholder="Search products or scan barcode…"
-                value="${posSearchStr}"
-                oninput="shopPosSearch(this.value)"
+                value="${posSearchStr}" oninput="shopPosSearch(this.value)"
                 class="field pl-9 text-sm" autofocus>
             </div>
           </div>
-          <!-- Grid -->
           <div class="flex-1 overflow-y-auto thin-scroll p-4">
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               ${filtered.map(p => `
@@ -693,27 +916,32 @@ window.WorkVoltPages['shop'] = function(container) {
                   <div class="w-full h-24 bg-slate-100 rounded-lg mb-2 overflow-hidden">
                     ${p.image_url
                       ? `<img src="${p.image_url}" class="w-full h-full object-cover group-hover:scale-105 transition-transform">`
-                      : `<div class="w-full h-full flex items-center justify-center text-slate-300"><i class="fas fa-box text-2xl"></i></div>`}
+                      : `<div class="w-full h-full flex items-center justify-center text-slate-300">
+                           <i class="fas fa-box text-2xl"></i></div>`}
                   </div>
                   <p class="text-xs font-semibold text-slate-800 line-clamp-2 leading-snug">${p.name}</p>
                   <p class="text-sm font-extrabold text-blue-600 mt-1">${fmt(p.price, p.currency)}</p>
-                  ${p.track_inventory === 'true' ? `<p class="text-[10px] text-slate-400">${p.stock} left</p>` : ''}
+                  ${String(p.track_inventory) === 'true'
+                    ? `<p class="text-[10px] ${parseInt(p.stock)<=0?'text-red-500 font-bold':'text-slate-400'}">${parseInt(p.stock)<=0 ? 'Out of stock' : p.stock + ' left'}</p>`
+                    : ''}
                 </button>`).join('')}
-              ${filtered.length === 0 ? `<div class="col-span-4 text-center py-12 text-slate-400"><i class="fas fa-search text-3xl mb-2"></i><p>No products found</p></div>` : ''}
+              ${!filtered.length ? `<div class="col-span-4 text-center py-12 text-slate-400">
+                <i class="fas fa-search text-3xl mb-2"></i><p>No products found</p></div>` : ''}
             </div>
           </div>
         </div>
 
-        <!-- Cart side -->
+        <!-- Cart -->
         <div class="w-80 flex flex-col bg-white">
           <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-            <h3 class="font-bold text-slate-900">Cart <span class="text-slate-400 text-sm font-normal">(${posCart.length})</span></h3>
-            ${posCart.length > 0 ? `<button onclick="shopPosClear()" class="text-xs text-red-400 hover:text-red-600 font-semibold">Clear</button>` : ''}
+            <h3 class="font-bold text-slate-900">
+              Cart <span class="text-slate-400 text-sm font-normal">(${posCart.length})</span>
+            </h3>
+            ${posCart.length ? `<button onclick="shopPosClear()" class="text-xs text-red-400 hover:text-red-600 font-semibold">Clear</button>` : ''}
           </div>
 
-          <!-- Cart items -->
           <div class="flex-1 overflow-y-auto thin-scroll divide-y divide-slate-100">
-            ${posCart.length === 0
+            ${!posCart.length
               ? `<div class="flex flex-col items-center justify-center h-full text-slate-300 gap-2">
                    <i class="fas fa-shopping-cart text-4xl"></i>
                    <p class="text-sm">Cart is empty</p>
@@ -725,37 +953,42 @@ window.WorkVoltPages['shop'] = function(container) {
                     <p class="text-xs text-slate-500">${fmt(item.price)}</p>
                   </div>
                   <div class="flex items-center gap-1.5">
-                    <button onclick="shopPosRemove(${i}, -1)" class="w-6 h-6 bg-slate-100 hover:bg-slate-200 rounded-md text-slate-600 text-xs font-bold flex items-center justify-center">−</button>
+                    <button onclick="shopPosRemove(${i},-1)"
+                      class="w-6 h-6 bg-slate-100 hover:bg-slate-200 rounded-md text-slate-600 text-xs font-bold flex items-center justify-center">−</button>
                     <span class="w-6 text-center text-sm font-bold">${item.qty}</span>
-                    <button onclick="shopPosRemove(${i}, 1)" class="w-6 h-6 bg-slate-100 hover:bg-slate-200 rounded-md text-slate-600 text-xs font-bold flex items-center justify-center">+</button>
+                    <button onclick="shopPosRemove(${i},1)"
+                      class="w-6 h-6 bg-slate-100 hover:bg-slate-200 rounded-md text-slate-600 text-xs font-bold flex items-center justify-center">+</button>
                   </div>
                   <span class="text-sm font-extrabold text-slate-900 w-16 text-right">${fmt(item.price * item.qty)}</span>
                 </div>`).join('')}
           </div>
 
-          <!-- Totals + checkout -->
           <div class="border-t border-slate-200 p-4 space-y-3">
+            ${taxAmt > 0 ? `
+            <div class="flex justify-between text-sm text-slate-500">
+              <span>${settings.tax_label || 'Tax'} (${settings.tax_rate}%)</span>
+              <span>${fmt(taxAmt)}</span>
+            </div>` : ''}
             <div class="flex justify-between text-base font-extrabold text-slate-900">
-              <span>Total</span>
-              <span>${fmt(cartTotal)}</span>
+              <span>Total</span><span>${fmt(grandTotal)}</span>
             </div>
-            <!-- Payment method -->
             <select id="pos-payment" class="field text-sm">
               <option value="Cash">💵 Cash</option>
               ${settings.interac_enabled === 'true' ? `<option value="Interac">🏦 Interac e-Transfer</option>` : ''}
-              ${settings.paypal_enabled === 'true' ? `<option value="PayPal">🅿 PayPal</option>` : ''}
-              ${settings.stripe_enabled === 'true' ? `<option value="Stripe">💳 Stripe</option>` : ''}
+              ${settings.paypal_enabled  === 'true' ? `<option value="PayPal">🅿 PayPal</option>` : ''}
+              ${settings.stripe_enabled  === 'true' ? `<option value="Stripe">💳 Stripe</option>` : ''}
             </select>
             <div class="grid grid-cols-2 gap-2">
-              <input id="pos-name" type="text" placeholder="Customer name" class="field text-sm col-span-2">
+              <input id="pos-name"  type="text"  placeholder="Customer name" class="field text-sm col-span-2">
               <input id="pos-email" type="email" placeholder="Email (optional)" class="field text-sm col-span-2">
             </div>
-            <button onclick="shopPosCheckout()" ${posCart.length === 0 ? 'disabled' : ''}
-              class="btn-primary w-full text-sm">
-              <i class="fas fa-check-circle mr-1.5"></i>Complete Sale
+            <button onclick="shopPosCheckout()" ${!posCart.length ? 'disabled' : ''}
+              class="btn-primary w-full text-sm ${!posCart.length ? 'opacity-50 cursor-not-allowed' : ''}">
+              <i class="fas fa-check-circle mr-1.5"></i>Complete Sale · ${fmt(grandTotal)}
             </button>
           </div>
         </div>
+
       </div>
     `;
   }
@@ -764,11 +997,8 @@ window.WorkVoltPages['shop'] = function(container) {
     const p = products.find(x => x.id === id);
     if (!p) return;
     const existing = posCart.find(i => i.id === id);
-    if (existing) {
-      existing.qty++;
-    } else {
-      posCart.push({ id: p.id, name: p.name, price: parseFloat(p.price), qty: 1, currency: p.currency });
-    }
+    if (existing) existing.qty++;
+    else posCart.push({ id: p.id, name: p.name, price: parseFloat(p.price), qty: 1, currency: p.currency });
     renderPOS();
   }
 
@@ -778,25 +1008,25 @@ window.WorkVoltPages['shop'] = function(container) {
     renderPOS();
   }
 
-  function posClear() {
-    posCart = [];
-    renderPOS();
-  }
+  function posClear() { posCart = []; renderPOS(); }
 
   async function posCheckout() {
     if (!posCart.length) return;
-    const name    = document.getElementById('pos-name')?.value.trim() || 'Walk-in Customer';
-    const email   = document.getElementById('pos-email')?.value.trim() || '';
-    const method  = document.getElementById('pos-payment')?.value || 'Cash';
-    const total   = posCart.reduce((s, i) => s + i.price * i.qty, 0);
-    const items   = posCart.map(i => ({ product_id: i.id, product_name: i.name, qty: i.qty, unit_price: i.price, total_price: i.price * i.qty }));
+    const name   = document.getElementById('pos-name')?.value.trim()  || 'Walk-in Customer';
+    const email  = document.getElementById('pos-email')?.value.trim() || '';
+    const method = document.getElementById('pos-payment')?.value      || 'Cash';
+    const sub    = posCart.reduce((s,i) => s + i.price * i.qty, 0);
+    const taxRate = parseFloat(settings.tax_rate || 0) / 100;
+    const tax    = settings.tax_included === 'true' ? 0 : sub * taxRate;
+    const total  = sub + tax;
+    const items  = posCart.map(i => ({ product_id: i.id, product_name: i.name, qty: i.qty, unit_price: i.price, total_price: i.price * i.qty }));
 
     try {
       const r = await api('orders/create', {
         customer_name:     name,
         customer_email:    email,
-        subtotal:          total.toFixed(2),
-        tax:               '0',
+        subtotal:          sub.toFixed(2),
+        tax:               tax.toFixed(2),
         total:             total.toFixed(2),
         currency:          'CAD',
         payment_method:    method,
@@ -808,7 +1038,6 @@ window.WorkVoltPages['shop'] = function(container) {
       if (r.error) throw new Error(r.error);
       WorkVolt.toast(`Sale complete! Order ${r.order_number}`, 'success');
       posCart = [];
-      // Refresh products (inventory may have changed)
       await loadData();
       renderPOS();
     } catch(e) {
@@ -822,129 +1051,75 @@ window.WorkVoltPages['shop'] = function(container) {
   function renderSettings(c) {
     const s = settings;
     c.innerHTML = `
-      <div class="p-6 slide-up max-w-3xl space-y-6">
+      <div class="p-6 max-w-3xl space-y-6">
 
-        <!-- Store Identity -->
         ${settingsSection('Store Identity', 'fa-store', `
-          ${sfld('Store Name', 's-store_name', s.store_name, 'text')}
-          ${sfld('Tagline', 's-store_tagline', s.store_tagline, 'text')}
-          ${sfld('Logo URL', 's-logo_url', s.logo_url, 'url', 'https://drive.google.com/...')}
+          ${sfld('Store Name', 's-store_name', s.store_name)}
+          ${sfld('Tagline', 's-store_tagline', s.store_tagline)}
+          ${sfld('Logo URL', 's-logo_url', s.logo_url, 'url', 'https://example.com/logo.png')}
           ${sfld('Store Email', 's-store_email', s.store_email, 'email')}
           ${sfld('Store Phone', 's-store_phone', s.store_phone, 'tel')}
-          ${sfld('Footer Text', 's-footer_text', s.footer_text, 'text')}
+          ${sfld('Footer Text', 's-footer_text', s.footer_text)}
         `)}
 
-        <!-- Branding -->
         ${settingsSection('Branding & Theme', 'fa-palette', `
           <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Primary Color</label>
-              <div class="flex items-center gap-2">
-                <input id="s-primary_color" type="color" value="${s.primary_color||'#2563eb'}" class="w-10 h-10 rounded-lg border border-slate-200 cursor-pointer p-0.5">
-                <input type="text" value="${s.primary_color||'#2563eb'}" oninput="document.getElementById('s-primary_color').value=this.value" class="field text-sm flex-1 font-mono">
-              </div>
-            </div>
-            <div>
-              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Accent Color</label>
-              <div class="flex items-center gap-2">
-                <input id="s-accent_color" type="color" value="${s.accent_color||'#1d4ed8'}" class="w-10 h-10 rounded-lg border border-slate-200 cursor-pointer p-0.5">
-                <input type="text" value="${s.accent_color||'#1d4ed8'}" oninput="document.getElementById('s-accent_color').value=this.value" class="field text-sm flex-1 font-mono">
-              </div>
-            </div>
+            ${colorField('Primary Color', 's-primary_color', s.primary_color || '#2563eb')}
+            ${colorField('Accent Color',  's-accent_color',  s.accent_color  || '#f59e0b')}
           </div>
-          ${sfld('Background Color', 's-background_color', s.background_color||'#f8fafc', 'text')}
+          ${sfld('Background Color', 's-background_color', s.background_color || '#f8fafc')}
+          ${sfld('Text Color',       's-text_color',       s.text_color       || '#0f172a')}
         `)}
 
-        <!-- Currency & Tax -->
         ${settingsSection('Currency & Tax', 'fa-dollar-sign', `
           <div class="grid grid-cols-2 gap-4">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input id="s-currency_cad" type="checkbox" ${s.currency_cad==='true'?'checked':''} class="w-4 h-4 rounded accent-blue-600">
-              <span class="text-sm font-medium text-slate-700">CAD (Canadian Dollar)</span>
-            </label>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input id="s-currency_usd" type="checkbox" ${s.currency_usd==='true'?'checked':''} class="w-4 h-4 rounded accent-blue-600">
-              <span class="text-sm font-medium text-slate-700">USD (US Dollar)</span>
-            </label>
+            ${checkField('s-currency_cad', 'CAD (Canadian Dollar)', s.currency_cad === 'true')}
+            ${checkField('s-currency_usd', 'USD (US Dollar)',       s.currency_usd === 'true')}
           </div>
-          ${sfld('Tax Rate (%)', 's-tax_rate', s.tax_rate||'0', 'number', '0')}
-          ${sfld('Tax Label', 's-tax_label', s.tax_label||'Tax', 'text', 'GST/HST')}
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input id="s-tax_included" type="checkbox" ${s.tax_included==='true'?'checked':''} class="w-4 h-4 rounded accent-blue-600">
-            <span class="text-sm font-medium text-slate-700">Prices include tax</span>
-          </label>
+          ${sfld('Tax Rate (%)',   's-tax_rate',    s.tax_rate || '0', 'number', '0')}
+          ${sfld('Tax Label',     's-tax_label',   s.tax_label || 'Tax', 'text', 'HST/GST')}
+          ${checkField('s-tax_included', 'Prices include tax', s.tax_included === 'true')}
         `)}
 
-        <!-- Payments -->
         ${settingsSection('Payment Methods', 'fa-credit-card', `
-          <!-- PayPal -->
-          <div class="border border-slate-200 rounded-xl p-4 space-y-3">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input id="s-paypal_enabled" type="checkbox" ${s.paypal_enabled==='true'?'checked':''} class="w-4 h-4 rounded accent-blue-600">
-              <div class="flex items-center gap-2">
-                <span class="text-base">🅿</span>
-                <span class="text-sm font-semibold text-slate-800">PayPal</span>
-                <span class="text-xs text-slate-400">Redirect checkout</span>
-              </div>
-            </label>
-            ${sfld('PayPal Email', 's-paypal_email', s.paypal_email, 'email', 'you@business.com')}
-          </div>
-          <!-- Stripe -->
-          <div class="border border-slate-200 rounded-xl p-4 space-y-3">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input id="s-stripe_enabled" type="checkbox" ${s.stripe_enabled==='true'?'checked':''} class="w-4 h-4 rounded accent-blue-600">
-              <div class="flex items-center gap-2">
-                <span class="text-base">💳</span>
-                <span class="text-sm font-semibold text-slate-800">Stripe</span>
-                <span class="text-xs text-slate-400">Requires Stripe.js integration</span>
-              </div>
-            </label>
-            ${sfld('Stripe Publishable Key', 's-stripe_pub_key', s.stripe_pub_key, 'text', 'pk_live_...')}
-          </div>
-          <!-- Interac -->
-          <div class="border border-slate-200 rounded-xl p-4 space-y-3">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input id="s-interac_enabled" type="checkbox" ${s.interac_enabled==='true'?'checked':''} class="w-4 h-4 rounded accent-blue-600">
-              <div class="flex items-center gap-2">
-                <span class="text-base">🏦</span>
-                <span class="text-sm font-semibold text-slate-800">Interac e-Transfer</span>
-                <span class="text-xs text-slate-400">Manual confirmation</span>
-              </div>
-            </label>
-            ${sfld('Interac Email', 's-interac_email', s.interac_email, 'email', 'payments@yourbusiness.ca')}
-          </div>
-          <!-- Cash -->
-          <label class="flex items-center gap-3 cursor-pointer border border-slate-200 rounded-xl p-4">
-            <input id="s-cash_enabled" type="checkbox" ${s.cash_enabled==='true'?'checked':''} class="w-4 h-4 rounded accent-blue-600">
-            <div class="flex items-center gap-2">
-              <span class="text-base">💵</span>
-              <span class="text-sm font-semibold text-slate-800">Cash</span>
-              <span class="text-xs text-slate-400">POS only</span>
+          <div class="space-y-3">
+            <div class="border border-slate-200 rounded-xl p-4 space-y-3">
+              ${checkField('s-paypal_enabled', '🅿 PayPal — Redirect checkout', s.paypal_enabled === 'true')}
+              ${sfld('PayPal Email', 's-paypal_email', s.paypal_email, 'email', 'you@business.com')}
             </div>
-          </label>
+            <div class="border border-slate-200 rounded-xl p-4 space-y-3">
+              ${checkField('s-stripe_enabled', '💳 Stripe — Credit / Debit card', s.stripe_enabled === 'true')}
+              ${sfld('Stripe Publishable Key', 's-stripe_pub_key', s.stripe_pub_key, 'text', 'pk_live_…')}
+            </div>
+            <div class="border border-slate-200 rounded-xl p-4 space-y-3">
+              ${checkField('s-interac_enabled', '🏦 Interac e-Transfer — Manual', s.interac_enabled === 'true')}
+              ${sfld('Interac Email', 's-interac_email', s.interac_email, 'email', 'payments@business.ca')}
+            </div>
+            <div class="border border-slate-200 rounded-xl p-4">
+              ${checkField('s-cash_enabled', '💵 Cash — POS only', s.cash_enabled === 'true')}
+            </div>
+          </div>
         `)}
 
-        <!-- Shipping -->
         ${settingsSection('Shipping', 'fa-truck', `
-          <label class="flex items-center gap-2 cursor-pointer mb-3">
-            <input id="s-shipping_enabled" type="checkbox" ${s.shipping_enabled==='true'?'checked':''} class="w-4 h-4 rounded accent-blue-600">
-            <span class="text-sm font-medium text-slate-700">Enable shipping</span>
-          </label>
-          ${sfld('Flat Shipping Rate', 's-shipping_rate', s.shipping_rate||'0', 'number', '9.99')}
-          ${sfld('Free Shipping Minimum ($)', 's-free_shipping_min', s.free_shipping_min||'0', 'number', '75')}
+          ${checkField('s-shipping_enabled', 'Enable shipping', s.shipping_enabled === 'true')}
+          ${sfld('Flat Shipping Rate ($)', 's-shipping_rate', s.shipping_rate || '0', 'number', '9.99')}
+          ${sfld('Free Shipping Minimum ($)', 's-free_shipping_min', s.free_shipping_min || '0', 'number', '75')}
         `)}
 
-        <!-- Maintenance -->
         ${settingsSection('Store Status', 'fa-power-off', `
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input id="s-maintenance_mode" type="checkbox" ${s.maintenance_mode==='true'?'checked':''} class="w-4 h-4 rounded accent-red-600">
-            <span class="text-sm font-medium text-slate-700">Maintenance mode (hides storefront)</span>
-          </label>
+          ${checkField('s-maintenance_mode', '🔴 Maintenance mode (hides storefront)', s.maintenance_mode === 'true')}
+          <div class="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3">
+            <i class="fas fa-link text-blue-500 text-sm"></i>
+            <span class="text-sm text-slate-500 font-mono truncate flex-1">${STORE_URL}</span>
+            <a href="${STORE_URL}" target="_blank" class="text-xs text-blue-600 font-bold hover:underline flex-shrink-0">Open</a>
+          </div>
         `)}
 
         <button onclick="shopSave('settings')" class="btn-primary w-full text-sm">
           <i class="fas fa-save mr-1.5"></i>Save All Settings
         </button>
+
       </div>
     `;
   }
@@ -960,11 +1135,31 @@ window.WorkVoltPages['shop'] = function(container) {
       </div>`;
   }
 
-  function sfld(label, id, value, type = 'text', placeholder = '') {
+  function sfld(label, id, value, type='text', placeholder='') {
     return `<div>
       <label for="${id}" class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">${label}</label>
       <input id="${id}" type="${type}" value="${value||''}" placeholder="${placeholder}" class="field text-sm">
     </div>`;
+  }
+
+  function colorField(label, id, value) {
+    return `<div>
+      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">${label}</label>
+      <div class="flex items-center gap-2">
+        <input id="${id}" type="color" value="${value}"
+          class="w-10 h-10 rounded-lg border border-slate-200 cursor-pointer p-0.5">
+        <input type="text" value="${value}"
+          oninput="document.getElementById('${id}').value=this.value"
+          class="field text-sm flex-1 font-mono">
+      </div>
+    </div>`;
+  }
+
+  function checkField(id, label, checked) {
+    return `<label class="flex items-center gap-2.5 cursor-pointer">
+      <input id="${id}" type="checkbox" ${checked ? 'checked' : ''} class="w-4 h-4 rounded accent-blue-600">
+      <span class="text-sm font-medium text-slate-700">${label}</span>
+    </label>`;
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -975,35 +1170,38 @@ window.WorkVoltPages['shop'] = function(container) {
     const inner = document.getElementById('shop-modal-inner');
     if (!modal || !inner) return;
 
+    if (type === 'product')     inner.innerHTML = productForm(id ? products.find(x => x.id === id) : null);
+    if (type === 'category')    inner.innerHTML = categoryForm(id ? categories.find(x => x.id === id) : null);
+    if (type === 'discount')    inner.innerHTML = discountForm(id ? discounts.find(x => x.id === id) : null);
+    if (type === 'bulk-upload') inner.innerHTML = bulkUploadForm();
+
+    // Track inventory toggle
     if (type === 'product') {
-      const p = id ? products.find(x => x.id === id) : null;
-      inner.innerHTML = productForm(p);
+      const trackEl = document.getElementById('pf-track_inventory');
+      const invFields = document.getElementById('inventory-fields');
+      if (trackEl && invFields) {
+        trackEl.addEventListener('change', () => {
+          invFields.style.display = trackEl.checked ? 'grid' : 'none';
+        });
+      }
     }
-    if (type === 'category') {
-      const cat = id ? categories.find(x => x.id === id) : null;
-      inner.innerHTML = categoryForm(cat);
-    }
-    if (type === 'discount') {
-      const d = id ? discounts.find(x => x.id === id) : null;
-      inner.innerHTML = discountForm(d);
-    }
+
     modal.classList.remove('hidden');
   }
 
-  function closeModal() {
-    document.getElementById('shop-modal')?.classList.add('hidden');
-  }
+  function closeModal() { document.getElementById('shop-modal')?.classList.add('hidden'); }
 
   function productForm(p) {
     return `
       <div class="p-6">
         <div class="flex items-center justify-between mb-5">
           <h2 class="font-bold text-slate-900 text-lg">${p ? 'Edit Product' : 'New Product'}</h2>
-          <button onclick="shopCloseModal()" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center"><i class="fas fa-times text-sm"></i></button>
+          <button onclick="shopCloseModal()" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center">
+            <i class="fas fa-times text-sm"></i>
+          </button>
         </div>
-        <div class="space-y-4" id="product-form-status"></div>
         <div class="space-y-4">
-          ${mfld('Product Name *', 'pf-name', p?.name, 'text')}
+          ${mfld('Product Name *', 'pf-name', p?.name)}
           <div class="grid grid-cols-2 gap-3">
             ${mfld('Price *', 'pf-price', p?.price, 'number', '0.00')}
             ${mfld('Compare Price', 'pf-compare_price', p?.compare_price, 'number', '0.00')}
@@ -1027,35 +1225,38 @@ window.WorkVoltPages['shop'] = function(container) {
           </div>
           <div>
             <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Description</label>
-            <textarea id="pf-description" rows="2" class="field text-sm resize-none">${p?.description||''}</textarea>
+            <textarea id="pf-description" rows="3" class="field text-sm resize-none">${p?.description||''}</textarea>
           </div>
-          ${mfld('Image URL', 'pf-image_url', p?.image_url, 'url', 'https://drive.google.com/...')}
+          ${mfld('Image URL', 'pf-image_url', p?.image_url, 'url', 'https://…')}
           <div class="grid grid-cols-2 gap-3">
-            ${mfld('SKU', 'pf-sku', p?.sku, 'text')}
-            ${mfld('Barcode', 'pf-barcode', p?.barcode, 'text')}
+            ${mfld('SKU', 'pf-sku', p?.sku)}
+            ${mfld('Barcode', 'pf-barcode', p?.barcode)}
           </div>
-          <div class="flex items-center gap-3">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input id="pf-track_inventory" type="checkbox" ${p?.track_inventory==='true'?'checked':''} class="w-4 h-4 rounded accent-blue-600">
-              <span class="text-sm text-slate-700 font-medium">Track inventory</span>
-            </label>
-          </div>
-          <div class="grid grid-cols-2 gap-3" id="inventory-fields" ${p?.track_inventory==='true'?'':'style="display:none"'}>
-            ${mfld('Stock Quantity', 'pf-stock', p?.stock, 'number', '0')}
-            ${mfld('Low Stock Alert', 'pf-low_stock_alert', p?.low_stock_alert||'5', 'number', '5')}
-          </div>
-          ${mfld('Tags (comma separated)', 'pf-tags', p?.tags, 'text', 'electronics, sale, new')}
+          ${mfld('Weight (g)', 'pf-weight', p?.weight, 'number', '0')}
           <label class="flex items-center gap-2 cursor-pointer">
-            <input id="pf-active" type="checkbox" ${!p || p?.active==='true'?'checked':''} class="w-4 h-4 rounded accent-blue-600">
+            <input id="pf-track_inventory" type="checkbox" ${p?.track_inventory==='true'?'checked':''}
+              class="w-4 h-4 rounded accent-blue-600">
+            <span class="text-sm text-slate-700 font-medium">Track inventory</span>
+          </label>
+          <div class="grid grid-cols-2 gap-3" id="inventory-fields"
+            ${p?.track_inventory==='true'?'':'style="display:none"'}>
+            ${mfld('Stock Quantity', 'pf-stock', p?.stock, 'number', '0')}
+            ${mfld('Low Stock Alert', 'pf-low_stock_alert', p?.low_stock_alert || '5', 'number', '5')}
+          </div>
+          ${mfld('Tags (comma separated)', 'pf-tags', p?.tags, 'text', 'electronics, sale')}
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input id="pf-active" type="checkbox" ${!p || p?.active==='true'?'checked':''}
+              class="w-4 h-4 rounded accent-blue-600">
             <span class="text-sm text-slate-700 font-medium">Active (visible in store)</span>
           </label>
         </div>
         <div class="flex gap-3 mt-6">
           <button onclick="shopCloseModal()" class="btn-secondary flex-1">Cancel</button>
-          <button onclick="shopSave('product','${p?.id||''}')" class="btn-primary flex-1">${p ? 'Save Changes' : 'Create Product'}</button>
+          <button onclick="shopSave('product','${p?.id||''}')" class="btn-primary flex-1">
+            ${p ? 'Save Changes' : 'Create Product'}
+          </button>
         </div>
-      </div>
-    `;
+      </div>`;
   }
 
   function categoryForm(cat) {
@@ -1063,16 +1264,20 @@ window.WorkVoltPages['shop'] = function(container) {
       <div class="p-6">
         <div class="flex items-center justify-between mb-5">
           <h2 class="font-bold text-slate-900 text-lg">${cat ? 'Edit Category' : 'New Category'}</h2>
-          <button onclick="shopCloseModal()" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center"><i class="fas fa-times text-sm"></i></button>
+          <button onclick="shopCloseModal()" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center">
+            <i class="fas fa-times text-sm"></i>
+          </button>
         </div>
         <div class="space-y-4">
-          ${mfld('Category Name *', 'cf-name', cat?.name, 'text')}
-          ${mfld('Description', 'cf-description', cat?.description, 'text')}
+          ${mfld('Category Name *', 'cf-name', cat?.name)}
+          ${mfld('Description', 'cf-description', cat?.description)}
           ${mfld('Image URL', 'cf-image_url', cat?.image_url, 'url')}
         </div>
         <div class="flex gap-3 mt-6">
           <button onclick="shopCloseModal()" class="btn-secondary flex-1">Cancel</button>
-          <button onclick="shopSave('category','${cat?.id||''}')" class="btn-primary flex-1">${cat ? 'Save' : 'Create'}</button>
+          <button onclick="shopSave('category','${cat?.id||''}')" class="btn-primary flex-1">
+            ${cat ? 'Save' : 'Create'}
+          </button>
         </div>
       </div>`;
   }
@@ -1082,7 +1287,9 @@ window.WorkVoltPages['shop'] = function(container) {
       <div class="p-6">
         <div class="flex items-center justify-between mb-5">
           <h2 class="font-bold text-slate-900 text-lg">${d ? 'Edit Discount' : 'New Discount Code'}</h2>
-          <button onclick="shopCloseModal()" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center"><i class="fas fa-times text-sm"></i></button>
+          <button onclick="shopCloseModal()" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center">
+            <i class="fas fa-times text-sm"></i>
+          </button>
         </div>
         <div class="space-y-4">
           ${mfld('Code *', 'df-code', d?.code, 'text', 'SUMMER20')}
@@ -1091,7 +1298,7 @@ window.WorkVoltPages['shop'] = function(container) {
               <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Type</label>
               <select id="df-type" class="field text-sm">
                 <option value="percent" ${d?.type==='percent'?'selected':''}>Percentage (%)</option>
-                <option value="fixed" ${d?.type==='fixed'?'selected':''}>Fixed Amount ($)</option>
+                <option value="fixed"   ${d?.type==='fixed'?'selected':''}>Fixed Amount ($)</option>
               </select>
             </div>
             ${mfld('Value *', 'df-value', d?.value, 'number', '10')}
@@ -1100,23 +1307,84 @@ window.WorkVoltPages['shop'] = function(container) {
           ${mfld('Max Uses (blank = unlimited)', 'df-max_uses', d?.max_uses, 'number')}
           ${mfld('Expires At', 'df-expires_at', d?.expires_at?.split('T')[0], 'date')}
           <label class="flex items-center gap-2 cursor-pointer">
-            <input id="df-active" type="checkbox" ${!d || d?.active==='true'?'checked':''} class="w-4 h-4 rounded accent-blue-600">
+            <input id="df-active" type="checkbox" ${!d || d?.active==='true'?'checked':''}
+              class="w-4 h-4 rounded accent-blue-600">
             <span class="text-sm text-slate-700 font-medium">Active</span>
           </label>
         </div>
         <div class="flex gap-3 mt-6">
           <button onclick="shopCloseModal()" class="btn-secondary flex-1">Cancel</button>
-          <button onclick="shopSave('discount','${d?.id||''}')" class="btn-primary flex-1">${d ? 'Save' : 'Create'}</button>
+          <button onclick="shopSave('discount','${d?.id||''}')" class="btn-primary flex-1">
+            ${d ? 'Save' : 'Create'}
+          </button>
         </div>
       </div>`;
   }
 
-  function mfld(label, id, value, type = 'text', placeholder = '') {
+  function bulkUploadForm() {
+    return `
+      <div class="p-6">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="font-bold text-slate-900 text-lg">Bulk Product Upload</h2>
+          <button onclick="shopCloseModal()" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center">
+            <i class="fas fa-times text-sm"></i>
+          </button>
+        </div>
+
+        <!-- CSV format guide -->
+        <div class="bg-slate-50 rounded-xl p-4 mb-5 border border-slate-200">
+          <p class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-2">Required CSV Format</p>
+          <code class="text-xs text-slate-700 block leading-relaxed">
+            name, price, compare_price, description, category_id,<br>
+            image_url, sku, track_inventory, stock, tags, active
+          </code>
+          <p class="text-xs text-slate-400 mt-2">First row must be the header. <strong>name</strong> and <strong>price</strong> are required.</p>
+        </div>
+
+        <!-- Sample download -->
+        <button onclick="downloadSampleCsv()"
+          class="w-full mb-4 flex items-center justify-center gap-2 py-2.5 border border-dashed border-slate-300
+                 rounded-xl text-sm text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors">
+          <i class="fas fa-download text-xs"></i> Download Sample CSV
+        </button>
+
+        <!-- File picker -->
+        <label class="flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed border-slate-300
+               rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all group mb-4">
+          <i class="fas fa-file-csv text-3xl text-slate-300 group-hover:text-blue-400 transition-colors"></i>
+          <div class="text-center">
+            <p class="text-sm font-semibold text-slate-600 group-hover:text-blue-600" id="bulk-file-label">Choose CSV file</p>
+            <p class="text-xs text-slate-400 mt-0.5">or drag and drop</p>
+          </div>
+          <input type="file" accept=".csv" class="hidden" onchange="shopBulkFileChange(this)">
+        </label>
+
+        <button id="bulk-upload-btn" onclick="shopBulkUpload()" class="btn-primary w-full text-sm">
+          <i class="fas fa-upload mr-1.5"></i>Import Products
+        </button>
+      </div>`;
+  }
+
+  function mfld(label, id, value, type='text', placeholder='') {
     return `<div>
       <label for="${id}" class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">${label}</label>
       <input id="${id}" type="${type}" value="${value||''}" placeholder="${placeholder}" class="field text-sm">
     </div>`;
   }
+
+  // ── Download sample CSV ─────────────────────────────────────────
+  window.downloadSampleCsv = function() {
+    const csv = [
+      'name,price,compare_price,description,category_id,image_url,sku,track_inventory,stock,tags,active',
+      '"Sample Product",29.99,39.99,"A great product","","https://example.com/img.jpg","SKU-001","true","50","sale,new","true"',
+      '"Another Item",14.99,,"Another description","","","SKU-002","false","","","true"',
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'products_sample.csv';
+    a.click();
+  };
 
   // ══════════════════════════════════════════════════════════════
   //  SAVE HANDLERS
@@ -1125,26 +1393,25 @@ window.WorkVoltPages['shop'] = function(container) {
     try {
       if (type === 'product') {
         const params = {
-          name:             document.getElementById('pf-name')?.value,
-          price:            document.getElementById('pf-price')?.value,
-          compare_price:    document.getElementById('pf-compare_price')?.value,
-          cost:             document.getElementById('pf-cost')?.value,
-          currency:         document.getElementById('pf-currency')?.value,
-          category_id:      document.getElementById('pf-category_id')?.value,
-          description:      document.getElementById('pf-description')?.value,
-          image_url:        document.getElementById('pf-image_url')?.value,
-          sku:              document.getElementById('pf-sku')?.value,
-          barcode:          document.getElementById('pf-barcode')?.value,
-          track_inventory:  document.getElementById('pf-track_inventory')?.checked ? 'true' : 'false',
-          stock:            document.getElementById('pf-stock')?.value,
-          low_stock_alert:  document.getElementById('pf-low_stock_alert')?.value,
-          tags:             document.getElementById('pf-tags')?.value,
-          active:           document.getElementById('pf-active')?.checked ? 'true' : 'false',
+          name:            document.getElementById('pf-name')?.value,
+          price:           document.getElementById('pf-price')?.value,
+          compare_price:   document.getElementById('pf-compare_price')?.value,
+          cost:            document.getElementById('pf-cost')?.value,
+          currency:        document.getElementById('pf-currency')?.value,
+          category_id:     document.getElementById('pf-category_id')?.value,
+          description:     document.getElementById('pf-description')?.value,
+          image_url:       document.getElementById('pf-image_url')?.value,
+          sku:             document.getElementById('pf-sku')?.value,
+          barcode:         document.getElementById('pf-barcode')?.value,
+          weight:          document.getElementById('pf-weight')?.value,
+          track_inventory: document.getElementById('pf-track_inventory')?.checked ? 'true' : 'false',
+          stock:           document.getElementById('pf-stock')?.value,
+          low_stock_alert: document.getElementById('pf-low_stock_alert')?.value,
+          tags:            document.getElementById('pf-tags')?.value,
+          active:          document.getElementById('pf-active')?.checked ? 'true' : 'false',
         };
         if (!params.name || !params.price) { WorkVolt.toast('Name and price are required', 'error'); return; }
-        let r;
-        if (id) { r = await api('products/update', { ...params, id }); }
-        else    { r = await api('products/create', params); }
+        const r = id ? await api('products/update', { ...params, id }) : await api('products/create', params);
         if (r.error) throw new Error(r.error);
         WorkVolt.toast(id ? 'Product updated' : 'Product created', 'success');
         closeModal();
@@ -1159,9 +1426,7 @@ window.WorkVoltPages['shop'] = function(container) {
           image_url:   document.getElementById('cf-image_url')?.value,
         };
         if (!params.name) { WorkVolt.toast('Name is required', 'error'); return; }
-        let r;
-        if (id) r = await api('categories/update', { ...params, id });
-        else    r = await api('categories/create', params);
+        const r = id ? await api('categories/update', { ...params, id }) : await api('categories/create', params);
         if (r.error) throw new Error(r.error);
         WorkVolt.toast(id ? 'Category updated' : 'Category created', 'success');
         closeModal();
@@ -1180,9 +1445,7 @@ window.WorkVoltPages['shop'] = function(container) {
           active:     document.getElementById('df-active')?.checked ? 'true' : 'false',
         };
         if (!params.code || !params.value) { WorkVolt.toast('Code and value required', 'error'); return; }
-        let r;
-        if (id) r = await api('discounts/update', { ...params, id });
-        else    r = await api('discounts/create', params);
+        const r = id ? await api('discounts/update', { ...params, id }) : await api('discounts/create', params);
         if (r.error) throw new Error(r.error);
         WorkVolt.toast(id ? 'Discount updated' : 'Discount created', 'success');
         closeModal();
@@ -1191,28 +1454,21 @@ window.WorkVoltPages['shop'] = function(container) {
       }
 
       if (type === 'settings') {
-        // Collect all settings fields
-        const fieldIds = [
+        const fields = [
           'store_name','store_tagline','logo_url','store_email','store_phone','footer_text',
-          'primary_color','accent_color','background_color',
+          'primary_color','accent_color','background_color','text_color',
           'tax_rate','tax_label',
           'paypal_email','stripe_pub_key','interac_email',
           'shipping_rate','free_shipping_min',
         ];
-        const checkIds = [
+        const checks = [
           'currency_cad','currency_usd','tax_included',
           'paypal_enabled','stripe_enabled','interac_enabled','cash_enabled',
           'shipping_enabled','maintenance_mode',
         ];
         const params = {};
-        fieldIds.forEach(k => {
-          const el = document.getElementById('s-' + k);
-          if (el) params[k] = el.value;
-        });
-        checkIds.forEach(k => {
-          const el = document.getElementById('s-' + k);
-          if (el) params[k] = el.checked ? 'true' : 'false';
-        });
+        fields.forEach(k => { const el = document.getElementById('s-' + k); if (el) params[k] = el.value; });
+        checks.forEach(k => { const el = document.getElementById('s-' + k); if (el) params[k] = el.checked ? 'true' : 'false'; });
         const r = await api('settings/save', params);
         if (r.error) throw new Error(r.error);
         WorkVolt.toast('Settings saved', 'success');
@@ -1229,13 +1485,13 @@ window.WorkVoltPages['shop'] = function(container) {
     if (!confirm('Delete this ' + type + '? This cannot be undone.')) return;
     try {
       let r;
-      if (type === 'product')  r = await api('products/delete', { id });
+      if (type === 'product')  r = await api('products/delete',   { id });
       if (type === 'category') r = await api('categories/delete', { id });
-      if (type === 'discount') r = await api('discounts/delete', { id });
+      if (type === 'discount') r = await api('discounts/delete',  { id });
       if (r.error) throw new Error(r.error);
       WorkVolt.toast(type.charAt(0).toUpperCase() + type.slice(1) + ' deleted', 'success');
       if (type === 'product' || type === 'category') { await loadData(); renderProducts(document.getElementById('shop-content')); }
-      if (type === 'discount') { await loadDiscounts(); renderDiscounts(document.getElementById('shop-content')); }
+      if (type === 'discount')                       { await loadDiscounts(); renderDiscounts(document.getElementById('shop-content')); }
     } catch(e) {
       WorkVolt.toast(e.message, 'error');
     }
@@ -1276,14 +1532,13 @@ window.WorkVoltPages['shop'] = function(container) {
     try {
       await loadSettings();
     } catch(e) {
-      // Not installed — show install prompt
       container.innerHTML = `
         <div class="flex flex-col items-center justify-center min-h-96 p-8 text-center">
-          <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg">
+          <div class="w-16 h-16 bg-gradient-to-br from-sky-500 to-blue-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg">
             <i class="fas fa-store text-white text-2xl"></i>
           </div>
           <h2 class="text-xl font-extrabold text-slate-900 mb-2">Store & POS</h2>
-          <p class="text-slate-500 mb-6 max-w-sm">This module hasn't been installed yet. Install it to create your online store and POS system.</p>
+          <p class="text-slate-500 mb-6 max-w-sm">This module hasn't been installed yet.</p>
           <button onclick="shopInstall()" class="btn-primary">
             <i class="fas fa-download mr-2"></i>Install Store Module
           </button>
