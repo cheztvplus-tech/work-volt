@@ -45,31 +45,38 @@ function translateElement(el) {
   }
   
   // For regular elements, translate text content
+  // Preserve child elements (icons, etc.)
   if (el.children.length > 0 || el.querySelector('i, svg, img')) {
-      // Has child elements, find text nodes
-      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-      const textNodes = [];
-      let node;
-      while (node = walker.nextNode()) {
-        if (node.nodeValue.trim()) textNodes.push(node);
-      }
-      if (textNodes.length > 0) {
-        // Replace the last text node (usually the label after icons)
-        const originalText = textNodes[textNodes.length - 1].nodeValue.trim();
-        // Only update if the translation is different
-        if (translated !== key) {
-          textNodes[textNodes.length - 1].nodeValue = ' ' + translated;
-        }
-      } else {
-        el.textContent = translated;
+    // Has child elements, find text nodes
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+    const textNodes = [];
+    let node;
+    while (node = walker.nextNode()) {
+      if (node.nodeValue.trim()) textNodes.push(node);
+    }
+    if (textNodes.length > 0) {
+      // Replace the last text node (usually the label after icons)
+      // Trim the existing value and replace completely
+      const lastNode = textNodes[textNodes.length - 1];
+      const currentText = lastNode.nodeValue.trim();
+      
+      // Only update if this isn't already the correct translation
+      // Check against both the key and current language translation
+      if (currentText !== translated && currentText !== key) {
+        // Add a single space before if there are previous siblings
+        const needsSpace = lastNode.previousSibling && lastNode.previousSibling.nodeType === Node.ELEMENT_NODE;
+        lastNode.nodeValue = needsSpace ? ' ' + translated : translated;
       }
     } else {
       el.textContent = translated;
     }
+  } else {
+    el.textContent = translated;
   }
+}
 
 function translatePage() {
-  // Translate all elements with data-i18n - always re-translate on language change
+  // Translate all elements with data-i18n or data-i18n-placeholder
   document.querySelectorAll('[data-i18n], [data-i18n-placeholder]').forEach(el => {
     // Handle placeholder translations
     const placeholderKey = el.getAttribute('data-i18n-placeholder');
