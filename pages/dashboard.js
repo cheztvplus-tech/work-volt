@@ -237,74 +237,73 @@ window.WorkVoltPages['dashboard'] = function(container) {
 
         ${installedCount > 0 ? `
         <!-- ── Communications board (Work Volt team → all users) ── -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
-            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
-              <i class="fas fa-satellite-dish text-white text-sm"></i>
-            </div>
-            <div class="flex-1">
-              <h2 class="font-bold text-slate-900 text-sm">Work Volt — Platform Updates</h2>
-              <p class="text-xs text-slate-400">Messages from the Work Volt team</p>
-            </div>
-            <span class="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded-full">2 updates</span>
-          </div>
+<div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+  <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+      <i class="fas fa-satellite-dish text-white text-sm"></i>
+    </div>
+    <div class="flex-1">
+      <h2 class="font-bold text-slate-900 text-sm" data-i18n="Work Volt — Platform Updates">Work Volt — Platform Updates</h2>
+      <p class="text-xs text-slate-400" data-i18n="Messages from the Work Volt team">Messages from the Work Volt team</p>
+    </div>
+    <span class="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded-full">2 <span data-i18n="updates">updates</span></span>
+  </div>
 
           <div class="divide-y divide-slate-100">
 
             <!-- Update 1: Language switcher -->
-            <div class="px-6 py-4 flex gap-4">
-              <div class="flex-shrink-0 mt-0.5">
-                <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                  <i class="fas fa-language text-amber-600 text-sm"></i>
-                </div>
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-1 flex-wrap">
-                  <span class="text-sm font-bold text-slate-800">Language Switcher — EN / FR</span>
-                  <span class="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">In Progress</span>
-                </div>
-                <p class="text-xs text-slate-500 leading-relaxed">
-                  We're actively working on the English → French language switcher. The toggle is visible but some labels and module content aren't fully translated yet. A complete French translation pass is underway — expect this to be resolved in an upcoming update. Thank you for your patience.
-                </p>
-                <p class="text-[11px] text-slate-400 mt-2"><i class="fas fa-clock mr-1"></i>Ongoing — update coming soon</p>
-              </div>
-            </div>
+<div class="px-6 py-4 flex gap-4">
+  <div class="flex-shrink-0 mt-0.5">
+    <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+      <i class="fas fa-language text-amber-600 text-sm"></i>
+    </div>
+  </div>
+  <div class="flex-1 min-w-0">
+    <div class="flex items-center gap-2 mb-1 flex-wrap">
+      <span class="text-sm font-bold text-slate-800" data-i18n="Language Switcher — EN / FR">Language Switcher — EN / FR</span>
+      <span class="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full" data-i18n="In Progress">In Progress</span>
+    </div>
+    <p class="text-xs text-slate-500 leading-relaxed" data-i18n="We're actively working on the English → French language switcher. The toggle is visible but some labels and module content aren't fully translated yet. A complete French translation pass is underway — expect this to be resolved in an upcoming update. Thank you for your patience.">
+      We're actively working on the English → French language switcher. The toggle is visible but some labels and module content aren't fully translated yet. A complete French translation pass is underway — expect this to be resolved in an upcoming update. Thank you for your patience.
+    </p>
+    <p class="text-[11px] text-slate-400 mt-2"><i class="fas fa-clock mr-1"></i><span data-i18n="Ongoing — update coming soon">Ongoing — update coming soon</span></p>
+  </div>
+</div>
 
             <!-- Update 2: Mobile view -->
-            <div class="px-6 py-4 flex gap-4">
-              <div class="flex-shrink-0 mt-0.5">
-                <div class="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center">
-                  <i class="fas fa-mobile-alt text-violet-600 text-sm"></i>
-                </div>
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-1 flex-wrap">
-                  <span class="text-sm font-bold text-slate-800">Mobile View — Cards & Modules</span>
-                  <span class="text-[10px] font-bold text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full">In Progress</span>
-                </div>
-                <p class="text-xs text-slate-500 leading-relaxed">
-                  We're aware that cards and module layouts don't display correctly on smaller screens. This affects several views including the dashboard grid, module cards, and table layouts. A responsive layout fix is currently being worked on and will be pushed as a patch update shortly.
-                </p>
-                <p class="text-[11px] text-slate-400 mt-2"><i class="fas fa-clock mr-1"></i>Ongoing — patch in progress</p>
-              </div>
-            </div>
+<div class="px-6 py-4 flex gap-4">
+  <div class="flex-shrink-0 mt-0.5">
+    <div class="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center">
+      <i class="fas fa-mobile-alt text-violet-600 text-sm"></i>
+    </div>
+  </div>
+  <div class="flex-1 min-w-0">
+    <div class="flex items-center gap-2 mb-1 flex-wrap">
+      <span class="text-sm font-bold text-slate-800" data-i18n="Mobile View — Cards & Modules">Mobile View — Cards & Modules</span>
+      <span class="text-[10px] font-bold text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full" data-i18n="In Progress">In Progress</span>
+    </div>
+    <p class="text-xs text-slate-500 leading-relaxed" data-i18n="We're aware that cards and module layouts don't display correctly on smaller screens. This affects several views including the dashboard grid, module cards, and table layouts. A responsive layout fix is currently being worked on and will be pushed as a patch update shortly.">
+      We're aware that cards and module layouts don't display correctly on smaller screens. This affects several views including the dashboard grid, module cards, and table layouts. A responsive layout fix is currently being worked on and will be pushed as a patch update shortly.
+    </p>
+    <p class="text-[11px] text-slate-400 mt-2"><i class="fas fa-clock mr-1"></i><span data-i18n="Ongoing — patch in progress">Ongoing — patch in progress</span></p>
+  </div>
+</div>
 
           </div>
 
           <div class="px-6 py-3 bg-slate-50 border-t border-slate-100">
-            <p class="text-[11px] text-slate-400"><i class="fas fa-info-circle mr-1"></i>This board is managed by the Work Volt team. Updates appear here as fixes are released.</p>
-          </div>
+  <p class="text-[11px] text-slate-400"><i class="fas fa-info-circle mr-1"></i><span data-i18n="This board is managed by the Work Volt team. Updates appear here as fixes are released.">This board is managed by the Work Volt team. Updates appear here as fixes are released.</span></p>
+</div>
         </div>
         ` : ''}
 
         <!-- ── Footer tip ── -->
-        <div class="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <i class="fas fa-lightbulb text-amber-500 mt-0.5 flex-shrink-0"></i>
-          <p class="text-sm text-amber-800">
-            <strong>Tip:</strong> This dashboard will update automatically once you connect your Google Sheet —
-            showing live stats, recent activity and team summaries pulled straight from your data.
-          </p>
-        </div>
+<div class="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+  <i class="fas fa-lightbulb text-amber-500 mt-0.5 flex-shrink-0"></i>
+  <p class="text-sm text-amber-800">
+    <strong data-i18n="Tip:">Tip:</strong> <span data-i18n="This dashboard will update automatically once you connect your Google Sheet — showing live stats, recent activity and team summaries pulled straight from your data.">This dashboard will update automatically once you connect your Google Sheet — showing live stats, recent activity and team summaries pulled straight from your data.</span>
+  </p>
+</div>
 
       </div>
     </div>
