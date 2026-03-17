@@ -72,7 +72,7 @@ window.WorkVoltPages['shop'] = function(container) {
   //  SHELL RENDER
   // ══════════════════════════════════════════════════════════════
   function renderShell() {
-    const storeUrl = settings.storefront_url || '';
+    const storeUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
     container.innerHTML = `
       <div class="flex flex-col h-full bg-slate-50" id="shop-root">
 
@@ -134,7 +134,7 @@ window.WorkVoltPages['shop'] = function(container) {
     window.shopPosCheckout= posCheckout;
     window.shopPosSearch  = (v) => { posSearchStr = v; renderPOS(); };
     window.shopReorder    = handleReorder;
-    window.shopCopyUrl    = () => { navigator.clipboard.writeText(settings.storefront_url || ''); WorkVolt.toast('Storefront URL copied!', 'success'); };
+    window.shopCopyUrl    = () => { const u = window.API_URL || localStorage.getItem('wv_gas_url') || ''; navigator.clipboard.writeText(u); WorkVolt.toast('Storefront URL copied!', 'success'); };
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -183,7 +183,7 @@ window.WorkVoltPages['shop'] = function(container) {
   // ══════════════════════════════════════════════════════════════
   function renderDashboard(c) {
     const a = analytics;
-    const storeUrl = settings.storefront_url || '';
+    const storeUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
     c.innerHTML = `
       <div class="p-6 space-y-6 slide-up">
 
@@ -252,16 +252,15 @@ window.WorkVoltPages['shop'] = function(container) {
               <span>${a.pending_orders || 0} pending orders</span>
             </div>
             <div class="flex items-center gap-2 text-slate-600">
-              <span class="w-2 h-2 rounded-full ${storeUrl ? 'bg-green-500' : 'bg-red-400'}"></span>
-              <span>${storeUrl ? 'Storefront live' : 'Storefront not configured'}</span>
+              <span class="w-2 h-2 rounded-full bg-green-500"></span>
+              <span>Storefront live</span>
             </div>
           </div>
-          ${storeUrl ? `
           <div class="mt-3 flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-2.5 border border-slate-200">
             <i class="fas fa-link text-blue-500 text-sm"></i>
             <span class="text-sm text-slate-600 font-mono truncate flex-1">${storeUrl}</span>
             <button onclick="shopCopyUrl()" class="text-xs text-blue-600 font-semibold hover:underline">Copy</button>
-          </div>` : ''}
+          </div>
         </div>
 
       </div>
@@ -825,19 +824,6 @@ window.WorkVoltPages['shop'] = function(container) {
     c.innerHTML = `
       <div class="p-6 slide-up max-w-3xl space-y-6">
 
-        <!-- Storefront URL -->
-        <div class="bg-blue-50 border border-blue-200 rounded-2xl p-5">
-          <div class="flex items-center gap-3 mb-3">
-            <i class="fas fa-link text-blue-600 text-lg"></i>
-            <h3 class="font-bold text-slate-900">Storefront URL</h3>
-          </div>
-          <p class="text-sm text-slate-600 mb-3">This is the public URL of your Apps Script web app. Share it with your customers.</p>
-          <div class="flex gap-2">
-            <input id="s-storefront_url" type="url" value="${s.storefront_url||''}" placeholder="https://script.google.com/.../exec" class="field text-sm flex-1">
-            <button onclick="shopSave('settings')" class="btn-primary text-sm">Save</button>
-          </div>
-        </div>
-
         <!-- Store Identity -->
         ${settingsSection('Store Identity', 'fa-store', `
           ${sfld('Store Name', 's-store_name', s.store_name, 'text')}
@@ -1207,7 +1193,7 @@ window.WorkVoltPages['shop'] = function(container) {
       if (type === 'settings') {
         // Collect all settings fields
         const fieldIds = [
-          'storefront_url','store_name','store_tagline','logo_url','store_email','store_phone','footer_text',
+          'store_name','store_tagline','logo_url','store_email','store_phone','footer_text',
           'primary_color','accent_color','background_color',
           'tax_rate','tax_label',
           'paypal_email','stripe_pub_key','interac_email',
