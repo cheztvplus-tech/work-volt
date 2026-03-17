@@ -371,17 +371,18 @@ function renderDashboard(c) {
   const expBreak = (d.expense_breakdown && Object.keys(d.expense_breakdown).length) ? d.expense_breakdown : expBreakRaw;
 
   // Sparkline bars
+  const MAX_BAR_PX = 80;
   const maxBar = Math.max(...trend.map(t => Math.max(t.revenue, t.expenses)), 1);
   const trendBars = trend.map(t => {
-    const revH = Math.round((t.revenue  / maxBar) * 100);
-    const expH = Math.round((t.expenses / maxBar) * 100);
+    const revH = Math.max(Math.round((t.revenue  / maxBar) * MAX_BAR_PX), t.revenue  > 0 ? 2 : 0);
+    const expH = Math.max(Math.round((t.expenses / maxBar) * MAX_BAR_PX), t.expenses > 0 ? 2 : 0);
     const label = t.month ? t.month.substring(5) : '';
     const isCurrentMonth = t.month === ym;
     return `
       <div class="flex flex-col items-center gap-1 flex-1">
-        <div class="w-full flex items-end justify-center gap-0.5 h-16">
-          <div class="w-3 rounded-t transition-all" style="height:${revH > 0 ? revH : 0}%;background:${isCurrentMonth ? '#059669' : '#10b981'};${revH === 0 ? 'min-height:0' : 'min-height:2px'}" title="Revenue ${fmt.currency(t.revenue)}"></div>
-          <div class="w-3 rounded-t transition-all" style="height:${expH > 0 ? expH : 0}%;background:${isCurrentMonth ? '#dc2626' : '#f87171'};${expH === 0 ? 'min-height:0' : 'min-height:2px'}" title="Expenses ${fmt.currency(t.expenses)}"></div>
+        <div class="w-full flex items-end justify-center gap-0.5" style="height:${MAX_BAR_PX}px">
+          <div class="w-3 rounded-t transition-all" style="height:${revH}px;background:${isCurrentMonth ? '#059669' : '#10b981'}" title="Revenue ${fmt.currency(t.revenue)}"></div>
+          <div class="w-3 rounded-t transition-all" style="height:${expH}px;background:${isCurrentMonth ? '#dc2626' : '#f87171'}" title="Expenses ${fmt.currency(t.expenses)}"></div>
         </div>
         <span class="text-[10px] font-medium ${isCurrentMonth ? 'text-slate-700 font-bold' : 'text-slate-400'}">${label}</span>
       </div>`;
@@ -899,7 +900,20 @@ function renderReports(c) {
           if (maintTotal > 0)   expBreakdown['Asset Maintenance'] = (expBreakdown['Asset Maintenance']||0) + maintTotal;
           if (taskTotal > 0)    expBreakdown['Task Costs']        = (expBreakdown['Task Costs']||0) + taskTotal;
 
-          return reportLine('Total Revenue', fmt.currency(baseRevenue), 'font-semibold text-emerald-600')
+          // Revenue breakdown by source
+          const revBreakdown = { ...(is.revenue_breakdown || {}) };
+          if (!Object.keys(revBreakdown).length) {
+            state.invoices.forEach(inv => {
+              const key = inv.customer || 'Uncategorised';
+              revBreakdown[key] = (revBreakdown[key] || 0) + (parseFloat(inv.total) || 0);
+            });
+          }
+          const revLines = Object.entries(revBreakdown).sort((a,b) => b[1]-a[1])
+            .map(([src, amt]) => reportLine(src, fmt.currency(amt), 'text-slate-600 pl-4')).join('');
+
+          return '<p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Revenue</p>'
+            + revLines
+            + reportLine('Total Revenue', fmt.currency(baseRevenue), 'font-semibold text-emerald-600')
             + '<div class="h-px bg-slate-100 my-2"></div>'
             + '<p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Operating Expenses</p>'
             + Object.entries(expBreakdown).map(([cat, amt]) => reportLine(cat, fmt.currency(amt), 'text-slate-600')).join('')
@@ -947,12 +961,21 @@ function renderReports(c) {
         </span>
         Cash Flow Statement
       </h3>
+      ${(()=>{
+        // If server didn't return cashflow inflows, compute from invoices (Paid + Sent = received/expected)
+        const invoiceInflow = state.invoices
+          .filter(inv => inv.status === 'Paid' || inv.status === 'Partial' || inv.status === 'Sent')
+          .reduce((s, inv) => s + (parseFloat(inv.status === 'Partial' ? (inv.total - (inv.balance_due||0)) : inv.total) || 0), 0);
+        const cfInflow  = parseFloat(cf.operating?.inflow)  || invoiceInflow;
+        const cfOutflow = parseFloat(cf.operating?.outflow) || state.expenses.reduce((s,e)=>s+(parseFloat(e.amount)||0),0) + state.bills.filter(b=>b.status==='Paid').reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
+        const cfNet     = parseFloat(cf.operating?.net)     || (cfInflow - cfOutflow);
+        return `
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div>
           <p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Operating Activities</p>
-          ${reportLine('Inflows', fmt.currency(cf.operating?.inflow), 'text-emerald-600')}
-          ${reportLine('Outflows', fmt.currency(cf.operating?.outflow), 'text-red-500')}
-          ${reportLine('Net Operating', fmt.currency(cf.operating?.net), 'font-bold text-slate-800')}
+          ${reportLine('Inflows (Invoices & Receipts)', fmt.currency(cfInflow), 'text-emerald-600')}
+          ${reportLine('Outflows (Expenses & Bills)', fmt.currency(cfOutflow), 'text-red-500')}
+          ${reportLine('Net Operating', fmt.currency(cfNet), 'font-bold text-slate-800')}
         </div>
         <div>
           <p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Investing Activities</p>
@@ -962,7 +985,8 @@ function renderReports(c) {
           <p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Financing Activities</p>
           ${reportLine('Net Financing', fmt.currency(cf.financing?.net), 'font-bold text-slate-800')}
         </div>
-      </div>
+      </div>`;
+      })()}
       <div class="mt-4 pt-4 border-t border-slate-100">
         ${reportLine('Net Cash Flow', fmt.currency(cf.net_cash_flow), `font-extrabold text-lg ${(cf.net_cash_flow||0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`)}
       </div>
