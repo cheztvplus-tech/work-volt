@@ -1206,51 +1206,125 @@ if (!window.toggleCollapsibleSection) {
 }
   
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ACCOUNTS (Chart of Accounts)
+// ACCOUNTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function renderAccounts(c) {
-  const typeOrder = ['Asset','Liability','Equity','Revenue','Expense'];
+  const typeOrder  = ['Asset','Liability','Equity','Revenue','Expense'];
+  const typeColors = {
+    Asset:     'bg-blue-50 text-blue-700 border-blue-200',
+    Liability: 'bg-red-50 text-red-700 border-red-200',
+    Equity:    'bg-violet-50 text-violet-700 border-violet-200',
+    Revenue:   'bg-emerald-50 text-emerald-700 border-emerald-200',
+    Expense:   'bg-amber-50 text-amber-700 border-amber-200',
+  };
+  const typeIcons = {
+    Asset: 'fa-university', Liability: 'fa-credit-card',
+    Equity: 'fa-scale-balanced', Revenue: 'fa-arrow-trend-up', Expense: 'fa-arrow-trend-down',
+  };
+
+  // Compute activity per account name from live transaction data
+  function accountActivity(accountName) {
+    const invoiceIn  = state.invoices.filter(i => i.deposit_account === accountName)
+                         .reduce((s,i) => s + (parseFloat(i.total)||0), 0);
+    const expenseOut = state.expenses.filter(e => e.paid_from === accountName)
+                         .reduce((s,e) => s + (parseFloat(e.amount)||0), 0);
+    const billOut    = state.bills.filter(b => b.paid_from === accountName && b.status === 'Paid')
+                         .reduce((s,b) => s + (parseFloat(b.amount)||0), 0);
+    return { invoiceIn, expenseOut, billOut, net: invoiceIn - expenseOut - billOut };
+  }
+
   const grouped = {};
   typeOrder.forEach(t => grouped[t] = []);
   state.accounts.forEach(a => { if (grouped[a.type]) grouped[a.type].push(a); });
-  const typeColors = { Asset:'bg-blue-50 text-blue-700', Liability:'bg-red-50 text-red-700', Equity:'bg-violet-50 text-violet-700', Revenue:'bg-emerald-50 text-emerald-700', Expense:'bg-amber-50 text-amber-700' };
+
+  // Summary bar — totals across Asset accounts
+  const assetAccounts = grouped['Asset'] || [];
+  const totalInflows  = assetAccounts.reduce((s,a) => s + accountActivity(a.account_name).invoiceIn, 0);
+  const totalOutflows = assetAccounts.reduce((s,a) => {
+    const act = accountActivity(a.account_name);
+    return s + act.expenseOut + act.billOut;
+  }, 0);
 
   c.innerHTML = `
-  <div class="p-6 max-w-5xl mx-auto fade-in space-y-4">
+  <div class="p-6 max-w-5xl mx-auto fade-in space-y-5">
+
+    <!-- Summary strip -->
+    <div class="grid grid-cols-3 gap-4">
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Inflows</p>
+        <p class="text-xl font-extrabold text-emerald-600 mt-1">${fmt.currency(totalInflows)}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">From invoices → accounts</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Outflows</p>
+        <p class="text-xl font-extrabold text-red-500 mt-1">${fmt.currency(totalOutflows)}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">Expenses + paid bills</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Net Position</p>
+        <p class="text-xl font-extrabold ${totalInflows - totalOutflows >= 0 ? 'text-blue-600' : 'text-red-500'} mt-1">${fmt.currency(totalInflows - totalOutflows)}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">Inflows minus outflows</p>
+      </div>
+    </div>
+
+    <!-- Account cards -->
     ${typeOrder.map(type => {
       const rows = grouped[type] || [];
       if (!rows.length) return '';
       return `
-        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-            <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
-              <span class="px-2 py-0.5 rounded-full text-xs font-bold ${typeColors[type]}">${type}</span>
-              <span class="text-slate-500 font-normal">${rows.length} account${rows.length !== 1 ? 's' : ''}</span>
-            </h3>
+        <div>
+          <div class="flex items-center gap-2 mb-3">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${typeColors[type]}">
+              <i class="fas ${typeIcons[type]} text-[10px]"></i>${type}
+            </span>
+            <span class="text-xs text-slate-400">${rows.length} account${rows.length !== 1 ? 's' : ''}</span>
           </div>
-          <table class="w-full text-sm">
-            <tbody>
-              ${rows.map(a => `
-                <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
-                  <td class="px-4 py-3 font-mono text-xs text-slate-400 w-20">${a.account_number}</td>
-                  <td class="px-4 py-3 font-semibold text-slate-800">${a.account_name}</td>
-                  <td class="px-4 py-3 text-slate-500 hidden md:table-cell">${a.category}</td>
-                  <td class="px-4 py-3 text-slate-400 hidden lg:table-cell text-xs truncate max-w-xs">${a.description || '—'}</td>
-                  <td class="px-4 py-3 text-center">
-                    ${a.is_active !== 'false' ? '<span class="text-xs text-emerald-600 font-semibold">Active</span>' : '<span class="text-xs text-slate-400">Inactive</span>'}
-                  </td>
-                  <td class="px-4 py-3 text-center">
-                    <div class="flex items-center justify-center gap-1">
-                      <button onclick="FinPage._editAcc('${a.id}')" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"><i class="fas fa-edit text-xs"></i></button>
-                      <button onclick="FinPage._deleteAcc('${a.id}')" class="p-1.5 text-red-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"><i class="fas fa-trash text-xs"></i></button>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            ${rows.map(a => {
+              const act = accountActivity(a.account_name);
+              const hasActivity = act.invoiceIn > 0 || act.expenseOut > 0 || act.billOut > 0;
+              return `
+                <div class="bg-white rounded-xl border border-slate-200 p-4 hover:border-slate-300 transition-colors">
+                  <div class="flex items-start justify-between mb-3">
+                    <div>
+                      <p class="font-bold text-slate-800 text-sm">${a.account_name}</p>
+                      <p class="text-xs text-slate-400 mt-0.5">${a.account_number ? '#' + a.account_number + ' · ' : ''}${a.category || a.type}</p>
                     </div>
-                  </td>
-                </tr>`).join('')}
-            </tbody>
-          </table>
+                    <div class="flex items-center gap-1">
+                      ${a.is_active !== 'false'
+                        ? '<span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Active</span>'
+                        : '<span class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Inactive</span>'}
+                      <button onclick="FinPage._editAcc('${a.id}')" class="p-1.5 text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"><i class="fas fa-edit text-xs"></i></button>
+                      <button onclick="FinPage._deleteAcc('${a.id}')" class="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"><i class="fas fa-trash text-xs"></i></button>
+                    </div>
+                  </div>
+                  ${hasActivity ? `
+                  <div class="space-y-1 border-t border-slate-100 pt-3">
+                    ${act.invoiceIn  > 0 ? `<div class="flex justify-between text-xs"><span class="text-slate-500">Invoice deposits</span><span class="font-semibold text-emerald-600">+${fmt.currency(act.invoiceIn)}</span></div>` : ''}
+                    ${act.expenseOut > 0 ? `<div class="flex justify-between text-xs"><span class="text-slate-500">Expenses paid</span><span class="font-semibold text-red-500">−${fmt.currency(act.expenseOut)}</span></div>` : ''}
+                    ${act.billOut    > 0 ? `<div class="flex justify-between text-xs"><span class="text-slate-500">Bills paid</span><span class="font-semibold text-red-500">−${fmt.currency(act.billOut)}</span></div>` : ''}
+                    <div class="flex justify-between text-xs pt-1 border-t border-slate-100">
+                      <span class="font-bold text-slate-600">Net</span>
+                      <span class="font-extrabold ${act.net >= 0 ? 'text-blue-600' : 'text-red-500'}">${act.net >= 0 ? '+' : ''}${fmt.currency(act.net)}</span>
+                    </div>
+                  </div>` : `
+                  <p class="text-[11px] text-slate-300 border-t border-slate-100 pt-2 mt-1">No transactions linked yet — assign this account in invoices, expenses or bills.</p>`}
+                  ${a.description ? `<p class="text-[11px] text-slate-400 mt-2">${a.description}</p>` : ''}
+                </div>`;
+            }).join('')}
+          </div>
         </div>`;
     }).join('')}
-    ${!state.accounts.length ? `<div class="text-center py-12 text-slate-400"><i class="fas fa-list text-3xl mb-2 block opacity-30"></i>No accounts found. They are created automatically on first install.</div>` : ''}
+
+    ${!state.accounts.length ? `
+      <div class="text-center py-16 text-slate-400">
+        <i class="fas fa-university text-4xl mb-3 block opacity-20"></i>
+        <p class="font-semibold text-slate-500 mb-1">No accounts set up yet</p>
+        <p class="text-sm mb-4">Add your bank accounts, credit cards and cash accounts. Then assign them when creating invoices, expenses and bills.</p>
+        <button onclick="showAccountModal()" class="px-4 py-2 bg-emerald-500 text-white text-sm font-semibold rounded-lg hover:bg-emerald-600 transition-colors">
+          <i class="fas fa-plus mr-2"></i>Add First Account
+        </button>
+      </div>` : ''}
   </div>`;
 
   window.FinPage._editAcc = (id) => { const a = state.accounts.find(r=>r.id===id); if(a) showAccountModal(a); };
@@ -1315,6 +1389,37 @@ function getForm(id) {
   return Object.fromEntries(new FormData(form).entries());
 }
 
+// Build account <option> list from state.accounts, filtered by type(s)
+// Falls back to sensible defaults if no accounts are set up yet
+function accountOptions(selectedName = '', types = null) {
+  const accounts = state.accounts.filter(a =>
+    a.is_active !== 'false' && (!types || types.includes(a.type))
+  );
+  const fallback = [
+    { account_name: 'Cash & Bank',       type: 'Asset' },
+    { account_name: 'Business Checking', type: 'Asset' },
+    { account_name: 'Business Savings',  type: 'Asset' },
+    { account_name: 'Credit Card',       type: 'Liability' },
+    { account_name: 'Petty Cash',        type: 'Asset' },
+  ];
+  const list = accounts.length ? accounts : fallback;
+  return list.map(a => {
+    const name = a.account_name;
+    return `<option value="${name}" ${name === selectedName ? 'selected' : ''}>${name}${a.type ? ' — ' + a.type : ''}</option>`;
+  }).join('');
+}
+
+function accountSel(label, name, selectedName = '', types = null) {
+  return `
+    <div>
+      <label class="block text-xs font-semibold text-slate-600 mb-1">${label}</label>
+      <select name="${name}" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
+        <option value="">— Select Account —</option>
+        ${accountOptions(selectedName, types)}
+      </select>
+    </div>`;
+}
+
 // Normalize any date string to YYYY-MM-DD for <input type="date"> value attributes
 function dateVal(s) {
   if (!s) return '';
@@ -1350,6 +1455,7 @@ function showInvoiceModal(inv = null) {
       <div id="inv-tax-preview" class="text-xs text-slate-500 -mt-1 px-1"></div>
       ${field('Total ($)', 'total', 'number', inv?.total, 'step="0.01" min="0" readonly style="background:#f8fafc;cursor:default"')}
       ${sel('Status', 'status', ['Draft','Sent','Unpaid','Paid'], inv?.status || 'Draft')}
+      ${accountSel('Deposit To Account', 'deposit_account', inv?.deposit_account || '', ['Asset'])}
       <div>
         <label class="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
         <textarea name="notes" rows="2" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">${inv?.notes || ''}</textarea>
@@ -1405,7 +1511,7 @@ function showExpenseModal(exp = null) {
       ${field('Description', 'description', 'text', exp?.description)}
       <div class="grid grid-cols-2 gap-3">
         ${field('Amount ($)', 'amount', 'number', exp?.amount, 'step="0.01" min="0"')}
-        ${field('Paid From', 'paid_from', 'text', exp?.paid_from || 'Cash & Bank')}
+        ${accountSel('Paid From Account', 'paid_from', exp?.paid_from || '', ['Asset','Liability'])}
       </div>
       ${sel('Status', 'status', ['Pending','Approved','Rejected'], exp?.status || 'Pending')}
     </form>`,
@@ -1440,6 +1546,7 @@ function showBillModal(bill = null) {
         ${field('Due Date', 'due_date', 'date', dateVal(bill?.due_date))}
       </div>
       ${sel('Category', 'category', EXP_CATS, bill?.category || EXP_CATS[0])}
+      ${accountSel('Pay From Account', 'paid_from', bill?.paid_from || '', ['Asset','Liability'])}
 
       <!-- Total amount & balance -->
       <div class="grid grid-cols-2 gap-3">
@@ -1563,7 +1670,7 @@ function showPaymentModal(refId, refType = 'bill', overrideAmount = null) {
       ${field('Payment Date', 'date', 'date', today)}
       ${field('Amount ($)', 'amount', 'number', payAmt, 'step="0.01" min="0"')}
       ${sel('Method', 'method', ['Bank Transfer','Cash','Credit Card','PayPal','Stripe','Check'], '')}
-      ${field('Account', 'account', 'text', 'Cash & Bank')}
+      ${accountSel('Pay From Account', 'account', ref?.paid_from || '', ['Asset','Liability'])}
       ${field('Reference / Notes', 'notes', 'text', '')}
       <input type="hidden" name="reference_id" value="${refId}">
       <input type="hidden" name="reference_type" value="${refType}">
@@ -1648,12 +1755,26 @@ function showAccountModal(acc = null) {
     acc ? 'Edit Account' : 'New Account',
     `<form id="acc-form" class="space-y-3">
       <div class="grid grid-cols-2 gap-3">
-        ${field('Account Number', 'account_number', 'text', acc?.account_number)}
-        ${sel('Type', 'type', ['Asset','Liability','Equity','Revenue','Expense'], acc?.type || 'Asset')}
+        ${field('Account Name', 'account_name', 'text', acc?.account_name)}
+        ${sel('Type', 'type', [
+          { value: 'Asset',     label: 'Asset — Bank / Cash' },
+          { value: 'Liability', label: 'Liability — Credit Card / Loan' },
+          { value: 'Equity',    label: 'Equity' },
+          { value: 'Revenue',   label: 'Revenue' },
+          { value: 'Expense',   label: 'Expense' },
+        ], acc?.type || 'Asset')}
       </div>
-      ${field('Account Name', 'account_name', 'text', acc?.account_name)}
-      ${field('Category', 'category', 'text', acc?.category)}
+      <div class="grid grid-cols-2 gap-3">
+        ${field('Account Number (optional)', 'account_number', 'text', acc?.account_number)}
+        ${field('Current Balance ($)', 'current_balance', 'number', acc?.current_balance || '0', 'step="0.01"')}
+      </div>
+      ${field('Category (e.g. Checking, Savings, Visa)', 'category', 'text', acc?.category)}
       ${field('Description', 'description', 'text', acc?.description)}
+      <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+        <i class="fas fa-info-circle mr-1"></i>
+        <strong>Asset</strong> accounts (bank, cash) receive invoice deposits and are debited for expenses/bills.
+        <strong>Liability</strong> accounts (credit cards) are used as payment sources and tracked as money owed.
+      </div>
     </form>`,
     `<button onclick="closeModal()" class="btn-secondary">Cancel</button>
      <button onclick="FinPage._saveAccount(${acc ? `'${acc.id}'` : 'null'})" class="btn-primary" style="background:#10b981">${acc ? 'Save' : 'Create'}</button>`
