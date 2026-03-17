@@ -448,7 +448,7 @@ window.WorkVoltPages['store'] = function(container) {
                   <div class="w-7 h-7 bg-gradient-to-br ${CATALOGUE.find(c=>c.id===m.id)?.gradient||'from-slate-400 to-slate-500'} rounded-lg flex items-center justify-center">
                     <i class="fas ${m.icon} text-white text-xs"></i>
                   </div>
-                  <span class="text-sm font-semibold text-slate-700">${m.label}</span>
+                  <span class="text-sm font-semibold text-slate-700" data-i18n="${m.label}">${m.label}</span>
                   <span class="text-xs text-slate-400">v${m.version}</span>
                   <button onclick="storeUninstall('${m.id}')" class="ml-1 text-slate-300 hover:text-red-400 transition-colors" title="Uninstall">
                     <i class="fas fa-times text-xs"></i>
@@ -463,7 +463,7 @@ window.WorkVoltPages['store'] = function(container) {
           ${!searchQuery && activeCategory === 'All' && featured.length ? `
           <div class="mb-8">
             <h2 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <i class="fas fa-star text-amber-400 text-sm"></i> Featured Modules
+              <i class="fas fa-star text-amber-400 text-sm"></i> <span data-i18n="Featured Modules">Featured Modules</span>
             </h2>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
               ${featured.slice(0,3).map(m => renderFeaturedCard(m)).join('')}
@@ -478,7 +478,7 @@ window.WorkVoltPages['store'] = function(container) {
                 class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${activeCategory === cat
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600'}"
-                  data-i18n="${cat}">
+                data-i18n="${cat}">
                 ${cat}
               </button>
             `).join('')}
@@ -526,6 +526,11 @@ window.WorkVoltPages['store'] = function(container) {
     window.storeUninstall   = (id) => uninstallModule(id);
     window.storeOpenDetail  = (id) => openDetail(id);
     window.storeCloseModal  = () => document.getElementById('store-modal').classList.add('hidden');
+
+    // Trigger translation for dynamically added content
+    if (window.WVI18n && window.WVI18n.translatePage) {
+      window.WVI18n.translatePage();
+    }
   }
 
   function renderFeaturedCard(m) {
@@ -568,14 +573,14 @@ window.WorkVoltPages['store'] = function(container) {
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-0.5">
-              <h3 class="font-bold text-slate-900 text-sm">${m.label}</h3>
-              <span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">${m.category}</span>
+              <h3 class="font-bold text-slate-900 text-sm" data-i18n="${m.label}">${m.label}</h3>
+              <span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium" data-i18n="${m.category}">${m.category}</span>
               ${coming
                 ? `<span class="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-clock text-[8px] mr-0.5"></i><span data-i18n="Coming Soon">Coming Soon</span></span>`
                 : m.featured ? `<span class="text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full font-semibold"><i class="fas fa-star text-[8px] mr-0.5"></i><span data-i18n="Featured">Featured</span></span>` : ''
               }
             </div>
-            `<p class="text-xs text-slate-500 leading-relaxed line-clamp-2" data-i18n="${m.description}">${m.description}</p>`
+            <p class="text-xs text-slate-500 leading-relaxed line-clamp-2" data-i18n="${m.description}">${m.description}</p>
           </div>
         </div>
         <div class="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
@@ -625,7 +630,7 @@ window.WorkVoltPages['store'] = function(container) {
         </div>
         <h2 class="text-xl font-extrabold mb-1" data-i18n="${m.label}">${m.label}</h2>
         <div class="flex items-center gap-2 text-xs opacity-80">
-          `<span data-i18n="${m.category}">${m.category}</span>`
+          <span data-i18n="${m.category}">${m.category}</span>
           <span>·</span>
           <span>by ${m.author}</span>
           <span>·</span>
@@ -635,7 +640,7 @@ window.WorkVoltPages['store'] = function(container) {
 
       <!-- Body -->
       <div class="p-6 overflow-y-auto flex-1">
-        `<p class="text-slate-600 text-sm leading-relaxed mb-5" data-i18n="${m.description}">${m.description}</p>`
+        <p class="text-slate-600 text-sm leading-relaxed mb-5" data-i18n="${m.description}">${m.description}</p>
 
         <!-- Tags -->
         <div class="flex flex-wrap gap-2 mb-6">
@@ -644,12 +649,12 @@ window.WorkVoltPages['store'] = function(container) {
 
         <!-- What's included -->
         <div class="bg-slate-50 rounded-xl p-4 mb-6">
-          <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3">What's Included</h3>
+          <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3" data-i18n="What's Included">What's Included</h3>
           <ul class="space-y-2">
-            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i>Sidebar navigation entry</li>
-            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i>Full module UI page</li>
-            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i>Google Sheet integration ready</li>
-            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i>Role-based access control</li>
+            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i><span data-i18n="Sidebar navigation entry">Sidebar navigation entry</span></li>
+            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i><span data-i18n="Full module UI page">Full module UI page</span></li>
+            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i><span data-i18n="Google Sheet integration ready">Google Sheet integration ready</span></li>
+            <li class="flex items-center gap-2 text-sm text-slate-600"><i class="fas fa-check text-green-500 text-xs w-4"></i><span data-i18n="Role-based access control">Role-based access control</span></li>
           </ul>
         </div>
 
@@ -657,20 +662,20 @@ window.WorkVoltPages['store'] = function(container) {
         ${inst
           ? `<div class="flex gap-3">
                <div class="flex-1 flex items-center justify-center gap-2 bg-green-50 text-green-700 font-semibold rounded-xl py-3 text-sm">
-                 <i class="fas fa-check-circle"></i> Installed
+                 <i class="fas fa-check-circle"></i> <span data-i18n="Installed">Installed</span>
                </div>
                <button onclick="storeUninstall('${m.id}');storeCloseModal()"
-                 class="px-4 py-3 bg-red-50 text-red-500 hover:bg-red-100 font-semibold rounded-xl text-sm transition-colors">
+                 class="px-4 py-3 bg-red-50 text-red-500 hover:bg-red-100 font-semibold rounded-xl text-sm transition-colors" data-i18n="Remove">
                  Remove
                </button>
              </div>`
           : coming
             ? `<div class="flex items-center justify-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 font-semibold rounded-xl py-3.5 text-sm">
-                 <i class="fas fa-clock"></i> Coming Soon — Check back later!
+                 <i class="fas fa-clock"></i> <span data-i18n="Coming Soon — Check back later!">Coming Soon — Check back later!</span>
                </div>`
             : `<button onclick="storeInstall('${m.id}');storeCloseModal()"
                  class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl py-3.5 text-sm transition-all active:scale-[.98] shadow-lg shadow-blue-200">
-                 <i class="fas fa-download"></i> Install Module
+                 <i class="fas fa-download"></i> <span data-i18n="Install Module">Install Module</span>
                </button>`
         }
       </div>
@@ -680,6 +685,11 @@ window.WorkVoltPages['store'] = function(container) {
 
     // Close on backdrop click
     modal.onclick = (e) => { if (e.target === modal) storeCloseModal(); };
+    
+    // Trigger translation for modal content
+    if (window.WVI18n && window.WVI18n.translatePage) {
+      window.WVI18n.translatePage();
+    }
   }
 
   // Initial render — probe pages first, then re-render with Coming Soon resolved
