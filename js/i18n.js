@@ -39,16 +39,13 @@ function translateElement(el) {
   
   const translated = t(key);
   
-  // Handle different element types
+  // Skip INPUT/TEXTAREA elements (placeholders handled separately in translatePage)
   if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-    const placeholderKey = el.getAttribute('data-i18n-placeholder');
-    if (placeholderKey) {
-      el.placeholder = t(placeholderKey);
-    }
-  } else {
-    // For regular elements, translate text content
-    // Preserve child elements (icons, etc.)
-    if (el.children.length > 0 || el.querySelector('i, svg, img')) {
+    return;
+  }
+  
+  // For regular elements, translate text content
+  if (el.children.length > 0 || el.querySelector('i, svg, img')) {
       // Has child elements, find text nodes
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
       const textNodes = [];
@@ -74,13 +71,18 @@ function translateElement(el) {
 
 function translatePage() {
   // Translate all elements with data-i18n - always re-translate on language change
-  document.querySelectorAll('[data-i18n]').forEach(translateElement);
-  
-  // Handle placeholder translations
-  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-    const key = el.getAttribute('data-i18n-placeholder');
-    const translated = t(key);
-    if (translated !== key) el.placeholder = translated;
+  document.querySelectorAll('[data-i18n], [data-i18n-placeholder]').forEach(el => {
+    // Handle placeholder translations
+    const placeholderKey = el.getAttribute('data-i18n-placeholder');
+    if (placeholderKey) {
+      el.placeholder = t(placeholderKey);
+    }
+    
+    // Handle regular data-i18n translations
+    const key = el.getAttribute('data-i18n');
+    if (key) {
+      translateElement(el);
+    }
   });
 }
 
