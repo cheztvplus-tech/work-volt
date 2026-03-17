@@ -72,7 +72,7 @@ window.WorkVoltPages['shop'] = function(container) {
   //  SHELL RENDER
   // ══════════════════════════════════════════════════════════════
   function renderShell() {
-    const storeUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
+    const storeUrl = 'https://cheztvplus-tech.github.io/work-volt/Storefront.html';
     container.innerHTML = `
       <div class="flex flex-col h-full bg-slate-50" id="shop-root">
 
@@ -134,7 +134,7 @@ window.WorkVoltPages['shop'] = function(container) {
     window.shopPosCheckout= posCheckout;
     window.shopPosSearch  = (v) => { posSearchStr = v; renderPOS(); };
     window.shopReorder    = handleReorder;
-    window.shopCopyUrl    = () => { const u = window.API_URL || localStorage.getItem('wv_gas_url') || ''; navigator.clipboard.writeText(u); WorkVolt.toast('Storefront URL copied!', 'success'); };
+    window.shopCopyUrl    = () => { navigator.clipboard.writeText('https://cheztvplus-tech.github.io/work-volt/Storefront.html'); WorkVolt.toast('Storefront URL copied!', 'success'); };
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -183,7 +183,7 @@ window.WorkVoltPages['shop'] = function(container) {
   // ══════════════════════════════════════════════════════════════
   function renderDashboard(c) {
     const a = analytics;
-    const storeUrl = window.API_URL || localStorage.getItem('wv_gas_url') || '';
+    const storeUrl = 'https://cheztvplus-tech.github.io/work-volt/Storefront.html';
     c.innerHTML = `
       <div class="p-6 space-y-6 slide-up">
 
