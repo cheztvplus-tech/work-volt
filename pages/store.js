@@ -419,7 +419,7 @@ window.WorkVoltPages['store'] = function(container) {
                 <h1 class="text-white text-2xl font-extrabold leading-tight" data-i18n="Module Store">Module Store</h1>
               </div>
             </div>
-            <p class="text-slate-300 text-sm max-w-lg mb-6">Extend your workspace with powerful add-on modules. Install once, appears in your sidebar instantly.</p>
+            <p class="text-slate-300 text-sm max-w-lg mb-6" data-i18n="Extend your workspace with powerful add-on modules. Install once, appears in your sidebar instantly.">Extend your workspace with powerful add-on modules. Install once, appears in your sidebar instantly.</p>
 
             <!-- Search -->
             <div class="relative max-w-md">
