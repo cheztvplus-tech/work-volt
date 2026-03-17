@@ -197,6 +197,28 @@ async function loadAll() {
   updateHeaderActions();
 }
 
+// ── Refresh dashboard + reports in background after any data change ──
+// Call this after every save so numbers update immediately without
+// requiring a full page reload or manual tab switch.
+function refreshLinkedTabs() {
+  // Always re-render the current tab first
+  const c = document.getElementById('fin-content');
+
+  // Re-render dashboard KPIs immediately (uses local state, no extra API call)
+  // We patch state.dashboard so the trend/KPI uses fresh invoice/expense data
+  if (state.tab === 'dashboard' && c) renderDashboard(c);
+
+  // If on reports, re-render immediately from local state
+  if (state.tab === 'reports' && c) {
+    // Reset so renderReports re-fetches cleanly
+    state.incomeStmt = null;
+    renderReports(c);
+  }
+
+  // Always silently reload dashboard data in background so next visit is fresh
+  loadDashboard();
+}
+
 async function loadDashboard() {
   try { state.dashboard = await api('financials/dashboard'); } catch(e) {}
 }
@@ -820,30 +842,83 @@ function renderBills(c) {
 // BUDGETS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function renderBudgets(c) {
-  const bva = state.budgetVA;
-  const lines = bva?.lines || [];
-  const now = new Date();
+  const bva  = state.budgetVA;
+  const now  = new Date();
+  const ym   = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+
+  // Build lines: prefer server data, but always compute actuals locally as fallback
+  // so the table is never blank just because the GAS route isn't set up yet
+  let lines = bva?.lines || [];
+
+  if (!lines.length && state.budgets.length) {
+    // Compute actuals from local expense + bill state for this month
+    const localActuals = {};
+    state.expenses.forEach(e => {
+      if ((e.date||'').startsWith(ym) && e.category) {
+        localActuals[e.category] = (localActuals[e.category]||0) + (parseFloat(e.amount)||0);
+      }
+    });
+    state.bills.forEach(b => {
+      if (((b.issue_date||b.due_date)||'').startsWith(ym) && b.category) {
+        localActuals[b.category] = (localActuals[b.category]||0) + (parseFloat(b.amount)||0);
+      }
+    });
+    lines = state.budgets.map(b => {
+      const actual   = localActuals[b.category] || 0;
+      const budget   = parseFloat(b.budget_amount) || 0;
+      const variance = budget - actual;
+      const pct      = budget > 0 ? (actual / budget) * 100 : 0;
+      const status   = pct > 100 ? 'Over Budget' : pct > 90 ? 'Near Limit' : 'On Track';
+      return { category: b.category, budget, actual, variance, status };
+    });
+  }
+
+  // Unbudgeted categories that have expenses this month (so you know what to budget)
+  const budgetedCats = new Set(lines.map(l => l.category));
+  const unbudgeted   = {};
+  state.expenses.forEach(e => {
+    if ((e.date||'').startsWith(ym) && e.category && !budgetedCats.has(e.category)) {
+      unbudgeted[e.category] = (unbudgeted[e.category]||0) + (parseFloat(e.amount)||0);
+    }
+  });
 
   c.innerHTML = `
-  <div class="p-6 max-w-7xl mx-auto fade-in">
-    <div class="flex items-center justify-between mb-5">
+  <div class="p-6 max-w-7xl mx-auto fade-in space-y-5">
+
+    <!-- How it works explainer -->
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+      <p class="font-bold mb-1"><i class="fas fa-info-circle mr-1.5"></i>How Budgets Work</p>
+      <p class="text-xs text-blue-700 leading-relaxed">
+        Set a spending limit per <strong>expense category</strong> for the current month (e.g. Rent & Utilities: $2,000).
+        The <strong>Actual</strong> column fills in automatically from your logged expenses.
+        <strong>Variance</strong> shows how much budget you have left (green) or have gone over (red).
+        Budgets are per-month — you'll need to set them each month, or copy them forward.
+      </p>
+    </div>
+
+    <div class="flex items-center justify-between">
       <h2 class="text-base font-bold text-slate-800">
         Budget vs Actual — ${now.toLocaleString('default',{month:'long'})} ${now.getFullYear()}
       </h2>
+      <button onclick="showBudgetModal()" class="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-white text-xs font-semibold rounded-lg hover:bg-emerald-600 transition-colors">
+        <i class="fas fa-plus text-xs"></i>Set Budget
+      </button>
     </div>
+
+    ${lines.length ? `
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <table class="w-full text-sm">
         <thead><tr class="bg-slate-50 border-b border-slate-200">
           <th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Category</th>
           <th class="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Budget</th>
           <th class="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Actual</th>
-          <th class="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Variance</th>
-          <th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Progress</th>
+          <th class="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Remaining</th>
+          <th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide w-36">Usage</th>
           <th class="text-center px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Status</th>
           <th class="text-center px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Actions</th>
         </tr></thead>
         <tbody>
-          ${lines.length ? lines.map(l => {
+          ${lines.map(l => {
             const pct = l.budget > 0 ? Math.min(100, Math.round((l.actual/l.budget)*100)) : 0;
             const barColor = pct > 100 ? 'bg-red-500' : pct > 90 ? 'bg-amber-400' : 'bg-emerald-400';
             return `
@@ -851,8 +926,10 @@ function renderBudgets(c) {
                 <td class="px-4 py-3 font-medium text-slate-800">${l.category}</td>
                 <td class="px-4 py-3 text-right text-slate-600">${fmt.currency(l.budget)}</td>
                 <td class="px-4 py-3 text-right font-semibold text-slate-800">${fmt.currency(l.actual)}</td>
-                <td class="px-4 py-3 text-right font-semibold ${l.variance >= 0 ? 'text-emerald-600':'text-red-500'}">${l.variance >= 0 ? '+':'-'}${fmt.currency(Math.abs(l.variance))}</td>
-                <td class="px-4 py-3 w-32">
+                <td class="px-4 py-3 text-right font-semibold ${l.variance >= 0 ? 'text-emerald-600':'text-red-500'}">
+                  ${l.variance >= 0 ? '+' : ''}${fmt.currency(l.variance)}
+                </td>
+                <td class="px-4 py-3 w-36">
                   <div class="flex items-center gap-2">
                     <div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div class="${barColor} h-full rounded-full transition-all" style="width:${pct}%"></div>
@@ -862,17 +939,47 @@ function renderBudgets(c) {
                 </td>
                 <td class="px-4 py-3 text-center">${badge(l.status)}</td>
                 <td class="px-4 py-3 text-center">
-                  <button onclick="FinPage._editBudget('${l.category}')" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"><i class="fas fa-edit text-xs"></i></button>
+                  <button onclick="FinPage._editBudget('${l.category}')" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors">
+                    <i class="fas fa-edit text-xs"></i>
+                  </button>
                 </td>
               </tr>`;
-          }).join('') : `
-            <tr><td colspan="7" class="px-4 py-12 text-center text-slate-400">
-              <i class="fas fa-wallet text-3xl mb-2 block opacity-30"></i>
-              No budgets set. <button onclick="showBudgetModal()" class="text-emerald-600 font-semibold hover:underline">Set a budget</button>
-            </td></tr>`}
+          }).join('')}
         </tbody>
       </table>
-    </div>
+    </div>` : `
+    <div class="bg-white rounded-xl border border-slate-200 p-12 text-center">
+      <i class="fas fa-wallet text-4xl text-slate-200 mb-3 block"></i>
+      <p class="font-semibold text-slate-600 mb-1">No budgets set for this month</p>
+      <p class="text-sm text-slate-400 mb-4">Click "Set Budget" to set a spending limit for any expense category.<br>
+      Example: set Rent & Utilities to $2,000 — it will track against your actual logged expenses automatically.</p>
+      <button onclick="showBudgetModal()" class="px-4 py-2 bg-emerald-500 text-white text-sm font-semibold rounded-lg hover:bg-emerald-600 transition-colors">
+        <i class="fas fa-plus mr-2"></i>Set Your First Budget
+      </button>
+    </div>`}
+
+    <!-- Unbudgeted spending this month -->
+    ${Object.keys(unbudgeted).length ? `
+    <div class="bg-white rounded-xl border border-amber-200 p-5">
+      <h3 class="font-bold text-slate-800 text-sm mb-3 flex items-center gap-2">
+        <i class="fas fa-exclamation-circle text-amber-500 text-sm"></i>
+        Unbudgeted Spending This Month
+        <span class="text-xs font-normal text-slate-400">— categories with expenses but no budget set</span>
+      </h3>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+        ${Object.entries(unbudgeted).sort((a,b)=>b[1]-a[1]).map(([cat, amt]) => `
+          <div class="flex items-center justify-between p-3 bg-amber-50 border border-amber-100 rounded-lg">
+            <span class="text-xs font-medium text-slate-700 truncate">${cat}</span>
+            <div class="flex items-center gap-2 ml-2 flex-shrink-0">
+              <span class="text-xs font-bold text-amber-700">${fmt.currency(amt)}</span>
+              <button onclick="showBudgetModal({category:'${cat}'})" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded hover:bg-emerald-100 transition-colors">
+                + Budget
+              </button>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>` : ''}
+
   </div>`;
 
   window.FinPage._editBudget = (category) => {
@@ -1222,14 +1329,30 @@ function renderAccounts(c) {
     Equity: 'fa-scale-balanced', Revenue: 'fa-arrow-trend-up', Expense: 'fa-arrow-trend-down',
   };
 
+  // Check if ANY invoices have a deposit_account assigned yet
+  const anyInvoiceAssigned = state.invoices.some(i => i.deposit_account && i.deposit_account !== '');
+  const anyExpenseAssigned = state.expenses.some(e => e.paid_from && e.paid_from !== '');
+  const anyBillAssigned    = state.bills.some(b => b.paid_from && b.paid_from !== '');
+
   // Compute activity per account name from live transaction data
   function accountActivity(accountName) {
-    const invoiceIn  = state.invoices.filter(i => i.deposit_account === accountName)
-                         .reduce((s,i) => s + (parseFloat(i.total)||0), 0);
-    const expenseOut = state.expenses.filter(e => e.paid_from === accountName)
-                         .reduce((s,e) => s + (parseFloat(e.amount)||0), 0);
-    const billOut    = state.bills.filter(b => b.paid_from === accountName && b.status === 'Paid')
-                         .reduce((s,b) => s + (parseFloat(b.amount)||0), 0);
+    // If no invoices have deposit_account set yet, distribute all invoice revenue
+    // to the first Asset account (so the dashboard shows something useful)
+    const assetAccounts = state.accounts.filter(a => a.type === 'Asset' && a.is_active !== 'false');
+    const isFirstAsset  = !anyInvoiceAssigned && assetAccounts.length > 0 && assetAccounts[0].account_name === accountName;
+
+    const invoiceIn = anyInvoiceAssigned
+      ? state.invoices.filter(i => i.deposit_account === accountName).reduce((s,i) => s + (parseFloat(i.total)||0), 0)
+      : (isFirstAsset ? state.invoices.reduce((s,i) => s + (parseFloat(i.total)||0), 0) : 0);
+
+    const expenseOut = anyExpenseAssigned
+      ? state.expenses.filter(e => e.paid_from === accountName).reduce((s,e) => s + (parseFloat(e.amount)||0), 0)
+      : 0;
+
+    const billOut = anyBillAssigned
+      ? state.bills.filter(b => b.paid_from === accountName && b.status === 'Paid').reduce((s,b) => s + (parseFloat(b.amount)||0), 0)
+      : 0;
+
     return { invoiceIn, expenseOut, billOut, net: invoiceIn - expenseOut - billOut };
   }
 
@@ -1248,17 +1371,35 @@ function renderAccounts(c) {
   c.innerHTML = `
   <div class="p-6 max-w-5xl mx-auto fade-in space-y-5">
 
+    <!-- Unassigned warning — shown when invoices/expenses haven't been linked to accounts yet -->
+    ${(!anyInvoiceAssigned && state.invoices.length > 0) ? `
+    <div class="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+      <i class="fas fa-exclamation-triangle text-amber-500 mt-0.5 flex-shrink-0"></i>
+      <div>
+        <p class="font-semibold">Your invoices aren't linked to an account yet.</p>
+        <p class="text-xs mt-1 text-amber-700">Edit each invoice and pick a "Deposit To Account" so the inflows show on the correct account. For now, all invoice revenue is shown on your first Asset account as a placeholder.</p>
+      </div>
+    </div>` : ''}
+    ${(!anyExpenseAssigned && state.expenses.length > 0) ? `
+    <div class="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
+      <i class="fas fa-info-circle text-blue-500 mt-0.5 flex-shrink-0"></i>
+      <div>
+        <p class="font-semibold">Expenses aren't linked to an account yet.</p>
+        <p class="text-xs mt-1 text-blue-700">Edit each expense and pick a "Paid From Account" so outflows are tracked per account.</p>
+      </div>
+    </div>` : ''}
+
     <!-- Summary strip -->
     <div class="grid grid-cols-3 gap-4">
       <div class="bg-white rounded-xl border border-slate-200 p-4">
         <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Inflows</p>
         <p class="text-xl font-extrabold text-emerald-600 mt-1">${fmt.currency(totalInflows)}</p>
-        <p class="text-[11px] text-slate-400 mt-0.5">From invoices → accounts</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">${anyInvoiceAssigned ? 'From invoices → assigned accounts' : 'All invoices (none assigned yet)'}</p>
       </div>
       <div class="bg-white rounded-xl border border-slate-200 p-4">
         <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Outflows</p>
         <p class="text-xl font-extrabold text-red-500 mt-1">${fmt.currency(totalOutflows)}</p>
-        <p class="text-[11px] text-slate-400 mt-0.5">Expenses + paid bills</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">${anyExpenseAssigned ? 'Expenses + paid bills' : 'Assign expenses to see per-account'}</p>
       </div>
       <div class="bg-white rounded-xl border border-slate-200 p-4">
         <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Net Position</p>
@@ -1480,6 +1621,7 @@ function showInvoiceModal(inv = null) {
       closeModal();
       await loadInvoices();
       const c = document.getElementById('fin-content'); if(c) renderInvoices(c);
+      refreshLinkedTabs();
     } catch(e) { toast(e.message,'error'); }
   };
 
@@ -1528,6 +1670,7 @@ function showExpenseModal(exp = null) {
       closeModal();
       await loadExpenses();
       const c = document.getElementById('fin-content'); if(c) renderExpenses(c);
+      refreshLinkedTabs();
     } catch(e) { toast(e.message,'error'); }
   };
 }
@@ -1640,6 +1783,7 @@ function showBillModal(bill = null) {
       closeModal();
       await loadBills();
       const c = document.getElementById('fin-content'); if(c) renderBills(c);
+      refreshLinkedTabs();
     } catch(e) { toast(e.message,'error'); }
   };
 }
@@ -1711,6 +1855,7 @@ function showPaymentModal(refId, refType = 'bill', overrideAmount = null) {
       await Promise.all([loadBills(), loadInvoices()]);
       const c = document.getElementById('fin-content');
       if (c) { if (refType === 'bill') renderBills(c); else renderInvoices(c); }
+      refreshLinkedTabs();
     } catch(e) { toast(e.message,'error'); }
   };
 }
@@ -1718,22 +1863,45 @@ function showPaymentModal(refId, refType = 'bill', overrideAmount = null) {
 // Budget Modal
 function showBudgetModal(budget = null) {
   const now = new Date();
+  // Allow passing {category:'...'} as a shortcut from the unbudgeted panel
+  const preCategory = budget?.category || null;
+  const isEdit      = !!(budget?.id);
+
+  // Categories already budgeted this month (so user knows what's taken)
+  const taken = new Set(state.budgets.map(b => b.category));
+
+  const catOpts = EXP_CATS.map(cat => {
+    const isTaken = taken.has(cat) && cat !== preCategory;
+    return `<option value="${cat}" ${cat === (preCategory || EXP_CATS[0]) ? 'selected' : ''} ${isTaken ? 'disabled' : ''}>
+      ${cat}${isTaken ? ' (already set)' : ''}
+    </option>`;
+  }).join('');
+
   modal(
-    budget ? 'Edit Budget' : 'Set Budget',
+    isEdit ? 'Edit Budget' : 'Set Budget',
     `<form id="budget-form" class="space-y-3">
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
+        <i class="fas fa-info-circle mr-1 text-slate-400"></i>
+        Set how much you plan to spend in a category this month. Your actual logged expenses will be compared against it automatically.
+      </div>
       <div class="grid grid-cols-2 gap-3">
         ${field('Year', 'year', 'number', budget?.year || now.getFullYear(), 'min="2020" max="2099"')}
         ${field('Month (01-12)', 'month', 'text', budget?.month || String(now.getMonth()+1).padStart(2,'0'))}
       </div>
-      ${sel('Category', 'category', EXP_CATS, budget?.category || EXP_CATS[0])}
-      ${field('Budget Amount ($)', 'budget_amount', 'number', budget?.budget_amount, 'step="0.01" min="0"')}
       <div>
-        <label class="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Expense Category</label>
+        <select name="category" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
+          ${catOpts}
+        </select>
+      </div>
+      ${field('Budget Amount ($)', 'budget_amount', 'number', budget?.budget_amount, 'step="0.01" min="0" placeholder="e.g. 2000.00"')}
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Notes (optional)</label>
         <textarea name="notes" rows="2" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">${budget?.notes||''}</textarea>
       </div>
     </form>`,
     `<button onclick="closeModal()" class="btn-secondary">Cancel</button>
-     <button onclick="FinPage._saveBudget(${budget ? `'${budget.id}'` : 'null'})" class="btn-primary" style="background:#10b981">${budget ? 'Save' : 'Set Budget'}</button>`
+     <button onclick="FinPage._saveBudget(${isEdit ? `'${budget.id}'` : 'null'})" class="btn-primary" style="background:#10b981">${isEdit ? 'Save' : 'Set Budget'}</button>`
   );
 
   window.FinPage._saveBudget = async (id) => {
@@ -1745,6 +1913,7 @@ function showBudgetModal(budget = null) {
       closeModal();
       await loadBudgets();
       const c = document.getElementById('fin-content'); if(c) renderBudgets(c);
+      refreshLinkedTabs();
     } catch(e) { toast(e.message,'error'); }
   };
 }
