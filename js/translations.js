@@ -89,7 +89,22 @@ window.TRANSLATIONS = {
     "Submit and approve expense claims with receipt uploads, category tagging and budget tracking.": "Submit and approve expense claims with receipt uploads, category tagging and budget tracking.",
     "Store, track and manage contracts with expiry alerts, e-signature readiness and version history.": "Store, track and manage contracts with expiry alerts, e-signature readiness and version history.",
     "Internal support ticketing system. Assign tickets, track resolution times and measure SLA compliance.": "Internal support ticketing system. Assign tickets, track resolution times and measure SLA compliance.",
-    "Track job applications from sourcing to offer. Manage candidates, interviews and hiring decisions.": "Track job applications from sourcing to offer. Manage candidates, interviews and hiring decisions."
+    "Track job applications from sourcing to offer. Manage candidates, interviews and hiring decisions.": "Track job applications from sourcing to offer. Manage candidates, interviews and hiring decisions.",
+
+    // Dashboard - Platform Updates
+    "Work Volt — Platform Updates": "Work Volt — Platform Updates",
+    "Messages from the Work Volt team": "Messages from the Work Volt team",
+    "updates": "updates",
+    "Language Switcher — EN / FR": "Language Switcher — EN / FR",
+    "In Progress": "In Progress",
+    "We're actively working on the English → French language switcher. The toggle is visible but some labels and module content aren't fully translated yet. A complete French translation pass is underway — expect this to be resolved in an upcoming update. Thank you for your patience.": "We're actively working on the English → French language switcher. The toggle is visible but some labels and module content aren't fully translated yet. A complete French translation pass is underway — expect this to be resolved in an upcoming update. Thank you for your patience.",
+    "Ongoing — update coming soon": "Ongoing — update coming soon",
+    "Mobile View — Cards & Modules": "Mobile View — Cards & Modules",
+    "We're aware that cards and module layouts don't display correctly on smaller screens. This affects several views including the dashboard grid, module cards, and table layouts. A responsive layout fix is currently being worked on and will be pushed as a patch update shortly.": "We're aware that cards and module layouts don't display correctly on smaller screens. This affects several views including the dashboard grid, module cards, and table layouts. A responsive layout fix is currently being worked on and will be pushed as a patch update shortly.",
+    "Ongoing — patch in progress": "Ongoing — patch in progress",
+    "This board is managed by the Work Volt team. Updates appear here as fixes are released.": "This board is managed by the Work Volt team. Updates appear here as fixes are released.",
+    "Tip:": "Tip:",
+    "This dashboard will update automatically once you connect your Google Sheet — showing live stats, recent activity and team summaries pulled straight from your data.": "This dashboard will update automatically once you connect your Google Sheet — showing live stats, recent activity and team summaries pulled straight from your data."
   },
   fr: {
     // Navigation & UI
@@ -181,6 +196,21 @@ window.TRANSLATIONS = {
     "Submit and approve expense claims with receipt uploads, category tagging and budget tracking.": "Soumettez et approuvez des notes de frais avec téléchargement de reçus, étiquetage par catégorie et suivi du budget.",
     "Store, track and manage contracts with expiry alerts, e-signature readiness and version history.": "Stockez, suivez et gérez les contrats avec alertes d'expiration, préparation pour signature électronique et historique des versions.",
     "Internal support ticketing system. Assign tickets, track resolution times and measure SLA compliance.": "Système de tickets de support interne. Assignez des tickets, suivez les temps de résolution et mesurez la conformité SLA.",
-    "Track job applications from sourcing to offer. Manage candidates, interviews and hiring decisions.": "Suivez les candidatures de la sourcing à l'offre. Gérez les candidats, entretiens et décisions d'embauche."
+    "Track job applications from sourcing to offer. Manage candidates, interviews and hiring decisions.": "Suivez les candidatures de la sourcing à l'offre. Gérez les candidats, entretiens et décisions d'embauche.",
+      
+    // Dashboard - Platform Updates
+    "Work Volt — Platform Updates": "Work Volt — Mises à jour de la plateforme",
+    "Messages from the Work Volt team": "Messages de l'équipe Work Volt",
+    "updates": "mises à jour",
+    "Language Switcher — EN / FR": "Changeur de langue — EN / FR",
+    "In Progress": "En cours",
+    "We're actively working on the English → French language switcher. The toggle is visible but some labels and module content aren't fully translated yet. A complete French translation pass is underway — expect this to be resolved in an upcoming update. Thank you for your patience.": "Nous travaillons activement sur le changeur de langue Anglais → Français. Le bouton est visible mais certains libellés et contenus de modules ne sont pas encore entièrement traduits. Une passe de traduction complète en français est en cours — attendez-vous à ce que cela soit résolu dans une prochaine mise à jour. Merci de votre patience.",
+    "Ongoing — update coming soon": "En cours — mise à jour à venir",
+    "Mobile View — Cards & Modules": "Vue mobile — Cartes et modules",
+    "We're aware that cards and module layouts don't display correctly on smaller screens. This affects several views including the dashboard grid, module cards, and table layouts. A responsive layout fix is currently being worked on and will be pushed as a patch update shortly.": "Nous sommes conscients que les cartes et les mises en page de modules ne s'affichent pas correctement sur les petits écrans. Cela affecte plusieurs vues y compris la grille du tableau de bord, les cartes de modules et les mises en page de tableaux. Un correctif de mise en page responsive est actuellement en cours et sera publié sous peu comme mise à jour corrective.",
+    "Ongoing — patch in progress": "En cours — correctif en cours",
+    "This board is managed by the Work Volt team. Updates appear here as fixes are released.": "Ce tableau est géré par l'équipe Work Volt. Les mises à jour apparaissent ici au fur et à mesure que les correctifs sont publiés.",
+    "Tip:": "Astuce :",
+    "This dashboard will update automatically once you connect your Google Sheet — showing live stats, recent activity and team summaries pulled straight from your data.": "Ce tableau de bord se mettra à jour automatiquement une fois que vous aurez connecté votre Google Sheet — affichant des statistiques en direct, l'activité récente et les résumés d'équipe tirés directement de vos données."
   }
 };
