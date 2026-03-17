@@ -402,6 +402,12 @@ window.WorkVoltPages['shop'] = function(container) {
               <option value="">All Categories</option>
               ${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
             </select>
+            <select id="filter-type" onchange="shopTab('products')" class="field text-xs !py-1.5 !w-auto">
+              <option value="">All Types</option>
+              <option value="physical">📦 Physical</option>
+              <option value="digital">💾 Digital</option>
+              <option value="subscription">🔄 Subscription</option>
+            </select>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
             <button onclick="shopShowModal('bulk-upload')" class="btn-secondary text-xs gap-1">
@@ -457,7 +463,14 @@ window.WorkVoltPages['shop'] = function(container) {
 
         <!-- Product grid -->
         <div id="product-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          ${products.map(p => renderProductCard(p)).join('')}
+          ${(() => {
+            const catFilter  = document.getElementById?.('filter-cat')?.value  || '';
+            const typeFilter = document.getElementById?.('filter-type')?.value || '';
+            return products
+              .filter(p => (!catFilter  || p.category_id === catFilter))
+              .filter(p => (!typeFilter || (p.product_type || 'physical') === typeFilter))
+              .map(p => renderProductCard(p)).join('');
+          })()}
         </div>
 
         ${!products.length ? `
@@ -483,6 +496,18 @@ window.WorkVoltPages['shop'] = function(container) {
     const hasDisc  = p.compare_price && parseFloat(p.compare_price) > parseFloat(p.price);
     const discPct  = hasDisc ? Math.round((1 - parseFloat(p.price)/parseFloat(p.compare_price))*100) : 0;
     const lowStock = String(p.track_inventory) === 'true' && parseInt(p.stock||0) <= parseInt(p.low_stock_alert||5);
+    const ptype    = p.product_type || 'physical';
+
+    const typeConfig = {
+      physical:     { icon: 'fa-box',           label: 'Physical',     cls: 'bg-slate-100 text-slate-600'   },
+      digital:      { icon: 'fa-download',      label: 'Digital',      cls: 'bg-violet-100 text-violet-700' },
+      subscription: { icon: 'fa-rotate',        label: 'Subscription', cls: 'bg-blue-100 text-blue-700'     },
+    };
+    const tc = typeConfig[ptype] || typeConfig.physical;
+
+    const priceLabel = ptype === 'subscription'
+      ? fmt(p.price, p.currency) + '<span style="font-size:.65rem;font-weight:600;opacity:.7">/' + (p.billing_interval || 'mo') + '</span>'
+      : fmt(p.price, p.currency);
     return `
       <div class="product-card bg-white border-2 ${isActive ? 'border-slate-200' : 'border-dashed border-slate-200 opacity-60'}
                   rounded-2xl overflow-hidden cursor-grab hover:shadow-md transition-all"
@@ -505,6 +530,13 @@ window.WorkVoltPages['shop'] = function(container) {
             ${lowStock   ? `<span class="text-[10px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded-md flex items-center gap-0.5"><i class="fas fa-fire" style="font-size:8px"></i> Low</span>` : ''}
           </div>
 
+          <!-- Type badge bottom-left -->
+          <div class="absolute bottom-2 left-2">
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${tc.cls} backdrop-blur-sm">
+              <i class="fas ${tc.icon}" style="font-size:8px"></i> ${tc.label}
+            </span>
+          </div>
+
           <!-- Active toggle -->
           <div class="absolute top-2 right-2">
             <button onclick="event.stopPropagation();shopToggle('${p.id}')"
@@ -524,12 +556,16 @@ window.WorkVoltPages['shop'] = function(container) {
           ${cat ? `<span class="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">${cat.name}</span>` : ''}
           <div class="flex items-center justify-between mt-2">
             <div>
-              <span class="text-base font-extrabold text-slate-900">${fmt(p.price, p.currency)}</span>
+              <span class="text-base font-extrabold text-slate-900">${priceLabel}</span>
               ${hasDisc ? `<span class="text-xs text-slate-400 line-through ml-1">${fmt(p.compare_price, p.currency)}</span>` : ''}
             </div>
-            ${String(p.track_inventory) === 'true'
+            ${ptype === 'physical' && String(p.track_inventory) === 'true'
               ? `<span class="text-xs ${lowStock ? 'text-red-500 font-bold' : 'text-slate-400'}">${p.stock} left</span>`
-              : ''}
+              : ptype === 'digital'
+                ? `<span class="text-xs text-violet-500 font-semibold flex items-center gap-0.5"><i class="fas fa-bolt" style="font-size:9px"></i>Instant</span>`
+                : ptype === 'subscription'
+                  ? `<span class="text-xs text-blue-500 font-semibold flex items-center gap-0.5"><i class="fas fa-rotate" style="font-size:9px"></i>Recurring</span>`
+                  : ''}
           </div>
           <div class="flex gap-1.5 mt-3">
             <button onclick="shopShowModal('product','${p.id}')" class="flex-1 btn-secondary text-xs !py-1.5">Edit</button>
@@ -912,21 +948,44 @@ window.WorkVoltPages['shop'] = function(container) {
           </div>
           <div class="flex-1 overflow-y-auto thin-scroll p-4">
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              ${filtered.map(p => `
-                <button onclick="shopPosAdd('${p.id}')"
-                  class="bg-white border border-slate-200 rounded-xl p-3 text-left hover:border-blue-400 hover:shadow-md active:scale-95 transition-all group">
-                  <div class="w-full h-24 bg-slate-100 rounded-lg mb-2 overflow-hidden">
+              ${filtered.map(p => {
+                const ptype = p.product_type || 'physical';
+                const typeIconMap = { physical:'fa-box', digital:'fa-download', subscription:'fa-rotate' };
+                const typeBgMap  = { digital:'text-violet-500', subscription:'text-blue-500' };
+                const posIcon    = typeIconMap[ptype] || 'fa-box';
+                const isOos      = ptype === 'physical' && String(p.track_inventory) === 'true' && parseInt(p.stock||0) <= 0;
+                const intervalMap= { week:'/wk', mo:'/mo', year:'/yr' };
+                const priceLabel = ptype === 'subscription'
+                  ? fmt(p.price, p.currency) + '<span style="font-size:.6rem;opacity:.7">' + (intervalMap[p.billing_interval||'mo']||'/mo') + '</span>'
+                  : fmt(p.price, p.currency);
+                return `
+                <button onclick="shopPosAdd('${p.id}')" ${isOos ? 'disabled' : ''}
+                  class="bg-white border border-slate-200 rounded-xl p-3 text-left transition-all group
+                    ${isOos ? 'opacity-40 cursor-not-allowed' : 'hover:border-blue-400 hover:shadow-md active:scale-95'}">
+                  <div class="w-full h-24 bg-slate-100 rounded-lg mb-2 overflow-hidden relative">
                     ${p.image_url
                       ? `<img src="${p.image_url}" class="w-full h-full object-cover group-hover:scale-105 transition-transform">`
-                      : `<div class="w-full h-full flex items-center justify-center text-slate-300">
-                           <i class="fas fa-box text-2xl"></i></div>`}
+                      : `<div class="w-full h-full flex items-center justify-center ${typeBgMap[ptype]||'text-slate-300'}">
+                           <i class="fas ${posIcon} text-2xl"></i></div>`}
+                    ${ptype !== 'physical' ? `
+                    <div class="absolute bottom-1 left-1">
+                      <span class="text-[9px] font-bold px-1 py-0.5 rounded"
+                        style="background:${ptype==='digital'?'rgba(139,92,246,.85)':'rgba(37,99,235,.85)'};color:#fff">
+                        ${ptype === 'digital' ? '💾' : '🔄'}
+                      </span>
+                    </div>` : ''}
                   </div>
                   <p class="text-xs font-semibold text-slate-800 line-clamp-2 leading-snug">${p.name}</p>
-                  <p class="text-sm font-extrabold text-blue-600 mt-1">${fmt(p.price, p.currency)}</p>
-                  ${String(p.track_inventory) === 'true'
+                  <p class="text-sm font-extrabold text-blue-600 mt-1">${priceLabel}</p>
+                  ${ptype === 'physical' && String(p.track_inventory) === 'true'
                     ? `<p class="text-[10px] ${parseInt(p.stock)<=0?'text-red-500 font-bold':'text-slate-400'}">${parseInt(p.stock)<=0 ? 'Out of stock' : p.stock + ' left'}</p>`
-                    : ''}
-                </button>`).join('')}
+                    : ptype === 'digital'
+                      ? `<p class="text-[10px] text-violet-500 font-semibold">Instant delivery</p>`
+                      : ptype === 'subscription'
+                        ? `<p class="text-[10px] text-blue-500 font-semibold">Recurring</p>`
+                        : ''}
+                </button>`;
+              }).join('')}
               ${!filtered.length ? `<div class="col-span-4 text-center py-12 text-slate-400">
                 <i class="fas fa-search text-3xl mb-2"></i><p>No products found</p></div>` : ''}
             </div>
@@ -948,11 +1007,15 @@ window.WorkVoltPages['shop'] = function(container) {
                    <i class="fas fa-shopping-cart text-4xl"></i>
                    <p class="text-sm">Cart is empty</p>
                  </div>`
-              : posCart.map((item, i) => `
+              : posCart.map((item, i) => {
+                  const ptype = item.product_type || 'physical';
+                  const typeTagMap = { digital:'💾', subscription:'🔄' };
+                  const tag = typeTagMap[ptype] || '';
+                  return `
                 <div class="px-4 py-3 flex items-center gap-3">
                   <div class="flex-1 min-w-0">
-                    <p class="text-sm font-semibold text-slate-800 truncate">${item.name}</p>
-                    <p class="text-xs text-slate-500">${fmt(item.price)}</p>
+                    <p class="text-sm font-semibold text-slate-800 truncate">${tag} ${item.name}</p>
+                    <p class="text-xs text-slate-500">${fmt(item.price)}${ptype==='subscription' ? '/'+( item.billing_interval||'mo') : ''}</p>
                   </div>
                   <div class="flex items-center gap-1.5">
                     <button onclick="shopPosRemove(${i},-1)"
@@ -962,7 +1025,8 @@ window.WorkVoltPages['shop'] = function(container) {
                       class="w-6 h-6 bg-slate-100 hover:bg-slate-200 rounded-md text-slate-600 text-xs font-bold flex items-center justify-center">+</button>
                   </div>
                   <span class="text-sm font-extrabold text-slate-900 w-16 text-right">${fmt(item.price * item.qty)}</span>
-                </div>`).join('')}
+                </div>`
+                }).join('')}
           </div>
 
           <div class="border-t border-slate-200 p-4 space-y-3">
@@ -998,9 +1062,23 @@ window.WorkVoltPages['shop'] = function(container) {
   function posAddItem(id) {
     const p = products.find(x => x.id === id);
     if (!p) return;
+    // Block OOS physical products
+    if ((p.product_type || 'physical') === 'physical' &&
+        String(p.track_inventory) === 'true' && parseInt(p.stock||0) <= 0) {
+      WorkVolt.toast('This item is out of stock', 'error');
+      return;
+    }
     const existing = posCart.find(i => i.id === id);
     if (existing) existing.qty++;
-    else posCart.push({ id: p.id, name: p.name, price: parseFloat(p.price), qty: 1, currency: p.currency });
+    else posCart.push({
+      id:               p.id,
+      name:             p.name,
+      price:            parseFloat(p.price),
+      qty:              1,
+      currency:         p.currency,
+      product_type:     p.product_type || 'physical',
+      billing_interval: p.billing_interval || 'mo',
+    });
     renderPOS();
   }
 
@@ -1574,23 +1652,13 @@ window.WorkVoltPages['shop'] = function(container) {
     if (type === 'bulk-upload') inner.innerHTML = bulkUploadForm();
     if (type === 'banner')      inner.innerHTML = bannerForm(id ? getBanners().find(x => x.id === id) : null, id);
 
-    // Track inventory toggle
-    if (type === 'product') {
-      const trackEl = document.getElementById('pf-track_inventory');
-      const invFields = document.getElementById('inventory-fields');
-      if (trackEl && invFields) {
-        trackEl.addEventListener('change', () => {
-          invFields.style.display = trackEl.checked ? 'grid' : 'none';
-        });
-      }
-    }
-
     modal.classList.remove('hidden');
   }
 
   function closeModal() { document.getElementById('shop-modal')?.classList.add('hidden'); }
 
   function productForm(p) {
+    const ptype = p?.product_type || 'physical';
     return `
       <div class="p-6">
         <div class="flex items-center justify-between mb-5">
@@ -1600,9 +1668,37 @@ window.WorkVoltPages['shop'] = function(container) {
           </button>
         </div>
         <div class="space-y-4">
+
+          <!-- Product Type selector -->
+          <div>
+            <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-2">Product Type</label>
+            <div class="grid grid-cols-3 gap-2" id="pf-type-group">
+              ${[
+                { val:'physical',     icon:'fa-box',      label:'Physical',     desc:'Ships to customer'    },
+                { val:'digital',      icon:'fa-download', label:'Digital',      desc:'Instant download'     },
+                { val:'subscription', icon:'fa-rotate',   label:'Subscription', desc:'Recurring billing'    },
+              ].map(t => `
+                <button type="button" onclick="pfSetType('${t.val}')" id="pftype-${t.val}"
+                  class="flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-center
+                    ${ptype === t.val
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-slate-200 text-slate-500 hover:border-slate-300'}">
+                  <i class="fas ${t.icon} text-lg"></i>
+                  <span class="text-xs font-bold">${t.label}</span>
+                  <span class="text-[10px] opacity-70">${t.desc}</span>
+                </button>`).join('')}
+            </div>
+          </div>
+          <input type="hidden" id="pf-product_type" value="${ptype}">
+
           ${mfld('Product Name *', 'pf-name', p?.name)}
           <div class="grid grid-cols-2 gap-3">
-            ${mfld('Price *', 'pf-price', p?.price, 'number', '0.00')}
+            <div>
+              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
+                Price * <span id="pf-price-label" class="normal-case font-normal text-slate-400">${ptype === 'subscription' ? '(per billing period)' : ''}</span>
+              </label>
+              <input id="pf-price" type="number" value="${p?.price||''}" placeholder="0.00" class="field text-sm">
+            </div>
             ${mfld('Compare Price', 'pf-compare_price', p?.compare_price, 'number', '0.00')}
           </div>
           <div class="grid grid-cols-2 gap-3">
@@ -1631,18 +1727,60 @@ window.WorkVoltPages['shop'] = function(container) {
             ${mfld('SKU', 'pf-sku', p?.sku)}
             ${mfld('Barcode', 'pf-barcode', p?.barcode)}
           </div>
-          ${mfld('Weight (g)', 'pf-weight', p?.weight, 'number', '0')}
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input id="pf-track_inventory" type="checkbox" ${p?.track_inventory==='true'?'checked':''}
-              class="w-4 h-4 rounded accent-blue-600">
-            <span class="text-sm text-slate-700 font-medium">Track inventory</span>
-          </label>
-          <div class="grid grid-cols-2 gap-3" id="inventory-fields"
-            ${p?.track_inventory==='true'?'':'style="display:none"'}>
-            ${mfld('Stock Quantity', 'pf-stock', p?.stock, 'number', '0')}
-            ${mfld('Low Stock Alert', 'pf-low_stock_alert', p?.low_stock_alert || '5', 'number', '5')}
-          </div>
           ${mfld('Tags (comma separated)', 'pf-tags', p?.tags, 'text', 'electronics, sale')}
+
+          <!-- ── PHYSICAL fields ── -->
+          <div id="pf-physical-fields" ${ptype !== 'physical' ? 'style="display:none"' : ''}>
+            <div class="border border-slate-200 rounded-xl p-4 space-y-3">
+              <p class="text-xs font-bold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+                <i class="fas fa-box text-slate-400 text-xs"></i>Physical Product Options
+              </p>
+              ${mfld('Weight (g)', 'pf-weight', p?.weight, 'number', '0')}
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input id="pf-track_inventory" type="checkbox" ${p?.track_inventory==='true'?'checked':''}
+                  class="w-4 h-4 rounded accent-blue-600" onchange="document.getElementById('inventory-fields').style.display=this.checked?'grid':'none'">
+                <span class="text-sm text-slate-700 font-medium">Track inventory</span>
+              </label>
+              <div class="grid grid-cols-2 gap-3" id="inventory-fields"
+                ${p?.track_inventory==='true'?'':'style="display:none"'}>
+                ${mfld('Stock Quantity',  'pf-stock',           p?.stock,              'number', '0')}
+                ${mfld('Low Stock Alert', 'pf-low_stock_alert', p?.low_stock_alert||'5','number', '5')}
+              </div>
+            </div>
+          </div>
+
+          <!-- ── DIGITAL fields ── -->
+          <div id="pf-digital-fields" ${ptype !== 'digital' ? 'style="display:none"' : ''}>
+            <div class="border border-violet-200 bg-violet-50 rounded-xl p-4 space-y-3">
+              <p class="text-xs font-bold text-violet-700 uppercase tracking-wide flex items-center gap-1.5">
+                <i class="fas fa-download text-violet-500 text-xs"></i>Digital Product Options
+              </p>
+              ${mfld('Download URL *', 'pf-download_url', p?.download_url, 'url', 'https://drive.google.com/…')}
+              <p class="text-xs text-violet-600">This link is shown to the customer on their order confirmation screen immediately after purchase.</p>
+              ${mfld('File Description', 'pf-file_description', p?.file_description, 'text', 'e.g. PDF Guide, MP3 Album, Software License')}
+              ${mfld('Max Downloads (blank = unlimited)', 'pf-max_downloads', p?.max_downloads, 'number', '')}
+            </div>
+          </div>
+
+          <!-- ── SUBSCRIPTION fields ── -->
+          <div id="pf-subscription-fields" ${ptype !== 'subscription' ? 'style="display:none"' : ''}>
+            <div class="border border-blue-200 bg-blue-50 rounded-xl p-4 space-y-3">
+              <p class="text-xs font-bold text-blue-700 uppercase tracking-wide flex items-center gap-1.5">
+                <i class="fas fa-rotate text-blue-500 text-xs"></i>Subscription Options
+              </p>
+              <div>
+                <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Billing Interval</label>
+                <select id="pf-billing_interval" class="field text-sm">
+                  <option value="week"  ${p?.billing_interval==='week' ?'selected':''}>Weekly</option>
+                  <option value="mo"    ${p?.billing_interval==='mo'   ||!p?.billing_interval?'selected':''}>Monthly</option>
+                  <option value="year"  ${p?.billing_interval==='year' ?'selected':''}>Yearly</option>
+                </select>
+              </div>
+              ${mfld('Trial Days (0 = no trial)', 'pf-trial_days', p?.trial_days||'0', 'number', '0')}
+              <p class="text-xs text-blue-600">Price will display as <strong>${fmt(p?.price||0, p?.currency)} / month</strong> on the storefront. Recurring billing is handled manually — remind customers to set up a recurring Interac or contact you for Stripe setup.</p>
+            </div>
+          </div>
+
           <label class="flex items-center gap-2 cursor-pointer">
             <input id="pf-active" type="checkbox" ${!p || p?.active==='true'?'checked':''}
               class="w-4 h-4 rounded accent-blue-600">
@@ -1954,9 +2092,10 @@ window.WorkVoltPages['shop'] = function(container) {
   // ── Download sample CSV ─────────────────────────────────────────
   window.downloadSampleCsv = function() {
     const csv = [
-      'name,price,compare_price,description,category_id,image_url,sku,track_inventory,stock,tags,active',
-      '"Sample Product",29.99,39.99,"A great product","","https://example.com/img.jpg","SKU-001","true","50","sale,new","true"',
-      '"Another Item",14.99,,"Another description","","","SKU-002","false","","","true"',
+      'name,price,compare_price,description,category_id,image_url,sku,product_type,track_inventory,stock,tags,active,download_url,billing_interval,trial_days',
+      '"Sample Physical",29.99,39.99,"A physical product","","https://example.com/img.jpg","SKU-001","physical","true","50","sale,new","true","","",""',
+      '"Sample Digital",14.99,,"A digital download","","","SKU-002","digital","false","","","true","https://drive.google.com/file","",""',
+      '"Sample Subscription",9.99,,"Monthly subscription","","","SKU-003","subscription","false","","","true","","mo","7"',
     ].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
@@ -1965,13 +2104,53 @@ window.WorkVoltPages['shop'] = function(container) {
     a.click();
   };
 
+  // Product type switcher — exposed globally for onclick in productForm
+  window.pfSetType = function(type) {
+    // Update hidden input
+    const hidden = document.getElementById('pf-product_type');
+    if (hidden) hidden.value = type;
+
+    // Update type button styles
+    ['physical','digital','subscription'].forEach(t => {
+      const btn = document.getElementById('pftype-' + t);
+      if (!btn) return;
+      if (t === type) {
+        btn.className = btn.className
+          .replace('border-slate-200 text-slate-500 hover:border-slate-300','')
+          .replace('border-blue-500 bg-blue-50 text-blue-700','')
+          + ' border-blue-500 bg-blue-50 text-blue-700';
+      } else {
+        btn.className = btn.className
+          .replace('border-blue-500 bg-blue-50 text-blue-700','')
+          .replace('border-slate-200 text-slate-500 hover:border-slate-300','')
+          + ' border-slate-200 text-slate-500 hover:border-slate-300';
+      }
+    });
+
+    // Show/hide field sections
+    const physical = document.getElementById('pf-physical-fields');
+    const digital  = document.getElementById('pf-digital-fields');
+    const subsc    = document.getElementById('pf-subscription-fields');
+    if (physical) physical.style.display = type === 'physical'     ? '' : 'none';
+    if (digital)  digital.style.display  = type === 'digital'      ? '' : 'none';
+    if (subsc)    subsc.style.display    = type === 'subscription'  ? '' : 'none';
+
+    // Update price label
+    const priceLabel = document.getElementById('pf-price-label');
+    if (priceLabel) {
+      priceLabel.textContent = type === 'subscription' ? '(per billing period)' : '';
+    }
+  };
+
   // ══════════════════════════════════════════════════════════════
   //  SAVE HANDLERS
   // ══════════════════════════════════════════════════════════════
   async function handleSave(type, id) {
     try {
       if (type === 'product') {
+        const ptype = document.getElementById('pf-product_type')?.value || 'physical';
         const params = {
+          product_type:    ptype,
           name:            document.getElementById('pf-name')?.value,
           price:           document.getElementById('pf-price')?.value,
           compare_price:   document.getElementById('pf-compare_price')?.value,
@@ -1982,14 +2161,23 @@ window.WorkVoltPages['shop'] = function(container) {
           image_url:       document.getElementById('pf-image_url')?.value,
           sku:             document.getElementById('pf-sku')?.value,
           barcode:         document.getElementById('pf-barcode')?.value,
-          weight:          document.getElementById('pf-weight')?.value,
-          track_inventory: document.getElementById('pf-track_inventory')?.checked ? 'true' : 'false',
-          stock:           document.getElementById('pf-stock')?.value,
-          low_stock_alert: document.getElementById('pf-low_stock_alert')?.value,
           tags:            document.getElementById('pf-tags')?.value,
           active:          document.getElementById('pf-active')?.checked ? 'true' : 'false',
+          // Physical
+          weight:          document.getElementById('pf-weight')?.value          || '',
+          track_inventory: ptype === 'physical' && document.getElementById('pf-track_inventory')?.checked ? 'true' : 'false',
+          stock:           document.getElementById('pf-stock')?.value           || '',
+          low_stock_alert: document.getElementById('pf-low_stock_alert')?.value || '5',
+          // Digital
+          download_url:    document.getElementById('pf-download_url')?.value    || '',
+          file_description:document.getElementById('pf-file_description')?.value|| '',
+          max_downloads:   document.getElementById('pf-max_downloads')?.value   || '',
+          // Subscription
+          billing_interval:document.getElementById('pf-billing_interval')?.value|| 'mo',
+          trial_days:      document.getElementById('pf-trial_days')?.value      || '0',
         };
         if (!params.name || !params.price) { WorkVolt.toast('Name and price are required', 'error'); return; }
+        if (ptype === 'digital' && !params.download_url) { WorkVolt.toast('Download URL is required for digital products', 'error'); return; }
         const r = id ? await api('products/update', { ...params, id }) : await api('products/create', params);
         if (r.error) throw new Error(r.error);
         WorkVolt.toast(id ? 'Product updated' : 'Product created', 'success');
