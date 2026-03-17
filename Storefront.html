@@ -309,25 +309,24 @@
   </div>
 </div>
 
-<script type="application/json" id="__sd"><?= storeData ?></script>
-
 <script>
-  // ── Store data injected by Storefront.gs ─────────────────────
-  // JSON lives in a <script type="application/json"> element — immune to
-  // </script> injection and scriptlet evaluation issues.
-  const STORE_DATA = JSON.parse(document.getElementById('__sd').textContent);
-  const GAS_URL    = STORE_DATA.gasUrl;
-  const S          = STORE_DATA.settings || {};
-  const PRODUCTS   = STORE_DATA.products || [];
-  const CATEGORIES = STORE_DATA.categories || [];
+  // ── GAS URL — reads from localStorage (set by Work Volt on login) ──
+  // Storefront.html is served from your web server, NOT from Apps Script.
+  // It fetches all data directly from your GAS web app at runtime.
+  const GAS_URL = localStorage.getItem('wv_gas_url') || '';
+
+  // ── Mutable globals — populated by fetchStoreData() ──────────
+  let S          = {};
+  let PRODUCTS   = [];
+  let CATEGORIES = [];
 
   // ── State ─────────────────────────────────────────────────────
-  let cart          = JSON.parse(localStorage.getItem('wv_cart') || '[]');
-  let activeCat     = '';
-  let searchQuery   = '';
-  let appliedDisc   = null;
-  let selectedPay   = '';
-  const CURRENCY    = S.currency_cad === 'true' ? 'CAD' : 'USD';
+  let cart        = JSON.parse(localStorage.getItem('wv_cart') || '[]');
+  let activeCat   = '';
+  let searchQuery = '';
+  let appliedDisc = null;
+  let selectedPay = '';
+  let CURRENCY    = 'CAD';
 
   // ── Formatters ────────────────────────────────────────────────
   function fmt(n, cur) {
@@ -343,8 +342,39 @@
     if (S.text_color)       r.setProperty('--text',       S.text_color);
   }
 
+  // ── Fetch all store data from GAS ─────────────────────────────
+  async function fetchStoreData() {
+    if (!GAS_URL) {
+      document.getElementById('sf-loader').innerHTML =
+        '<p style="font-family:sans-serif;color:#ef4444;padding:2rem;text-align:center">Store not configured.<br>Please set up your GAS connection in Work Volt settings.</p>';
+      return false;
+    }
+    try {
+      const [settingsRes, productsRes, catsRes] = await Promise.all([
+        fetch(GAS_URL + '?path=storefront/settings'),
+        fetch(GAS_URL + '?path=storefront/products'),
+        fetch(GAS_URL + '?path=storefront/categories'),
+      ]);
+      const settingsData  = await settingsRes.json();
+      const productsData  = await productsRes.json();
+      const catsData      = await catsRes.json();
+
+      S          = settingsData.settings || {};
+      PRODUCTS   = productsData.rows     || [];
+      CATEGORIES = catsData.rows         || [];
+      CURRENCY   = S.currency_cad === 'true' ? 'CAD' : 'USD';
+      return true;
+    } catch(e) {
+      document.getElementById('sf-loader').innerHTML =
+        '<p style="font-family:sans-serif;color:#ef4444;padding:2rem;text-align:center">Failed to load store data.<br>' + e.message + '</p>';
+      return false;
+    }
+  }
+
   // ── Boot ──────────────────────────────────────────────────────
-  function boot() {
+  async function boot() {
+    const ok = await fetchStoreData();
+    if (!ok) return;
     document.title = S.store_name || 'Store';
     applyTheme();
 
