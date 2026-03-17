@@ -344,51 +344,57 @@ function renderDashboard(c) {
   if (taskCost > 0)     expBreakRaw['Task Costs']         = (expBreakRaw['Task Costs']||0) + taskCost;
   if (monthBills > 0)   expBreakRaw['Bills']              = (expBreakRaw['Bills']||0) + monthBills;
 
-  // Monthly trend (use server data if available, else derive from invoices/expenses)
-  const trend = (d.monthly_trend && d.monthly_trend.length) ? d.monthly_trend : (() => {
-    const months = {};
-    for (let i = 5; i >= 0; i--) {
-      const d2 = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}`;
-      months[key] = { month: key, revenue: 0, expenses: 0, profit: 0 };
-    }
-    state.invoices.forEach(inv => {
-      const m = (inv.issue_date||'').substring(0,7);
-      if (months[m]) months[m].revenue += parseFloat(inv.total)||0;
+  // ==========================================
+  // NEW TREND CHART - Simple and Reliable
+  // ==========================================
+  
+  // Build 6 months of data
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d2 = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      key: `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}`,
+      label: d2.toLocaleDateString('en-US', { month: 'short' }),
+      isCurrent: i === 0
     });
-    state.expenses.forEach(e => {
-      const m = (e.date||'').substring(0,7);
-      if (months[m]) months[m].expenses += parseFloat(e.amount)||0;
-    });
-    state.bills.forEach(b => {
-      const m = ((b.issue_date||b.due_date||'')).substring(0,7);
-      if (months[m]) months[m].expenses += parseFloat(b.amount)||0;
-    });
-    Object.values(months).forEach(m => m.profit = m.revenue - m.expenses);
-    return Object.values(months);
-  })();
+  }
+
+  // Fill in the numbers from invoices/expenses/bills
+  months.forEach(m => {
+    m.revenue = state.invoices
+      .filter(inv => (inv.issue_date || '').startsWith(m.key))
+      .reduce((sum, inv) => sum + (parseFloat(inv.total) || 0), 0);
+    
+    m.expenses = state.expenses
+      .filter(e => (e.date || '').startsWith(m.key))
+      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+    
+    m.expenses += state.bills
+      .filter(b => ((b.issue_date || b.due_date || '')).startsWith(m.key))
+      .reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
+  });
+
+  // Find the highest value for scaling (minimum 1 to avoid divide by zero)
+  const maxValue = Math.max(...months.map(m => Math.max(m.revenue, m.expenses)), 1);
+
+  // Build the chart HTML - simple flex layout
+  const trendChart = months.map(m => {
+    // Calculate heights (0-100% scale)
+    const revPct = m.revenue > 0 ? Math.max((m.revenue / maxValue) * 100, 5) : 0;
+    const expPct = m.expenses > 0 ? Math.max((m.expenses / maxValue) * 100, 5) : 0;
+    
+    return `
+      <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; min-width:40px;">
+        <div style="width:100%; height:80px; display:flex; align-items:flex-end; justify-content:center; gap:2px;">
+          <div style="width:8px; height:${revPct}%; background:${m.isCurrent ? '#059669' : '#10b981'}; border-radius:2px 2px 0 0;" title="Revenue: ${fmt.currency(m.revenue)}"></div>
+          <div style="width:8px; height:${expPct}%; background:${m.isCurrent ? '#dc2626' : '#f87171'}; border-radius:2px 2px 0 0;" title="Expenses: ${fmt.currency(m.expenses)}"></div>
+        </div>
+        <span style="font-size:10px; color:${m.isCurrent ? '#334155' : '#94a3b8'}; font-weight:${m.isCurrent ? 'bold' : 'normal'};">${m.label}</span>
+      </div>
+    `;
+  }).join('');
 
   const expBreak = (d.expense_breakdown && Object.keys(d.expense_breakdown).length) ? d.expense_breakdown : expBreakRaw;
-
-  // Sparkline bars
-  const MAX_BAR_PX = 64;
-  const maxBar = Math.max(...trend.map(t => Math.max(parseFloat(t.revenue) || 0, parseFloat(t.expenses) || 0)), 1);
-  const trendBars = trend.length ? trend.map(t => {
-    const rev = parseFloat(t.revenue) || 0;
-    const exp = parseFloat(t.expenses) || 0;
-    const revH = rev > 0 ? Math.max(Math.round((rev / maxBar) * MAX_BAR_PX), 2) : 0;
-    const expH = exp > 0 ? Math.max(Math.round((exp / maxBar) * MAX_BAR_PX), 2) : 0;
-    const label = t.month ? t.month.substring(5) : '';
-    const isCurrentMonth = t.month === ym;
-    return `
-      <div class="flex flex-col items-center gap-1 flex-1 min-w-0">
-        <div class="w-full flex items-end justify-center gap-1" style="height:${MAX_BAR_PX}px">
-          <div class="w-3 rounded-t transition-all hover:opacity-80" style="height:${revH}px;background:${isCurrentMonth ? '#059669' : '#10b981'}" title="Revenue ${fmt.currency(rev)}"></div>
-          <div class="w-3 rounded-t transition-all hover:opacity-80" style="height:${expH}px;background:${isCurrentMonth ? '#dc2626' : '#f87171'}" title="Expenses ${fmt.currency(exp)}"></div>
-        </div>
-        <span class="text-[10px] font-medium ${isCurrentMonth ? 'text-slate-700 font-bold' : 'text-slate-400'}">${label}</span>
-      </div>`;
-  }).join('') : '<p class="text-xs text-slate-400 m-auto">No trend data available</p>';
 
   // Bottom summary always uses current-month computed values (reliable)
   const trendSummary = `
@@ -451,8 +457,8 @@ function renderDashboard(c) {
             <span class="flex items-center gap-1"><span class="w-3 h-1.5 rounded bg-red-400 inline-block"></span>Expenses</span>
           </div>
         </div>
-        <div class="flex items-end gap-2 px-2 min-h-[80px]" style="height:80px">
-          ${trendBars}
+        <div style="display:flex; align-items:flex-end; gap:8px; padding:0 8px; height:100px;">
+          ${trendChart}
         </div>
         <div class="mt-3 pt-3 border-t border-slate-100 grid grid-cols-3 gap-3">
           ${trendSummary}
