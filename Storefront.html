@@ -2718,12 +2718,38 @@ async function applyDiscount() {
 // ── Checkout ────────────────────────────────────────────────────
 function buildPaymentOptions() {
   var options = [];
-  if (S.paypal_enabled === 'true')  options.push({ id:'PayPal',   icon:'🅿',  name:'PayPal',             desc:'Pay securely with PayPal or credit card' });
-  if (S.stripe_enabled === 'true')  options.push({ id:'Stripe',   icon:'💳', name:'Credit / Debit Card', desc:'Powered by Stripe — SSL secured' });
-  if (S.interac_enabled === 'true') options.push({ id:'Interac',  icon:'🏦', name:'Interac e-Transfer',  desc:'Send to ' + (S.interac_email || 'store email') });
-  if (S.cash_enabled === 'true')    options.push({ id:'Cash',     icon:'💵', name:'Cash on Pickup',      desc:'Pay when you collect your order' });
+
+  // A setting is "enabled" if explicitly set to 'true'.
+  // If ALL payment settings are missing/unconfigured we fall back to
+  // showing every option so the checkout is never blank.
+  var anyConfigured = (
+    S.paypal_enabled   === 'true' ||
+    S.stripe_enabled   === 'true' ||
+    S.interac_enabled  === 'true' ||
+    S.cash_enabled     === 'true'
+  );
+
+  var showPayPal   = anyConfigured ? S.paypal_enabled  === 'true' : true;
+  var showStripe   = anyConfigured ? S.stripe_enabled  === 'true' : true;
+  var showInterac  = anyConfigured ? S.interac_enabled === 'true' : true;
+  var showCash     = anyConfigured ? S.cash_enabled    === 'true' : false; // cash off by default in fallback
+
+  if (showPayPal)  options.push({ id:'PayPal',  icon:'🅿',  name:'PayPal',             desc:'Pay securely with PayPal or credit card' });
+  if (showStripe)  options.push({ id:'Stripe',  icon:'💳', name:'Credit / Debit Card', desc:'Powered by Stripe — SSL secured' });
+  if (showInterac) options.push({ id:'Interac', icon:'🏦', name:'Interac e-Transfer',  desc: S.interac_email ? 'Send to ' + S.interac_email : 'Send to store email' });
+  if (showCash)    options.push({ id:'Cash',    icon:'💵', name:'Cash on Pickup',       desc:'Pay when you collect your order' });
 
   var el = document.getElementById('payment-options');
+  if (!el) return;
+
+  if (!options.length) {
+    // Absolute last resort — show a generic "contact us" message
+    el.innerHTML = '<div style="padding:1rem;background:var(--surface-2);border-radius:var(--radius);border:1.5px solid var(--border);font-size:.875rem;color:var(--text-2)">'
+      + '<i class="fas fa-info-circle" style="color:var(--primary);margin-right:.5rem"></i>'
+      + 'Please contact us to arrange payment. Enable payment methods in Store Settings.</div>';
+    return;
+  }
+
   el.innerHTML = options.map(function(o) {
     return '<div class="payment-option" id="pay-opt-' + o.id + '" onclick="selectPayment(\'' + o.id + '\')">'
       + '<input type="radio" name="payment" value="' + o.id + '" id="pay-' + o.id + '">'
@@ -2732,7 +2758,8 @@ function buildPaymentOptions() {
       + '</div>';
   }).join('');
 
-  if (options.length) selectPayment(options[0].id);
+  // Auto-select the first option
+  selectPayment(options[0].id);
 }
 
 function selectPayment(id) {
