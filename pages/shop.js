@@ -1658,7 +1658,10 @@ window.WorkVoltPages['shop'] = function(container) {
   function closeModal() { document.getElementById('shop-modal')?.classList.add('hidden'); }
 
   function productForm(p) {
-    const ptype = p?.product_type || 'physical';
+    // GAS returns booleans (true/false) not strings ('true'/'false') — normalise both
+    const str  = v => (v === undefined || v === null) ? '' : String(v);
+    const bool = v => v === true || v === 'true';
+    const ptype = str(p?.product_type) || 'physical';
     return `
       <div class="p-6">
         <div class="flex items-center justify-between mb-5">
@@ -1691,23 +1694,23 @@ window.WorkVoltPages['shop'] = function(container) {
           </div>
           <input type="hidden" id="pf-product_type" value="${ptype}">
 
-          ${mfld('Product Name *', 'pf-name', p?.name)}
+          ${mfld('Product Name *', 'pf-name', str(p?.name))}
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
                 Price * <span id="pf-price-label" class="normal-case font-normal text-slate-400">${ptype === 'subscription' ? '(per billing period)' : ''}</span>
               </label>
-              <input id="pf-price" type="number" value="${p?.price||''}" placeholder="0.00" class="field text-sm">
+              <input id="pf-price" type="number" value="${str(p?.price)}" placeholder="0.00" class="field text-sm">
             </div>
-            ${mfld('Compare Price', 'pf-compare_price', p?.compare_price, 'number', '0.00')}
+            ${mfld('Compare Price', 'pf-compare_price', str(p?.compare_price), 'number', '0.00')}
           </div>
           <div class="grid grid-cols-2 gap-3">
-            ${mfld('Cost', 'pf-cost', p?.cost, 'number', '0.00')}
+            ${mfld('Cost', 'pf-cost', str(p?.cost), 'number', '0.00')}
             <div>
               <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Currency</label>
               <select id="pf-currency" class="field text-sm">
-                <option value="CAD" ${p?.currency==='CAD'||!p?'selected':''}>CAD</option>
-                <option value="USD" ${p?.currency==='USD'?'selected':''}>USD</option>
+                <option value="CAD" ${(str(p?.currency)||'CAD')==='CAD'?'selected':''}>CAD</option>
+                <option value="USD" ${str(p?.currency)==='USD'?'selected':''}>USD</option>
               </select>
             </div>
           </div>
@@ -1715,19 +1718,19 @@ window.WorkVoltPages['shop'] = function(container) {
             <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Category</label>
             <select id="pf-category_id" class="field text-sm">
               <option value="">— None —</option>
-              ${categories.map(c => `<option value="${c.id}" ${p?.category_id===c.id?'selected':''}>${c.name}</option>`).join('')}
+              ${categories.map(c => `<option value="${c.id}" ${str(p?.category_id)===c.id?'selected':''}>${c.name}</option>`).join('')}
             </select>
           </div>
           <div>
             <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Description</label>
-            <textarea id="pf-description" rows="3" class="field text-sm resize-none">${p?.description||''}</textarea>
+            <textarea id="pf-description" rows="3" class="field text-sm resize-none">${str(p?.description)}</textarea>
           </div>
-          ${mfld('Image URL', 'pf-image_url', p?.image_url, 'url', 'https://…')}
+          ${mfld('Image URL', 'pf-image_url', str(p?.image_url), 'url', 'https://…')}
           <div class="grid grid-cols-2 gap-3">
-            ${mfld('SKU', 'pf-sku', p?.sku)}
-            ${mfld('Barcode', 'pf-barcode', p?.barcode)}
+            ${mfld('SKU', 'pf-sku', str(p?.sku))}
+            ${mfld('Barcode', 'pf-barcode', str(p?.barcode))}
           </div>
-          ${mfld('Tags (comma separated)', 'pf-tags', p?.tags, 'text', 'electronics, sale')}
+          ${mfld('Tags (comma separated)', 'pf-tags', str(p?.tags), 'text', 'electronics, sale')}
 
           <!-- ── PHYSICAL fields ── -->
           <div id="pf-physical-fields" ${ptype !== 'physical' ? 'style="display:none"' : ''}>
@@ -1735,16 +1738,16 @@ window.WorkVoltPages['shop'] = function(container) {
               <p class="text-xs font-bold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
                 <i class="fas fa-box text-slate-400 text-xs"></i>Physical Product Options
               </p>
-              ${mfld('Weight (g)', 'pf-weight', p?.weight, 'number', '0')}
+              ${mfld('Weight (g)', 'pf-weight', str(p?.weight), 'number', '0')}
               <label class="flex items-center gap-2 cursor-pointer">
-                <input id="pf-track_inventory" type="checkbox" ${p?.track_inventory==='true'?'checked':''}
+                <input id="pf-track_inventory" type="checkbox" ${bool(p?.track_inventory) ? 'checked' : ''}
                   class="w-4 h-4 rounded accent-blue-600" onchange="document.getElementById('inventory-fields').style.display=this.checked?'grid':'none'">
                 <span class="text-sm text-slate-700 font-medium">Track inventory</span>
               </label>
               <div class="grid grid-cols-2 gap-3" id="inventory-fields"
-                ${p?.track_inventory==='true'?'':'style="display:none"'}>
-                ${mfld('Stock Quantity',  'pf-stock',           p?.stock,              'number', '0')}
-                ${mfld('Low Stock Alert', 'pf-low_stock_alert', p?.low_stock_alert||'5','number', '5')}
+                ${bool(p?.track_inventory) ? '' : 'style="display:none"'}>
+                ${mfld('Stock Quantity',  'pf-stock',           str(p?.stock),               'number', '0')}
+                ${mfld('Low Stock Alert', 'pf-low_stock_alert', str(p?.low_stock_alert)||'5', 'number', '5')}
               </div>
             </div>
           </div>
@@ -1755,10 +1758,10 @@ window.WorkVoltPages['shop'] = function(container) {
               <p class="text-xs font-bold text-violet-700 uppercase tracking-wide flex items-center gap-1.5">
                 <i class="fas fa-download text-violet-500 text-xs"></i>Digital Product Options
               </p>
-              ${mfld('Download URL *', 'pf-download_url', p?.download_url, 'url', 'https://drive.google.com/…')}
+              ${mfld('Download URL *', 'pf-download_url', str(p?.download_url), 'url', 'https://drive.google.com/…')}
               <p class="text-xs text-violet-600">This link is shown to the customer on their order confirmation screen immediately after purchase.</p>
-              ${mfld('File Description', 'pf-file_description', p?.file_description, 'text', 'e.g. PDF Guide, MP3 Album, Software License')}
-              ${mfld('Max Downloads (blank = unlimited)', 'pf-max_downloads', p?.max_downloads, 'number', '')}
+              ${mfld('File Description', 'pf-file_description', str(p?.file_description), 'text', 'e.g. PDF Guide, MP3 Album, Software License')}
+              ${mfld('Max Downloads (blank = unlimited)', 'pf-max_downloads', str(p?.max_downloads), 'number', '')}
             </div>
           </div>
 
@@ -1771,18 +1774,19 @@ window.WorkVoltPages['shop'] = function(container) {
               <div>
                 <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">Billing Interval</label>
                 <select id="pf-billing_interval" class="field text-sm">
-                  <option value="week"  ${p?.billing_interval==='week' ?'selected':''}>Weekly</option>
-                  <option value="mo"    ${p?.billing_interval==='mo'   ||!p?.billing_interval?'selected':''}>Monthly</option>
-                  <option value="year"  ${p?.billing_interval==='year' ?'selected':''}>Yearly</option>
+                  <option value="week"  ${str(p?.billing_interval)==='week'?'selected':''}>Weekly</option>
+                  <option value="mo"    ${str(p?.billing_interval)==='mo'||!p?.billing_interval?'selected':''}>Monthly</option>
+                  <option value="year"  ${str(p?.billing_interval)==='year'?'selected':''}>Yearly</option>
                 </select>
               </div>
-              ${mfld('Trial Days (0 = no trial)', 'pf-trial_days', p?.trial_days||'0', 'number', '0')}
-              <p class="text-xs text-blue-600">Price will display as <strong>${fmt(p?.price||0, p?.currency)} / month</strong> on the storefront. Recurring billing is handled manually — remind customers to set up a recurring Interac or contact you for Stripe setup.</p>
+              ${mfld('Trial Days (0 = no trial)', 'pf-trial_days', str(p?.trial_days)||'0', 'number', '0')}
+              <p class="text-xs text-blue-600">Price will display as <strong>${fmt(p?.price||0, p?.currency)} / month</strong> on the storefront. Recurring billing is handled manually.</p>
             </div>
           </div>
 
+          <!-- active: bool() handles GAS returning boolean true OR string 'true' -->
           <label class="flex items-center gap-2 cursor-pointer">
-            <input id="pf-active" type="checkbox" ${!p || p?.active==='true'?'checked':''}
+            <input id="pf-active" type="checkbox" ${!p || bool(p?.active) ? 'checked' : ''}
               class="w-4 h-4 rounded accent-blue-600">
             <span class="text-sm text-slate-700 font-medium">Active (visible in store)</span>
           </label>
@@ -2110,20 +2114,16 @@ window.WorkVoltPages['shop'] = function(container) {
     const hidden = document.getElementById('pf-product_type');
     if (hidden) hidden.value = type;
 
-    // Update type button styles
+    // Update type button styles — classList is reliable regardless of class order
     ['physical','digital','subscription'].forEach(t => {
       const btn = document.getElementById('pftype-' + t);
       if (!btn) return;
+      btn.classList.remove('border-blue-500','bg-blue-50','text-blue-700',
+                           'border-slate-200','text-slate-500','hover:border-slate-300');
       if (t === type) {
-        btn.className = btn.className
-          .replace('border-slate-200 text-slate-500 hover:border-slate-300','')
-          .replace('border-blue-500 bg-blue-50 text-blue-700','')
-          + ' border-blue-500 bg-blue-50 text-blue-700';
+        btn.classList.add('border-blue-500','bg-blue-50','text-blue-700');
       } else {
-        btn.className = btn.className
-          .replace('border-blue-500 bg-blue-50 text-blue-700','')
-          .replace('border-slate-200 text-slate-500 hover:border-slate-300','')
-          + ' border-slate-200 text-slate-500 hover:border-slate-300';
+        btn.classList.add('border-slate-200','text-slate-500','hover:border-slate-300');
       }
     });
 
@@ -2131,9 +2131,9 @@ window.WorkVoltPages['shop'] = function(container) {
     const physical = document.getElementById('pf-physical-fields');
     const digital  = document.getElementById('pf-digital-fields');
     const subsc    = document.getElementById('pf-subscription-fields');
-    if (physical) physical.style.display = type === 'physical'     ? '' : 'none';
-    if (digital)  digital.style.display  = type === 'digital'      ? '' : 'none';
-    if (subsc)    subsc.style.display    = type === 'subscription'  ? '' : 'none';
+    if (physical) physical.style.display = type === 'physical'    ? '' : 'none';
+    if (digital)  digital.style.display  = type === 'digital'     ? '' : 'none';
+    if (subsc)    subsc.style.display    = type === 'subscription' ? '' : 'none';
 
     // Update price label
     const priceLabel = document.getElementById('pf-price-label');
@@ -2163,9 +2163,9 @@ window.WorkVoltPages['shop'] = function(container) {
           barcode:         document.getElementById('pf-barcode')?.value,
           tags:            document.getElementById('pf-tags')?.value,
           active:          document.getElementById('pf-active')?.checked ? 'true' : 'false',
-          // Physical
+          // Physical — read regardless of visibility so values persist when switching types
           weight:          document.getElementById('pf-weight')?.value          || '',
-          track_inventory: ptype === 'physical' && document.getElementById('pf-track_inventory')?.checked ? 'true' : 'false',
+          track_inventory: document.getElementById('pf-track_inventory')?.checked ? 'true' : 'false',
           stock:           document.getElementById('pf-stock')?.value           || '',
           low_stock_alert: document.getElementById('pf-low_stock_alert')?.value || '5',
           // Digital
