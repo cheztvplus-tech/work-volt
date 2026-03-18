@@ -1,5 +1,5 @@
 // ================================================================
-//  WORK VOLT — shop.js  v2.0
+//  WORK VOLT — shop.js  v1.0
 //  Premium E-Commerce + POS Admin Module
 // ================================================================
 
@@ -94,6 +94,9 @@ window.WorkVoltPages['shop'] = function(container) {
               <button onclick="shopCopyUrl()" class="btn-secondary text-xs gap-1.5">
                 <i class="fas fa-link text-xs"></i>Copy URL
               </button>
+              <button onclick="shopRunSetup()" class="flex items-center gap-1.5 px-3 py-1.5 bg-violet-50 border border-violet-200 text-violet-700 text-xs font-bold rounded-xl hover:bg-violet-100 transition-colors">
+                <i class="fas fa-database text-xs"></i>Setup Sheets
+              </button>
               <button onclick="shopShowModal('product')" class="btn-primary text-xs gap-1.5">
                 <i class="fas fa-plus text-xs"></i>New Product
               </button>
@@ -147,6 +150,24 @@ window.WorkVoltPages['shop'] = function(container) {
       navigator.clipboard.writeText(STORE_URL);
       WorkVolt.toast('Storefront URL copied!', 'success');
     };
+    window.shopRunSetup     = async function() {
+      const btn = document.querySelector('[onclick="shopRunSetup()"]');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Running…'; }
+      try {
+        WorkVolt.toast('Setting up sheets and columns…', 'info');
+        const r = await WorkVolt.api('module/install', { module: 'shop' });
+        if (r.error) throw new Error(r.error);
+        WorkVolt.toast('✓ Sheets and columns are up to date!', 'success');
+        // Reload data so new columns are picked up immediately
+        await loadSettings();
+        await loadData();
+        renderShell();
+        switchTab(activeTab);
+      } catch(e) {
+        WorkVolt.toast('Setup failed: ' + e.message, 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-database text-xs"></i>Setup Sheets'; }
+      }
+    };
     window.shopBulkUpload   = handleBulkUpload;
     window.shopBulkFileChange = (input) => {
       bulkFile = input.files[0];
@@ -199,31 +220,7 @@ window.WorkVoltPages['shop'] = function(container) {
   async function loadSettings()  { const r = await api('settings/get'); settings = r.settings || {}; }
   async function loadData()      {
     const [p, c] = await Promise.all([api('products/list'), api('categories/list')]);
-    // Normalise each product — GAS may return booleans instead of strings,
-    // and old sheet versions may be missing new columns entirely.
-    // We set safe defaults here so the UI always has something to work with.
-    products = (p.rows || []).map(function(prod) {
-      return Object.assign({
-        product_type:     'physical',
-        download_url:     '',
-        file_description: '',
-        max_downloads:    '',
-        billing_interval: 'mo',
-        trial_days:       '0',
-        active:           'true',
-        track_inventory:  'false',
-        stock:            '0',
-        low_stock_alert:  '5',
-        weight:           '',
-      }, prod, {
-        // Force string for fields that GAS might return as booleans
-        active:          String(prod.active          ?? 'true'),
-        track_inventory: String(prod.track_inventory ?? 'false'),
-        // Force string for product_type — empty string means old sheet, default to 'physical'
-        product_type:    String(prod.product_type || 'physical'),
-      });
-    });
-    categories = c.rows || [];
+    products = p.rows || []; categories = c.rows || [];
   }
   async function loadOrders()    { const r = await api('orders/list', { with_items: 'true' }); orders = r.rows || []; }
   async function loadCustomers() { const r = await api('customers/list'); customers = r.rows || []; }
@@ -1686,11 +1683,6 @@ window.WorkVoltPages['shop'] = function(container) {
     const str  = v => (v === undefined || v === null) ? '' : String(v);
     const bool = v => v === true || v === 'true';
     const ptype = str(p?.product_type) || 'physical';
-
-    // If we're editing an existing product but product_type came back blank,
-    // it means the Shop_Products sheet is missing the new columns.
-    const sheetNeedsUpdate = p && p.id && !p.product_type;
-
     return `
       <div class="p-6">
         <div class="flex items-center justify-between mb-5">
@@ -1699,21 +1691,6 @@ window.WorkVoltPages['shop'] = function(container) {
             <i class="fas fa-times text-sm"></i>
           </button>
         </div>
-
-        ${sheetNeedsUpdate ? `
-        <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex gap-2.5">
-          <i class="fas fa-triangle-exclamation text-amber-500 mt-0.5 flex-shrink-0"></i>
-          <div class="text-xs text-amber-800 leading-relaxed">
-            <strong>Action required:</strong> Your <code class="bg-amber-100 px-1 rounded">Shop_Products</code> sheet
-            is missing new columns (<code class="bg-amber-100 px-1 rounded">product_type</code>,
-            <code class="bg-amber-100 px-1 rounded">download_url</code>, etc.).
-            Product Type cannot be saved until you update your sheet.<br><br>
-            <strong>Fix:</strong> Replace <code class="bg-amber-100 px-1 rounded">Module_Shop.gs</code>
-            with the latest version, redeploy, then re-run
-            <strong>Store &amp; POS → Settings → Install</strong> to add the missing columns.
-          </div>
-        </div>` : ''}
-
         <div class="space-y-4">
 
           <!-- Product Type selector -->
