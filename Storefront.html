@@ -1113,7 +1113,8 @@
       transition: all var(--transition);
     }
     .step.active .step-num   { background: var(--primary); color: #fff; }
-    .step.done .step-num     { background: #16a34a; color: #fff; }
+    .step.done .step-num     { background: #16a34a; color: #fff; font-size: 0; }
+    .step.done .step-num::after { content: '✓'; font-size: .8rem; }
     .step.active              { color: var(--text); }
     .step-divider {
       flex: 1; height: 1.5px;
@@ -1533,7 +1534,7 @@
   <div id="checkout-backdrop" onclick="closeCheckout()"></div>
   <div id="checkout-box">
     <div class="checkout-header">
-      <h2>Checkout</h2>
+      <h2 id="checkout-header-title">Checkout</h2>
       <button class="drawer-close" onclick="closeCheckout()"><i class="fas fa-times"></i></button>
     </div>
 
@@ -1547,9 +1548,9 @@
     </div>
 
     <div id="checkout-form">
-      <div class="checkout-body">
 
-        <!-- Contact + Shipping -->
+      <!-- ── STEP 1: Contact + Shipping ── -->
+      <div id="co-step-1" class="checkout-body">
         <div class="co-section">
           <div class="co-section-title">Contact Information</div>
           <div class="co-grid">
@@ -1579,24 +1580,53 @@
           </div>
         </div>
 
-        <!-- Payment -->
+        <div id="co-error-1" style="color:#ef4444;font-size:.82rem;padding:.75rem 1rem;background:#fef2f2;border-radius:10px;margin-bottom:.75rem;display:none"></div>
+
+        <button class="place-btn" onclick="checkoutNext(1)">
+          Continue to Payment <i class="fas fa-arrow-right" style="font-size:.8rem"></i>
+        </button>
+      </div>
+
+      <!-- ── STEP 2: Payment ── -->
+      <div id="co-step-2" class="checkout-body" style="display:none">
         <div class="co-section">
           <div class="co-section-title">Payment Method</div>
           <div id="payment-options"></div>
           <div class="interac-instructions" id="interac-instructions"></div>
         </div>
 
-        <!-- Order Summary -->
+        <div id="co-error-2" style="color:#ef4444;font-size:.82rem;padding:.75rem 1rem;background:#fef2f2;border-radius:10px;margin-bottom:.75rem;display:none"></div>
+
+        <button class="place-btn" onclick="checkoutNext(2)">
+          Review Order <i class="fas fa-arrow-right" style="font-size:.8rem"></i>
+        </button>
+        <button onclick="checkoutBack(2)"
+          style="width:100%;margin-top:.625rem;padding:.65rem;background:transparent;border:1.5px solid var(--border);border-radius:12px;font-size:.875rem;font-weight:600;font-family:var(--font);cursor:pointer;color:var(--text-2);transition:all var(--transition)">
+          <i class="fas fa-arrow-left" style="font-size:.8rem"></i> Back
+        </button>
+      </div>
+
+      <!-- ── STEP 3: Review + Place Order ── -->
+      <div id="co-step-3" class="checkout-body" style="display:none">
         <div class="co-section">
           <div class="co-section-title">Order Summary</div>
           <div class="co-summary" id="co-summary"></div>
         </div>
 
-        <div id="co-error" style="color:#ef4444;font-size:.82rem;padding:.75rem 1rem;background:#fef2f2;border-radius:10px;margin-top:.5rem;display:none"></div>
+        <!-- Contact recap -->
+        <div class="co-section">
+          <div class="co-section-title">Your Details</div>
+          <div id="co-recap" style="background:var(--surface-2);border-radius:var(--radius);padding:1rem;font-size:.85rem;color:var(--text-2);line-height:1.8"></div>
+        </div>
+
+        <div id="co-error-3" style="color:#ef4444;font-size:.82rem;padding:.75rem 1rem;background:#fef2f2;border-radius:10px;margin-bottom:.75rem;display:none"></div>
 
         <button class="place-btn" id="place-btn" onclick="placeOrder()">
-          <i class="fas fa-lock" style="font-size:.8rem"></i>
-          Place Order
+          <i class="fas fa-lock" style="font-size:.8rem"></i> Place Order
+        </button>
+        <button onclick="checkoutBack(3)"
+          style="width:100%;margin-top:.625rem;padding:.65rem;background:transparent;border:1.5px solid var(--border);border-radius:12px;font-size:.875rem;font-weight:600;font-family:var(--font);cursor:pointer;color:var(--text-2);transition:all var(--transition)">
+          <i class="fas fa-arrow-left" style="font-size:.8rem"></i> Back
         </button>
 
         <!-- Trust signals -->
@@ -1606,6 +1636,7 @@
           <span style="font-size:.75rem;color:var(--text-3);display:flex;align-items:center;gap:.3rem"><i class="fas fa-rotate-left" style="color:var(--primary)"></i> Easy Returns</span>
         </div>
       </div>
+
     </div>
 
     <!-- Success Screen -->
@@ -2757,20 +2788,143 @@ function buildOrderSummary() {
     + '<div class="co-summary-total"><span>Total</span><span style="color:var(--primary)">' + fmt(total) + '</span></div>';
 }
 
+// ── Checkout step state ─────────────────────────────────────────
+var checkoutStep = 1;
+
+// ── Step UI helpers ─────────────────────────────────────────────
+function setCheckoutStep(n) {
+  checkoutStep = n;
+
+  // Show/hide step panels
+  [1, 2, 3].forEach(function(i) {
+    var panel = document.getElementById('co-step-' + i);
+    if (panel) panel.style.display = i === n ? '' : 'none';
+  });
+
+  // Update step indicator styles
+  [1, 2, 3].forEach(function(i) {
+    var stepEl = document.getElementById('step-' + i);
+    if (!stepEl) return;
+    stepEl.classList.remove('active', 'done');
+    if (i === n) stepEl.classList.add('active');
+    if (i < n)  stepEl.classList.add('done');
+  });
+
+  // Update divider styles
+  [1, 2].forEach(function(i) {
+    var div = document.getElementById('step-div-' + i);
+    if (div) div.classList.toggle('done', i < n);
+  });
+
+  // Scroll modal back to top
+  var box = document.getElementById('checkout-box');
+  if (box) box.scrollTop = 0;
+
+  // Update header title
+  var titles = { 1: 'Your Information', 2: 'Payment Method', 3: 'Review & Place Order' };
+  var hdr = document.getElementById('checkout-header-title');
+  if (hdr) hdr.textContent = titles[n] || 'Checkout';
+}
+
+function checkoutNext(fromStep) {
+  // Validate step 1
+  if (fromStep === 1) {
+    var name  = document.getElementById('co-name')?.value.trim();
+    var email = document.getElementById('co-email')?.value.trim();
+    var errEl = document.getElementById('co-error-1');
+    if (!name || !email) {
+      errEl.textContent = 'Please enter your name and email address.';
+      errEl.style.display = 'block';
+      return;
+    }
+    var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRe.test(email)) {
+      errEl.textContent = 'Please enter a valid email address.';
+      errEl.style.display = 'block';
+      return;
+    }
+    errEl.style.display = 'none';
+    // Build payment options now (deferred from openCheckout)
+    buildPaymentOptions();
+    setCheckoutStep(2);
+    return;
+  }
+
+  // Validate step 2
+  if (fromStep === 2) {
+    var errEl2 = document.getElementById('co-error-2');
+    if (!selectedPay) {
+      errEl2.textContent = 'Please select a payment method to continue.';
+      errEl2.style.display = 'block';
+      return;
+    }
+    errEl2.style.display = 'none';
+    // Build order summary + contact recap for step 3
+    buildOrderSummary();
+    buildContactRecap();
+    setCheckoutStep(3);
+  }
+}
+
+function checkoutBack(fromStep) {
+  setCheckoutStep(fromStep - 1);
+}
+
+function buildContactRecap() {
+  var name     = document.getElementById('co-name')?.value  || '';
+  var email    = document.getElementById('co-email')?.value || '';
+  var phone    = document.getElementById('co-phone')?.value || '';
+  var hasPhysical = cart.some(function(i) { return (i.product_type || 'physical') === 'physical'; });
+
+  var lines = [
+    '<strong>' + name + '</strong>',
+    email,
+    phone || null,
+  ];
+
+  if (hasPhysical) {
+    var addr = [
+      document.getElementById('co-address')?.value,
+      document.getElementById('co-city')?.value,
+      document.getElementById('co-province')?.value,
+      document.getElementById('co-postal')?.value,
+      document.getElementById('co-country')?.value,
+    ].filter(Boolean).join(', ');
+    if (addr) lines.push(addr);
+  }
+
+  var payLabels = { PayPal:'PayPal', Stripe:'Credit / Debit Card', Interac:'Interac e-Transfer', Cash:'Cash on Pickup' };
+  lines.push('Payment: <strong>' + (payLabels[selectedPay] || selectedPay) + '</strong>');
+
+  var el = document.getElementById('co-recap');
+  if (el) el.innerHTML = lines.filter(Boolean).join('<br>');
+}
+
 function openCheckout() {
   if (!cart.length) return;
   closeCart();
-  buildPaymentOptions();
-  buildOrderSummary();
 
-  // Hide shipping section if no physical items in cart
+  // Hide shipping section if no physical items
   var hasPhysical = cart.some(function(i) { return (i.product_type || 'physical') === 'physical'; });
   var shipSection = document.getElementById('shipping-section');
   if (shipSection) shipSection.style.display = hasPhysical ? '' : 'none';
 
+  // Reset to step 1
   document.getElementById('checkout-form').style.display = '';
   document.getElementById('success-screen').style.display = 'none';
-  document.getElementById('co-error').style.display = 'none';
+  // Clear any previous errors
+  [1, 2, 3].forEach(function(i) {
+    var e = document.getElementById('co-error-' + i);
+    if (e) e.style.display = 'none';
+  });
+  // Reset place button if it was disabled from a previous attempt
+  var btn = document.getElementById('place-btn');
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-lock" style="font-size:.8rem"></i> Place Order';
+  }
+
+  setCheckoutStep(1);
   document.getElementById('checkout-modal').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
@@ -2781,10 +2935,9 @@ function closeCheckout() {
 }
 
 async function placeOrder() {
+  // All validation already done in checkoutNext() steps 1 & 2
   var name  = document.getElementById('co-name').value.trim();
   var email = document.getElementById('co-email').value.trim();
-  if (!name || !email) { showError('Please enter your name and email.'); return; }
-  if (!selectedPay)    { showError('Please select a payment method.'); return; }
 
   // Only collect address if physical items are in the cart
   var hasPhysical = cart.some(function(i) { return (i.product_type || 'physical') === 'physical'; });
@@ -2799,13 +2952,12 @@ async function placeOrder() {
     ].filter(Boolean).join(', ');
   }
 
-  var sub   = getSubtotal();
-  var disc  = appliedDisc ? (appliedDisc.type === 'percent' ? sub * parseFloat(appliedDisc.value)/100 : parseFloat(appliedDisc.value)) : 0;
-  var tax   = S.tax_included === 'true' ? 0 : Math.max(0, sub - disc) * parseFloat(S.tax_rate||0) / 100;
+  var sub     = getSubtotal();
+  var disc    = appliedDisc ? (appliedDisc.type === 'percent' ? sub * parseFloat(appliedDisc.value)/100 : parseFloat(appliedDisc.value)) : 0;
+  var tax     = S.tax_included === 'true' ? 0 : Math.max(0, sub - disc) * parseFloat(S.tax_rate||0) / 100;
   var freeMin = parseFloat(S.free_shipping_min || 0);
-  // Only charge shipping if there are physical items
-  var ship  = hasPhysical && S.shipping_enabled === 'true' && sub < freeMin ? parseFloat(S.shipping_rate||0) : 0;
-  var total = Math.max(0, sub - disc + tax + ship);
+  var ship    = hasPhysical && S.shipping_enabled === 'true' && sub < freeMin ? parseFloat(S.shipping_rate||0) : 0;
+  var total   = Math.max(0, sub - disc + tax + ship);
 
   var items = cart.map(function(i) {
     return { product_id: i.id, product_name: i.name, qty: i.qty, unit_price: i.price, total_price: i.price * i.qty };
@@ -2838,11 +2990,9 @@ async function placeOrder() {
     if (data.error) throw new Error(data.error);
     if (data.redirect) { window.location.href = data.redirect; return; }
 
-    // Collect digital download links from cart
-    var digitalItems = cart.filter(function(i) { return i.product_type === 'digital' && i.download_url; });
+    var digitalItems      = cart.filter(function(i) { return i.product_type === 'digital' && i.download_url; });
     var subscriptionItems = cart.filter(function(i) { return i.product_type === 'subscription'; });
 
-    // Build success message based on cart contents
     var baseMsg = selectedPay === 'Interac'
       ? 'Your order ' + data.order_number + ' has been placed! Please send ' + fmt(total) + ' to ' + (S.interac_email || 'our email') + ' with your Order ID.'
       : 'Your order ' + data.order_number + ' is confirmed!';
@@ -2858,8 +3008,13 @@ async function placeOrder() {
 }
 
 function showError(msg) {
-  var el = document.getElementById('co-error');
-  el.textContent = msg; el.style.display = 'block';
+  // Always show error on whichever step is currently visible
+  var errId = 'co-error-' + checkoutStep;
+  var el    = document.getElementById(errId)
+           || document.getElementById('co-error-3'); // fallback
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
   el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
