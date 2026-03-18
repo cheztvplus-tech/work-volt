@@ -1711,9 +1711,10 @@ window.WorkVoltPages['settings'] = function(container) {
       var provData = await provRes.json();
       if (provData.error) throw new Error(provData.error);
 
-      if (provData.provisioned || !hasAdmin) {
+      if (provData.provisioned) {
         // First time setup - show admin creation form
         renderAdminSetupForm();
+        return;
       } else {
         render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
       }
