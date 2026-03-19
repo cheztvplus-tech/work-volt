@@ -45,56 +45,51 @@ window.WorkVoltPages['settings'] = function(container) {
   };
 
 
-// ================================================================
-//  API HELPER - FIXED: Added session_id parameter with better detection
-// ================================================================
-async function api(path, params) {
-  const url = new URL(savedUrl);
-  url.searchParams.set('path',  path);
-  url.searchParams.set('token', savedSecret);
-  
-  // FIXED: Add session_id for protected routes - try multiple sources
-  let sessionId = '';
-  
-  // Try window.WorkVolt.session() if available
-  if (window.WorkVolt && typeof window.WorkVolt.session === 'function') {
-    try {
-      sessionId = window.WorkVolt.session();
-    } catch(e) {}
+  // ================================================================
+  //  API HELPER - FIXED: Added session_id parameter with better detection
+  // ================================================================
+  async function api(path, params) {
+    const url = new URL(savedUrl);
+    url.searchParams.set('path',  path);
+    url.searchParams.set('token', savedSecret);
+    
+    // FIXED: Add session_id for protected routes - try multiple sources
+    let sessionId = '';
+    
+    // Try window.WorkVolt.session() if available
+    if (window.WorkVolt && typeof window.WorkVolt.session === 'function') {
+      try {
+        sessionId = window.WorkVolt.session();
+      } catch(e) {}
+    }
+    
+    // Fallback to localStorage
+    if (!sessionId) {
+      sessionId = localStorage.getItem('wv_session') || '';
+    }
+    
+    // Also try just 'session' key
+    if (!sessionId) {
+      sessionId = localStorage.getItem('session') || '';
+    }
+    
+    if (sessionId) {
+      url.searchParams.set('session_id', sessionId);
+    }
+    
+    if (params) {
+      Object.entries(params).forEach(function(kv) {
+        if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
+          url.searchParams.set(kv[0], kv[1]);
+        }
+      });
+    }
+    
+    const res  = await fetch(url.toString(), { cache: 'no-cache' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
   }
-  
-  // Fallback to localStorage
-  if (!sessionId) {
-    sessionId = localStorage.getItem('wv_session') || '';
-  }
-  
-  // Also try just 'session' key
-  if (!sessionId) {
-    sessionId = localStorage.getItem('session') || '';
-  }
-  
-  if (sessionId) {
-    url.searchParams.set('session_id', sessionId);
-    console.log('Sending session:', sessionId.substring(0, 8) + '...'); // Debug log
-  } else {
-    console.warn('No session found for API call to:', path); // Debug log
-  }
-  
-  if (params) {
-    Object.entries(params).forEach(function(kv) {
-      if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
-        url.searchParams.set(kv[0], kv[1]);
-      }
-    });
-  }
-  
-  console.log('API URL:', url.toString().replace(savedSecret, '***SECRET***')); // Debug log
-  
-  const res  = await fetch(url.toString(), { cache: 'no-cache' });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data;
-}
 
 
   // ================================================================
@@ -231,14 +226,14 @@ async function api(path, params) {
 
 
   // ================================================================
-  //  CONNECTION TAB
+  //  CONNECTION TAB - FIXED: Removed admin creation prompt
   // ================================================================
   function renderConnectionTab(status, isConnected) {
     var howToSteps = [
       ['1', 'Go to <strong>script.google.com</strong> → New Project'],
       ['2', 'Create a new Google Sheet → copy the Sheet ID from its URL'],
       ['3', 'Paste all your <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">.gs</code> files into the Apps Script editor (one file each)'],
-      ['4', 'Set <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">MASTER_SHEET_ID</code> and <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">API_SECRET</code> in <strong>Code.gs</strong>'],
+      ['4', 'Set <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">MASTER_SHEET_ID</code> and <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono text-xs">API_SECRET</code> in <strong>Config.gs</strong>'],
       ['5', 'Click <strong>Deploy → New Deployment</strong>'],
       ['6', 'Type: <strong>Web App</strong> · Execute as: <strong>Me</strong> · Access: <strong>Anyone</strong>'],
       ['7', 'Copy the Web App URL → paste it above'],
@@ -1170,6 +1165,7 @@ async function api(path, params) {
     setTimeout(function() { window.settingsTestConnection(); }, 400);
   };
 
+  // FIXED: Removed admin creation prompt - just show success when connected
   window.settingsTestConnection = async function() {
     var url    = (document.getElementById('settings-gas-url')?.value || '').trim() || savedUrl;
     var secret = (document.getElementById('settings-secret')?.value  || '').trim() || savedSecret;
@@ -1182,43 +1178,17 @@ async function api(path, params) {
       var pingData = await pingRes.json();
       if (pingData.status !== 'ok') throw new Error('Unexpected response from server');
 
-      // Check if admin exists (no secret needed for this)
-      var usersUrl = new URL(url);
-      usersUrl.searchParams.set('path', 'users/list');
-      if (secret) {
-        usersUrl.searchParams.set('token', secret);
-      }
-      var usersRes = await fetch(usersUrl.toString(), { cache: 'no-cache' });
-      var usersData = await usersRes.json();
-      var hasAdmin = (usersData.rows || []).some(function(u) { return u.role === 'SuperAdmin' || u.role === 'Admin'; });
+      // Just check if we can connect - admin is created manually in sheet
+      localStorage.setItem('wv_gas_url', url);
+      savedUrl = url;
+      window.API_URL = url;
       
-      // If admin exists, no need for API secret - just save URL
-      if (hasAdmin) {
-        localStorage.setItem('wv_gas_url', url);
-        savedUrl = url;
-        window.API_URL = url;
-        render({ ok: true, message: '✓ Connected successfully! Admins already set up. You can now login.' });
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
-        return;
-      }
+      render({ ok: true, message: '✓ Connected successfully! You can now log in with your admin credentials (created in Google Sheet).' });
       
-      // If no admin, use public setup/init — no secret needed
-      var provUrl = new URL(url);
-      provUrl.searchParams.set('path', 'setup/init');
-      var provRes  = await fetch(provUrl.toString(), { cache: 'no-cache' });
-      var provData = await provRes.json();
-      if (provData.error) throw new Error(provData.error);
-
-      if (provData.provisioned || !hasAdmin) {
-        // First time setup - show admin creation form
-        renderAdminSetupForm();
-      } else {
-        render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
-      }
     } catch(e) {
       render({ ok: false, message: 'Connection failed: ' + e.message + '. Check the URL and try again.' });
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
     }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-vial text-sm"></i> Test Connection'; }
   };
 
   window.settingsDisconnect = function() {
@@ -1229,129 +1199,6 @@ async function api(path, params) {
     window.API_URL = '';
     render({ ok: false, message: 'Disconnected. Enter a new GAS URL to reconnect.' });
   };
-
-  // ── ADMIN SETUP FORM ────────────────────────────────────────────
-  function renderAdminSetupForm() {
-    var adminSetupHtml = `
-      <div class="max-w-2xl space-y-6">
-        <div class="bg-white rounded-2xl border border-blue-200 shadow-sm overflow-hidden">
-          <div class="px-6 py-5 border-b border-blue-100 flex items-center gap-3 bg-blue-50">
-            <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
-              <i class="fas fa-user-shield text-white text-sm"></i>
-            </div>
-            <div>
-              <h2 class="font-bold text-slate-900">Create Admin Accounts</h2>
-              <p class="text-xs text-slate-500">Set up your Support and Customer admin accounts</p>
-            </div>
-          </div>
-          <div class="px-6 py-5 space-y-4">
-            <div id="admin-setup-step-1">
-              <p class="text-sm text-slate-600 mb-4">Creating Work Volt Support account...</p>
-              <div class="flex items-center justify-center py-6">
-                <i class="fas fa-circle-notch fa-spin text-2xl text-blue-600"></i>
-              </div>
-            </div>
-            <div id="admin-setup-step-2" class="hidden space-y-4">
-              <div id="admin-setup-error" class="hidden p-3 bg-red-50 text-red-600 text-sm rounded-lg"></div>
-              <div>
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Admin Email</label>
-                <input id="admin-email" type="email" placeholder="admin@company.com" class="field text-sm">
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Admin Name</label>
-                <input id="admin-name" type="text" placeholder="Full Name" class="field text-sm">
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Password</label>
-                <input id="admin-pass" type="password" placeholder="Password" class="field text-sm">
-              </div>
-              <button onclick="createCustomerAdminFromSettings()" class="btn-primary w-full">
-                <i class="fas fa-user-tie text-sm mr-2"></i>Create Customer Admin
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-    
-    var contentDiv = document.getElementById('settings-tab-content');
-    if (contentDiv) {
-      contentDiv.innerHTML = adminSetupHtml;
-      setTimeout(function() {
-        window.createSupportAdminFromSettings();
-      }, 500);
-    }
-  }
-
-  window.createSupportAdminFromSettings = async function() {
-    if (!savedUrl) return;
-    
-    try {
-      var apiUrl = new URL(savedUrl);
-      apiUrl.searchParams.set('path', 'setup/create-admin');
-      apiUrl.searchParams.set('email', 'sadmin@workvolt.app');
-      apiUrl.searchParams.set('password', Math.random().toString(36).slice(-12));
-      apiUrl.searchParams.set('role', 'SuperAdmin');
-      apiUrl.searchParams.set('name', 'Work Volt Support');
-      
-      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
-      var data = await res.json();
-      
-      if (data.error && !data.error.includes('already exists')) {
-        throw new Error(data.error);
-      }
-      
-      // Show step 2
-      document.getElementById('admin-setup-step-1').classList.add('hidden');
-      document.getElementById('admin-setup-step-2').classList.remove('hidden');
-      
-    } catch(e) {
-      var error = document.getElementById('admin-setup-error');
-      if (error) {
-        error.textContent = 'Setup error: ' + e.message;
-        error.classList.remove('hidden');
-      }
-    }
-  };
-
-  window.createCustomerAdminFromSettings = async function() {
-    var email = document.getElementById('admin-email').value.trim();
-    var name = document.getElementById('admin-name').value.trim();
-    var pass = document.getElementById('admin-pass').value;
-    var error = document.getElementById('admin-setup-error');
-    
-    if (!email || !name || !pass) {
-      error.textContent = 'Please fill in all fields';
-      error.classList.remove('hidden');
-      return;
-    }
-    
-    if (!savedUrl) return;
-    
-    try {
-      var apiUrl = new URL(savedUrl);
-      apiUrl.searchParams.set('path', 'setup/create-admin');
-      apiUrl.searchParams.set('email', email);
-      apiUrl.searchParams.set('password', pass);
-      apiUrl.searchParams.set('role', 'Admin');
-      apiUrl.searchParams.set('name', name);
-      
-      var res = await fetch(apiUrl.toString(), { cache: 'no-cache' });
-      var data = await res.json();
-      
-      if (data.error) throw new Error(data.error);
-      
-      // Go back to login
-      currentUser = null;
-      localStorage.removeItem('wv_user');
-      window.location.reload();
-      
-    } catch(e) {
-      error.textContent = e.message;
-      error.classList.remove('hidden');
-    }
-  };
-
 
   // ── Boot ──────────────────────────────────────────────────────
   if (savedUrl) {
