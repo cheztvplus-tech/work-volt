@@ -46,31 +46,31 @@ window.WorkVoltPages['settings'] = function(container) {
 
 
   // ================================================================
-  //  API HELPER
+  //  API HELPER - FIXED: Added session_id parameter
   // ================================================================
   async function api(path, params) {
-  const url = new URL(savedUrl);
-  url.searchParams.set('path',  path);
-  url.searchParams.set('token', savedSecret);
-  
-  // CRITICAL FIX: Add session_id for protected routes
-  const sessionId = window.WorkVolt?.session?.() || localStorage.getItem('wv_session') || '';
-  if (sessionId) {
-    url.searchParams.set('session_id', sessionId);
+    const url = new URL(savedUrl);
+    url.searchParams.set('path',  path);
+    url.searchParams.set('token', savedSecret);
+    
+    // FIXED: Add session_id for protected routes
+    const sessionId = localStorage.getItem('wv_session') || '';
+    if (sessionId) {
+      url.searchParams.set('session_id', sessionId);
+    }
+    
+    if (params) {
+      Object.entries(params).forEach(function(kv) {
+        if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
+          url.searchParams.set(kv[0], kv[1]);
+        }
+      });
+    }
+    const res  = await fetch(url.toString(), { cache: 'no-cache' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
   }
-  
-  if (params) {
-    Object.entries(params).forEach(function(kv) {
-      if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
-        url.searchParams.set(kv[0], kv[1]);
-      }
-    });
-  }
-  const res  = await fetch(url.toString(), { cache: 'no-cache' });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data;
-}
 
 
   // ================================================================
@@ -879,536 +879,6 @@ window.WorkVoltPages['settings'] = function(container) {
     `;
   }
 
-  // ================================================================
-  //  PAYROLL TAX SETTINGS
-  // ================================================================
-
-  // Default tax configs per country — all rates as percentages (e.g. 7.65 = 7.65%)
-  var PAYROLL_TAX_DEFAULTS = {
-    USA: {
-      country: 'USA',
-      pay_periods_per_year: 26,
-      // Federal income tax uses progressive brackets — not editable as a flat % here
-      // but user can override an effective flat rate if they prefer simplicity
-      federal_use_brackets: true,
-      federal_flat_rate: 22,          // fallback flat % if brackets disabled
-      fica_ss_rate: 6.2,              // Social Security
-      fica_medicare_rate: 1.45,       // Medicare
-      additional_medicare_rate: 0.9,  // Additional Medicare on income > $200k (annual)
-      state_tax_rate: 5.0,            // default; user sets their state
-      state_tax_label: 'State Income Tax',
-      local_tax_rate: 0,              // city/municipal tax
-      local_tax_label: 'Local Tax',
-      futa_rate: 0.6,                 // Federal Unemployment (employer only, not deducted from employee)
-      other_deduction_label: 'Other Deductions',
-      other_deduction_rate: 0,
-      currency: 'USD',
-      currency_symbol: '$',
-    },
-    Canada: {
-      country: 'Canada',
-      pay_periods_per_year: 26,
-      federal_use_brackets: true,
-      federal_flat_rate: 20.5,        // approx middle bracket
-      cpp_rate: 5.95,                 // Canada Pension Plan (employee share, 2024)
-      cpp_max_annual: 3867.50,        // 2024 max annual CPP contribution
-      ei_rate: 1.66,                  // Employment Insurance (employee, 2024)
-      ei_max_annual: 1049.12,         // 2024 max annual EI
-      provincial_tax_rate: 9.15,      // e.g. Ontario second bracket; user adjusts per province
-      provincial_tax_label: 'Provincial Income Tax',
-      additional_tax_rate: 0,         // e.g. Quebec abatement or surtax
-      additional_tax_label: 'Additional Tax',
-      other_deduction_label: 'Other Deductions',
-      other_deduction_rate: 0,
-      currency: 'CAD',
-      currency_symbol: '$',
-    },
-  };
-
-  var _payrollTaxConfig = null; // loaded from server
-
-  var _payrollTaxVisibleRoles = ['SuperAdmin', 'Admin']; // default: admin-only
-
-  async function loadPayrollTaxSettings() {
-    var section = document.getElementById('module-settings-section');
-    if (!section) return;
-
-    var payrollInstalled = modulesCache.some(function(m) { return m.id === 'payroll'; });
-    if (!payrollInstalled) { section.innerHTML = ''; return; }
-
-    // Load saved config + visible roles in one request
-    try {
-      var res = await api('config/get-all', {});
-      var saved = res.settings && res.settings['payroll_tax_config'];
-      if (saved) {
-        try { _payrollTaxConfig = JSON.parse(saved); } catch(e) { _payrollTaxConfig = null; }
-      }
-      var savedRoles = res.settings && res.settings['payroll_tax_visible_roles'];
-      if (savedRoles) {
-        try { _payrollTaxVisibleRoles = JSON.parse(savedRoles); } catch(e) {}
-      }
-    } catch(e) { /* silently fall back to defaults */ }
-
-    if (!_payrollTaxConfig) _payrollTaxConfig = Object.assign({}, PAYROLL_TAX_DEFAULTS.USA);
-
-    renderPayrollTaxCard();
-  }
-
-  function renderPayrollTaxCard() {
-    var section = document.getElementById('module-settings-section');
-    if (!section) return;
-
-    var cfg = _payrollTaxConfig || PAYROLL_TAX_DEFAULTS.USA;
-    var country = cfg.country || 'USA';
-    var isUSA = country === 'USA';
-
-    function fld(id, label, value, tooltip, unit, readOnly) {
-      unit = unit || '%';
-      return (
-        '<div>' +
-          '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1" title="' + (tooltip||'') + '">' +
-            label +
-            (tooltip ? ' <i class="fas fa-info-circle text-slate-300 text-[10px] cursor-help"></i>' : '') +
-          '</label>' +
-          '<div class="relative">' +
-            '<input id="ptax-' + id + '" type="number" min="0" max="99" step="0.01" ' +
-              'value="' + (value !== undefined ? value : '') + '" ' +
-              (readOnly ? 'readonly ' : '') +
-              'class="w-full pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-xl font-mono ' +
-              (readOnly ? 'bg-slate-50 text-slate-400 cursor-default' : 'bg-white text-slate-800 focus:outline-none focus:border-blue-400') + '" ' +
-              'style="font-family:inherit">' +
-            '<span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">' + unit + '</span>' +
-          '</div>' +
-        '</div>'
-      );
-    }
-
-    function section2(title, icon, color, fields) {
-      return (
-        '<div class="border border-slate-200 rounded-xl overflow-hidden">' +
-          '<div class="px-4 py-2.5 flex items-center gap-2" style="background:' + color + '">' +
-            '<i class="fas ' + icon + ' text-xs" style="color:' + color.replace('f0','600').replace('fef','red') + '"></i>' +
-            '<span class="text-xs font-extrabold uppercase tracking-wider text-slate-600">' + title + '</span>' +
-          '</div>' +
-          '<div class="p-4 grid grid-cols-2 gap-3">' + fields + '</div>' +
-        '</div>'
-      );
-    }
-
-    var usaFields = (
-      section2('Federal Income Tax', 'fa-landmark', '#f0f9ff',
-        fld('federal_flat_rate', 'Effective Fed. Rate (flat)', cfg.federal_flat_rate, 'Used when bracket calc is off, or as a cap reference', '%') +
-        fld('pay_periods_per_year', 'Pay Periods / Year', cfg.pay_periods_per_year, 'e.g. 26 = biweekly, 24 = semi-monthly, 12 = monthly', 'x') +
-        '<div class="col-span-2 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">' +
-          '<div>' +
-            '<div class="text-xs font-bold text-blue-800">Use Progressive Brackets</div>' +
-            '<div class="text-[10px] text-blue-600">' + new Date().getFullYear() + ' IRS marginal brackets (10%–37%)</div>' +
-          '</div>' +
-          '<label class="relative inline-flex items-center cursor-pointer">' +
-            '<input type="checkbox" id="ptax-federal_use_brackets" ' + (cfg.federal_use_brackets ? 'checked' : '') + ' class="sr-only peer">' +
-            '<div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 transition-colors after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>' +
-          '</label>' +
-        '</div>'
-      ) +
-      section2('FICA (Employee Share)', 'fa-shield-alt', '#f0fdf4',
-        fld('fica_ss_rate',       'Social Security',       cfg.fica_ss_rate,       'Employee portion only. Employer matches.') +
-        fld('fica_medicare_rate', 'Medicare',              cfg.fica_medicare_rate, 'Employee portion only. Employer matches.') +
-        fld('additional_medicare_rate', 'Additional Medicare', cfg.additional_medicare_rate, 'Extra 0.9% on annual wages over $200k') +
-        '<div></div>'
-      ) +
-      section2('State & Local Tax', 'fa-map-marker-alt', '#fefce8',
-        fld('state_tax_rate',  cfg.state_tax_label  || 'State Income Tax', cfg.state_tax_rate,  'Set to 0 for states with no income tax (e.g. TX, FL)') +
-        fld('local_tax_rate',  cfg.local_tax_label  || 'Local / City Tax',  cfg.local_tax_rate,  'Municipal or city tax if applicable') +
-        '<div class="col-span-2 grid grid-cols-2 gap-2">' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">State Tax Label</label>' +
-            '<input id="ptax-state_tax_label" type="text" value="' + (cfg.state_tax_label||'State Income Tax') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Local Tax Label</label>' +
-            '<input id="ptax-local_tax_label" type="text" value="' + (cfg.local_tax_label||'Local Tax') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>' +
-        '</div>'
-      ) +
-      section2('Other Deductions', 'fa-minus-circle', '#fdf4ff',
-        fld('other_deduction_rate', cfg.other_deduction_label || 'Auto-Deduction %', cfg.other_deduction_rate, 'Applied automatically to every pay run (e.g. benefits, union dues)') +
-        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Deduction Label</label>' +
-          '<input id="ptax-other_deduction_label" type="text" value="' + (cfg.other_deduction_label||'Other Deductions') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>'
-      )
-    );
-
-    var canadaFields = (
-      section2('Federal Income Tax', 'fa-landmark', '#f0f9ff',
-        fld('federal_flat_rate', 'Effective Fed. Rate (flat)', cfg.federal_flat_rate, 'Used as fallback when bracket calc is off', '%') +
-        fld('pay_periods_per_year', 'Pay Periods / Year', cfg.pay_periods_per_year, 'e.g. 26 = biweekly, 24 = semi-monthly, 12 = monthly', 'x') +
-        '<div class="col-span-2 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">' +
-          '<div>' +
-            '<div class="text-xs font-bold text-blue-800">Use Progressive Brackets</div>' +
-            '<div class="text-[10px] text-blue-600">' + new Date().getFullYear() + ' CRA federal marginal brackets (15%–33%)</div>' +
-          '</div>' +
-          '<label class="relative inline-flex items-center cursor-pointer">' +
-            '<input type="checkbox" id="ptax-federal_use_brackets" ' + (cfg.federal_use_brackets ? 'checked' : '') + ' class="sr-only peer">' +
-            '<div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 transition-colors after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>' +
-          '</label>' +
-        '</div>'
-      ) +
-      section2('CPP & EI (Employee Share)', 'fa-shield-alt', '#f0fdf4',
-        fld('cpp_rate',     'CPP Rate (' + new Date().getFullYear() + ')',   cfg.cpp_rate,     'Canada Pension Plan — employee contribution') +
-        fld('cpp_max_annual', 'CPP Max Annual ($)',      cfg.cpp_max_annual, 'Max annual CPP deduction per employee', '$') +
-        fld('ei_rate',      'EI Rate (' + new Date().getFullYear() + ')',    cfg.ei_rate,      'Employment Insurance — employee premium') +
-        fld('ei_max_annual', 'EI Max Annual ($)',        cfg.ei_max_annual,  'Max annual EI deduction per employee', '$')
-      ) +
-      section2('Provincial Tax', 'fa-map-marker-alt', '#fefce8',
-        fld('provincial_tax_rate', cfg.provincial_tax_label || 'Provincial Income Tax', cfg.provincial_tax_rate, 'Set to your province\'s rate') +
-        fld('additional_tax_rate', cfg.additional_tax_label || 'Additional / Surtax',  cfg.additional_tax_rate, 'Quebec abatement, surtax, etc.') +
-        '<div class="col-span-2 grid grid-cols-2 gap-2">' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Provincial Label</label>' +
-            '<input id="ptax-provincial_tax_label" type="text" value="' + (cfg.provincial_tax_label||'Provincial Income Tax') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>' +
-          '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Additional Tax Label</label>' +
-            '<input id="ptax-additional_tax_label" type="text" value="' + (cfg.additional_tax_label||'Additional Tax') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>' +
-        '</div>'
-      ) +
-      section2('Other Deductions', 'fa-minus-circle', '#fdf4ff',
-        fld('other_deduction_rate', cfg.other_deduction_label || 'Auto-Deduction %', cfg.other_deduction_rate, 'Applied automatically to every pay run') +
-        '<div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Deduction Label</label>' +
-          '<input id="ptax-other_deduction_label" type="text" value="' + (cfg.other_deduction_label||'Other Deductions') + '" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-blue-400" style="font-family:inherit"></div>'
-      )
-    );
-
-    // Dynamic rate reference panel — shows a "Refresh rates" button that hits the Anthropic API
-    // to get the current year's rates, so the reference is always up to date
-    var rateGuide = (
-      '<div class="border border-slate-200 rounded-xl overflow-hidden">' +
-        '<div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">' +
-          '<div class="flex items-center gap-2">' +
-            '<i class="fas fa-table text-slate-400 text-xs"></i>' +
-            '<span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">' +
-              (isUSA ? 'State Income Tax Reference' : 'Provincial Income Tax Reference') +
-            '</span>' +
-          '</div>' +
-          '<button id="ptax-refresh-rates" onclick="refreshTaxRates()" ' +
-            'class="flex items-center gap-1.5 text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg hover:bg-blue-100 cursor-pointer transition-colors">' +
-            '<i class="fas fa-magic text-[10px]"></i>Fetch ' + new Date().getFullYear() + ' Rates' +
-          '</button>' +
-        '</div>' +
-        '<div id="ptax-rate-table" class="px-4 py-3">' +
-          '<p class="text-[11px] text-slate-400 text-center py-2">' +
-            'Click <strong>Fetch ' + new Date().getFullYear() + ' Rates</strong> to load current rates via AI — automatically correct for this year.' +
-          '</p>' +
-        '</div>' +
-      '</div>'
-    );
-
-    var taxEnabled = cfg.tax_calculation_enabled !== false; // default true
-
-    section.innerHTML = (
-      '<div class="mb-6">' +
-        '<h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Module Settings</h3>' +
-        '<div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">' +
-
-          // Card header with master enable toggle
-          '<div class="px-6 py-4 border-b border-slate-100 flex items-center gap-3">' +
-            '<div class="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center">' +
-              '<i class="fas fa-money-bill-wave text-emerald-600 text-sm"></i>' +
-            '</div>' +
-            '<div class="flex-1">' +
-              '<h2 class="font-bold text-slate-900">Payroll Tax Settings</h2>' +
-              '<p class="text-xs text-slate-500">Auto-calculate taxes on every pay run. Disable if you enter taxes manually.</p>' +
-            '</div>' +
-            // Master on/off toggle
-            '<div class="flex items-center gap-2">' +
-              '<span id="ptax-enabled-label" class="text-xs font-bold ' + (taxEnabled ? 'text-emerald-600' : 'text-slate-400') + '">' +
-                (taxEnabled ? 'Enabled' : 'Disabled') +
-              '</span>' +
-              '<label class="relative inline-flex items-center cursor-pointer">' +
-                '<input type="checkbox" id="ptax-master-toggle" ' + (taxEnabled ? 'checked' : '') + ' class="sr-only peer" onchange="payrollTaxToggleChanged(this.checked)">' +
-                '<div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-emerald-500 transition-colors after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5 after:shadow-sm"></div>' +
-              '</label>' +
-            '</div>' +
-          '</div>' +
-
-          // Collapsible body — hidden when disabled
-          '<div id="ptax-body" class="' + (taxEnabled ? '' : 'hidden') + '">' +
-            '<div class="px-6 py-5 space-y-4">' +
-              '<div id="ptax-status"></div>' +
-
-              // Country selector
-              '<div>' +
-                '<label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Country / Region</label>' +
-                '<div class="grid grid-cols-2 gap-3">' +
-                  '<label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors ' +
-                    (isUSA ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300') + '">' +
-                    '<input type="radio" name="ptax_country" value="USA" ' + (isUSA ? 'checked' : '') + ' id="ptax-country-usa" class="accent-blue-600" onchange="payrollTaxCountryChanged(\'USA\')">' +
-                    '<div><div class="font-bold text-slate-800 text-sm">🇺🇸 United States</div>' +
-                    '<div class="text-[10px] text-slate-500">IRS brackets · FICA · State tax</div></div>' +
-                  '</label>' +
-                  '<label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors ' +
-                    (!isUSA ? 'border-red-400 bg-red-50' : 'border-slate-200 hover:border-slate-300') + '">' +
-                    '<input type="radio" name="ptax_country" value="Canada" ' + (!isUSA ? 'checked' : '') + ' id="ptax-country-ca" class="accent-red-600" onchange="payrollTaxCountryChanged(\'Canada\')">' +
-                    '<div><div class="font-bold text-slate-800 text-sm">🇨🇦 Canada</div>' +
-                    '<div class="text-[10px] text-slate-500">CRA brackets · CPP · EI · Provincial</div></div>' +
-                  '</label>' +
-                '</div>' +
-              '</div>' +
-
-              // Tax fields
-              '<div id="ptax-fields" class="space-y-3">' +
-                (isUSA ? usaFields : canadaFields) +
-              '</div>' +
-
-              // Dynamic rate reference panel
-              rateGuide +
-
-              // Legal note
-              '<div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">' +
-                '<i class="fas fa-exclamation-triangle mr-1.5"></i>' +
-                '<strong>Note:</strong> Rates are estimates. Always verify with your tax authority (' +
-                (isUSA ? 'IRS.gov' : 'CRA · canada.ca') + '). The AI-fetched rates reflect the current tax year.' +
-              '</div>' +
-
-              // Role access picker
-              '<div class="border border-slate-200 rounded-xl overflow-hidden">' +
-                '<div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center gap-2">' +
-                  '<i class="fas fa-user-shield text-slate-400 text-xs"></i>' +
-                  '<span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Who Can View Tax Settings</span>' +
-                '</div>' +
-                '<div class="p-4">' +
-                  '<p class="text-[11px] text-slate-500 mb-3">Choose which roles can view the tax rates panel inside the Payroll module. Admins can always edit; other roles see a read-only view.</p>' +
-                  '<div class="space-y-1">' +
-                    (function() {
-                      var ALL_ROLES = ['SuperAdmin','Admin','Manager','Employee','Contractor'];
-                      var roleColors = { SuperAdmin:'purple', Admin:'blue', Manager:'indigo', Employee:'green', Contractor:'amber' };
-                      return ALL_ROLES.map(function(r) {
-                        var isChecked = _payrollTaxVisibleRoles.includes(r);
-                        var isLocked  = r === 'SuperAdmin' || r === 'Admin';
-                        var col = roleColors[r] || 'slate';
-                        return (
-                          '<label class="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-slate-50 cursor-pointer ' + (isLocked ? 'opacity-70' : '') + '">' +
-                            '<div class="flex items-center gap-2">' +
-                              '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-' + col + '-100 text-' + col + '-700">' + r + '</span>' +
-                              (isLocked ? '<span class="text-[10px] text-slate-400">Always has access</span>' : '') +
-                            '</div>' +
-                            '<input type="checkbox" class="ptax-role-check w-4 h-4 accent-emerald-600 rounded" value="' + r + '"' +
-                              (isChecked ? ' checked' : '') +
-                              (isLocked  ? ' disabled' : '') + '>' +
-                          '</label>'
-                        );
-                      }).join('');
-                    })() +
-                  '</div>' +
-                '</div>' +
-              '</div>' +
-
-              // Save button
-              '<button onclick="savePayrollTaxConfig()" id="ptax-save-btn" class="btn-primary w-full" style="background:#10b981">' +
-                '<i class="fas fa-save text-sm"></i> Save Payroll Tax Settings' +
-              '</button>' +
-            '</div>' +
-          '</div>' +
-
-          // Disabled state message
-          '<div id="ptax-disabled-msg" class="' + (taxEnabled ? 'hidden' : '') + ' px-6 py-5">' +
-            '<div class="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-500">' +
-              '<i class="fas fa-calculator text-slate-300 text-xl"></i>' +
-              '<div>' +
-                '<div class="font-semibold text-slate-600">Tax auto-calculation is off</div>' +
-                '<div class="text-xs mt-0.5">Pay runs will not have taxes automatically deducted. You can still enter taxes manually on each pay run.</div>' +
-              '</div>' +
-            '</div>' +
-            '<button onclick="savePayrollTaxConfig()" class="mt-3 btn-primary w-full" style="background:#10b981">' +
-              '<i class="fas fa-save text-sm"></i> Save' +
-            '</button>' +
-          '</div>' +
-
-        '</div>' +
-      '</div>'
-    );
-  }
-
-  window.payrollTaxToggleChanged = function(enabled) {
-    var body    = document.getElementById('ptax-body');
-    var disMsg  = document.getElementById('ptax-disabled-msg');
-    var label   = document.getElementById('ptax-enabled-label');
-    if (body)   body.classList.toggle('hidden', !enabled);
-    if (disMsg) disMsg.classList.toggle('hidden', enabled);
-    if (label)  { label.textContent = enabled ? 'Enabled' : 'Disabled'; label.className = 'text-xs font-bold ' + (enabled ? 'text-emerald-600' : 'text-slate-400'); }
-  };
-
-  window.refreshTaxRates = async function() {
-    var btn = document.getElementById('ptax-refresh-rates');
-    var table = document.getElementById('ptax-rate-table');
-    var country = (document.querySelector('input[name="ptax_country"]:checked') || {}).value || 'USA';
-    var isUSA = country === 'USA';
-    var yr = new Date().getFullYear();
-
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-[10px]"></i> Fetching…'; }
-    if (table) table.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-3"><i class="fas fa-circle-notch fa-spin mr-1"></i>Asking AI for ' + yr + ' rates…</p>';
-
-    var prompt = isUSA
-      ? 'List the ' + yr + ' US state income tax rates (top marginal rate for a single filer) for all 50 states plus DC. Return ONLY a JSON array, no markdown, no explanation. Each item: {"state":"CA","rate":13.3}. Use 0 for states with no income tax. Sort by state code alphabetically.'
-      : 'List the ' + yr + ' Canadian provincial and territorial income tax rates (lowest bracket / first bracket rate %) for all provinces and territories. Return ONLY a JSON array, no markdown, no explanation. Each item: {"province":"ON","rate":5.05,"label":"Ontario"}. Sort by province code alphabetically.';
-
-    try {
-      var response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
-      var data = await response.json();
-      var text = (data.content || []).map(function(b){ return b.text || ''; }).join('');
-      // Strip any accidental markdown fences
-      text = text.replace(/```json|```/g, '').trim();
-      var rates = JSON.parse(text);
-
-      if (!Array.isArray(rates) || !rates.length) throw new Error('Unexpected response format');
-
-      // Render rate chips
-      var chipsHtml = rates.map(function(r) {
-        var code = r.state || r.province || '';
-        var rate = parseFloat(r.rate) || 0;
-        var label = r.label ? r.label.replace(/^.*\s/, '') : code; // short name
-        var rateStr = rate === 0 ? 'None' : rate.toFixed(2) + '%';
-        var color = rate === 0 ? 'bg-green-50 border-green-100 text-green-700'
-                  : rate < 5  ? 'bg-blue-50 border-blue-100 text-blue-700'
-                  : rate < 10 ? 'bg-amber-50 border-amber-100 text-amber-700'
-                  :              'bg-red-50 border-red-100 text-red-700';
-        return (
-          '<button class="ptax-rate-chip text-left ' + color + ' border rounded-lg px-2 py-1.5 text-[10px] font-semibold hover:opacity-80 transition-opacity cursor-pointer" ' +
-            'data-rate="' + rate + '" data-label="' + (r.label || code) + '" title="Click to use this rate">' +
-            '<div class="font-extrabold">' + code + '</div>' +
-            '<div class="opacity-80">' + rateStr + '</div>' +
-          '</button>'
-        );
-      }).join('');
-
-      table.innerHTML = (
-        '<p class="text-[10px] text-slate-400 mb-2"><i class="fas fa-robot text-blue-400 mr-1"></i>AI-fetched ' + yr + ' rates · Click any rate to apply it</p>' +
-        '<div class="grid grid-cols-5 gap-1">' + chipsHtml + '</div>'
-      );
-
-      // Wire click-to-apply
-      table.querySelectorAll('.ptax-rate-chip').forEach(function(chip) {
-        chip.addEventListener('click', function() {
-          var rate = this.dataset.rate;
-          var label = this.dataset.label;
-          var fieldId = isUSA ? 'ptax-state_tax_rate' : 'ptax-provincial_tax_rate';
-          var labelId = isUSA ? 'ptax-state_tax_label'    : 'ptax-provincial_tax_label';
-          var rateEl  = document.getElementById(fieldId);
-          var labelEl = document.getElementById(labelId);
-          if (rateEl)  rateEl.value  = rate;
-          if (labelEl) labelEl.value = label + (isUSA ? ' State Tax' : ' Provincial Tax');
-          // Highlight the selected chip
-          table.querySelectorAll('.ptax-rate-chip').forEach(function(c){ c.style.outline = ''; });
-          this.style.outline = '2px solid #10b981';
-        });
-      });
-
-    } catch(e) {
-      table.innerHTML = '<p class="text-[11px] text-red-500 text-center py-2"><i class="fas fa-exclamation-circle mr-1"></i>Could not fetch rates: ' + (e.message||'unknown error') + '</p>';
-    }
-
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-magic text-[10px]"></i>Fetch ' + yr + ' Rates'; }
-  };
-
-  window.payrollTaxCountryChanged = function(country) {
-    // Merge current field values back into config before switching
-    // so partial edits for the old country aren't lost if they switch back
-    var defaults = PAYROLL_TAX_DEFAULTS[country] || PAYROLL_TAX_DEFAULTS.USA;
-    _payrollTaxConfig = Object.assign({}, defaults);
-    renderPayrollTaxCard();
-  };
-
-  window.savePayrollTaxConfig = async function() {
-    var btn = document.getElementById('ptax-save-btn');
-    var statusEl = document.getElementById('ptax-status');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Saving…'; }
-    if (statusEl) statusEl.innerHTML = '';
-
-    var country = (document.querySelector('input[name="ptax_country"]:checked') || {}).value || 'USA';
-    var isUSA = country === 'USA';
-
-    function gn(id, fallback) {
-      var el = document.getElementById('ptax-' + id);
-      if (!el) return fallback !== undefined ? fallback : 0;
-      return parseFloat(el.value) || 0;
-    }
-    function gs(id, fallback) {
-      var el = document.getElementById('ptax-' + id);
-      if (!el) return fallback || '';
-      return el.value || fallback || '';
-    }
-    function gb(id) {
-      var el = document.getElementById('ptax-' + id);
-      return el ? el.checked : false;
-    }
-
-    // Read the master enabled toggle before building the config object
-    var masterToggle = document.getElementById('ptax-master-toggle');
-    var taxEnabled = masterToggle ? masterToggle.checked : true;
-
-    var cfg;
-    if (isUSA) {
-      cfg = {
-        country: 'USA',
-        tax_calculation_enabled:  taxEnabled,
-        pay_periods_per_year:     gn('pay_periods_per_year', 26),
-        federal_use_brackets:     gb('federal_use_brackets'),
-        federal_flat_rate:        gn('federal_flat_rate', 22),
-        fica_ss_rate:             gn('fica_ss_rate', 6.2),
-        fica_medicare_rate:       gn('fica_medicare_rate', 1.45),
-        additional_medicare_rate: gn('additional_medicare_rate', 0.9),
-        state_tax_rate:           gn('state_tax_rate', 5),
-        state_tax_label:          gs('state_tax_label', 'State Income Tax'),
-        local_tax_rate:           gn('local_tax_rate', 0),
-        local_tax_label:          gs('local_tax_label', 'Local Tax'),
-        other_deduction_rate:     gn('other_deduction_rate', 0),
-        other_deduction_label:    gs('other_deduction_label', 'Other Deductions'),
-        currency: 'USD', currency_symbol: '$',
-      };
-    } else {
-      cfg = {
-        country: 'Canada',
-        tax_calculation_enabled: taxEnabled,
-        pay_periods_per_year:   gn('pay_periods_per_year', 26),
-        federal_use_brackets:   gb('federal_use_brackets'),
-        federal_flat_rate:      gn('federal_flat_rate', 20.5),
-        cpp_rate:               gn('cpp_rate', 5.95),
-        cpp_max_annual:         gn('cpp_max_annual', 3867.50),
-        ei_rate:                gn('ei_rate', 1.66),
-        ei_max_annual:          gn('ei_max_annual', 1049.12),
-        provincial_tax_rate:    gn('provincial_tax_rate', 9.15),
-        provincial_tax_label:   gs('provincial_tax_label', 'Provincial Income Tax'),
-        additional_tax_rate:    gn('additional_tax_rate', 0),
-        additional_tax_label:   gs('additional_tax_label', 'Additional Tax'),
-        other_deduction_rate:   gn('other_deduction_rate', 0),
-        other_deduction_label:  gs('other_deduction_label', 'Other Deductions'),
-        currency: 'CAD', currency_symbol: '$',
-      };
-    }
-
-    // Collect visible roles from the picker
-    var checkedRoles = Array.from(document.querySelectorAll('.ptax-role-check:checked')).map(function(c) { return c.value; });
-    if (!checkedRoles.includes('SuperAdmin')) checkedRoles.unshift('SuperAdmin');
-    if (!checkedRoles.includes('Admin'))      checkedRoles.unshift('Admin');
-
-    try {
-      await Promise.all([
-        api('config/set', { key: 'payroll_tax_config',        value: JSON.stringify(cfg) }),
-        api('config/set', { key: 'payroll_tax_visible_roles', value: JSON.stringify(checkedRoles) }),
-      ]);
-      _payrollTaxConfig       = cfg;
-      _payrollTaxVisibleRoles = checkedRoles;
-      // Expose globally so payroll.js can pick up both without a reload
-      window.WV_PAYROLL_TAX_CONFIG        = cfg;
-      window.WV_PAYROLL_TAX_VISIBLE_ROLES = checkedRoles;
-      if (statusEl) statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium mb-3 bg-green-50 text-green-700 border border-green-200"><i class="fas fa-check-circle"></i><span>Payroll tax settings saved! Pay runs will use the new rates.</span></div>';
-    } catch(e) {
-      if (statusEl) statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium mb-3 bg-red-50 text-red-600 border border-red-200"><i class="fas fa-exclamation-circle"></i><span>' + e.message + '</span></div>';
-    }
-
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save text-sm"></i> Save Payroll Tax Settings'; }
-  };
-
   function setModuleStatus(msg, ok) {
     var el = document.getElementById('modules-status');
     if (!el) return;
@@ -1437,7 +907,6 @@ window.WorkVoltPages['settings'] = function(container) {
       var data = await api('config/modules');
       modulesCache = data.modules || [];
       renderModuleLists();
-      loadPayrollTaxSettings();
     } catch(e) {
       setModuleStatus('Could not load modules: ' + e.message, false);
     }
@@ -1542,7 +1011,6 @@ window.WorkVoltPages['settings'] = function(container) {
         if (typeof renderNav === 'function') renderNav();
       }
       renderModuleLists();
-      loadPayrollTaxSettings();
     } catch(e) {
       setModuleStatus('Install failed: ' + e.message, false);
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download text-xs"></i> Install'; }
@@ -1638,7 +1106,6 @@ window.WorkVoltPages['settings'] = function(container) {
         if (typeof renderNav === 'function') renderNav();
       }
       renderModuleLists();
-      loadPayrollTaxSettings();
     } catch(e) {
       setModuleStatus('Uninstall failed: ' + e.message, false);
     }
@@ -1718,10 +1185,9 @@ window.WorkVoltPages['settings'] = function(container) {
       var provData = await provRes.json();
       if (provData.error) throw new Error(provData.error);
 
-      if (provData.provisioned) {
+      if (provData.provisioned || !hasAdmin) {
         // First time setup - show admin creation form
         renderAdminSetupForm();
-        return;
       } else {
         render({ ok: true, message: '✓ Connected successfully! Work Volt is linked to your Google Sheet.' });
       }
