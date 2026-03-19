@@ -49,21 +49,28 @@ window.WorkVoltPages['settings'] = function(container) {
   //  API HELPER
   // ================================================================
   async function api(path, params) {
-    const url = new URL(savedUrl);
-    url.searchParams.set('path',  path);
-    url.searchParams.set('token', savedSecret);
-    if (params) {
-      Object.entries(params).forEach(function(kv) {
-        if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
-          url.searchParams.set(kv[0], kv[1]);
-        }
-      });
-    }
-    const res  = await fetch(url.toString(), { cache: 'no-cache' });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data;
+  const url = new URL(savedUrl);
+  url.searchParams.set('path',  path);
+  url.searchParams.set('token', savedSecret);
+  
+  // CRITICAL FIX: Add session_id for protected routes
+  const sessionId = window.WorkVolt?.session?.() || localStorage.getItem('wv_session') || '';
+  if (sessionId) {
+    url.searchParams.set('session_id', sessionId);
   }
+  
+  if (params) {
+    Object.entries(params).forEach(function(kv) {
+      if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
+        url.searchParams.set(kv[0], kv[1]);
+      }
+    });
+  }
+  const res  = await fetch(url.toString(), { cache: 'no-cache' });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
 
 
   // ================================================================
