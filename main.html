@@ -6,40 +6,90 @@
   <title>Work Volt</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
   <style>
+    /* ─── Base ─── */
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; }
+
+    /* ─── Transitions ─── */
     .fade-in  { animation: fadeIn 0.25s ease both; }
+    .slide-up { animation: slideUp 0.3s cubic-bezier(.16,1,.3,1) both; }
     @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ─── Splash ─── */
     #splash-screen { transition: opacity 0.4s ease, visibility 0.4s ease; }
     #splash-screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
     .bolt-pulse { animation: boltPulse 2s ease-in-out infinite; }
     @keyframes boltPulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.08);opacity:.85} }
+
+    /* ─── Nav item active ─── */
     .nav-item { transition: background 0.15s, color 0.15s; }
     .nav-item.active { background: #eff6ff; color: #1d4ed8; font-weight: 600; }
+    .nav-item.active i { color: #2563eb; }
+
+    /* ─── Card hover ─── */
     .card-hover { transition: transform 0.18s, box-shadow 0.18s; }
     .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 28px -6px rgba(0,0,0,.12); }
-    .field { width:100%; padding:.6rem .875rem; border:1.5px solid #e2e8f0; border-radius:10px; font-size:.875rem; outline:none; transition:border-color .15s, box-shadow .15s; }
+
+    /* ─── Input focus ring ─── */
+    .field { width:100%; padding:.6rem .875rem; border:1.5px solid #e2e8f0; border-radius:10px; font-size:.875rem; outline:none; transition:border-color .15s, box-shadow .15s; font-family:inherit; }
     .field:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
-    .btn-primary { display:flex; align-items:center; justify-content:center; gap:.5rem; padding:.65rem 1.25rem; background:#2563eb; color:#fff; border:none; border-radius:10px; font-size:.875rem; font-weight:600; cursor:pointer; }
+
+    /* ─── Btn primary ─── */
+    .btn-primary { display:flex; align-items:center; justify-content:center; gap:.5rem; padding:.65rem 1.25rem; background:#2563eb; color:#fff; border:none; border-radius:10px; font-size:.875rem; font-weight:600; cursor:pointer; transition:background .15s, transform .1s; font-family:inherit; }
     .btn-primary:hover { background:#1d4ed8; }
-    #toast-container { position:fixed; bottom:1.5rem; right:1.5rem; z-index:9999; display:flex; flex-direction:column; gap:.5rem; }
-    .toast { display:flex; align-items:center; gap:.75rem; padding:.75rem 1.1rem; border-radius:12px; font-size:.875rem; font-weight:500; color:#fff; }
+    .btn-primary:active { transform:scale(.98); }
+    .btn-primary:disabled { opacity:.6; cursor:not-allowed; }
+
+    /* ─── Btn secondary ─── */
+    .btn-secondary { display:flex; align-items:center; justify-content:center; gap:.5rem; padding:.65rem 1.25rem; background:#f1f5f9; color:#475569; border:none; border-radius:10px; font-size:.875rem; font-weight:600; cursor:pointer; transition:background .15s; font-family:inherit; }
+    .btn-secondary:hover { background:#e2e8f0; }
+
+    /* ─── Toast ─── */
+    #toast-container { position:fixed; bottom:1.5rem; right:1.5rem; z-index:9999; display:flex; flex-direction:column; gap:.5rem; pointer-events:none; }
+    .toast { display:flex; align-items:center; gap:.75rem; padding:.75rem 1.1rem; border-radius:12px; font-size:.875rem; font-weight:500; color:#fff; box-shadow:0 8px 24px rgba(0,0,0,.18); animation:toastIn .3s cubic-bezier(.16,1,.3,1); pointer-events:auto; max-width:360px; }
     .toast.success { background:#16a34a; }
     .toast.error   { background:#dc2626; }
+    .toast.info    { background:#2563eb; }
+    @keyframes toastIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes toastOut { from{opacity:1} to{opacity:0;transform:translateY(12px)} }
+
+    /* ─── Scrollbar thin ─── */
     .thin-scroll::-webkit-scrollbar { width:4px; }
-    #sidebar { transition: width .22s; }
+    .thin-scroll::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:4px; }
+
+    /* ─── Mobile sidebar overlay ─── */
+    #sidebar-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:40; }
+    #sidebar-overlay.visible { display:block; }
+
+    /* ─── Collapsible sidebar (desktop) ─── */
+    #sidebar { transition: width .22s cubic-bezier(.4,0,.2,1); }
     #sidebar.collapsed { width: 56px !important; }
-    #sidebar.collapsed .nav-label, #sidebar.collapsed .sidebar-footer-text { display: none !important; }
+    #sidebar.collapsed .nav-label,
+    #sidebar.collapsed .nav-section-label,
+    #sidebar.collapsed .sidebar-footer-text,
+    #sidebar.collapsed .drag-hint { display: none !important; }
+    #sidebar.collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+
+    /* ─── Responsive mobile tweaks ─── */
     @media (max-width: 768px) {
-      #sidebar { position:fixed; top:0; left:0; height:100vh; z-index:50; transform:translateX(-100%); }
+      #sidebar { position:fixed; top:0; left:0; height:100vh; z-index:50; transform:translateX(-100%); transition:transform .25s ease; }
       #sidebar.open { transform:translateX(0); }
     }
   </style>
+<base target="_blank">
 </head>
+
 <body class="min-h-screen">
 
+  <!-- ══════════════════════════════════════════
+       SPLASH SCREEN
+  ══════════════════════════════════════════ -->
   <div id="splash-screen" class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800">
     <div class="flex flex-col items-center gap-8">
       <div class="relative">
@@ -52,108 +102,281 @@
         <h1 class="text-4xl font-extrabold text-white tracking-tight">Work Volt</h1>
         <p class="text-blue-200 mt-1.5 text-base font-medium">Power your operations</p>
       </div>
+      <div class="flex gap-2 mt-1">
+        <div class="w-2 h-2 bg-white/70 rounded-full animate-bounce" style="animation-delay:0ms"></div>
+        <div class="w-2 h-2 bg-white/70 rounded-full animate-bounce" style="animation-delay:150ms"></div>
+        <div class="w-2 h-2 bg-white/70 rounded-full animate-bounce" style="animation-delay:300ms"></div>
+      </div>
     </div>
   </div>
 
+
+  <!-- ══════════════════════════════════════════
+       MAIN APP SCREEN
+  ══════════════════════════════════════════ -->
   <div id="app-screen" class="hidden flex flex-col min-h-screen">
-    <header class="bg-white border-b border-slate-200 px-4 h-14 flex items-center gap-3 sticky top-0 z-30">
-      <button onclick="toggleMobileSidebar()" class="lg:hidden p-2 hover:bg-slate-100 rounded-lg"><i class="fas fa-bars text-slate-600"></i></button>
+
+    <!-- Top Header -->
+    <header class="bg-white border-b border-slate-200 px-4 h-14 flex items-center gap-3 sticky top-0 z-30 flex-shrink-0">
+
+      <!-- Mobile hamburger + logo -->
+      <button id="mobile-menu-btn" onclick="toggleMobileSidebar()" class="lg:hidden p-2 hover:bg-slate-100 rounded-lg transition-colors">
+        <i class="fas fa-bars text-slate-600"></i>
+      </button>
+
+      <!-- Back button (shown contextually) -->
+      <button id="app-back-btn" onclick="appGoBack()" class="hidden p-2 hover:bg-slate-100 rounded-lg transition-colors" title="Go Back">
+        <i class="fas fa-arrow-left text-slate-600"></i>
+      </button>
+
+      <!-- Logo -->
       <div class="flex items-center gap-2 cursor-pointer" onclick="showModule('dashboard')">
-        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center"><i class="fas fa-bolt text-white text-sm"></i></div>
-        <span class="text-lg font-extrabold text-slate-900">Work Volt</span>
+        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-sm">
+          <i class="fas fa-bolt text-white text-sm"></i>
+        </div>
+        <span class="text-lg font-extrabold text-slate-900 tracking-tight">Work Volt</span>
       </div>
+
+      <!-- Search (desktop) -->
       <div class="flex-1 max-w-sm mx-4 hidden md:block">
         <div class="relative">
           <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-          <input type="text" id="global-search" placeholder="Search..." class="w-full pl-9 pr-4 py-2 bg-slate-100 border border-transparent rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+          <input type="text" id="global-search" placeholder="Search..." data-i18n-placeholder="Search" class="w-full pl-9 pr-4 py-2 bg-slate-100 border border-transparent rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all">
         </div>
       </div>
+
+        <!-- Notifications Bell -->
+        <div id="header-notif-bell" class="hidden relative">
+          <button onclick="showModule('notifications')" class="p-2 hover:bg-slate-100 rounded-lg transition-colors relative">
+            <i class="fas fa-bell text-slate-600"></i>
+            <span id="header-notif-badge" class="hidden absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+          </button>
+        </div>
+
       <div class="ml-auto flex items-center gap-1">
+
+        <!-- User menu -->
         <div class="relative" id="user-menu-container">
-          <button onclick="toggleUserMenu(event)" class="flex items-center gap-2 pl-3 border-l border-slate-200 hover:bg-slate-100 rounded-lg p-2">
+          <button onclick="toggleUserMenu(event)" class="flex items-center gap-2 pl-3 border-l border-slate-200 hover:bg-slate-100 rounded-lg p-2 transition-colors ml-1">
             <div id="user-avatar" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-sm">JD</div>
-            <span id="user-name" class="hidden md:block text-sm font-semibold text-slate-700">User</span>
+            <span id="user-name" class="hidden md:block text-sm font-semibold text-slate-700">John Doe</span>
             <i class="fas fa-chevron-down text-xs text-slate-400"></i>
           </button>
-          <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-60 bg-white rounded-xl shadow-xl border border-slate-200 z-50">
+
+          <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-60 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
             <div id="user-dropdown-inner"></div>
           </div>
         </div>
+
       </div>
     </header>
 
+    <!-- Body: Sidebar + Main -->
     <div class="flex flex-1 overflow-hidden">
-      <div id="sidebar-overlay" onclick="closeMobileSidebar()" class="hidden fixed inset-0 bg-black/40 z-40"></div>
-      <aside id="sidebar" class="w-64 bg-white border-r border-slate-200 flex-shrink-0 flex flex-col">
-        <nav class="flex-1 overflow-y-auto thin-scroll p-3" id="nav-menu"></nav>
+
+      <!-- Mobile sidebar overlay -->
+      <div id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
+
+      <!-- Sidebar -->
+      <aside id="sidebar" class="w-64 bg-white border-r border-slate-200 flex-shrink-0 flex flex-col lg:translate-x-0">
+        <nav class="flex-1 overflow-y-auto thin-scroll p-3 space-y-0.5" id="nav-menu">
+          <!-- Populated by renderNav() -->
+        </nav>
         <div class="p-3 border-t border-slate-100 flex items-center justify-between">
-          <p class="text-[10px] text-slate-400 sidebar-footer-text">Work Volt · v1.0.0</p>
-          <button onclick="toggleSidebarCollapse()" class="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400"><i class="fas fa-chevron-left text-xs"></i></button>
+          <p class="text-[10px] text-slate-400 font-medium sidebar-footer-text" data-i18n="Work Volt · v1.0.0">Work Volt · v1.0.0</p>
+          <button onclick="toggleSidebarCollapse()" title="Collapse sidebar"
+            class="sidebar-collapse-btn w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all flex-shrink-0">
+            <i class="fas fa-chevron-left text-xs" style="transition:transform .22s"></i>
+          </button>
         </div>
       </aside>
-      <main class="flex-1 overflow-y-auto bg-slate-50" id="main-content"></main>
+
+      <!-- Main content area — pages load here -->
+      <main class="flex-1 overflow-y-auto bg-slate-50" id="main-content">
+        <!-- Page modules injected here -->
+      </main>
+
     </div>
   </div>
 
+
+  <!-- ══════════════════════════════════════════
+       GLOBAL MODALS MOUNT POINT
+  ══════════════════════════════════════════ -->
   <div id="modals-root"></div>
+
+
+  <!-- ══════════════════════════════════════════
+       TOAST NOTIFICATIONS
+  ══════════════════════════════════════════ -->
   <div id="toast-container"></div>
 
-  <script>
-  let API_URL = '';
-  let currentUser = null;
-  let currentSession = null;
 
+  <!-- ══════════════════════════════════════════
+       GLOBAL LOADING OVERLAY
+  ══════════════════════════════════════════ -->
+  <div id="global-loading" class="hidden fixed inset-0 bg-white/70 z-50 flex items-center justify-center backdrop-blur-sm">
+    <div class="flex flex-col items-center gap-3">
+      <i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i>
+      <p class="text-slate-600 text-sm font-medium">Loading...</p>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════
+       I18N / TRANSLATIONS
+  ══════════════════════════════════════════ -->
+  <script src="js/translations.js"></script>
+  <script src="js/i18n.js"></script>
+
+  <!-- ══════════════════════════════════════════
+       CORE JAVASCRIPT
+  ══════════════════════════════════════════ -->
+  <script>
+  // ─────────────────────────────────────────────
+  //  CONFIG & STATE
+  // ─────────────────────────────────────────────
+  let API_URL         = '';
+  let SHEET_ID        = '';
+  let currentUser     = null;
+  let currentSession  = null;
+  let _setupData      = {};
+
+  // Module → allowed roles
   const MODULE_ROLES = {
-    dashboard: ['SuperAdmin','Admin','Manager','Employee','Contractor'],
-    settings: ['SuperAdmin','Admin'],
-    store: ['SuperAdmin','Admin'],
-    roles: ['SuperAdmin','Admin'],
+    dashboard:  ['SuperAdmin','Admin','Manager','Employee','Contractor'],
+    settings:   ['SuperAdmin','Admin'],
+    store:      ['SuperAdmin','Admin'],
+    roles:      ['SuperAdmin','Admin'],
   };
 
-  let _rolePermissions = {};
+  const MODULE_ICONS = {
+    dashboard:  'fa-th-large',
+    settings:   'fa-cog',
+    store:      'fa-store',
+    roles:      'fa-shield-alt',
+  };
+
+  const MODULE_LABELS = {
+    dashboard:  'Dashboard',
+    settings:   'Settings',
+    store:      'Module Store',
+    roles:      'Role Permissions',
+  };
+
+  let _rolePermissions   = {};
   let _userModuleOverrides = {};
 
   async function loadRolePermissions() {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || '';
+    
     if (!savedUrl || !currentSession) return;
+
     try {
-      const data = await apiCall('config/get-all');
+      const url = new URL(savedUrl);
+      url.searchParams.set('path', 'config/get-all');
+      url.searchParams.set('session_id', currentSession);
+      
+      console.log('Fetching config from:', url.toString());
+      
+      const res = await fetch(url.toString(), { cache: 'no-cache' });
+      const text = await res.text();
+      console.log('Config response:', text.substring(0, 200));
+      
+      const data = JSON.parse(text);
       const settings = data.settings || {};
       if (settings.role_permissions) {
         try { _rolePermissions = JSON.parse(settings.role_permissions); } catch(e) {}
       }
+      if (settings.user_module_overrides) {
+        try { _userModuleOverrides = JSON.parse(settings.user_module_overrides); } catch(e) {}
+      }
     } catch(e) {
-      console.warn('Could not load permissions:', e.message);
+      console.warn('Could not load role permissions:', e.message);
     }
+  }
+
+  function resolvedRolesForModule(moduleId) {
+    if (_rolePermissions[moduleId]) {
+      return Object.entries(_rolePermissions[moduleId])
+        .filter(([, allowed]) => allowed)
+        .map(([role]) => role);
+    }
+    const def = ADDON_CATALOGUE[moduleId];
+    return (def && def.roles) || [];
   }
 
   function canAccessModule(moduleId) {
     const role = currentUser?.role || 'Employee';
     const userId = currentUser?.user_id || '';
+
     if (moduleId === 'dashboard') return true;
     if (MODULE_ROLES[moduleId]) return MODULE_ROLES[moduleId].includes(role);
     if (role === 'SuperAdmin') return true;
-    if (_userModuleOverrides[userId]) return _userModuleOverrides[userId].includes(moduleId);
-    return (_rolePermissions[moduleId] || []).includes(role);
+    if (_userModuleOverrides[userId]) {
+      return _userModuleOverrides[userId].includes(moduleId);
+    }
+    return resolvedRolesForModule(moduleId).includes(role);
   }
 
   const ADDON_CATALOGUE = {
-    tasks: { label: 'Tasks', icon: 'fa-check-circle' },
-    payroll: { label: 'Payroll', icon: 'fa-money-bill-wave' },
-    timesheets: { label: 'Timesheets', icon: 'fa-clock' },
+    notifications: { label: 'Notifications', icon: 'fa-bell', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    tasks:       { label: 'Tasks', icon: 'fa-check-circle', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    pipeline:    { label: 'Pipeline', icon: 'fa-users', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    payroll:     { label: 'Payroll', icon: 'fa-money-bill-wave', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    timesheets:  { label: 'Timesheets', icon: 'fa-clock', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    financials:  { label: 'Financials', icon: 'fa-chart-line', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    crm:         { label: 'CRM', icon: 'fa-address-book', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    projects:    { label: 'Projects', icon: 'fa-folder-open', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    reports:     { label: 'Reports', icon: 'fa-chart-pie', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    assets:      { label: 'Assets', icon: 'fa-box-open', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    attendance:  { label: 'Attendance Tracker', icon: 'fa-calendar-check', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    invoices:    { label: 'Invoice Manager', icon: 'fa-file-invoice-dollar', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    inventory:   { label: 'Inventory Control', icon: 'fa-warehouse', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    scheduler:   { label: 'Shift Scheduler', icon: 'fa-calendar-alt', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    expenses:    { label: 'Expense Claims', icon: 'fa-receipt', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    contracts:   { label: 'Contract Hub', icon: 'fa-file-signature', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    helpdesk:    { label: 'Help Desk', icon: 'fa-headset', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    recruitment: { label: 'Recruitment Pipeline', icon: 'fa-user-tie', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
   };
 
   let INSTALLED_MODULES = [];
+  window.INSTALLED_MODULES = INSTALLED_MODULES;
+
+  function saveInstalledModules() {
+    try {
+      localStorage.setItem('wv_installed_modules', JSON.stringify(INSTALLED_MODULES));
+    } catch(e) {
+      console.warn('Could not save modules to localStorage:', e.message);
+    }
+  }
 
   async function loadInstalledModules() {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || '';
-    if (savedUrl) API_URL = savedUrl;
+    
+    if (savedUrl) { API_URL = savedUrl; window.API_URL = savedUrl; }
+
     if (savedUrl && currentSession) {
       try {
-        const data = await apiCall('config/modules');
-        if (data.modules) INSTALLED_MODULES = data.modules;
+        const url = new URL(savedUrl);
+        url.searchParams.set('path', 'config/modules');
+        url.searchParams.set('session_id', currentSession);
+        
+        console.log('Fetching modules from:', url.toString());
+        
+        const res = await fetch(url.toString(), { cache: 'no-cache' });
+        const text = await res.text();
+        console.log('Modules response:', text.substring(0, 200));
+        
+        const data = JSON.parse(text);
+        if (data.modules) {
+          INSTALLED_MODULES = data.modules;
+          window.INSTALLED_MODULES = INSTALLED_MODULES;
+        } else if (data.error) {
+          console.error('Modules API error:', data.error);
+        }
       } catch(e) {
-        console.warn('Could not load modules:', e.message);
+        console.warn('Could not load modules from Sheet:', e.message);
       }
     }
   }
@@ -163,49 +386,64 @@
   // ─────────────────────────────────────────────
   async function apiCall(path, params = {}, retries = 2) {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || API_URL;
+    
     const url = new URL(savedUrl);
     url.searchParams.set('path', path);
     url.searchParams.set('_t', Date.now().toString());
     if (currentSession) url.searchParams.set('session_id', currentSession);
     for (const k in params) {
-      if (params[k] !== undefined) url.searchParams.set(k, params[k]);
+      if (params[k] !== undefined && params[k] !== null)
+        url.searchParams.set(k, params[k]);
     }
+
+    console.log('API call:', path, url.toString());
 
     let lastErr;
     for (let i = 0; i <= retries; i++) {
       try {
         const ctrl = new AbortController();
         const tid = setTimeout(() => ctrl.abort(), 15000);
-        const res = await fetch(url.toString(), { signal: ctrl.signal, cache: 'no-cache' });
+        const res = await fetch(url.toString(), { method:'GET', mode:'cors', cache:'no-cache', signal: ctrl.signal });
         clearTimeout(tid);
 
+        console.log('Response status:', res.status);
+
         if (res.status === 401 || res.status === 403) {
+          console.error('Auth failed - session invalid');
           throw new Error('SESSION_INVALID');
         }
         if (!res.ok) throw new Error('HTTP ' + res.status);
 
         const text = await res.text();
+        console.log('Response text:', text.substring(0, 200));
+        
+        if (!text) throw new Error('Empty response');
         const data = JSON.parse(text);
 
         if (data.error) {
-          if (data.code === 'SESSION_EXPIRED' || data.code === 'INVALID_SESSION') {
-            throw new Error('SESSION_INVALID');
-          }
+          console.error('API error:', data.error);
+          if (data.code === 'SESSION_EXPIRED' || data.code === 'INVALID_SESSION') throw new Error('SESSION_INVALID');
           throw new Error(data.error);
         }
         return data;
+
       } catch(err) {
         lastErr = err;
-        if (err.message === 'SESSION_INVALID') {
+        console.error('API error attempt ' + i + ':', err.message);
+        if (err.name === 'AbortError') lastErr = new Error('Request timeout — please try again');
+        else if (err.message === 'SESSION_INVALID' && path !== 'auth/login') {
           forceLogout('Session expired. Please sign in again.');
           throw new Error('Session expired');
         }
         if (i < retries) await new Promise(r => setTimeout(r, 800 * (i + 1)));
       }
     }
-    throw lastErr || new Error('Network error');
+    throw lastErr || new Error('Network error — please refresh');
   }
 
+  // ─────────────────────────────────────────────
+  //  SPLASH & LOGOUT
+  // ─────────────────────────────────────────────
   function hideSplash() {
     const s = document.getElementById('splash-screen');
     s.classList.add('hidden');
@@ -213,54 +451,311 @@
   }
 
   function handleLogout() {
-    sessionStorage.clear();
+    sessionStorage.removeItem('wv_user');
+    sessionStorage.removeItem('wv_session');
+    sessionStorage.removeItem('wv_gas_url');
     currentUser = null;
     currentSession = null;
     window.location.href = 'index.html';
   }
 
   function forceLogout(msg) {
-    sessionStorage.clear();
+    sessionStorage.removeItem('wv_user');
+    sessionStorage.removeItem('wv_session');
+    sessionStorage.removeItem('wv_gas_url');
     currentUser = null;
     currentSession = null;
     if (msg) showToast(msg, 'error');
     window.location.href = 'index.html';
   }
 
+  // ─────────────────────────────────────────────
+  //  APP SHELL
+  // ─────────────────────────────────────────────
   async function showApp() {
     hideSplash();
     document.getElementById('app-screen').classList.remove('hidden');
+
     const name = currentUser?.name || 'User';
     const initials = name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
     document.getElementById('user-name').textContent = name;
     document.getElementById('user-avatar').textContent = initials;
+
     renderNav();
+    updateNotificationBell();
+    applySidebarCollapse();
+
     const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
+    history.replaceState({ module: lastModule }, '', '#' + lastModule);
     showModule(lastModule, false);
+    updateBackButton();
+  }
+
+  function updateNotificationBell() {
+    const bell = document.getElementById('header-notif-bell');
+    const badge = document.getElementById('header-notif-badge');
+    if (!bell) return;
+    
+    if (canAccessModule('notifications')) {
+      bell.classList.remove('hidden');
+      pollNotifBadge();
+      setInterval(pollNotifBadge, 30000);
+    } else {
+      bell.classList.add('hidden');
+    }
+  }
+
+  async function pollNotifBadge() {
+    const badge = document.getElementById('header-notif-badge');
+    if (!badge || badge.parentElement.classList.contains('hidden')) return;
+    
+    try {
+      const data = await window.WorkVolt.api('notifications/unread', { user_id: currentUser?.user_id || '' });
+      if (data.unread > 0) {
+        badge.classList.remove('hidden');
+        badge.title = data.unread + ' unread';
+      } else {
+        badge.classList.add('hidden');
+      }
+    } catch(e) {
+      // Silent fail
+    }
+  }
+
+  function _navOrderKey() {
+    return 'wv_nav_order_' + (currentUser?.user_id || 'default');
+  }
+  function _getSavedOrder() {
+    try { return JSON.parse(localStorage.getItem(_navOrderKey()) || '[]'); } catch(e) { return []; }
+  }
+  function _saveNavOrder(ids) {
+    localStorage.setItem(_navOrderKey(), JSON.stringify(ids));
   }
 
   function renderNav() {
     const nav = document.getElementById('nav-menu');
     const role = currentUser?.role || 'Employee';
-    const dashLink = `<a href="#dashboard" onclick="showModule('dashboard'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="dashboard"><i class="fas fa-th-large w-4 text-slate-400"></i><span class="nav-label">Dashboard</span></a>`;
-    
-    let addons = INSTALLED_MODULES.filter(m => canAccessModule(m.id));
-    const addonLinks = addons.length ? `<div class="px-3 pt-4 pb-1"><p class="text-[10px] font-bold text-slate-400 uppercase">Modules</p></div><div class="space-y-0.5">${addons.map(m => `<a href="#${m.id}" onclick="showModule('${m.id}'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="${m.id}"><i class="fas ${m.icon} w-4 text-slate-400"></i><span class="nav-label">${m.label}</span></a>`).join('')}</div>` : '';
-    
-    const bottomLinks = `<div class="border-t border-slate-100 mt-2 pt-2 space-y-0.5">${MODULE_ROLES.settings.includes(role) ? `<a href="#settings" onclick="showModule('settings'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="settings"><i class="fas fa-cog w-4 text-slate-400"></i><span class="nav-label">Settings</span></a>` : ''}${MODULE_ROLES.store.includes(role) ? `<a href="#store" onclick="showModule('store'); return false;" class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium" data-module="store"><i class="fas fa-store w-4 text-slate-400"></i><span class="nav-label">Module Store</span></a>` : ''}</div>`;
-    
+
+    const dashLink = `
+      <a href="#dashboard" onclick="showModule('dashboard'); return false;"
+         class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
+         data-module="dashboard">
+        <i class="fas fa-th-large w-4 text-slate-400"></i>
+        <span class="nav-label" data-i18n="Dashboard">Dashboard</span>
+      </a>`;
+
+    let addons = (window.INSTALLED_MODULES || []).filter(m => {
+      if (!canAccessModule(m.id)) return false;
+      return true;
+    });
+
+    const savedOrder = _getSavedOrder();
+    if (savedOrder.length) {
+      addons.sort((a, b) => {
+        const ai = savedOrder.indexOf(a.id);
+        const bi = savedOrder.indexOf(b.id);
+        if (ai === -1 && bi === -1) return 0;
+        if (ai === -1) return 1;
+        if (bi === -1) return -1;
+        return ai - bi;
+      });
+    }
+
+    const addonLinks = addons.length ? `
+      <div class="px-3 pt-4 pb-1 flex items-center justify-between">
+        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest nav-section-label" data-i18n="Modules">Modules</p>
+        <span class="text-[9px] text-slate-300 font-medium drag-hint" data-i18n="drag to reorder">drag to reorder</span>
+      </div>
+      <div id="nav-sortable" class="space-y-0.5">
+        ${addons.map(m => {
+          const def = ADDON_CATALOGUE[m.id] || {};
+          return `
+            <div class="nav-sortable-item" data-module-id="${m.id}" draggable="true">
+              <a href="#${m.id}" onclick="showModule('${m.id}'); return false;"
+                 class="nav-item flex items-center gap-2 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors group"
+                 data-module="${m.id}">
+                <i class="fas fa-grip-vertical text-slate-200 group-hover:text-slate-300 text-[10px] flex-shrink-0 cursor-grab"></i>
+                <i class="fas ${def.icon || m.icon} w-4 text-slate-400 flex-shrink-0"></i>
+                <span class="nav-label" data-i18n="${def.label || m.label}">${def.label || m.label}</span>
+              </a>
+            </div>`;
+        }).join('')}
+      </div>
+    ` : '';
+
+    const bottomLinks = `
+      <div class="border-t border-slate-100 mt-2 pt-2 space-y-0.5">
+        ${MODULE_ROLES.settings.includes(role) ? `
+        <a href="#settings" onclick="showModule('settings'); return false;"
+           class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
+           data-module="settings">
+          <i class="fas fa-cog w-4 text-slate-400"></i>
+          <span class="nav-label" data-i18n="Settings">Settings</span>
+        </a>` : ''}
+        ${MODULE_ROLES.store.includes(role) ? `
+        <a href="#store" onclick="showModule('store'); return false;"
+           class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
+           data-module="store">
+          <i class="fas fa-store w-4 text-slate-400"></i>
+          <span class="nav-label">Module Store</span>
+        </a>` : ''}
+        ${MODULE_ROLES.roles.includes(role) ? `
+        <a href="#roles" onclick="showModule('roles'); return false;"
+           class="nav-item flex items-center gap-3 px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-medium transition-colors"
+           data-module="roles">
+          <i class="fas fa-shield-alt w-4 text-slate-400"></i>
+          <span class="nav-label">Role Permissions</span>
+        </a>` : ''}
+      </div>`;
+
     nav.innerHTML = dashLink + addonLinks + bottomLinks;
+    _initNavDrag();
+  }
+
+  function _initNavDrag() {
+    const sortable = document.getElementById('nav-sortable');
+    if (!sortable) return;
+    let dragEl = null;
+
+    sortable.querySelectorAll('.nav-sortable-item').forEach(item => {
+      item.addEventListener('dragstart', e => {
+        dragEl = item;
+        setTimeout(() => { item.style.opacity = '0.4'; }, 0);
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      item.addEventListener('dragend', () => {
+        item.style.opacity = '';
+        dragEl = null;
+        const order = Array.from(sortable.querySelectorAll('.nav-sortable-item')).map(el => el.dataset.moduleId);
+        _saveNavOrder(order);
+      });
+      item.addEventListener('dragover', e => {
+        e.preventDefault();
+        if (!dragEl || dragEl === item) return;
+        const rect = item.getBoundingClientRect();
+        if (e.clientY < rect.top + rect.height / 2) {
+          sortable.insertBefore(dragEl, item);
+        } else {
+          sortable.insertBefore(dragEl, item.nextSibling);
+        }
+      });
+    });
   }
 
   function showModule(name, push = true) {
     closeMobileSidebar();
     sessionStorage.setItem('lastModule', name);
     if (push) history.pushState({ module: name }, '', '#' + name);
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.module === name));
-    document.getElementById('main-content').innerHTML = `<div class="flex items-center justify-center h-64"><i class="fas fa-circle-notch fa-spin text-3xl text-blue-500"></i></div>`;
-    setTimeout(() => {
-      document.getElementById('main-content').innerHTML = `<div class="p-6"><h2 class="text-2xl font-bold text-slate-800">${name}</h2><p class="text-slate-500">Module content loading...</p></div>`;
-    }, 100);
+
+    document.querySelectorAll('.nav-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.module === name);
+    });
+
+    const main = document.getElementById('main-content');
+    main.innerHTML = `
+      <div class="flex items-center justify-center h-64">
+        <i class="fas fa-circle-notch fa-spin text-3xl text-blue-500 opacity-60"></i>
+      </div>`;
+
+    requestAnimationFrame(() => loadPage(name, main));
+    updateBackButton();
+  }
+
+  function loadPage(name, container) {
+    if (window.WorkVoltPages && typeof window.WorkVoltPages[name] === 'function') {
+      window.WorkVoltPages[name](container);
+      setTimeout(() => { autoTranslatePage(); }, 20);
+      return;
+    }
+
+    const existing = document.querySelector(`script[data-page="${name}"]`);
+    if (existing) existing.remove();
+
+    const script = document.createElement('script');
+    script.src = `pages/${name}.js`;
+    script.dataset.page = name;
+    script.onload = () => {
+      if (window.WorkVoltPages && typeof window.WorkVoltPages[name] === 'function') {
+        window.WorkVoltPages[name](container);
+        setTimeout(() => { autoTranslatePage(); }, 20);
+      } else {
+        renderPagePlaceholder(name, container);
+      }
+    };
+    script.onerror = () => renderPagePlaceholder(name, container);
+    document.head.appendChild(script);
+  }
+
+  function renderPagePlaceholder(name, container) {
+    const label = MODULE_LABELS[name] || name;
+    const icon = MODULE_ICONS[name] || 'fa-layer-group';
+    container.innerHTML = `
+      <div class="p-6 md:p-8 fade-in">
+        <div class="max-w-2xl mx-auto mt-16 text-center">
+          <div class="inline-flex items-center justify-center w-20 h-20 bg-blue-50 rounded-2xl mb-6">
+            <i class="fas ${icon} text-blue-400 text-3xl"></i>
+          </div>
+          <h2 class="text-2xl font-extrabold text-slate-800 mb-2">${label}</h2>
+          <p class="text-slate-500 mb-6 text-sm leading-relaxed">
+            This page is ready to be built as its own module.<br>
+            Create <code class="bg-slate-100 px-2 py-0.5 rounded text-blue-600 font-mono text-xs">pages/${name}.js</code> and register it with <code class="bg-slate-100 px-2 py-0.5 rounded text-blue-600 font-mono text-xs">WorkVoltPages.${name}</code>.
+          </p>
+        </div>
+      </div>`;
+  }
+
+  window.addEventListener('popstate', e => {
+    const mod = e.state?.module || 'dashboard';
+    showModule(mod, false);
+  });
+
+  function updateBackButton() {
+    document.getElementById('app-back-btn').classList.toggle('hidden', history.length <= 1);
+  }
+
+  function appGoBack() {
+    history.back();
+  }
+
+  // ─────────────────────────────────────────────
+  //  USER MENU
+  // ─────────────────────────────────────────────
+  function renderUserDropdown() {
+    const inner = document.getElementById('user-dropdown-inner');
+    if (!inner) return;
+
+    const isSuperAdmin = (currentUser?.role === 'SuperAdmin');
+
+    inner.innerHTML = `
+      <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Account</p>
+      </div>
+      <button onclick="openProfileModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+        <i class="fas fa-user-circle text-slate-400 w-4"></i><span data-i18n="My Profile">My Profile</span>
+      </button>
+      <button onclick="openSecurityModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+        <i class="fas fa-shield-alt text-slate-400 w-4"></i>Security & Password
+      </button>
+      
+      ${isSuperAdmin ? `
+      <div class="border-t border-slate-100"></div>
+      <button onclick="openMimicModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-violet-700 hover:bg-violet-50 flex items-center gap-2.5 transition-colors">
+        <i class="fas fa-user-secret text-violet-400 w-4"></i>Mimic Profile
+        <span class="ml-auto text-[10px] text-violet-400 bg-violet-50 border border-violet-200 rounded px-1 font-bold">SA</span>
+      </button>` : ''}
+      
+      <div class="border-t border-slate-100"></div>
+      <button onclick="setLang('en'); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+        🇺🇸 <span data-i18n="English">English</span>
+      </button>
+      <button onclick="setLang('fr'); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+        🇫🇷 <span data-i18n="Français">Français</span>
+      </button>
+      <div class="border-t border-slate-100"></div>
+      <button onclick="handleLogout()" class="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors">
+        <i class="fas fa-sign-out-alt text-red-400 w-4"></i>Logout
+      </button>
+    `;
   }
 
   function toggleUserMenu(e) {
@@ -275,63 +770,124 @@
     document.getElementById('user-dropdown').classList.add('hidden');
   }
 
-  function renderUserDropdown() {
-    const inner = document.getElementById('user-dropdown-inner');
-    const isSuperAdmin = (currentUser?.role === 'SuperAdmin');
-    inner.innerHTML = `<div class="px-4 py-2 border-b border-slate-100 bg-slate-50"><p class="text-xs font-semibold text-slate-400 uppercase">Account</p></div><button onclick="closeUserMenu()" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><i class="fas fa-user-circle text-slate-400"></i>My Profile</button>${isSuperAdmin ? `<button onclick="closeUserMenu()" class="w-full px-4 py-2 text-left text-sm text-violet-700 hover:bg-violet-50 flex items-center gap-2"><i class="fas fa-user-secret text-violet-400"></i>Mimic Profile<span class="ml-auto text-[10px] text-violet-400 bg-violet-50 border border-violet-200 rounded px-1">SA</span></button>` : ''}<div class="border-t border-slate-100"></div><button onclick="handleLogout()" class="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><i class="fas fa-sign-out-alt text-red-400"></i>Logout</button>`;
+  function openProfileModal() { showToast('Profile modal — coming soon', 'info'); }
+  function openSecurityModal() { showToast('Security modal — coming soon', 'info'); }
+
+  // ─────────────────────────────────────────────
+  //  MOBILE SIDEBAR
+  // ─────────────────────────────────────────────
+  function toggleSidebarCollapse() {
+    const sidebar = document.getElementById('sidebar');
+    const collapsed = sidebar.classList.toggle('collapsed');
+    localStorage.setItem('wv_sidebar_collapsed', collapsed ? '1' : '0');
   }
 
-  function toggleSidebarCollapse() {
-    document.getElementById('sidebar').classList.toggle('collapsed');
+  function applySidebarCollapse() {
+    if (localStorage.getItem('wv_sidebar_collapsed') === '1') {
+      document.getElementById('sidebar').classList.add('collapsed');
+    }
   }
 
   function toggleMobileSidebar() {
     document.getElementById('sidebar').classList.toggle('open');
-    document.getElementById('sidebar-overlay').classList.toggle('hidden');
+    document.getElementById('sidebar-overlay').classList.toggle('visible');
   }
-
   function closeMobileSidebar() {
     document.getElementById('sidebar').classList.remove('open');
-    document.getElementById('sidebar-overlay').classList.add('hidden');
+    document.getElementById('sidebar-overlay').classList.remove('visible');
   }
 
-  function showToast(msg, type = 'info') {
+  // ─────────────────────────────────────────────
+  //  TOAST
+  // ─────────────────────────────────────────────
+  function showToast(msg, type = 'info', duration = 3500) {
+    const icons = { success:'fa-check-circle', error:'fa-exclamation-circle', info:'fa-info-circle', warning:'fa-triangle-exclamation' };
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i><span>${msg}</span>`;
+    toast.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${msg}</span>`;
     document.getElementById('toast-container').appendChild(toast);
-    setTimeout(() => toast.remove(), 3500);
+    setTimeout(() => {
+      toast.style.animation = 'toastOut .3s ease forwards';
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
   }
 
   document.addEventListener('click', e => {
-    if (!document.getElementById('user-menu-container')?.contains(e.target)) closeUserMenu();
+    if (!document.getElementById('user-menu-container')?.contains(e.target))
+      closeUserMenu();
   });
 
-  window.WorkVolt = { api: apiCall, user: () => currentUser, toast: showToast, navigate: showModule };
+  // Expose globals
+  window.WorkVolt = {
+    api: apiCall,
+    user: () => currentUser,
+    session: () => currentSession,
+    toast: showToast,
+    navigate: showModule,
+  };
+  window.WorkVoltPages = window.WorkVoltPages || {};
+  window.renderNav = renderNav;
+  window._wvRolePermissions = () => _rolePermissions;
+  window._wvUserOverrides = () => _userModuleOverrides;
+  window._wvApplyPermissions = function(perms, overrides) {
+    if (perms) _rolePermissions = perms;
+    if (overrides) _userModuleOverrides = overrides;
+    renderNav();
+  };
 
+  // ─────────────────────────────────────────────
+  //  BOOT SEQUENCE
+  // ─────────────────────────────────────────────
   window.addEventListener('load', async () => {
     try {
       const savedUser = sessionStorage.getItem('wv_user');
       const savedSession = sessionStorage.getItem('wv_session');
-      const savedUrl = sessionStorage.getItem('wv_gas_url');
-
+      const savedUrl = sessionStorage.getItem('wv_gas_url') || (window.sessionData && window.sessionData.gas_url) || '';
+      
+      console.log('Boot check:', { hasUser: !!savedUser, hasSession: !!savedSession, hasUrl: !!savedUrl });
+      
       if (!savedUser || !savedSession || !savedUrl) {
+        console.log('Missing credentials, redirecting to login');
         window.location.href = 'index.html';
         return;
       }
 
       API_URL = savedUrl;
+      window.API_URL = savedUrl;
       currentUser = JSON.parse(savedUser);
       currentSession = savedSession;
 
-      await loadInstalledModules();
-      await loadRolePermissions();
+      console.log('Starting app load...');
+
+      try {
+        await loadInstalledModules();
+        console.log('Modules loaded:', INSTALLED_MODULES);
+      } catch (e) {
+        console.error('Module load failed:', e);
+      }
+
+      try {
+        await loadRolePermissions();
+        console.log('Permissions loaded');
+      } catch (e) {
+        console.error('Permissions load failed:', e);
+      }
+
+      hideSplash();
       await showApp();
+      console.log('App shown successfully');
+
+      // i18n: restore saved language and translate UI
+      window.currentLang = localStorage.getItem('lang') || 'en';
+      setTimeout(() => { autoTranslatePage(); }, 50);
+      
     } catch (err) {
-      console.error('Boot error:', err);
+      console.error('Fatal boot error:', err);
+      alert('Failed to start app: ' + err.message);
       window.location.href = 'index.html';
     }
   });
   </script>
+
 </body>
 </html>
