@@ -29,17 +29,29 @@ export class SupabaseAdapter extends BaseAdapter {
     const { url, anonKey } = credentials;
     if (!url || !anonKey) throw new Error('Supabase URL and Anon Key are required.');
 
+    // Basic URL format check
+    if (!url.includes('supabase.co') && !url.includes('supabase.io')) {
+      throw new Error('Invalid Supabase URL. It should look like: https://xxxx.supabase.co');
+    }
+
     await this._loadSDK();
     this._client = window.supabase.createClient(url, anonKey);
 
-    // Quick connectivity check
-    const { error } = await this._client.from('config').select('key').limit(1);
-    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows, which is fine
-      if (error.message.includes('relation') || error.message.includes('does not exist')) {
-        throw new Error('Database not set up. Please run the Work Volt SQL schema first.');
+    // Connectivity check — just verify the project is reachable.
+    // We do NOT query any table here because RLS blocks unauthenticated reads.
+    // Instead we hit the auth endpoint which is always public.
+    try {
+      const res = await fetch(url + '/auth/v1/settings', {
+        headers: { 'apikey': anonKey }
+      });
+      if (!res.ok && res.status !== 404) {
+        throw new Error('Could not reach Supabase project. Check your Project URL and Anon Key.');
       }
-      throw new Error('Could not connect to Supabase: ' + error.message);
+    } catch(e) {
+      if (e.message.includes('Could not reach')) throw e;
+      throw new Error('Could not connect to Supabase. Check your Project URL.');
     }
+
     return true;
   }
 
