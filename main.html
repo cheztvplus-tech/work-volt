@@ -56,7 +56,7 @@
     .toast.success { background:#16a34a; }
     .toast.error   { background:#dc2626; }
     .toast.info    { background:#2563eb; }
-    @keyframes toastIn  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes toastIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
     @keyframes toastOut { from{opacity:1} to{opacity:0;transform:translateY(12px)} }
 
     /* ─── Scrollbar thin ─── */
@@ -82,7 +82,7 @@
       #sidebar.open { transform:translateX(0); }
     }
   </style>
-  <base target="_blank">
+<base target="_blank">
 </head>
 
 <body class="min-h-screen">
@@ -119,12 +119,12 @@
     <!-- Top Header -->
     <header class="bg-white border-b border-slate-200 px-4 h-14 flex items-center gap-3 sticky top-0 z-30 flex-shrink-0">
 
-      <!-- Mobile hamburger -->
+      <!-- Mobile hamburger + logo -->
       <button id="mobile-menu-btn" onclick="toggleMobileSidebar()" class="lg:hidden p-2 hover:bg-slate-100 rounded-lg transition-colors">
         <i class="fas fa-bars text-slate-600"></i>
       </button>
 
-      <!-- Back button -->
+      <!-- Back button (shown contextually) -->
       <button id="app-back-btn" onclick="appGoBack()" class="hidden p-2 hover:bg-slate-100 rounded-lg transition-colors" title="Go Back">
         <i class="fas fa-arrow-left text-slate-600"></i>
       </button>
@@ -141,20 +141,20 @@
       <div class="flex-1 max-w-sm mx-4 hidden md:block">
         <div class="relative">
           <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-          <input type="text" id="global-search" placeholder="Search..." data-i18n-placeholder="Search"
-            class="w-full pl-9 pr-4 py-2 bg-slate-100 border border-transparent rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all">
+          <input type="text" id="global-search" placeholder="Search..." data-i18n-placeholder="Search" class="w-full pl-9 pr-4 py-2 bg-slate-100 border border-transparent rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all">
         </div>
       </div>
 
-      <!-- Notifications Bell -->
-      <div id="header-notif-bell" class="hidden relative">
-        <button onclick="showModule('notifications')" class="p-2 hover:bg-slate-100 rounded-lg transition-colors relative">
-          <i class="fas fa-bell text-slate-600"></i>
-          <span id="header-notif-badge" class="hidden absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-        </button>
-      </div>
+        <!-- Notifications Bell -->
+        <div id="header-notif-bell" class="hidden relative">
+          <button onclick="showModule('notifications')" class="p-2 hover:bg-slate-100 rounded-lg transition-colors relative">
+            <i class="fas fa-bell text-slate-600"></i>
+            <span id="header-notif-badge" class="hidden absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+          </button>
+        </div>
 
       <div class="ml-auto flex items-center gap-1">
+
         <!-- User menu -->
         <div class="relative" id="user-menu-container">
           <button onclick="toggleUserMenu(event)" class="flex items-center gap-2 pl-3 border-l border-slate-200 hover:bg-slate-100 rounded-lg p-2 transition-colors ml-1">
@@ -167,6 +167,7 @@
             <div id="user-dropdown-inner"></div>
           </div>
         </div>
+
       </div>
     </header>
 
@@ -190,8 +191,9 @@
         </div>
       </aside>
 
-      <!-- Main content area -->
+      <!-- Main content area — pages load here -->
       <main class="flex-1 overflow-y-auto bg-slate-50" id="main-content">
+        <!-- Page modules injected here -->
       </main>
 
     </div>
@@ -234,37 +236,40 @@
   // ─────────────────────────────────────────────
   //  CONFIG & STATE
   // ─────────────────────────────────────────────
-  let API_URL        = '';
-  let currentUser    = null;
-  let currentSession = null;
+  let API_URL         = '';
+  let SHEET_ID        = '';
+  let currentUser     = null;
+  let currentSession  = null;
+  let _setupData      = {};
 
   // Module → allowed roles
   const MODULE_ROLES = {
-    dashboard: ['SuperAdmin','Admin','Manager','Employee','Contractor'],
-    settings:  ['SuperAdmin','Admin'],
-    store:     ['SuperAdmin','Admin'],
-    roles:     ['SuperAdmin','Admin'],
+    dashboard:  ['SuperAdmin','Admin','Manager','Employee','Contractor'],
+    settings:   ['SuperAdmin','Admin'],
+    store:      ['SuperAdmin','Admin'],
+    roles:      ['SuperAdmin','Admin'],
   };
 
   const MODULE_ICONS = {
-    dashboard: 'fa-th-large',
-    settings:  'fa-cog',
-    store:     'fa-store',
-    roles:     'fa-shield-alt',
+    dashboard:  'fa-th-large',
+    settings:   'fa-cog',
+    store:      'fa-store',
+    roles:      'fa-shield-alt',
   };
 
   const MODULE_LABELS = {
-    dashboard: 'Dashboard',
-    settings:  'Settings',
-    store:     'Module Store',
-    roles:     'Role Permissions',
+    dashboard:  'Dashboard',
+    settings:   'Settings',
+    store:      'Module Store',
+    roles:      'Role Permissions',
   };
 
-  let _rolePermissions     = {};
+  let _rolePermissions   = {};
   let _userModuleOverrides = {};
 
   async function loadRolePermissions() {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || '';
+    
     if (!savedUrl || !currentSession) return;
 
     try {
@@ -272,11 +277,15 @@
       url.searchParams.set('path', 'config/get-all');
       url.searchParams.set('session_id', currentSession);
       url.searchParams.set('_t', Date.now().toString());
-
-      const res  = await fetch(url.toString(), { cache: 'no-cache' });
-      const data = await res.json();
+      
+      console.log('Fetching config from:', url.toString());
+      
+      const res = await fetch(url.toString(), { cache: 'no-cache' });
+      const text = await res.text();
+      console.log('Config response:', text.substring(0, 200));
+      
+      const data = JSON.parse(text);
       const settings = data.settings || {};
-
       if (settings.role_permissions) {
         try { _rolePermissions = JSON.parse(settings.role_permissions); } catch(e) {}
       }
@@ -299,13 +308,12 @@
   }
 
   function canAccessModule(moduleId) {
-    const role   = currentUser?.role    || 'Employee';
+    const role = currentUser?.role || 'Employee';
     const userId = currentUser?.user_id || '';
 
     if (moduleId === 'dashboard') return true;
-    if (MODULE_ROLES[moduleId])   return MODULE_ROLES[moduleId].includes(role);
-    if (role === 'SuperAdmin')    return true;
-
+    if (MODULE_ROLES[moduleId]) return MODULE_ROLES[moduleId].includes(role);
+    if (role === 'SuperAdmin') return true;
     if (_userModuleOverrides[userId]) {
       return _userModuleOverrides[userId].includes(moduleId);
     }
@@ -313,31 +321,40 @@
   }
 
   const ADDON_CATALOGUE = {
-    notifications: { label: 'Notifications',         icon: 'fa-bell',                roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    tasks:         { label: 'Tasks',                  icon: 'fa-check-circle',        roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    pipeline:      { label: 'Pipeline',               icon: 'fa-users',               roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    payroll:       { label: 'Payroll',                icon: 'fa-money-bill-wave',     roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    timesheets:    { label: 'Timesheets',             icon: 'fa-clock',               roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    financials:    { label: 'Financials',             icon: 'fa-chart-line',          roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    crm:           { label: 'CRM',                    icon: 'fa-address-book',        roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    projects:      { label: 'Projects',               icon: 'fa-folder-open',         roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    reports:       { label: 'Reports',                icon: 'fa-chart-pie',           roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    assets:        { label: 'Assets',                 icon: 'fa-box-open',            roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    attendance:    { label: 'Attendance Tracker',     icon: 'fa-calendar-check',      roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    invoices:      { label: 'Invoice Manager',        icon: 'fa-file-invoice-dollar', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    inventory:     { label: 'Inventory Control',      icon: 'fa-warehouse',           roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    scheduler:     { label: 'Shift Scheduler',        icon: 'fa-calendar-alt',        roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    expenses:      { label: 'Expense Claims',         icon: 'fa-receipt',             roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    contracts:     { label: 'Contract Hub',           icon: 'fa-file-signature',      roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    helpdesk:      { label: 'Help Desk',              icon: 'fa-headset',             roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
-    recruitment:   { label: 'Recruitment Pipeline',   icon: 'fa-user-tie',            roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    notifications: { label: 'Notifications', icon: 'fa-bell', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    tasks:       { label: 'Tasks', icon: 'fa-check-circle', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    pipeline:    { label: 'Pipeline', icon: 'fa-users', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    payroll:     { label: 'Payroll', icon: 'fa-money-bill-wave', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    timesheets:  { label: 'Timesheets', icon: 'fa-clock', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    financials:  { label: 'Financials', icon: 'fa-chart-line', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    crm:         { label: 'CRM', icon: 'fa-address-book', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    projects:    { label: 'Projects', icon: 'fa-folder-open', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    reports:     { label: 'Reports', icon: 'fa-chart-pie', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    assets:      { label: 'Assets', icon: 'fa-box-open', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    attendance:  { label: 'Attendance Tracker', icon: 'fa-calendar-check', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    invoices:    { label: 'Invoice Manager', icon: 'fa-file-invoice-dollar', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    inventory:   { label: 'Inventory Control', icon: 'fa-warehouse', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    scheduler:   { label: 'Shift Scheduler', icon: 'fa-calendar-alt', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    expenses:    { label: 'Expense Claims', icon: 'fa-receipt', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    contracts:   { label: 'Contract Hub', icon: 'fa-file-signature', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    helpdesk:    { label: 'Help Desk', icon: 'fa-headset', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
+    recruitment: { label: 'Recruitment Pipeline', icon: 'fa-user-tie', roles: ['SuperAdmin','Admin','Manager','Employee','Contractor'] },
   };
 
   let INSTALLED_MODULES = [];
   window.INSTALLED_MODULES = INSTALLED_MODULES;
 
+  function saveInstalledModules() {
+    try {
+      localStorage.setItem('wv_installed_modules', JSON.stringify(INSTALLED_MODULES));
+    } catch(e) {
+      console.warn('Could not save modules to localStorage:', e.message);
+    }
+  }
+
   async function loadInstalledModules() {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || '';
+    
     if (savedUrl) { API_URL = savedUrl; window.API_URL = savedUrl; }
 
     if (savedUrl && currentSession) {
@@ -346,10 +363,14 @@
         url.searchParams.set('path', 'config/modules');
         url.searchParams.set('session_id', currentSession);
         url.searchParams.set('_t', Date.now().toString());
-
-        const res  = await fetch(url.toString(), { cache: 'no-cache' });
-        const data = await res.json();
-
+        
+        console.log('Fetching modules from:', url.toString());
+        
+        const res = await fetch(url.toString(), { cache: 'no-cache' });
+        const text = await res.text();
+        console.log('Modules response:', text.substring(0, 200));
+        
+        const data = JSON.parse(text);
         if (data.modules) {
           INSTALLED_MODULES = data.modules;
           window.INSTALLED_MODULES = INSTALLED_MODULES;
@@ -363,38 +384,52 @@
   }
 
   // ─────────────────────────────────────────────
-  //  API HELPER — session_id only, no secret
+  //  API HELPER - SESSION ONLY (NO TOKEN)
   // ─────────────────────────────────────────────
   async function apiCall(path, params = {}, retries = 2) {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || API_URL;
-
+    
     const url = new URL(savedUrl);
     url.searchParams.set('path', path);
     url.searchParams.set('_t', Date.now().toString());
-    if (currentSession) url.searchParams.set('session_id', currentSession);
-
+    
+    // Session-based authentication only
+    if (currentSession) {
+      url.searchParams.set('session_id', currentSession);
+    }
+    
     for (const k in params) {
       if (params[k] !== undefined && params[k] !== null)
         url.searchParams.set(k, params[k]);
     }
 
+    console.log('API call:', path, url.toString());
+
     let lastErr;
     for (let i = 0; i <= retries; i++) {
       try {
         const ctrl = new AbortController();
-        const tid  = setTimeout(() => ctrl.abort(), 15000);
-        const res  = await fetch(url.toString(), { method: 'GET', mode: 'cors', cache: 'no-cache', signal: ctrl.signal });
+        const tid = setTimeout(() => ctrl.abort(), 15000);
+        const res = await fetch(url.toString(), { method:'GET', mode:'cors', cache:'no-cache', signal: ctrl.signal });
         clearTimeout(tid);
 
-        if (res.status === 401 || res.status === 403) throw new Error('SESSION_EXPIRED');
+        console.log('Response status:', res.status);
+
+        if (res.status === 401 || res.status === 403) {
+          console.error('Auth failed - invalid session');
+          throw new Error('SESSION_INVALID');
+        }
         if (!res.ok) throw new Error('HTTP ' + res.status);
 
         const text = await res.text();
+        console.log('Response text:', text.substring(0, 200));
+        
         if (!text) throw new Error('Empty response');
         const data = JSON.parse(text);
 
         if (data.error) {
-          if (data.code === 'NO_SESSION' || data.code === 'INVALID_SESSION' || data.code === 'SESSION_EXPIRED') {
+          console.error('API error:', data.error);
+          if (data.code === 'SESSION_INVALID' || data.error === 'SESSION_INVALID' || data.error === 'No session - please login') {
             forceLogout('Session expired. Please sign in again.');
             throw new Error('Session expired');
           }
@@ -404,10 +439,11 @@
 
       } catch(err) {
         lastErr = err;
+        console.error('API error attempt ' + i + ':', err.message);
         if (err.name === 'AbortError') lastErr = new Error('Request timeout — please try again');
-        if (err.message === 'SESSION_EXPIRED') {
+        else if (err.message === 'SESSION_INVALID' && path !== 'auth/login') {
           forceLogout('Session expired. Please sign in again.');
-          throw err;
+          throw new Error('Session expired');
         }
         if (i < retries) await new Promise(r => setTimeout(r, 800 * (i + 1)));
       }
@@ -428,7 +464,7 @@
     sessionStorage.removeItem('wv_user');
     sessionStorage.removeItem('wv_session');
     sessionStorage.removeItem('wv_gas_url');
-    currentUser    = null;
+    currentUser = null;
     currentSession = null;
     window.location.href = 'index.html';
   }
@@ -437,10 +473,10 @@
     sessionStorage.removeItem('wv_user');
     sessionStorage.removeItem('wv_session');
     sessionStorage.removeItem('wv_gas_url');
-    currentUser    = null;
+    currentUser = null;
     currentSession = null;
     if (msg) showToast(msg, 'error');
-    setTimeout(() => window.location.href = 'index.html', 1500);
+    window.location.href = 'index.html';
   }
 
   // ─────────────────────────────────────────────
@@ -450,9 +486,9 @@
     hideSplash();
     document.getElementById('app-screen').classList.remove('hidden');
 
-    const name     = currentUser?.name || 'User';
+    const name = currentUser?.name || 'User';
     const initials = name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
-    document.getElementById('user-name').textContent   = name;
+    document.getElementById('user-name').textContent = name;
     document.getElementById('user-avatar').textContent = initials;
 
     renderNav();
@@ -467,7 +503,9 @@
 
   function updateNotificationBell() {
     const bell = document.getElementById('header-notif-bell');
+    const badge = document.getElementById('header-notif-badge');
     if (!bell) return;
+    
     if (canAccessModule('notifications')) {
       bell.classList.remove('hidden');
       pollNotifBadge();
@@ -480,21 +518,32 @@
   async function pollNotifBadge() {
     const badge = document.getElementById('header-notif-badge');
     if (!badge || badge.parentElement.classList.contains('hidden')) return;
+    
     try {
       const data = await window.WorkVolt.api('notifications/unread', { user_id: currentUser?.user_id || '' });
-      badge.classList.toggle('hidden', !(data.unread > 0));
-      if (data.unread > 0) badge.title = data.unread + ' unread';
-    } catch(e) { /* silent */ }
+      if (data.unread > 0) {
+        badge.classList.remove('hidden');
+        badge.title = data.unread + ' unread';
+      } else {
+        badge.classList.add('hidden');
+      }
+    } catch(e) {
+      // Silent fail - don't spam errors if module not ready
+    }
   }
 
-  function _navOrderKey() { return 'wv_nav_order_' + (currentUser?.user_id || 'default'); }
+  function _navOrderKey() {
+    return 'wv_nav_order_' + (currentUser?.user_id || 'default');
+  }
   function _getSavedOrder() {
     try { return JSON.parse(localStorage.getItem(_navOrderKey()) || '[]'); } catch(e) { return []; }
   }
-  function _saveNavOrder(ids) { localStorage.setItem(_navOrderKey(), JSON.stringify(ids)); }
+  function _saveNavOrder(ids) {
+    localStorage.setItem(_navOrderKey(), JSON.stringify(ids));
+  }
 
   function renderNav() {
-    const nav  = document.getElementById('nav-menu');
+    const nav = document.getElementById('nav-menu');
     const role = currentUser?.role || 'Employee';
 
     const dashLink = `
@@ -505,7 +554,10 @@
         <span class="nav-label" data-i18n="Dashboard">Dashboard</span>
       </a>`;
 
-    let addons = (window.INSTALLED_MODULES || []).filter(m => canAccessModule(m.id));
+    let addons = (window.INSTALLED_MODULES || []).filter(m => {
+      if (!canAccessModule(m.id)) return false;
+      return true;
+    });
 
     const savedOrder = _getSavedOrder();
     if (savedOrder.length) {
@@ -538,7 +590,8 @@
               </a>
             </div>`;
         }).join('')}
-      </div>` : '';
+      </div>
+    ` : '';
 
     const bottomLinks = `
       <div class="border-t border-slate-100 mt-2 pt-2 space-y-0.5">
@@ -621,7 +674,7 @@
   function loadPage(name, container) {
     if (window.WorkVoltPages && typeof window.WorkVoltPages[name] === 'function') {
       window.WorkVoltPages[name](container);
-      setTimeout(() => autoTranslatePage(), 20);
+      setTimeout(() => { autoTranslatePage(); }, 20);
       return;
     }
 
@@ -629,12 +682,12 @@
     if (existing) existing.remove();
 
     const script = document.createElement('script');
-    script.src          = `pages/${name}.js`;
+    script.src = `pages/${name}.js`;
     script.dataset.page = name;
     script.onload = () => {
       if (window.WorkVoltPages && typeof window.WorkVoltPages[name] === 'function') {
         window.WorkVoltPages[name](container);
-        setTimeout(() => autoTranslatePage(), 20);
+        setTimeout(() => { autoTranslatePage(); }, 20);
       } else {
         renderPagePlaceholder(name, container);
       }
@@ -645,7 +698,7 @@
 
   function renderPagePlaceholder(name, container) {
     const label = MODULE_LABELS[name] || name;
-    const icon  = MODULE_ICONS[name]  || 'fa-layer-group';
+    const icon = MODULE_ICONS[name] || 'fa-layer-group';
     container.innerHTML = `
       <div class="p-6 md:p-8 fade-in">
         <div class="max-w-2xl mx-auto mt-16 text-center">
@@ -655,8 +708,7 @@
           <h2 class="text-2xl font-extrabold text-slate-800 mb-2">${label}</h2>
           <p class="text-slate-500 mb-6 text-sm leading-relaxed">
             This page is ready to be built as its own module.<br>
-            Create <code class="bg-slate-100 px-2 py-0.5 rounded text-blue-600 font-mono text-xs">pages/${name}.js</code>
-            and register it with <code class="bg-slate-100 px-2 py-0.5 rounded text-blue-600 font-mono text-xs">WorkVoltPages.${name}</code>.
+            Create <code class="bg-slate-100 px-2 py-0.5 rounded text-blue-600 font-mono text-xs">pages/${name}.js</code> and register it with <code class="bg-slate-100 px-2 py-0.5 rounded text-blue-600 font-mono text-xs">WorkVoltPages.${name}</code>.
           </p>
         </div>
       </div>`;
@@ -670,32 +722,38 @@
   function updateBackButton() {
     document.getElementById('app-back-btn').classList.toggle('hidden', history.length <= 1);
   }
-  function appGoBack() { history.back(); }
+
+  function appGoBack() {
+    history.back();
+  }
 
   // ─────────────────────────────────────────────
   //  USER MENU
   // ─────────────────────────────────────────────
   function renderUserDropdown() {
-    const inner       = document.getElementById('user-dropdown-inner');
+    const inner = document.getElementById('user-dropdown-inner');
     if (!inner) return;
+
     const isSuperAdmin = (currentUser?.role === 'SuperAdmin');
 
     inner.innerHTML = `
-      <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50">
+      <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
         <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Account</p>
       </div>
       <button onclick="openProfileModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
         <i class="fas fa-user-circle text-slate-400 w-4"></i><span data-i18n="My Profile">My Profile</span>
       </button>
       <button onclick="openSecurityModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-        <i class="fas fa-shield-alt text-slate-400 w-4"></i>Security &amp; Password
+        <i class="fas fa-shield-alt text-slate-400 w-4"></i>Security & Password
       </button>
+      
       ${isSuperAdmin ? `
       <div class="border-t border-slate-100"></div>
       <button onclick="openMimicModal(); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-violet-700 hover:bg-violet-50 flex items-center gap-2.5 transition-colors">
         <i class="fas fa-user-secret text-violet-400 w-4"></i>Mimic Profile
         <span class="ml-auto text-[10px] text-violet-400 bg-violet-50 border border-violet-200 rounded px-1 font-bold">SA</span>
       </button>` : ''}
+      
       <div class="border-t border-slate-100"></div>
       <button onclick="setLang('en'); closeUserMenu();" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
         🇺🇸 <span data-i18n="English">English</span>
@@ -706,12 +764,13 @@
       <div class="border-t border-slate-100"></div>
       <button onclick="handleLogout()" class="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors">
         <i class="fas fa-sign-out-alt text-red-400 w-4"></i>Logout
-      </button>`;
+      </button>
+    `;
   }
 
   function toggleUserMenu(e) {
     e?.stopPropagation();
-    const dd       = document.getElementById('user-dropdown');
+    const dd = document.getElementById('user-dropdown');
     const wasHidden = dd.classList.contains('hidden');
     dd.classList.toggle('hidden');
     if (wasHidden) renderUserDropdown();
@@ -721,15 +780,15 @@
     document.getElementById('user-dropdown').classList.add('hidden');
   }
 
-  function openProfileModal()  { showToast('Profile modal — coming soon', 'info'); }
+  function openProfileModal() { showToast('Profile modal — coming soon', 'info'); }
   function openSecurityModal() { showToast('Security modal — coming soon', 'info'); }
-  function openMimicModal()    { showToast('Mimic modal — coming soon', 'info'); }
 
   // ─────────────────────────────────────────────
-  //  SIDEBAR
+  //  MOBILE SIDEBAR
   // ─────────────────────────────────────────────
   function toggleSidebarCollapse() {
-    const collapsed = document.getElementById('sidebar').classList.toggle('collapsed');
+    const sidebar = document.getElementById('sidebar');
+    const collapsed = sidebar.classList.toggle('collapsed');
     localStorage.setItem('wv_sidebar_collapsed', collapsed ? '1' : '0');
   }
 
@@ -768,22 +827,20 @@
       closeUserMenu();
   });
 
-  // ─────────────────────────────────────────────
-  //  EXPOSE GLOBALS
-  // ─────────────────────────────────────────────
+  // Expose globals
   window.WorkVolt = {
-    api:      apiCall,
-    user:     () => currentUser,
-    session:  () => currentSession,
-    toast:    showToast,
+    api: apiCall,
+    user: () => currentUser,
+    session: () => currentSession,
+    toast: showToast,
     navigate: showModule,
   };
   window.WorkVoltPages = window.WorkVoltPages || {};
-  window.renderNav     = renderNav;
-  window._wvRolePermissions  = () => _rolePermissions;
-  window._wvUserOverrides    = () => _userModuleOverrides;
+  window.renderNav = renderNav;
+  window._wvRolePermissions = () => _rolePermissions;
+  window._wvUserOverrides = () => _userModuleOverrides;
   window._wvApplyPermissions = function(perms, overrides) {
-    if (perms)    _rolePermissions     = perms;
+    if (perms) _rolePermissions = perms;
     if (overrides) _userModuleOverrides = overrides;
     renderNav();
   };
@@ -793,29 +850,47 @@
   // ─────────────────────────────────────────────
   window.addEventListener('load', async () => {
     try {
-      const savedUser    = sessionStorage.getItem('wv_user');
+      const savedUser = sessionStorage.getItem('wv_user');
       const savedSession = sessionStorage.getItem('wv_session');
-      const savedUrl     = sessionStorage.getItem('wv_gas_url') || '';
-
+      const savedUrl = sessionStorage.getItem('wv_gas_url') || (window.sessionData && window.sessionData.gas_url) || '';
+      
+      console.log('Boot check:', { hasUser: !!savedUser, hasSession: !!savedSession, hasUrl: !!savedUrl });
+      
       if (!savedUser || !savedSession || !savedUrl) {
+        console.log('Missing credentials, redirecting to login');
         window.location.href = 'index.html';
         return;
       }
 
-      API_URL        = savedUrl;
+      API_URL = savedUrl;
       window.API_URL = savedUrl;
-      currentUser    = JSON.parse(savedUser);
+      currentUser = JSON.parse(savedUser);
       currentSession = savedSession;
 
-      try { await loadInstalledModules(); } catch(e) { console.error('Module load failed:', e); }
-      try { await loadRolePermissions();  } catch(e) { console.error('Permissions load failed:', e); }
+      console.log('Starting app load...');
+
+      try {
+        await loadInstalledModules();
+        console.log('Modules loaded:', INSTALLED_MODULES);
+      } catch (e) {
+        console.error('Module load failed:', e);
+      }
+
+      try {
+        await loadRolePermissions();
+        console.log('Permissions loaded');
+      } catch (e) {
+        console.error('Permissions load failed:', e);
+      }
 
       hideSplash();
       await showApp();
+      console.log('App shown successfully');
 
+      // i18n: restore saved language and translate UI
       window.currentLang = localStorage.getItem('lang') || 'en';
-      setTimeout(() => autoTranslatePage(), 50);
-
+      setTimeout(() => { autoTranslatePage(); }, 50);
+      
     } catch (err) {
       console.error('Fatal boot error:', err);
       alert('Failed to start app: ' + err.message);
