@@ -386,8 +386,15 @@
   // ─────────────────────────────────────────────
   //  API HELPER - SESSION ONLY (NO TOKEN)
   // ─────────────────────────────────────────────
+    // ─────────────────────────────────────────────
+  //  API HELPER - SESSION ONLY (NO TOKEN)
+  // ─────────────────────────────────────────────
   async function apiCall(path, params = {}, retries = 2) {
     const savedUrl = sessionStorage.getItem('wv_gas_url') || API_URL;
+    
+    if (!savedUrl) {
+      throw new Error('No API URL configured');
+    }
     
     const url = new URL(savedUrl);
     url.searchParams.set('path', path);
@@ -396,6 +403,8 @@
     // Session-based authentication only
     if (currentSession) {
       url.searchParams.set('session_id', currentSession);
+    } else if (path !== 'auth/login') {
+      throw new Error('No session - please login');
     }
     
     for (const k in params) {
