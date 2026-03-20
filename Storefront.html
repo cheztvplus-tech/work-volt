@@ -1652,41 +1652,26 @@
   </div>
 </div>
 
-<!--
-  GAS DATA INJECTION
-  Storefront.gs writes the real JSON into this tag via:
-    <script id="__sd__" type="application/json"><?= storeData ?></script>
-  When the file is opened directly in a browser this tag is absent,
-  so __STORE__ stays null and boot() falls back to fetch-based loading.
--->
-<?!= '<scr' + 'ipt id="__sd__" type="application/json">' + storeData + '</scr' + 'ipt>' ?>
+<!-- WORK VOLT STOREFRONT — powered by Supabase Edge Function -->
 
 <script>
 // ════════════════════════════════════════════════════════════════
-//  STORE DATA — injected by Storefront.gs at page load
-//  Falls back to fetch-based loading if served standalone
+//  STOREFRONT — Supabase Edition
+//  Data is loaded from the Edge Function at:
+//    supabase/functions/storefront/index.ts
+//
+//  To configure: set STOREFRONT_API below to your deployed URL, e.g.
+//    https://<project-ref>.supabase.co/functions/v1/storefront
+//
+//  Or set it at runtime (useful for multi-client deploys):
+//    localStorage.setItem('wv_sf_url', 'https://...')
 // ════════════════════════════════════════════════════════════════
-// ── GAS template injection ──────────────────────────────────────
-// When served via Storefront.gs, GAS replaces the scriptlet below
-// with the real JSON. When opened directly in a browser the scriptlet
-// tag is never evaluated, so __STORE__ stays null and boot() falls
-// back to fetch-based loading using wv_gas_url from localStorage.
-var __STORE__ = null;
-(function() {
-  // The GAS scriptlet <?= storeData ?> outputs a JSON string literal.
-  // We read it from a <script id="__sd__"> tag injected by GAS so the
-  // raw angle-bracket never appears as a JS token in the standalone file.
-  var el = document.getElementById('__sd__');
-  if (el) {
-    try { __STORE__ = JSON.parse(el.textContent); } catch(e) {}
-  }
-})();
+var STOREFRONT_API = localStorage.getItem('wv_sf_url') || 'YOUR_EDGE_FUNCTION_URL_HERE';
 
 // ── Globals ────────────────────────────────────────────────────
 var S          = {};
 var PRODUCTS   = [];
 var CATEGORIES = [];
-var GAS_URL    = '';
 var CURRENCY   = 'CAD';
 
 // ── State ──────────────────────────────────────────────────────
@@ -1743,34 +1728,28 @@ function parseLayoutSettings() {
 
 // ── Boot ────────────────────────────────────────────────────────
 async function boot() {
-  // Use GAS-injected data if available (preferred — no extra fetch)
-  if (__STORE__) {
-    S          = __STORE__.settings   || {};
-    PRODUCTS   = __STORE__.products   || [];
-    CATEGORIES = __STORE__.categories || [];
-    GAS_URL    = __STORE__.gasUrl     || '';
-  } else {
-    // Fallback: fetch from GAS (when served standalone for testing)
-    GAS_URL = localStorage.getItem('wv_gas_url') || '';
-    if (!GAS_URL) {
-      document.getElementById('sf-loader').innerHTML =
-        '<p style="font-family:sans-serif;color:#ef4444;padding:2rem;text-align:center">Store not configured.<br>Please set up your GAS connection.</p>';
-      return;
-    }
-    try {
-      var [sr, pr, cr] = await Promise.all([
-        fetch(GAS_URL + '?path=storefront/settings').then(r => r.json()),
-        fetch(GAS_URL + '?path=storefront/products').then(r => r.json()),
-        fetch(GAS_URL + '?path=storefront/categories').then(r => r.json()),
-      ]);
-      S          = sr.settings || {};
-      PRODUCTS   = pr.rows     || [];
-      CATEGORIES = cr.rows     || [];
-    } catch(e) {
-      document.getElementById('sf-loader').innerHTML =
-        '<p style="font-family:sans-serif;color:#ef4444;padding:2rem;text-align:center">Failed to load store.<br>' + e.message + '</p>';
-      return;
-    }
+  if (!STOREFRONT_API || STOREFRONT_API === 'YOUR_EDGE_FUNCTION_URL_HERE') {
+    document.getElementById('sf-loader').innerHTML =
+      '<p style="font-family:sans-serif;color:#ef4444;padding:2rem;text-align:center">' +
+      'Store not configured.<br>Set STOREFRONT_API in Storefront.html<br>' +
+      'or run: localStorage.setItem(\'wv_sf_url\', \'YOUR_URL\')</p>';
+    return;
+  }
+
+  try {
+    var [sr, pr, cr] = await Promise.all([
+      fetch(STOREFRONT_API + '?path=storefront/settings').then(function(r) { return r.json(); }),
+      fetch(STOREFRONT_API + '?path=storefront/products').then(function(r) { return r.json(); }),
+      fetch(STOREFRONT_API + '?path=storefront/categories').then(function(r) { return r.json(); }),
+    ]);
+    S          = sr.settings || {};
+    PRODUCTS   = pr.rows     || [];
+    CATEGORIES = cr.rows     || [];
+  } catch(e) {
+    document.getElementById('sf-loader').innerHTML =
+      '<p style="font-family:sans-serif;color:#ef4444;padding:2rem;text-align:center">' +
+      'Failed to load store.<br>' + e.message + '</p>';
+    return;
   }
 
   CURRENCY = S.currency_cad === 'true' ? 'CAD' : 'USD';
@@ -1836,12 +1815,12 @@ function initScrollEffect() {
 
 // ── Real-time polling (every 60s) — also re-checks layout+banners ─
 function startPolling() {
-  if (!GAS_URL) return;
+  if (!STOREFRONT_API || STOREFRONT_API === 'YOUR_EDGE_FUNCTION_URL_HERE') return;
   syncTimer = setInterval(async function() {
     try {
       var [sr, pr] = await Promise.all([
-        fetch(GAS_URL + '?path=storefront/settings&_t=' + Date.now()).then(r => r.json()),
-        fetch(GAS_URL + '?path=storefront/products&_t=' + Date.now()).then(r => r.json()),
+        fetch(STOREFRONT_API + '?path=storefront/settings&_t=' + Date.now()).then(function(r) { return r.json(); }),
+        fetch(STOREFRONT_API + '?path=storefront/products&_t='  + Date.now()).then(function(r) { return r.json(); }),
       ]);
       var changed = false;
 
@@ -2706,7 +2685,7 @@ async function applyDiscount() {
   var code = document.getElementById('discount-input').value.trim().toUpperCase();
   if (!code) return;
   try {
-    var r = await fetch(GAS_URL + '?path=storefront/discount/validate&code=' + encodeURIComponent(code) + '&subtotal=' + getSubtotal());
+    var r = await fetch(STOREFRONT_API + '?path=storefront/discount/validate&code=' + encodeURIComponent(code) + '&subtotal=' + getSubtotal());
     var d = await r.json();
     if (!d.valid) { showToast(d.error || 'Invalid code', 'error'); return; }
     appliedDisc = d.discount;
@@ -3012,7 +2991,7 @@ async function placeOrder() {
   btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Placing order…';
 
   try {
-    var r    = await fetch(GAS_URL, { method: 'POST', body: params });
+    var r    = await fetch(STOREFRONT_API, { method: 'POST', body: params });
     var data = await r.json();
     if (data.error) throw new Error(data.error);
     if (data.redirect) { window.location.href = data.redirect; return; }
