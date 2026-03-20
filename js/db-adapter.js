@@ -40,11 +40,207 @@ class BaseAdapter {
   async configGetAll()          { throw new Error('configGetAll() not implemented'); }
 }
 
+// ================================================================
+//  SUPABASE ADAPTER
+// ================================================================
+class SupabaseAdapter extends BaseAdapter {
+
+  constructor() { super(); this._client = null; }
+
+  async _loadSDK() {
+    if (window.supabase) return;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Failed to load Supabase SDK'));
+      document.head.appendChild(s);
+    });
+  }
+
+  async init(credentials) {
+    const { url, anonKey } = credentials;
+    if (!url || !anonKey) throw new Error('Supabase URL and Anon Key are required.');
+    if (!url.includes('supabase.co')) throw new Error('Invalid Supabase URL. Should be: https://xxxx.supabase.co');
+    await this._loadSDK();
+    this._client = window.supabase.createClient(url, anonKey);
+    // Verify connectivity — ping the auth settings endpoint (always public)
+    try {
+      const res = await fetch(url + '/auth/v1/settings', { headers: { apikey: anonKey } });
+      if (!res.ok && res.status !== 404) throw new Error('Could not reach Supabase. Check your URL and Anon Key.');
+    } catch(e) {
+      if (e.message.includes('Could not reach')) throw e;
+      throw new Error('Could not connect to Supabase. Check your Project URL.');
+    }
+    return true;
+  }
+
+  async login(email, password) {
+    const { data, error } = await this._client.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(error.message);
+    const { data: profile, error: pErr } = await this._client.from('users').select('*').eq('id', data.user.id).single();
+    if (pErr) throw new Error('Could not load user profile: ' + pErr.message);
+    if (profile.active === false || profile.active === 'false') throw new Error('Account deactivated. Contact your administrator.');
+    await this._client.from('users').update({ last_login: new Date().toISOString() }).eq('id', data.user.id);
+    return { user: profile, session: data.session };
+  }
+
+  async logout() { if (this._client) await this._client.auth.signOut(); }
+
+  async getSession() {
+    if (!this._client) return null;
+    const { data } = await this._client.auth.getSession();
+    return data.session || null;
+  }
+
+  async getUser() {
+    if (!this._client) return null;
+    const { data: { user } } = await this._client.auth.getUser();
+    if (!user) return null;
+    const { data: profile } = await this._client.from('users').select('*').eq('id', user.id).single();
+    return profile || null;
+  }
+
+  async changePassword(newPassword) {
+    const { error } = await this._client.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
+  }
+
+  async sendPasswordReset(email) {
+    const { error } = await this._client.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/index.html'
+    });
+    if (error) throw new Error(error.message);
+  }
+
+  async list(table, filters = {}, options = {}) {
+    let query = this._client.from(table).select(options.select || '*');
+    Object.entries(filters).forEach(([col, val]) => {
+      if (val !== undefined && val !== null && val !== '') query = query.eq(col, val);
+    });
+    if (options.order) query = query.order(options.order, { ascending: options.asc ?? false });
+    if (options.limit) query = query.limit(options.limit);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  async get(table, id, idCol = 'id') {
+    const { data, error } = await this._client.from(table).select('*').eq(idCol, id).single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async create(table, row) {
+    const { data, error } = await this._client.from(table).insert(row).select().single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async update(table, id, patch, idCol = 'id') {
+    const { data, error } = await this._client.from(table).update(patch).eq(idCol, id).select().single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async delete(table, id, idCol = 'id') {
+    const { error } = await this._client.from(table).delete().eq(idCol, id);
+    if (error) throw new Error(error.message);
+    return true;
+  }
+
+  async configGet(key) {
+    const { data } = await this._client.from('config').select('value').eq('key', key).single();
+    return data?.value ?? null;
+  }
+
+  async configSet(key, value) {
+    const { error } = await this._client.from('config')
+      .upsert({ key, value, updated_at: new Date().toISOString() });
+    if (error) throw new Error(error.message);
+  }
+
+  async configGetAll() {
+    const { data, error } = await this._client.from('config').select('*');
+    if (error) throw new Error(error.message);
+    return Object.fromEntries((data || []).map(r => [r.key, r.value]));
+  }
+}
+
+// ================================================================
+//  FIREBASE ADAPTER  (stub — not actively used)
+// ================================================================
+class FirebaseAdapter extends BaseAdapter {
+  async init(credentials) { throw new Error('Firebase adapter not yet implemented.'); }
+}
+
+// ================================================================
+//  SHEETS ADAPTER  (legacy — kept dormant, not shown in UI)
+// ================================================================
+class SheetsAdapter extends BaseAdapter {
+  constructor() { super(); this._gasUrl = null; this._session = null; this._user = null; }
+
+  async init(credentials) {
+    const { gasUrl } = credentials;
+    if (!gasUrl) throw new Error('GAS Web App URL is required.');
+    this._gasUrl = gasUrl;
+    const res = await fetch(gasUrl + '?path=ping', { cache: 'no-cache' });
+    const data = await res.json();
+    if (data.status !== 'ok') throw new Error('GAS endpoint not responding correctly.');
+    return true;
+  }
+
+  async _call(path, params = {}) {
+    const url = new URL(this._gasUrl);
+    url.searchParams.set('path', path);
+    if (this._session) url.searchParams.set('session_id', this._session);
+    Object.entries(params).forEach(([k, v]) => { if (v != null) url.searchParams.set(k, v); });
+    const res  = await fetch(url.toString(), { cache: 'no-cache' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+  }
+
+  async login(email, password) {
+    const hash = Array.from(new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password))
+    )).map(b => b.toString(16).padStart(2,'0')).join('');
+    const data = await this._call('auth/login', { email, password_hash: hash });
+    this._session = data.session_id;
+    this._user    = data.user;
+    return { user: data.user, session: data.session_id };
+  }
+
+  async logout() {
+    if (this._session) await this._call('auth/logout').catch(() => {});
+    this._session = null; this._user = null;
+  }
+
+  async getSession() { return this._session || null; }
+  async getUser()    { return this._user    || null; }
+  async changePassword() { throw new Error('Password change not supported on Sheets adapter.'); }
+  async sendPasswordReset() { throw new Error('Password reset not supported on Sheets adapter.'); }
+
+  async list(table, filters = {}) {
+    const data = await this._call(table + '/list', filters);
+    return data.rows || [];
+  }
+  async create(table, row)              { return this._call(table + '/create', row); }
+  async update(table, id, patch)        { return this._call(table + '/update', { id, ...patch }); }
+  async delete(table, id)               { return this._call(table + '/delete', { id }); }
+  async get(table, id)                  { return this._call(table + '/get', { id }); }
+  async configGet(key)                  { const d = await this._call('config/get-all'); return (d.settings||{})[key] ?? null; }
+  async configSet(key, value)           { return this._call('config/set-key', { key, value }); }
+  async configGetAll()                  { const d = await this._call('config/get-all'); return d.settings || {}; }
+}
+
 // ── Adapter registry ──────────────────────────────────────────────
+// All adapters are inlined above — no dynamic imports, works as a
+// plain <script> tag with no build step required.
 const ADAPTERS = {
-  supabase:     () => import('./adapters/supabase.js').then(m => m.SupabaseAdapter),
-  firebase:     () => import('./adapters/firebase.js').then(m => m.FirebaseAdapter),
-  sheets:       () => import('./adapters/sheets.js').then(m => m.SheetsAdapter),
+  supabase: SupabaseAdapter,
+  firebase: FirebaseAdapter,
+  sheets:   SheetsAdapter,
 };
 
 // ── Adapter metadata (for UI) ─────────────────────────────────────
@@ -88,9 +284,9 @@ let _adapterType = null;
 // ── Bootstrap: load adapter from localStorage ─────────────────────
 async function initAdapter() {
   const stored = _loadCredentials();
-  if (!stored) return null; // Not configured yet
-
-  const AdapterClass = await _loadAdapterClass(stored.provider);
+  if (!stored) return null;
+  const AdapterClass = ADAPTERS[stored.provider];
+  if (!AdapterClass) throw new Error('Unknown database provider: ' + stored.provider);
   _adapter     = new AdapterClass();
   _adapterType = stored.provider;
   await _adapter.init(stored.credentials);
@@ -99,9 +295,10 @@ async function initAdapter() {
 
 // ── Connect with new credentials (called from login page) ─────────
 async function connectAdapter(provider, credentials) {
-  const AdapterClass = await _loadAdapterClass(provider);
+  const AdapterClass = ADAPTERS[provider];
+  if (!AdapterClass) throw new Error('Unknown database provider: ' + provider);
   const instance = new AdapterClass();
-  await instance.init(credentials); // throws if invalid
+  await instance.init(credentials);
   _adapter     = instance;
   _adapterType = provider;
   _saveCredentials(provider, credentials);
@@ -124,12 +321,6 @@ function getAdapter() {
 function getAdapterType() { return _adapterType; }
 
 // ── Internal helpers ──────────────────────────────────────────────
-async function _loadAdapterClass(provider) {
-  const factory = ADAPTERS[provider];
-  if (!factory) throw new Error('Unknown database provider: ' + provider);
-  return await factory();
-}
-
 function _saveCredentials(provider, credentials) {
   localStorage.setItem('wv_db_config', JSON.stringify({ provider, credentials }));
 }
