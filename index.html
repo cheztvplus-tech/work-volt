@@ -15,9 +15,6 @@
     .btn-primary:hover    { background:#1d4ed8; }
     .btn-primary:active   { transform:scale(.98); }
     .btn-primary:disabled { opacity:.6; cursor:not-allowed; }
-    .provider-btn { display:flex; align-items:center; gap:.75rem; width:100%; padding:.875rem 1rem; border:2px solid #e2e8f0; border-radius:12px; background:#fff; cursor:pointer; transition:all .15s; font-family:inherit; text-align:left; }
-    .provider-btn:hover    { border-color:#93c5fd; background:#eff6ff; }
-    .provider-btn.selected { border-color:#2563eb; background:#eff6ff; box-shadow:0 0 0 3px rgba(37,99,235,.1); }
     @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-4px)} 75%{transform:translateX(4px)} }
     .shake { animation:shake .3s ease-in-out; }
     @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
@@ -60,31 +57,41 @@
           <span id="error-text"></span>
         </div>
 
-        <!-- ── Database Provider Section ── -->
-        <div>
+        <!-- ── Supabase Connection ── -->
+        <div id="supabase-section">
           <div class="flex items-center justify-between mb-2">
-            <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Database</label>
-            <button onclick="toggleProviderSection()" class="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 transition-colors">
-              <span id="provider-toggle-label">Change</span>
-              <i id="provider-toggle-icon" class="fas fa-chevron-down text-[10px] transition-transform"></i>
+            <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Supabase Connection</label>
+            <button onclick="toggleCredentials()" class="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 transition-colors">
+              <span id="cred-toggle-label">Change</span>
+              <i id="cred-toggle-icon" class="fas fa-chevron-down text-[10px] transition-transform"></i>
             </button>
           </div>
 
-          <!-- Collapsed: show current provider -->
-          <div id="provider-display" class="flex items-center gap-3 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-            <div id="provider-display-icon" class="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs flex-shrink-0" style="background:#3ecf8e">
+          <!-- Collapsed: show saved status -->
+          <div id="cred-display" class="flex items-center gap-3 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <div class="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs flex-shrink-0" style="background:#3ecf8e">
               <i class="fas fa-database"></i>
             </div>
-            <div>
-              <div id="provider-display-name" class="text-sm font-semibold text-slate-800">Supabase</div>
-              <div id="provider-display-status" class="text-xs text-slate-400">Credentials saved ✓</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-semibold text-slate-800">Supabase</div>
+              <div id="cred-display-status" class="text-xs text-slate-400">Not configured</div>
             </div>
           </div>
 
-          <!-- Expanded: provider picker + credential fields -->
-          <div id="provider-section" class="collapsible closed mt-3 space-y-3">
-            <div id="provider-buttons" class="space-y-2"></div>
-            <div id="credential-fields" class="space-y-3"></div>
+          <!-- Expanded: credential fields -->
+          <div id="cred-section" class="collapsible closed mt-3 space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Project URL</label>
+              <input id="cred-url" type="url" class="field font-mono text-xs" placeholder="https://xxxxxxxxxxxx.supabase.co">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Anon Public Key</label>
+              <input id="cred-anonKey" type="text" class="field font-mono text-xs" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+            </div>
+            <p class="text-xs text-slate-400">
+              <i class="fas fa-info-circle mr-1"></i>
+              Found in Supabase dashboard → Settings → API
+            </p>
           </div>
         </div>
 
@@ -141,7 +148,7 @@
       </div>
     </div>
 
-    <p class="text-center text-blue-200/60 text-xs mt-5">Work Volt v2.0 • Multi-provider</p>
+    <p class="text-center text-blue-200/60 text-xs mt-5">Work Volt v2.0 • Powered by Supabase</p>
   </div>
 
   <script src="js/db-adapter.js"></script>
@@ -149,101 +156,61 @@
   // ──────────────────────────────────────────────────────────────
   //  STATE
   // ──────────────────────────────────────────────────────────────
-  let selectedProvider    = 'supabase';
-  let providerSectionOpen = false;
-
-  const PROVIDER_COLORS = { supabase:'#3ecf8e', firebase:'#f5820d', sheets:'#0f9d58' };
+  let credSectionOpen = false;
 
   // ──────────────────────────────────────────────────────────────
-  //  PROVIDER UI
+  //  CREDENTIAL SECTION TOGGLE
   // ──────────────────────────────────────────────────────────────
-  function renderProviderButtons() {
-    document.getElementById('provider-buttons').innerHTML =
-      Object.entries(ADAPTER_INFO).map(([id, info]) => `
-        <button onclick="selectProvider('${id}')" id="provider-btn-${id}"
-          class="provider-btn ${selectedProvider === id ? 'selected' : ''}">
-          <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white flex-shrink-0 text-sm"
-               style="background:${PROVIDER_COLORS[id]||'#64748b'}">
-            <i class="fas ${info.icon}"></i>
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-semibold text-slate-800">${info.label}</div>
-            <div class="text-xs text-slate-400 truncate">${info.description}</div>
-          </div>
-          ${selectedProvider === id ? '<i class="fas fa-check-circle text-blue-500 flex-shrink-0"></i>' : ''}
-        </button>`
-      ).join('');
+  function toggleCredentials() {
+    credSectionOpen = !credSectionOpen;
+    const section = document.getElementById('cred-section');
+    const display = document.getElementById('cred-display');
+    const label   = document.getElementById('cred-toggle-label');
+    const icon    = document.getElementById('cred-toggle-icon');
+
+    if (credSectionOpen) {
+      section.classList.replace('closed', 'open');
+      display.classList.add('hidden');
+      label.textContent = 'Done';
+      icon.style.transform = 'rotate(180deg)';
+      // Pre-fill saved credentials
+      const saved = _loadSavedCredentials();
+      if (saved) {
+        document.getElementById('cred-url').value     = saved.url     || '';
+        document.getElementById('cred-anonKey').value = saved.anonKey || '';
+      }
+    } else {
+      section.classList.replace('open', 'closed');
+      display.classList.remove('hidden');
+      label.textContent = 'Change';
+      icon.style.transform = '';
+      updateCredDisplay();
+    }
   }
 
-  function selectProvider(id) {
-    selectedProvider = id;
-    renderProviderButtons();
-    renderCredentialFields(id);
+  function updateCredDisplay() {
+    const saved = _loadSavedCredentials();
+    const status = document.getElementById('cred-display-status');
+    if (saved?.url) {
+      // Show just the project ref, not the full URL
+      const ref = saved.url.replace('https://','').replace('.supabase.co','').split('.')[0];
+      status.textContent = ref + '.supabase.co · Saved ✓';
+    } else {
+      status.textContent = 'Not configured — click Change to set up';
+    }
   }
 
-  function renderCredentialFields(providerId) {
-    const info  = ADAPTER_INFO[providerId];
-    const saved = _loadSavedCredentials(providerId);
-    document.getElementById('credential-fields').innerHTML = info.fields.map(f => `
-      <div>
-        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">${f.label}</label>
-        <input id="cred-${f.key}" type="text" class="field font-mono text-xs"
-          placeholder="${f.placeholder}" value="${(saved?.[f.key]||'').replace(/"/g,'&quot;')}">
-      </div>`
-    ).join('');
-  }
-
-  function getCredentialValues(providerId) {
-    const creds = {};
-    ADAPTER_INFO[providerId].fields.forEach(f => {
-      creds[f.key] = (document.getElementById('cred-'+f.key)?.value||'').trim();
-    });
-    return creds;
-  }
-
-  function _loadSavedCredentials(provider) {
+  function _loadSavedCredentials() {
     try {
       const raw = localStorage.getItem('wv_db_config');
       if (!raw) return null;
       const obj = JSON.parse(raw);
-      return obj.provider === provider ? obj.credentials : null;
+      return obj.provider === 'supabase' ? obj.credentials : null;
     } catch(e) { return null; }
   }
 
   function _loadSavedConfig() {
-    try { return JSON.parse(localStorage.getItem('wv_db_config')||'null'); } catch(e) { return null; }
-  }
-
-  function updateProviderDisplay() {
-    const info  = ADAPTER_INFO[selectedProvider] || {};
-    const saved = _loadSavedCredentials(selectedProvider);
-    document.getElementById('provider-display-icon').style.background = PROVIDER_COLORS[selectedProvider]||'#64748b';
-    document.getElementById('provider-display-icon').innerHTML = `<i class="fas ${info.icon||'fa-database'}"></i>`;
-    document.getElementById('provider-display-name').textContent = info.label || selectedProvider;
-    document.getElementById('provider-display-status').textContent = saved ? 'Credentials saved ✓' : 'Not configured';
-  }
-
-  function toggleProviderSection() {
-    providerSectionOpen = !providerSectionOpen;
-    const section = document.getElementById('provider-section');
-    const display = document.getElementById('provider-display');
-    const label   = document.getElementById('provider-toggle-label');
-    const icon    = document.getElementById('provider-toggle-icon');
-
-    if (providerSectionOpen) {
-      section.classList.replace('closed','open');
-      display.classList.add('hidden');
-      label.textContent = 'Done';
-      icon.style.transform = 'rotate(180deg)';
-      renderProviderButtons();
-      renderCredentialFields(selectedProvider);
-    } else {
-      section.classList.replace('open','closed');
-      display.classList.remove('hidden');
-      label.textContent = 'Change';
-      icon.style.transform = '';
-      updateProviderDisplay();
-    }
+    try { return JSON.parse(localStorage.getItem('wv_db_config') || 'null'); } catch(e) { return null; }
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -252,31 +219,29 @@
   window.addEventListener('load', async () => {
     const saved = _loadSavedConfig();
 
-    if (saved?.provider) {
-      selectedProvider = saved.provider;
-      updateProviderDisplay();
-    } else {
-      // First time — open picker automatically
-      providerSectionOpen = true;
-      document.getElementById('provider-section').classList.replace('closed','open');
-      document.getElementById('provider-display').classList.add('hidden');
-      document.getElementById('provider-toggle-label').textContent = 'Done';
-      document.getElementById('provider-toggle-icon').style.transform = 'rotate(180deg)';
-      renderProviderButtons();
-      renderCredentialFields('supabase');
-    }
-
-    const savedEmail = localStorage.getItem('wv_last_email');
-    if (savedEmail) document.getElementById('email').value = savedEmail;
-
-    // Auto-redirect if already logged in
-    if (saved?.provider) {
+    if (saved?.provider === 'supabase' && saved?.credentials?.url) {
+      // Credentials already saved — show collapsed display
+      updateCredDisplay();
+      // Restore last email
+      const savedEmail = localStorage.getItem('wv_last_email');
+      if (savedEmail) document.getElementById('email').value = savedEmail;
+      // Auto-redirect if already logged in
       try {
         await initAdapter();
         const session = await WorkVoltDB.auth.getSession();
         if (session) { window.location.href = 'main.html'; return; }
-      } catch(e) { /* not logged in */ }
+      } catch(e) { /* not logged in, stay on page */ }
+    } else {
+      // First time — open credential fields automatically
+      credSectionOpen = true;
+      document.getElementById('cred-section').classList.replace('closed', 'open');
+      document.getElementById('cred-display').classList.add('hidden');
+      document.getElementById('cred-toggle-label').textContent = 'Done';
+      document.getElementById('cred-toggle-icon').style.transform = 'rotate(180deg)';
     }
+
+    const savedEmail = localStorage.getItem('wv_last_email');
+    if (savedEmail) document.getElementById('email').value = savedEmail;
   });
 
   // ──────────────────────────────────────────────────────────────
@@ -285,8 +250,8 @@
   function togglePwd() {
     const input = document.getElementById('password');
     input.type  = input.type === 'password' ? 'text' : 'password';
-    document.getElementById('eye-icon').classList.toggle('fa-eye',      input.type==='password');
-    document.getElementById('eye-icon').classList.toggle('fa-eye-slash', input.type==='text');
+    document.getElementById('eye-icon').classList.toggle('fa-eye',       input.type === 'password');
+    document.getElementById('eye-icon').classList.toggle('fa-eye-slash', input.type === 'text');
   }
 
   function showError(msg) {
@@ -307,74 +272,91 @@
     if (!email)    return showError('Please enter your email.');
     if (!password) return showError('Please enter your password.');
 
-    // Validate credential fields if section is open
-    let credentials = null;
-    if (providerSectionOpen) {
-      credentials = getCredentialValues(selectedProvider);
-      for (const f of ADAPTER_INFO[selectedProvider].fields) {
-        if (!credentials[f.key]) return showError(f.label + ' is required.');
+    // If credential section is open, validate and save before login
+    if (credSectionOpen) {
+      const url     = document.getElementById('cred-url')?.value.trim()     || '';
+      const anonKey = document.getElementById('cred-anonKey')?.value.trim() || '';
+      if (!url)     return showError('Supabase Project URL is required.');
+      if (!anonKey) return showError('Supabase Anon Key is required.');
+
+      try {
+        await connectAdapter('supabase', { url, anonKey });
+      } catch(e) {
+        return showError('Could not connect to Supabase: ' + e.message);
+      }
+    } else {
+      // Use saved credentials
+      try {
+        await initAdapter();
+      } catch(e) {
+        showError('Could not load saved credentials. Click Change to re-enter them.');
+        toggleCredentials();
+        return;
       }
     }
 
     btn.disabled  = true;
-    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Connecting…</span>';
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Signing in…</span>';
 
     try {
-      if (credentials) {
-        await connectAdapter(selectedProvider, credentials);
-      } else {
-        await initAdapter();
-      }
-
-      btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Signing in…</span>';
-
       const { user } = await WorkVoltDB.auth.login(email, password);
-
       localStorage.setItem('wv_last_email', email);
       sessionStorage.setItem('wv_user', JSON.stringify(user));
-
       window.location.href = 'main.html';
-
     } catch(err) {
-      showError(err.message || 'Login failed.');
+      showError(err.message || 'Login failed. Check your email and password.');
       btn.disabled  = false;
       btn.innerHTML = '<i class="fas fa-sign-in-alt"></i><span>Sign In</span>';
     }
   }
 
+  // Allow Enter key on password field
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('password')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doLogin();
+    });
+    document.getElementById('email')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doLogin();
+    });
+  });
+
   // ──────────────────────────────────────────────────────────────
-  //  RESET PASSWORD
+  //  PASSWORD RESET
   // ──────────────────────────────────────────────────────────────
   function showResetForm() {
     document.getElementById('reset-panel').classList.remove('hidden');
-    const email = document.getElementById('email').value;
-    if (email) document.getElementById('reset-email').value = email;
+    document.getElementById('reset-email').value = document.getElementById('email').value;
+    document.getElementById('reset-status').innerHTML = '';
   }
-  function hideResetForm() { document.getElementById('reset-panel').classList.add('hidden'); }
+  function hideResetForm() {
+    document.getElementById('reset-panel').classList.add('hidden');
+  }
 
   async function doReset() {
-    const btn      = document.getElementById('reset-btn');
-    const email    = document.getElementById('reset-email').value.trim();
-    const statusEl = document.getElementById('reset-status');
-    if (!email) { statusEl.innerHTML = '<p class="text-xs text-red-600 mb-2">Please enter your email.</p>'; return; }
+    const email = document.getElementById('reset-email').value.trim();
+    const btn   = document.getElementById('reset-btn');
+    const status = document.getElementById('reset-status');
+
+    if (!email) {
+      status.innerHTML = '<p class="text-xs text-red-500">Please enter your email.</p>';
+      return;
+    }
+
     btn.disabled  = true;
     btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Sending…';
+
     try {
+      await initAdapter();
       await WorkVoltDB.auth.resetPassword(email);
-      statusEl.innerHTML = '<div class="p-3 bg-green-50 border border-green-200 rounded-xl text-xs text-green-700 mb-2"><i class="fas fa-check-circle mr-1"></i>Reset link sent! Check your inbox.</div>';
-      btn.innerHTML = '<i class="fas fa-check text-xs"></i> Sent!';
-    } catch(err) {
-      statusEl.innerHTML = '<p class="text-xs text-red-600 mb-2">'+(err.message||'Failed.')+'</p>';
+      status.innerHTML = '<p class="text-xs text-green-600 font-medium"><i class="fas fa-check-circle mr-1"></i>Reset link sent — check your inbox.</p>';
+      btn.disabled  = false;
+      btn.innerHTML = '<i class="fas fa-paper-plane text-xs"></i> Send Link';
+    } catch(e) {
+      status.innerHTML = '<p class="text-xs text-red-500">' + (e.message || 'Failed to send reset email.') + '</p>';
       btn.disabled  = false;
       btn.innerHTML = '<i class="fas fa-paper-plane text-xs"></i> Send Link';
     }
   }
-
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      !document.getElementById('reset-panel').classList.contains('hidden') ? doReset() : doLogin();
-    }
-  });
   </script>
 </body>
 </html>
