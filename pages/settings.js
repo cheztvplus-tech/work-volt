@@ -1,9 +1,18 @@
-window.WorkVoltPages = window.WorkVoltPages || {};
+  window.WorkVoltPages = window.WorkVoltPages || {};
 
-window.WorkVoltPages['settings'] = function(container) {
+  window.WorkVoltPages['settings'] = function(container) {
 
   // ── State ──────────────────────────────────────────────────────
   let savedUrl    = localStorage.getItem('wv_gas_url')    || '';
+  
+  // Try to sync with parent if accessible
+  try {
+    if (window.parent && window.parent !== window && window.parent.sessionStorage) {
+      const parentUrl = window.parent.sessionStorage.getItem('wv_gas_url');
+      if (parentUrl) savedUrl = parentUrl;
+    }
+  } catch(e) {}
+    
   let activeTab   = 'connection';
   let usersCache  = [];
   let editingUser = null;
@@ -48,14 +57,14 @@ window.WorkVoltPages['settings'] = function(container) {
   async function api(path, params) {
     const url = new URL(getApiUrl());
     url.searchParams.set('path', path);
+    url.searchParams.set('_t', Date.now().toString());
     
     // Session-based authentication (from parent window)
     const sessionId = getSessionId();
     if (sessionId) {
       url.searchParams.set('session_id', sessionId);
-      console.log('API call with session:', path);
     } else {
-      console.warn('No session for API call:', path);
+      throw new Error('No session - please login');
     }
     
     if (params) {
