@@ -3,192 +3,378 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Work Volt - Login</title>
+  <title>Work Volt — Sign In</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Plus Jakarta Sans', sans-serif; }
-    .field { width:100%; padding:.75rem 1rem; border:1.5px solid #e2e8f0; border-radius:12px; font-size:.875rem; outline:none; transition:border-color .15s, box-shadow .15s; }
+    .field { width:100%; padding:.7rem 1rem; border:1.5px solid #e2e8f0; border-radius:10px; font-size:.875rem; outline:none; transition:border-color .15s,box-shadow .15s; font-family:inherit; background:#fff; }
     .field:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
-    .btn-primary { display:flex; align-items:center; justify-content:center; gap:.5rem; padding:.75rem 1.5rem; background:#2563eb; color:#fff; border:none; border-radius:12px; font-size:.875rem; font-weight:600; cursor:pointer; transition:background .15s, transform .1s; }
-    .btn-primary:hover { background:#1d4ed8; }
-    .btn-primary:active { transform:scale(.98); }
+    .btn-primary { display:flex; align-items:center; justify-content:center; gap:.5rem; padding:.75rem 1.5rem; background:#2563eb; color:#fff; border:none; border-radius:10px; font-size:.875rem; font-weight:600; cursor:pointer; transition:background .15s,transform .1s; width:100%; font-family:inherit; }
+    .btn-primary:hover    { background:#1d4ed8; }
+    .btn-primary:active   { transform:scale(.98); }
     .btn-primary:disabled { opacity:.6; cursor:not-allowed; }
-    @keyframes shake {
-      0%, 100% { transform: translateX(0); }
-      25% { transform: translateX(-5px); }
-      75% { transform: translateX(5px); }
-    }
-    .shake { animation: shake 0.3s ease-in-out; }
+    .provider-btn { display:flex; align-items:center; gap:.75rem; width:100%; padding:.875rem 1rem; border:2px solid #e2e8f0; border-radius:12px; background:#fff; cursor:pointer; transition:all .15s; font-family:inherit; text-align:left; }
+    .provider-btn:hover    { border-color:#93c5fd; background:#eff6ff; }
+    .provider-btn.selected { border-color:#2563eb; background:#eff6ff; box-shadow:0 0 0 3px rgba(37,99,235,.1); }
+    @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-4px)} 75%{transform:translateX(4px)} }
+    .shake { animation:shake .3s ease-in-out; }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+    .fade-up { animation:fadeUp .4s cubic-bezier(.16,1,.3,1) both; }
+    .collapsible { overflow:hidden; transition:max-height .35s ease, opacity .3s ease; }
+    .collapsible.open   { max-height:600px; opacity:1; }
+    .collapsible.closed { max-height:0;     opacity:0; pointer-events:none; }
   </style>
 </head>
+
 <body class="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 flex items-center justify-center p-4">
 
-  <div class="w-full max-w-md">
+  <div class="fixed inset-0 opacity-10 pointer-events-none"
+       style="background-image:radial-gradient(circle at 2px 2px,white 1px,transparent 0);background-size:32px 32px;"></div>
+
+  <div class="w-full max-w-md relative fade-up">
+
     <!-- Logo -->
-    <div class="flex flex-col items-center mb-8">
-      <div class="w-16 h-16 bg-white/15 border border-white/30 rounded-2xl flex items-center justify-center mb-4 backdrop-blur-sm">
-        <i class="fas fa-bolt text-white text-3xl"></i>
+    <div class="flex flex-col items-center mb-6">
+      <div class="w-14 h-14 bg-white/15 border border-white/30 rounded-2xl flex items-center justify-center mb-3 backdrop-blur-sm shadow-xl">
+        <i class="fas fa-bolt text-white text-2xl"></i>
       </div>
-      <h1 class="text-3xl font-extrabold text-white tracking-tight">Work Volt</h1>
-      <p class="text-blue-200 mt-1 text-sm font-medium">Power your operations</p>
+      <h1 class="text-2xl font-extrabold text-white tracking-tight">Work Volt</h1>
+      <p class="text-blue-200 mt-0.5 text-sm font-medium">Power your operations</p>
     </div>
 
-    <!-- Login Card -->
+    <!-- Card -->
     <div class="bg-white rounded-2xl shadow-2xl overflow-hidden">
+
       <div class="bg-blue-50 border-b border-blue-100 px-6 py-3 flex items-center gap-2">
-        <i class="fas fa-shield-alt text-blue-500"></i>
+        <i class="fas fa-shield-alt text-blue-500 text-sm"></i>
         <span class="text-xs font-bold text-blue-700 uppercase tracking-wide">Secure Sign In</span>
       </div>
 
-      <div class="p-6 space-y-4">
-        <!-- Error Message -->
+      <div class="p-6 space-y-5">
+
+        <!-- Error banner -->
         <div id="login-error" class="hidden p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
-          <i class="fas fa-exclamation-circle"></i>
+          <i class="fas fa-exclamation-circle flex-shrink-0"></i>
           <span id="error-text"></span>
         </div>
 
-        <!-- GAS URL -->
+        <!-- ── Database Provider Section ── -->
         <div>
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Work Volt URL</label>
-          <input id="gas-url" type="url" class="field" placeholder="https://script.google.com/macros/s/.../exec">
-          <p class="text-xs text-slate-400 mt-1">Your Google Apps Script Web App URL</p>
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Database</label>
+            <button onclick="toggleProviderSection()" class="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 transition-colors">
+              <span id="provider-toggle-label">Change</span>
+              <i id="provider-toggle-icon" class="fas fa-chevron-down text-[10px] transition-transform"></i>
+            </button>
+          </div>
+
+          <!-- Collapsed: show current provider -->
+          <div id="provider-display" class="flex items-center gap-3 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <div id="provider-display-icon" class="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs flex-shrink-0" style="background:#3ecf8e">
+              <i class="fas fa-database"></i>
+            </div>
+            <div>
+              <div id="provider-display-name" class="text-sm font-semibold text-slate-800">Supabase</div>
+              <div id="provider-display-status" class="text-xs text-slate-400">Credentials saved ✓</div>
+            </div>
+          </div>
+
+          <!-- Expanded: provider picker + credential fields -->
+          <div id="provider-section" class="collapsible closed mt-3 space-y-3">
+            <div id="provider-buttons" class="space-y-2"></div>
+            <div id="credential-fields" class="space-y-3"></div>
+          </div>
         </div>
 
-        <!-- Username -->
+        <div class="border-t border-slate-100"></div>
+
+        <!-- Email -->
         <div>
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Username (Email)</label>
-          <input id="username" type="email" class="field" placeholder="admin@workvolt.app" autocomplete="off">
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Email</label>
+          <input id="email" type="email" class="field" placeholder="you@company.com" autocomplete="email">
         </div>
 
         <!-- Password -->
         <div>
           <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Password</label>
           <div class="relative">
-            <input id="password" type="password" class="field pr-10" placeholder="••••••••" autocomplete="off">
-            <button type="button" onclick="togglePassword()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-              <i id="eye-icon" class="fas fa-eye"></i>
+            <input id="password" type="password" class="field pr-10" placeholder="••••••••" autocomplete="current-password">
+            <button type="button" onclick="togglePwd()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+              <i id="eye-icon" class="fas fa-eye text-sm"></i>
             </button>
           </div>
         </div>
 
-        <!-- Login Button -->
-        <button onclick="doLogin()" id="login-btn" class="btn-primary w-full mt-2">
+        <!-- Sign In -->
+        <button id="login-btn" onclick="doLogin()" class="btn-primary">
           <i class="fas fa-sign-in-alt"></i>
           <span>Sign In</span>
         </button>
 
-        <!-- Hint -->
-        <div id="reset-hint" class="hidden mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
-          <i class="fas fa-info-circle mr-1"></i>
-          Contact your SuperAdmin to reset your password.
+        <div class="text-center">
+          <button onclick="showResetForm()" class="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">
+            Forgot your password?
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Reset password panel -->
+    <div id="reset-panel" class="hidden mt-4 bg-white rounded-2xl shadow-2xl overflow-hidden fade-up">
+      <div class="bg-amber-50 border-b border-amber-100 px-6 py-3 flex items-center gap-2">
+        <i class="fas fa-key text-amber-500 text-sm"></i>
+        <span class="text-xs font-bold text-amber-700 uppercase tracking-wide">Reset Password</span>
+      </div>
+      <div class="p-6 space-y-4">
+        <div id="reset-status"></div>
+        <p class="text-sm text-slate-500">Enter your email and we'll send a reset link.</p>
+        <input id="reset-email" type="email" class="field" placeholder="you@company.com">
+        <div class="flex gap-3">
+          <button onclick="hideResetForm()" class="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-semibold transition-colors">Cancel</button>
+          <button onclick="doReset()" id="reset-btn" class="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors">
+            <i class="fas fa-paper-plane text-xs"></i> Send Link
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- Footer -->
-    <p class="text-center text-blue-200/60 text-xs mt-6">
-      Work Volt v1.0.0 • Secure Business Management
-    </p>
+    <p class="text-center text-blue-200/60 text-xs mt-5">Work Volt v2.0 • Multi-provider</p>
   </div>
 
-  <script src="js/i18n.js"></script>
+  <script src="js/db-adapter.js"></script>
   <script>
-    // ─────────────────────────────────────────────
-    //  LOGIN LOGIC
-    // ─────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────
+  //  STATE
+  // ──────────────────────────────────────────────────────────────
+  let selectedProvider    = 'supabase';
+  let providerSectionOpen = false;
 
-    // Pre-fill GAS URL from query param if provided
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('gas_url')) {
-      document.getElementById('gas-url').value = params.get('gas_url');
-    }
+  const PROVIDER_COLORS = { supabase:'#3ecf8e', firebase:'#f5820d', sheets:'#0f9d58' };
 
-    function togglePassword() {
-      const input = document.getElementById('password');
-      const icon  = document.getElementById('eye-icon');
-      if (input.type === 'password') {
-        input.type = 'text';
-        icon.classList.replace('fa-eye', 'fa-eye-slash');
-      } else {
-        input.type = 'password';
-        icon.classList.replace('fa-eye-slash', 'fa-eye');
-      }
-    }
+  // ──────────────────────────────────────────────────────────────
+  //  PROVIDER UI
+  // ──────────────────────────────────────────────────────────────
+  function renderProviderButtons() {
+    document.getElementById('provider-buttons').innerHTML =
+      Object.entries(ADAPTER_INFO).map(([id, info]) => `
+        <button onclick="selectProvider('${id}')" id="provider-btn-${id}"
+          class="provider-btn ${selectedProvider === id ? 'selected' : ''}">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white flex-shrink-0 text-sm"
+               style="background:${PROVIDER_COLORS[id]||'#64748b'}">
+            <i class="fas ${info.icon}"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold text-slate-800">${info.label}</div>
+            <div class="text-xs text-slate-400 truncate">${info.description}</div>
+          </div>
+          ${selectedProvider === id ? '<i class="fas fa-check-circle text-blue-500 flex-shrink-0"></i>' : ''}
+        </button>`
+      ).join('');
+  }
 
-    function showError(msg) {
-      const box  = document.getElementById('login-error');
-      const text = document.getElementById('error-text');
-      text.textContent = msg;
-      box.classList.remove('hidden');
-      box.classList.add('shake');
-      setTimeout(() => box.classList.remove('shake'), 300);
-    }
+  function selectProvider(id) {
+    selectedProvider = id;
+    renderProviderButtons();
+    renderCredentialFields(id);
+  }
 
-    function hideError() {
-      document.getElementById('login-error').classList.add('hidden');
-    }
+  function renderCredentialFields(providerId) {
+    const info  = ADAPTER_INFO[providerId];
+    const saved = _loadSavedCredentials(providerId);
+    document.getElementById('credential-fields').innerHTML = info.fields.map(f => `
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">${f.label}</label>
+        <input id="cred-${f.key}" type="text" class="field font-mono text-xs"
+          placeholder="${f.placeholder}" value="${(saved?.[f.key]||'').replace(/"/g,'&quot;')}">
+      </div>`
+    ).join('');
+  }
 
-    async function doLogin() {
-      const btn      = document.getElementById('login-btn');
-      const url      = document.getElementById('gas-url').value.trim();
-      const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value;
-
-      hideError();
-
-      if (!url)      return showError('Please enter your Work Volt URL');
-      if (!username) return showError('Please enter your username (email)');
-      if (!password) return showError('Please enter your password');
-
-      btn.disabled = true;
-      const originalContent = btn.innerHTML;
-      btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Signing in...</span>';
-
-      try {
-        // Hash password client-side (SHA-256) — only the hash is ever sent
-        const msgBuffer  = new TextEncoder().encode(password);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-        const passwordHash = Array.from(new Uint8Array(hashBuffer))
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join('');
-
-        // Build login URL — cache-busted, sent as POST to avoid GAS caching
-        const loginUrl = new URL(url);
-        loginUrl.searchParams.set('path', 'auth/login');
-        loginUrl.searchParams.set('email', username);
-        loginUrl.searchParams.set('password_hash', passwordHash);
-        loginUrl.searchParams.set('_t', Date.now().toString());
-
-        const res  = await fetch(loginUrl.toString(), { method: 'POST', cache: 'no-cache' });
-        const data = await res.json();
-
-        if (data.error) throw new Error(data.error);
-        if (!data.success || !data.user) throw new Error('Login failed — unexpected response');
-
-        // Store credentials in sessionStorage only (cleared when tab closes)
-        sessionStorage.setItem('wv_gas_url', url);
-        sessionStorage.setItem('wv_session', data.session_id);
-        sessionStorage.setItem('wv_user',    JSON.stringify(data.user));
-
-        window.location.href = 'main.html';
-
-      } catch(e) {
-        showError(e.message || 'Login failed. Please check your credentials.');
-        btn.disabled = false;
-        btn.innerHTML = originalContent;
-      }
-    }
-
-    // Allow Enter key to submit
-    document.getElementById('password')?.addEventListener('keydown', e => {
-      if (e.key === 'Enter') doLogin();
+  function getCredentialValues(providerId) {
+    const creds = {};
+    ADAPTER_INFO[providerId].fields.forEach(f => {
+      creds[f.key] = (document.getElementById('cred-'+f.key)?.value||'').trim();
     });
+    return creds;
+  }
 
-    // Restore saved language
-    window.currentLang = localStorage.getItem('lang') || 'en';
-    if (window.currentLang !== 'en') setTimeout(() => autoTranslatePage(), 50);
+  function _loadSavedCredentials(provider) {
+    try {
+      const raw = localStorage.getItem('wv_db_config');
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      return obj.provider === provider ? obj.credentials : null;
+    } catch(e) { return null; }
+  }
+
+  function _loadSavedConfig() {
+    try { return JSON.parse(localStorage.getItem('wv_db_config')||'null'); } catch(e) { return null; }
+  }
+
+  function updateProviderDisplay() {
+    const info  = ADAPTER_INFO[selectedProvider] || {};
+    const saved = _loadSavedCredentials(selectedProvider);
+    document.getElementById('provider-display-icon').style.background = PROVIDER_COLORS[selectedProvider]||'#64748b';
+    document.getElementById('provider-display-icon').innerHTML = `<i class="fas ${info.icon||'fa-database'}"></i>`;
+    document.getElementById('provider-display-name').textContent = info.label || selectedProvider;
+    document.getElementById('provider-display-status').textContent = saved ? 'Credentials saved ✓' : 'Not configured';
+  }
+
+  function toggleProviderSection() {
+    providerSectionOpen = !providerSectionOpen;
+    const section = document.getElementById('provider-section');
+    const display = document.getElementById('provider-display');
+    const label   = document.getElementById('provider-toggle-label');
+    const icon    = document.getElementById('provider-toggle-icon');
+
+    if (providerSectionOpen) {
+      section.classList.replace('closed','open');
+      display.classList.add('hidden');
+      label.textContent = 'Done';
+      icon.style.transform = 'rotate(180deg)';
+      renderProviderButtons();
+      renderCredentialFields(selectedProvider);
+    } else {
+      section.classList.replace('open','closed');
+      display.classList.remove('hidden');
+      label.textContent = 'Change';
+      icon.style.transform = '';
+      updateProviderDisplay();
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  BOOT
+  // ──────────────────────────────────────────────────────────────
+  window.addEventListener('load', async () => {
+    const saved = _loadSavedConfig();
+
+    if (saved?.provider) {
+      selectedProvider = saved.provider;
+      updateProviderDisplay();
+    } else {
+      // First time — open picker automatically
+      providerSectionOpen = true;
+      document.getElementById('provider-section').classList.replace('closed','open');
+      document.getElementById('provider-display').classList.add('hidden');
+      document.getElementById('provider-toggle-label').textContent = 'Done';
+      document.getElementById('provider-toggle-icon').style.transform = 'rotate(180deg)';
+      renderProviderButtons();
+      renderCredentialFields('supabase');
+    }
+
+    const savedEmail = localStorage.getItem('wv_last_email');
+    if (savedEmail) document.getElementById('email').value = savedEmail;
+
+    // Auto-redirect if already logged in
+    if (saved?.provider) {
+      try {
+        await initAdapter();
+        const session = await WorkVoltDB.auth.getSession();
+        if (session) { window.location.href = 'main.html'; return; }
+      } catch(e) { /* not logged in */ }
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  //  LOGIN
+  // ──────────────────────────────────────────────────────────────
+  function togglePwd() {
+    const input = document.getElementById('password');
+    input.type  = input.type === 'password' ? 'text' : 'password';
+    document.getElementById('eye-icon').classList.toggle('fa-eye',      input.type==='password');
+    document.getElementById('eye-icon').classList.toggle('fa-eye-slash', input.type==='text');
+  }
+
+  function showError(msg) {
+    const box = document.getElementById('login-error');
+    document.getElementById('error-text').textContent = msg;
+    box.classList.remove('hidden');
+    box.classList.add('shake');
+    setTimeout(() => box.classList.remove('shake'), 350);
+  }
+  function hideError() { document.getElementById('login-error').classList.add('hidden'); }
+
+  async function doLogin() {
+    const btn      = document.getElementById('login-btn');
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+
+    hideError();
+    if (!email)    return showError('Please enter your email.');
+    if (!password) return showError('Please enter your password.');
+
+    // Validate credential fields if section is open
+    let credentials = null;
+    if (providerSectionOpen) {
+      credentials = getCredentialValues(selectedProvider);
+      for (const f of ADAPTER_INFO[selectedProvider].fields) {
+        if (!credentials[f.key]) return showError(f.label + ' is required.');
+      }
+    }
+
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Connecting…</span>';
+
+    try {
+      if (credentials) {
+        await connectAdapter(selectedProvider, credentials);
+      } else {
+        await initAdapter();
+      }
+
+      btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Signing in…</span>';
+
+      const { user } = await WorkVoltDB.auth.login(email, password);
+
+      localStorage.setItem('wv_last_email', email);
+      sessionStorage.setItem('wv_user', JSON.stringify(user));
+
+      window.location.href = 'main.html';
+
+    } catch(err) {
+      showError(err.message || 'Login failed.');
+      btn.disabled  = false;
+      btn.innerHTML = '<i class="fas fa-sign-in-alt"></i><span>Sign In</span>';
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  RESET PASSWORD
+  // ──────────────────────────────────────────────────────────────
+  function showResetForm() {
+    document.getElementById('reset-panel').classList.remove('hidden');
+    const email = document.getElementById('email').value;
+    if (email) document.getElementById('reset-email').value = email;
+  }
+  function hideResetForm() { document.getElementById('reset-panel').classList.add('hidden'); }
+
+  async function doReset() {
+    const btn      = document.getElementById('reset-btn');
+    const email    = document.getElementById('reset-email').value.trim();
+    const statusEl = document.getElementById('reset-status');
+    if (!email) { statusEl.innerHTML = '<p class="text-xs text-red-600 mb-2">Please enter your email.</p>'; return; }
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Sending…';
+    try {
+      await WorkVoltDB.auth.resetPassword(email);
+      statusEl.innerHTML = '<div class="p-3 bg-green-50 border border-green-200 rounded-xl text-xs text-green-700 mb-2"><i class="fas fa-check-circle mr-1"></i>Reset link sent! Check your inbox.</div>';
+      btn.innerHTML = '<i class="fas fa-check text-xs"></i> Sent!';
+    } catch(err) {
+      statusEl.innerHTML = '<p class="text-xs text-red-600 mb-2">'+(err.message||'Failed.')+'</p>';
+      btn.disabled  = false;
+      btn.innerHTML = '<i class="fas fa-paper-plane text-xs"></i> Send Link';
+    }
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      !document.getElementById('reset-panel').classList.contains('hidden') ? doReset() : doLogin();
+    }
+  });
   </script>
 </body>
 </html>
