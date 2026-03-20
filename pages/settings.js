@@ -49,48 +49,52 @@ window.WorkVoltPages['settings'] = function(container) {
   //  API HELPER - FIXED: Added session_id parameter with better detection
   // ================================================================
   async function api(path, params) {
-    const url = new URL(savedUrl);
-    url.searchParams.set('path',  path);
-    url.searchParams.set('token', savedSecret);
-    
-    // FIXED: Add session_id for protected routes - try multiple sources
-    let sessionId = '';
-    
-    // Try window.WorkVolt.session() if available
-    if (window.WorkVolt && typeof window.WorkVolt.session === 'function') {
-      try {
-        sessionId = window.WorkVolt.session();
-      } catch(e) {}
-    }
-    
-    // Fallback to localStorage
-    if (!sessionId) {
-      sessionId = localStorage.getItem('wv_session') || '';
-    }
-    
-    // Also try just 'session' key
-    if (!sessionId) {
-      sessionId = localStorage.getItem('session') || '';
-    }
-    
-    if (sessionId) {
-      url.searchParams.set('session_id', sessionId);
-    }
-    
-    if (params) {
-      Object.entries(params).forEach(function(kv) {
-        if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
-          url.searchParams.set(kv[0], kv[1]);
-        }
-      });
-    }
-    
-    const res  = await fetch(url.toString(), { cache: 'no-cache' });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data;
+  const url = new URL(savedUrl);
+  url.searchParams.set('path',  path);
+  url.searchParams.set('token', savedSecret);
+  
+  // FIXED: Add session_id for protected routes - try multiple sources
+  let sessionId = '';
+  
+  // Try window.WorkVolt.session() if available
+  if (window.WorkVolt && typeof window.WorkVolt.session === 'function') {
+    try {
+      sessionId = window.WorkVolt.session();
+    } catch(e) {}
   }
-
+  
+  // Fallback to sessionStorage (where login stores it)
+  if (!sessionId) {
+    sessionId = sessionStorage.getItem('wv_session') || '';
+  }
+  
+  // Also try localStorage (backup)
+  if (!sessionId) {
+    sessionId = localStorage.getItem('wv_session') || '';
+  }
+  
+  if (sessionId) {
+    url.searchParams.set('session_id', sessionId);
+    console.log('Sending session:', sessionId.substring(0, 8) + '...');
+  } else {
+    console.warn('No session found for API call to:', path);
+  }
+  
+  if (params) {
+    Object.entries(params).forEach(function(kv) {
+      if (kv[1] !== undefined && kv[1] !== null && kv[1] !== '') {
+        url.searchParams.set(kv[0], kv[1]);
+      }
+    });
+  }
+  
+  console.log('API URL:', url.toString().replace(savedSecret, '***SECRET***'));
+  
+  const res  = await fetch(url.toString(), { cache: 'no-cache' });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
 
   // ================================================================
   //  RENDER HELPERS
