@@ -39,8 +39,8 @@ window.WorkVoltPages['dashboard'] = function(container) {
     return { id: m.id, label: m.label, icon: m.icon, ...meta };
   });
 
-  // Steps checklist — dynamic based on real state
-  const isSheetConnected = !!(localStorage.getItem('wv_gas_url') && localStorage.getItem('wv_api_secret'));
+  // Setup steps — dynamic based on real state
+  const isSupabaseConnected = !!(localStorage.getItem('wv_db_config'));
 
   const steps = [
     {
@@ -50,11 +50,11 @@ window.WorkVoltPages['dashboard'] = function(container) {
       desc: 'Your app is live and ready to configure.',
     },
     {
-      done: isSheetConnected,
-      icon: 'fa-table',
-      title: 'Connect your Google Sheet',
-      desc: 'Link your Sheet to power real data across all modules.',
-      action: { label: 'Connect Sheet', module: 'settings' },
+      done: isSupabaseConnected,
+      icon: 'fa-database',
+      title: 'Connected to Supabase',
+      desc: 'Your database is linked and all modules are powered by it.',
+      action: { label: 'View Settings', module: 'settings' },
     },
     {
       done: installedCount > 0,
@@ -64,7 +64,7 @@ window.WorkVoltPages['dashboard'] = function(container) {
       action: { label: 'Open Store', module: 'store' },
     },
     {
-      done: isSheetConnected,
+      done: installedCount > 0,
       icon: 'fa-users',
       title: 'Invite your team',
       desc: 'Add users, assign roles and get everyone working.',
@@ -105,7 +105,7 @@ window.WorkVoltPages['dashboard'] = function(container) {
           </h1>
 
           <p class="text-slate-300 text-base md:text-lg leading-relaxed max-w-2xl mb-8">
-            Welcome to <strong class="text-white">Work Volt</strong> — your all-in-one operations workspace, built on Google Sheets.
+            Welcome to <strong class="text-white">Work Volt</strong> — your all-in-one operations workspace, powered by Supabase.
             Everything here is modular, flexible, and shaped around the way <em class="text-blue-200 not-italic font-semibold">your</em> team actually works.
           </p>
 
@@ -186,8 +186,8 @@ window.WorkVoltPages['dashboard'] = function(container) {
             <h2 class="text-xl font-extrabold mb-3">Your workspace, your way.</h2>
             <p class="text-blue-100 text-sm leading-relaxed mb-4">
               Work Volt is designed to grow with you. Start with the modules your team needs today —
-              Timesheets, Tasks, Payroll, CRM — and add more as you scale. Every module connects to your
-              Google Sheet, so your data stays in one place you already own and control.
+              Timesheets, Tasks, Payroll, CRM — and add more as you scale. Every module stores its data
+              in your own Supabase database, so you own and control everything.
             </p>
             <p class="text-blue-100 text-sm leading-relaxed mb-5">
               No per-seat pricing. No vendor lock-in. Just a clean, powerful workspace
@@ -200,7 +200,7 @@ window.WorkVoltPages['dashboard'] = function(container) {
               </button>
               <button onclick="window.WorkVolt.navigate('settings')"
                 class="flex items-center gap-2 bg-white/15 hover:bg-white/25 border border-white/25 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition-colors">
-                <i class="fas fa-table text-sm"></i> Connect Google Sheet
+                <i class="fas fa-users text-sm"></i> Manage Team
               </button>
             </div>
           </div>
@@ -301,7 +301,7 @@ window.WorkVoltPages['dashboard'] = function(container) {
 <div class="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
   <i class="fas fa-lightbulb text-amber-500 mt-0.5 flex-shrink-0"></i>
   <p class="text-sm text-amber-800">
-    <strong data-i18n="Tip:">Tip:</strong> <span data-i18n="This dashboard will update automatically once you connect your Google Sheet — showing live stats, recent activity and team summaries pulled straight from your data.">This dashboard will update automatically once you connect your Google Sheet — showing live stats, recent activity and team summaries pulled straight from your data.</span>
+    <strong>Tip:</strong> Install modules from the Module Store then click them here to open them instantly. All data is stored securely in your own Supabase database.
   </p>
 </div>
 
