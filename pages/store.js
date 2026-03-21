@@ -369,7 +369,8 @@ window.WorkVoltPages['store'] = function(container) {
   window.storeFilter = function(cat) { filterCategory = cat; render(); };
   window.storeSearch = function(q)   { searchQuery    = q;   render(); };
 
-  // ── Boot ────────────────────────────────────────────────────────
-  render();
-  probeAvailablePages().then(() => render());
-};
+    // ── Boot ────────────────────────────────────────────────────────
+  render(); // Show initial UI (will show empty installed)
+  loadInstalled().then(() => {
+    probeAvailablePages().then(() => render()); // Re-render with installed modules
+  });
