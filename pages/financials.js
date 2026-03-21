@@ -7,7 +7,82 @@
 'use strict';
 
 // ── Helpers ──────────────────────────────────────────────────────
-const api   = (path, params) => window.WorkVolt.api(path, params);
+// Line 12 — CHANGE THIS:
+const api = (path, params) => window.WorkVolt.api(path, params);
+
+// TO THIS:
+const api = async (path, params = {}) => {
+  const db = window.WorkVolt.db;
+  const { id, ...rest } = params;
+
+  if (path === 'financials/invoices/list')     return { rows: await db.list('fin_invoices', {}, { order: 'created_at' }) };
+  if (path === 'financials/invoices/create')   return db.create('fin_invoices', { ...rest, created_at: new Date().toISOString() });
+  if (path === 'financials/invoices/update')   return db.update('fin_invoices', id, rest);
+  if (path === 'financials/invoices/delete')   return db.delete('fin_invoices', id);
+  if (path === 'financials/invoices/send')     return db.update('fin_invoices', id, { status: 'Sent' });
+  if (path === 'financials/invoices/mark-paid') return db.update('fin_invoices', id, { status: 'Paid', balance_due: 0 });
+
+  if (path === 'financials/expenses/list')     return { rows: await db.list('fin_expenses', {}, { order: 'date' }) };
+  if (path === 'financials/expenses/create')   return db.create('fin_expenses', { ...rest, created_at: new Date().toISOString() });
+  if (path === 'financials/expenses/update')   return db.update('fin_expenses', id, rest);
+  if (path === 'financials/expenses/delete')   return db.delete('fin_expenses', id);
+  if (path === 'financials/expenses/approve')  return db.update('fin_expenses', id, { status: 'Approved', approved_by: rest.approved_by });
+  if (path === 'financials/expenses/reject')   return db.update('fin_expenses', id, { status: 'Rejected',  approved_by: rest.approved_by });
+
+  if (path === 'financials/bills/list')        return { rows: await db.list('fin_bills', {}, { order: 'due_date' }) };
+  if (path === 'financials/bills/create')      return db.create('fin_bills', { ...rest, created_at: new Date().toISOString() });
+  if (path === 'financials/bills/update')      return db.update('fin_bills', id, rest);
+  if (path === 'financials/bills/delete')      return db.delete('fin_bills', id);
+
+  if (path === 'financials/payments/create')   return db.create('fin_payments', { ...rest, created_at: new Date().toISOString() });
+
+  if (path === 'financials/budgets/list')      return { rows: await db.list('fin_budgets', {}, { order: 'created_at' }) };
+  if (path === 'financials/budgets/create')    return db.create('fin_budgets', { ...rest, created_at: new Date().toISOString() });
+  if (path === 'financials/budgets/update')    return db.update('fin_budgets', id, rest);
+
+  if (path === 'financials/accounts/list')     return { rows: await db.list('fin_accounts', {}, { order: 'account_name', asc: true }) };
+  if (path === 'financials/accounts/create')   return db.create('fin_accounts', { ...rest, is_active: 'true', created_at: new Date().toISOString() });
+  if (path === 'financials/accounts/update')   return db.update('fin_accounts', id, rest);
+  if (path === 'financials/accounts/delete')   return db.delete('fin_accounts', id);
+
+  if (path === 'financials/cost-centers/list') return { rows: await db.list('fin_cost_centers', {}, { order: 'name', asc: true }) };
+
+  if (path === 'financials/budget-vs-actual') {
+    const [budgets, expenses, bills] = await Promise.all([
+      db.list('fin_budgets', {}),
+      db.list('fin_expenses', {}),
+      db.list('fin_bills', {}),
+    ]);
+    const ym = `${params.year}-${params.month}`;
+    const actuals = {};
+    expenses.filter(e => (e.date || '').startsWith(ym))
+      .forEach(e => { actuals[e.category] = (actuals[e.category] || 0) + (parseFloat(e.amount) || 0); });
+    bills.filter(b => ((b.issue_date || b.due_date || '')).startsWith(ym))
+      .forEach(b => { actuals[b.category] = (actuals[b.category] || 0) + (parseFloat(b.amount) || 0); });
+    const lines = budgets.map(b => {
+      const actual   = actuals[b.category] || 0;
+      const budget   = parseFloat(b.budget_amount) || 0;
+      const variance = budget - actual;
+      const pct      = budget > 0 ? (actual / budget) * 100 : 0;
+      const status   = pct > 100 ? 'Over Budget' : pct > 90 ? 'Near Limit' : 'On Track';
+      return { category: b.category, budget, actual, variance, status };
+    });
+    return { lines };
+  }
+
+  // Reports and dashboard are computed client-side in financials.js
+  if (path === 'financials/dashboard')            return {};
+  if (path === 'financials/income-statement')     return {};
+  if (path === 'financials/balance-sheet')        return {};
+  if (path === 'financials/cashflow')             return {};
+
+  // Cross-module paths
+  if (path === 'payroll/runs/list')               return { rows: await db.list('payroll_runs', {}, { order: 'created_at' }) };
+  if (path === 'assets/maintenance/list')         return { rows: await db.list('asset_maintenance', {}, { order: 'created_at' }) };
+  if (path === 'tasks/list')                      return { rows: await db.list('tasks', {}, { order: 'created_at' }) };
+
+  throw new Error(`No API handler for: ${path}`);
+};
 const toast = (msg, type)    => window.WorkVolt.toast(msg, type || 'info');
 const user  = ()             => window.WorkVolt.user();
 
