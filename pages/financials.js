@@ -1354,39 +1354,55 @@ function renderReports(c) {
       </div>
     </div>
 
-    <!-- Bills Summary -->
-    <div class="bg-white rounded-xl border border-slate-200 p-6">
-      <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
-        <span class="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center">
-          <i class="fas fa-file-alt text-amber-600 text-xs"></i>
-        </span>
-        Bills Summary
-      </h3>
-      <div class="space-y-1">
-        ${(()=>{
-          const bills = state.bills;
-          const total     = bills.reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
-          const paid      = bills.filter(b=>b.status==='Paid').reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
-          const unpaid    = bills.filter(b=>['Unpaid','Partial'].includes(b.status)).reduce((s,b)=>s+(parseFloat(b.balance_due)||0),0);
-          const overdue   = bills.filter(b=>b.status==='Overdue').reduce((s,b)=>s+(parseFloat(b.balance_due)||0),0);
-          const byVendor  = {};
-          bills.forEach(b=>{ if(b.vendor){ byVendor[b.vendor]=(byVendor[b.vendor]||0)+(parseFloat(b.amount)||0); } });
-          const topVendors = Object.entries(byVendor).sort((a,b)=>b[1]-a[1]).slice(0,5);
-          
-          const vendorSection = topVendors.length ? collapsibleSection(
-            `Top Vendors (${topVendors.length})`,
-            topVendors.map(([v,a])=>reportLine(v,fmt.currency(a),'text-slate-600')).join(''),
-            false
-          ) : '';
-          
-          return reportLine('Total Bills',fmt.currency(total),'font-semibold text-slate-700')
-            + reportLine('Paid',fmt.currency(paid),'text-emerald-600')
-            + reportLine('Outstanding',fmt.currency(unpaid),'text-amber-600')
-            + reportLine('Overdue',fmt.currency(overdue),'font-semibold text-red-500')
-            + (topVendors.length ? '<div class="h-px bg-slate-100 my-2"></div>' + vendorSection : '');
-        })()}
-      </div>
-    </div>
+    // Bills Summary
+<div class="bg-white rounded-xl border border-slate-200 p-6">
+  <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
+    <span class="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center">
+      <i class="fas fa-file-alt text-amber-600 text-xs"></i>
+    </span>
+    Bills Summary
+  </h3>
+  <div class="space-y-1">
+    ${(()=>{
+      const bills = state.bills;
+      const total     = bills.reduce((s,b)=>s+(parseFloat(b.amount)||0),0);
+      
+      // FIXED: Calculate actual amount paid (amount - remaining balance) for ALL bills
+      // This includes partial payments, not just fully paid bills
+      const paid      = bills.reduce((s,b)=>{
+        const billAmount = parseFloat(b.amount)||0;
+        const remaining = parseFloat(b.balance_due)||0;
+        return s + Math.max(0, billAmount - remaining); // Ensure non-negative
+      },0);
+      
+      const unpaid    = bills.filter(b=>['Unpaid','Partial'].includes(b.status))
+                            .reduce((s,b)=>s+(parseFloat(b.balance_due)||0),0);
+      const overdue   = bills.filter(b=>b.status==='Overdue')
+                            .reduce((s,b)=>s+(parseFloat(b.balance_due)||0),0);
+      
+      // Calculate how much is remaining on "Paid" bills (should be 0)
+      const paidBillsRemaining = bills.filter(b=>b.status==='Paid')
+                                      .reduce((s,b)=>s+(parseFloat(b.balance_due)||0),0);
+      
+      const byVendor  = {};
+      bills.forEach(b=>{ if(b.vendor){ byVendor[b.vendor]=(byVendor[b.vendor]||0)+(parseFloat(b.amount)||0); } });
+      const topVendors = Object.entries(byVendor).sort((a,b)=>b[1]-a[1]).slice(0,5);
+      
+      const vendorSection = topVendors.length ? collapsibleSection(
+        `Top Vendors (${topVendors.length})`,
+        topVendors.map(([v,a])=>reportLine(v,fmt.currency(a),'text-slate-600')).join(''),
+        false
+      ) : '';
+      
+      return reportLine('Total Bills',fmt.currency(total),'font-semibold text-slate-700')
+        + reportLine('Total Paid',fmt.currency(paid),'text-emerald-600 font-semibold')
+        + reportLine('Outstanding Balance',fmt.currency(unpaid),'text-amber-600')
+        + reportLine('Overdue',fmt.currency(overdue),'font-semibold text-red-500')
+        + (paidBillsRemaining > 0 ? reportLine('⚠️ Paid bills with balance',fmt.currency(paidBillsRemaining),'text-orange-500 text-xs') : '')
+        + (topVendors.length ? '<div class="h-px bg-slate-100 my-2"></div>' + vendorSection : '');
+    })()}
+  </div>
+</div>
 
     <!-- Cross-Module Financial Impact -->
     ${renderCrossModuleReport()}
