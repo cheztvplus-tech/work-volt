@@ -374,3 +374,4 @@ window.WorkVoltPages['store'] = function(container) {
   loadInstalled().then(() => {
     probeAvailablePages().then(() => render()); // Re-render with data
   });
+};
