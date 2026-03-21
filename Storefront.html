@@ -1652,27 +1652,53 @@
   </div>
 </div>
 
-<!-- WORK VOLT STOREFRONT — powered by Supabase Edge Function -->
+<!-- WORK VOLT STOREFRONT — Direct Supabase Edition -->
 
 <script>
 // ════════════════════════════════════════════════════════════════
-//  STOREFRONT — Supabase Edition
-//  Data is loaded from the Edge Function at:
-//    supabase/functions/storefront/index.ts
-//
-//  To configure: set STOREFRONT_API below to your deployed URL, e.g.
-//    https://<project-ref>.supabase.co/functions/v1/storefront
-//
-//  Or set it at runtime (useful for multi-client deploys):
-//    localStorage.setItem('wv_sf_url', 'https://...')
+//  STOREFRONT — Direct Supabase Edition (Unified with shop.js)
+//  Connects directly to Supabase tables using the same pattern as shop.js
 // ════════════════════════════════════════════════════════════════
-var STOREFRONT_API = localStorage.getItem('wv_sf_url') || 'YOUR_EDGE_FUNCTION_URL_HERE';
+
+// ── Database Connection ─────────────────────────────────────────
+var sdb = null; // Supabase client instance
+
+async function initStorefrontDB() {
+  // Load credentials from the same localStorage key as db-adapter.js
+  const cfg = JSON.parse(localStorage.getItem('wv_db_config') || '{}');
+  if (!cfg.credentials || !cfg.provider) {
+    throw new Error('Not connected to database. Please log in through the main app first.');
+  }
+  
+  if (cfg.provider !== 'supabase') {
+    throw new Error('Storefront requires Supabase. Current provider: ' + cfg.provider);
+  }
+  
+  // Load Supabase SDK if needed
+  if (!window.supabase) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Failed to load Supabase SDK'));
+      document.head.appendChild(s);
+    });
+  }
+  
+  sdb = window.supabase.createClient(cfg.credentials.url, cfg.credentials.anonKey);
+  
+  // Verify connection with a simple query
+  const { error } = await sdb.from('shop_settings').select('count', { count: 'exact', head: true });
+  if (error) throw new Error('Could not connect to Supabase: ' + error.message);
+  
+  return sdb;
+}
 
 // ── Globals ────────────────────────────────────────────────────
-var S          = {};
-var PRODUCTS   = [];
-var CATEGORIES = [];
-var CURRENCY   = 'CAD';
+var S          = {};      // Settings object
+var PRODUCTS   = [];      // Products array
+var CATEGORIES = [];      // Categories array
+var CURRENCY   = 'CAD';   // Default currency
 
 // ── State ──────────────────────────────────────────────────────
 var cart        = JSON.parse(localStorage.getItem('wv_cart') || '[]');
@@ -1705,7 +1731,6 @@ function applyTheme() {
   if (S.text_color)       r.setProperty('--text',       S.text_color);
 }
 
-// ── Boot ────────────────────────────────────────────────────────
 // ── Layout & Banner globals ─────────────────────────────────────
 var LAYOUT_ORDER = ['hero','featured','trending','all_products'];
 var BANNERS      = [];
@@ -1728,31 +1753,43 @@ function parseLayoutSettings() {
 
 // ── Boot ────────────────────────────────────────────────────────
 async function boot() {
-  if (!STOREFRONT_API || STOREFRONT_API === 'YOUR_EDGE_FUNCTION_URL_HERE') {
-    document.getElementById('sf-loader').innerHTML =
-      '<p style="font-family:sans-serif;color:#ef4444;padding:2rem;text-align:center">' +
-      'Store not configured.<br>Set STOREFRONT_API in Storefront.html<br>' +
-      'or run: localStorage.setItem(\'wv_sf_url\', \'YOUR_URL\')</p>';
-    return;
-  }
-
   try {
-    var [sr, pr, cr] = await Promise.all([
-      fetch(STOREFRONT_API + '?path=storefront/settings').then(function(r) { return r.json(); }),
-      fetch(STOREFRONT_API + '?path=storefront/products').then(function(r) { return r.json(); }),
-      fetch(STOREFRONT_API + '?path=storefront/categories').then(function(r) { return r.json(); }),
+    // Initialize database connection first
+    await initStorefrontDB();
+    
+    // Load all data from Supabase (same tables as shop.js)
+    const [settingsRows, productsRows, categoriesRows] = await Promise.all([
+      // Settings
+      sdb.from('shop_settings').select('*').then(r => {
+        if (r.error) throw r.error;
+        return r.data || [];
+      }),
+      // Products (only active ones for storefront)
+      sdb.from('shop_products').select('*').eq('active', true).then(r => {
+        if (r.error) throw r.error;
+        return r.data || [];
+      }),
+      // Categories (only active ones)
+      sdb.from('shop_categories').select('*').eq('active', true).then(r => {
+        if (r.error) throw r.error;
+        return r.data || [];
+      })
     ]);
-    S          = sr.settings || {};
-    PRODUCTS   = pr.rows     || [];
-    CATEGORIES = cr.rows     || [];
+    
+    // Convert settings array to object (same as shop.js)
+    S = Object.fromEntries(settingsRows.map(r => [r.key, r.value]));
+    PRODUCTS = productsRows;
+    CATEGORIES = categoriesRows;
+    
   } catch(e) {
     document.getElementById('sf-loader').innerHTML =
       '<p style="font-family:sans-serif;color:#ef4444;padding:2rem;text-align:center">' +
-      'Failed to load store.<br>' + e.message + '</p>';
+      'Failed to load store.<br>' + e.message + '<br><br>' +
+      '<small>Make sure you are logged into the main Work Volt app</small></p>';
     return;
   }
 
-  CURRENCY = S.currency_cad === 'true' ? 'CAD' : 'USD';
+  CURRENCY = S.currency === 'USD' ? 'USD' : 'CAD';
   document.title = S.store_name || 'Store';
   parseLayoutSettings();
   applyTheme();
@@ -1793,12 +1830,12 @@ async function boot() {
   document.getElementById('sf-footer').style.display  = '';
 
   renderCategoryPills();
-  renderLayout();        // ← renders all sections in order
+  renderLayout();
   updateCartUI();
   initScrollEffect();
   startPolling();
 
-  // PayPal return
+  // PayPal return (keep existing logic)
   var params = new URLSearchParams(window.location.search);
   if (params.get('paid') === '1') {
     showSuccess('Payment successful! Your order has been confirmed.', params.get('order'), [], []);
@@ -1813,34 +1850,37 @@ function initScrollEffect() {
   }, { passive: true });
 }
 
-// ── Real-time polling (every 60s) — also re-checks layout+banners ─
+// ── Real-time polling (every 60s) ──────────────────────────────
 function startPolling() {
-  if (!STOREFRONT_API || STOREFRONT_API === 'YOUR_EDGE_FUNCTION_URL_HERE') return;
   syncTimer = setInterval(async function() {
     try {
-      var [sr, pr] = await Promise.all([
-        fetch(STOREFRONT_API + '?path=storefront/settings&_t=' + Date.now()).then(function(r) { return r.json(); }),
-        fetch(STOREFRONT_API + '?path=storefront/products&_t='  + Date.now()).then(function(r) { return r.json(); }),
+      // Reload products and settings
+      const [settingsRows, productsRows] = await Promise.all([
+        sdb.from('shop_settings').select('*').then(r => r.data || []),
+        sdb.from('shop_products').select('*').eq('active', true).then(r => r.data || [])
       ]);
+      
+      var newS = Object.fromEntries(settingsRows.map(r => [r.key, r.value]));
       var changed = false;
 
-      if (pr.rows && pr.rows.length) {
-        PRODUCTS = pr.rows;
+      if (productsRows && productsRows.length) {
+        PRODUCTS = productsRows;
         changed = true;
       }
-      if (sr.settings) {
-        var newLayout  = sr.settings.layout_order || '';
-        var newBanners = sr.settings.banners       || '';
-        if (newLayout  !== (S.layout_order || '') ||
-            newBanners !== (S.banners       || '')) {
-          S = sr.settings;
-          parseLayoutSettings();
-          changed = true;
-        } else {
-          S = sr.settings;
-        }
-        applyTheme();
+      
+      // Check if layout or banners changed
+      var newLayout  = newS.layout_order || '';
+      var newBanners = newS.banners       || '';
+      if (newLayout  !== (S.layout_order || '') ||
+          newBanners !== (S.banners       || '')) {
+        S = newS;
+        parseLayoutSettings();
+        changed = true;
+      } else {
+        S = newS;
       }
+      
+      applyTheme();
       if (changed) renderLayout();
 
     } catch(e) { /* silent */ }
@@ -1877,7 +1917,7 @@ function renderLayout() {
         html += '<div class="layout-section" data-section="hero">' + renderHeroHTML() + '</div>';
         break;
       case 'featured':
-        var featuredProds = PRODUCTS.slice(0, 8);
+        var featuredProds = PRODUCTS.filter(function(p) { return p.featured; }).slice(0, 8);
         if (featuredProds.length) {
           html += '<div class="layout-section" data-section="featured">' + renderFeaturedHTML(featuredProds) + '</div>';
         }
@@ -1914,6 +1954,11 @@ function renderHeroHTML() {
     + '<button class="hero-btn" onclick="scrollToProducts()">'
     + '<i class="fas fa-shopping-bag"></i> Shop Now</button>'
     + '</div></section>';
+}
+
+function scrollToProducts() {
+  var el = document.getElementById('all-products-section');
+  if (el) el.scrollIntoView({ behavior: 'smooth' });
 }
 
 // ── Featured row HTML ───────────────────────────────────────────
@@ -2075,10 +2120,6 @@ function renderProducts() {
   renderLayout();
 }
 
-// ── Patch renderFeaturedRow / renderTrendingRow (legacy compat) ─
-function renderFeaturedRow() { /* handled by renderLayout */ }
-function renderTrendingRow() { /* handled by renderLayout */ }
-
 // ── Patch goPage / applyFilters ─────────────────────────────────
 function goPage(n) {
   currentPage = n;
@@ -2101,11 +2142,17 @@ function applyFilters() {
 // ── Category pills ──────────────────────────────────────────────
 function renderCategoryPills() {
   var container = document.getElementById('cat-pills');
-  var activeCats = CATEGORIES.filter(function(c) { return String(c.active) === 'true'; });
-  var pills = [{ id: '', name: 'All' }].concat(activeCats);
+  var pills = [{ id: '', name: 'All' }].concat(CATEGORIES);
   container.innerHTML = pills.map(function(c) {
     return '<button class="cat-pill ' + (c.id === activeCat ? 'active' : '') + '" onclick="filterCategory(\'' + c.id + '\')">' + c.name + '</button>';
   }).join('');
+}
+
+function filterCategory(id) {
+  activeCat = id;
+  currentPage = 1;
+  renderCategoryPills();
+  renderLayout();
 }
 
 // ── Search ──────────────────────────────────────────────────────
@@ -2143,7 +2190,7 @@ function getFilteredProducts() {
     }
     // Availability
     if (availFilter === 'instock') {
-      if (String(p.track_inventory) === 'true' && parseInt(p.stock || 0) <= 0) return false;
+      if (p.track_stock && parseInt(p.stock || 0) <= 0) return false;
     }
     if (availFilter === 'sale') {
       if (!p.compare_price || parseFloat(p.compare_price) <= parseFloat(p.price)) return false;
@@ -2160,22 +2207,18 @@ function getFilteredProducts() {
   return filtered;
 }
 
-
-// ── Legacy renderPagination stub (pagination now inside renderAllProductsHTML) ──
-function renderPagination(total) { /* no-op — pagination built inside renderLayout */ }
-
 // ── Render a single product card ────────────────────────────────
 function renderCard(p, compact) {
   var catMap = {};
   CATEGORIES.forEach(function(c) { catMap[c.id] = c.name; });
 
   var ptype    = p.product_type || 'physical';
-  var isOos    = ptype === 'physical' && String(p.track_inventory) === 'true' && parseInt(p.stock || 0) <= 0;
+  var isOos    = ptype === 'physical' && p.track_stock && parseInt(p.stock || 0) <= 0;
   var hasDisc  = p.compare_price && parseFloat(p.compare_price) > parseFloat(p.price);
   var discPct  = hasDisc ? Math.round((1 - parseFloat(p.price)/parseFloat(p.compare_price)) * 100) : 0;
   var isNew    = p.created_at && (new Date() - new Date(p.created_at)) < 7 * 24 * 3600 * 1000;
   var stock    = parseInt(p.stock || 99);
-  var lowStock = ptype === 'physical' && String(p.track_inventory) === 'true' && stock > 0 && stock <= parseInt(p.low_stock_alert || 5);
+  var lowStock = ptype === 'physical' && p.track_stock && stock > 0 && stock <= parseInt(p.low_stock_alert || 5);
   var viewSeed = p.id ? p.id.charCodeAt(0) % 17 + 7 : 12;
 
   // Type config
@@ -2301,11 +2344,11 @@ function openProductModal(id) {
   CATEGORIES.forEach(function(c) { catMap[c.id] = c.name; });
 
   var ptype    = p.product_type || 'physical';
-  var isOos    = ptype === 'physical' && String(p.track_inventory) === 'true' && parseInt(p.stock || 0) <= 0;
+  var isOos    = ptype === 'physical' && p.track_stock && parseInt(p.stock || 0) <= 0;
   var hasDisc  = p.compare_price && parseFloat(p.compare_price) > parseFloat(p.price);
   var discPct  = hasDisc ? Math.round((1 - parseFloat(p.price)/parseFloat(p.compare_price)) * 100) : 0;
   var stock    = parseInt(p.stock || 0);
-  var lowStock = ptype === 'physical' && String(p.track_inventory) === 'true' && stock > 0 && stock <= parseInt(p.low_stock_alert || 5);
+  var lowStock = ptype === 'physical' && p.track_stock && stock > 0 && stock <= parseInt(p.low_stock_alert || 5);
   var viewSeed = p.id ? p.id.charCodeAt(0) % 17 + 7 : 12;
 
   // Stars
@@ -2532,7 +2575,7 @@ function addToCart(id) {
       product_type: p.product_type || 'physical',
       download_url: p.download_url || '',
       billing_interval: p.billing_interval || 'mo',
-      track_inventory: p.track_inventory,
+      track_stock:  p.track_stock,
       stock:        parseInt(p.stock || 99),
     });
   }
@@ -2684,14 +2727,47 @@ function closeCart() {
 async function applyDiscount() {
   var code = document.getElementById('discount-input').value.trim().toUpperCase();
   if (!code) return;
+  
   try {
-    var r = await fetch(STOREFRONT_API + '?path=storefront/discount/validate&code=' + encodeURIComponent(code) + '&subtotal=' + getSubtotal());
-    var d = await r.json();
-    if (!d.valid) { showToast(d.error || 'Invalid code', 'error'); return; }
-    appliedDisc = d.discount;
+    // Query Supabase directly for discount
+    var { data: discount, error } = await sdb
+      .from('shop_discounts')
+      .select('*')
+      .eq('code', code)
+      .eq('active', true)
+      .single();
+    
+    if (error || !discount) {
+      showToast('Invalid discount code', 'error');
+      return;
+    }
+    
+    // Check expiration
+    if (discount.expires_at && new Date(discount.expires_at) < new Date()) {
+      showToast('Discount code has expired', 'error');
+      return;
+    }
+    
+    // Check max uses
+    if (discount.max_uses && discount.uses >= discount.max_uses) {
+      showToast('Discount code usage limit reached', 'error');
+      return;
+    }
+    
+    // Check minimum order
+    var subtotal = getSubtotal();
+    if (discount.min_order && subtotal < parseFloat(discount.min_order)) {
+      showToast('Minimum order of ' + fmt(discount.min_order) + ' required', 'error');
+      return;
+    }
+    
+    appliedDisc = discount;
     updateCartTotals();
     showToast('Discount applied!', 'success');
-  } catch(e) { showToast('Could not validate code', 'error'); }
+    
+  } catch(e) {
+    showToast('Could not validate code', 'error');
+  }
 }
 
 // ── Checkout ────────────────────────────────────────────────────
@@ -2969,42 +3045,82 @@ async function placeOrder() {
     return { product_id: i.id, product_name: i.name, qty: i.qty, unit_price: i.price, total_price: i.price * i.qty };
   });
 
-  var params = new URLSearchParams({
-    path:             'storefront/order',
-    customer_name:    name,
-    customer_email:   email,
-    customer_phone:   document.getElementById('co-phone').value || '',
+  // Build order data matching shop.js schema
+  var orderData = {
+    order_number: 'WEB-' + Date.now().toString(36).toUpperCase(),
+    customer_name: name,
+    customer_email: email,
+    customer_phone: document.getElementById('co-phone').value || '',
     shipping_address: address,
-    subtotal:         sub.toFixed(2),
-    discount:         disc.toFixed(2),
-    tax:              tax.toFixed(2),
-    shipping:         ship.toFixed(2),
-    total:            total.toFixed(2),
-    currency:         CURRENCY,
-    payment_method:   selectedPay,
-    discount_code:    appliedDisc ? appliedDisc.code : '',
-    items:            JSON.stringify(items),
-  });
+    subtotal: sub.toFixed(2),
+    discount: disc.toFixed(2),
+    tax: tax.toFixed(2),
+    shipping: ship.toFixed(2),
+    total: total.toFixed(2),
+    currency: CURRENCY,
+    payment_method: selectedPay,
+    discount_code: appliedDisc ? appliedDisc.code : '',
+    status: selectedPay === 'Interac' ? 'Pending' : 'Paid',
+    payment_status: selectedPay === 'Interac' ? 'Pending' : 'Paid',
+    source: 'Web Storefront'
+  };
 
   var btn = document.getElementById('place-btn');
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Placing order…';
 
   try {
-    var r    = await fetch(STOREFRONT_API, { method: 'POST', body: params });
-    var data = await r.json();
-    if (data.error) throw new Error(data.error);
-    if (data.redirect) { window.location.href = data.redirect; return; }
+    // Insert order directly into Supabase
+    var { data: order, error: orderError } = await sdb
+      .from('shop_orders')
+      .insert(orderData)
+      .select()
+      .single();
+    
+    if (orderError) throw orderError;
+
+    // Insert order items
+    for (var item of items) {
+      var { error: itemError } = await sdb.from('shop_order_items').insert({
+        order_id: order.id,
+        product_id: item.product_id,
+        name: item.product_name,
+        quantity: item.qty,
+        price: item.unit_price,
+        total: item.total_price
+      });
+      if (itemError) console.error('Failed to insert item:', itemError);
+    }
+
+    // Update discount usage count if applicable
+    if (appliedDisc && appliedDisc.id) {
+      await sdb.from('shop_discounts')
+        .update({ uses: (appliedDisc.uses || 0) + 1 })
+        .eq('id', appliedDisc.id);
+    }
+
+    // Decrement stock for physical products
+    for (var cartItem of cart) {
+      if (cartItem.track_stock) {
+        var product = PRODUCTS.find(function(p) { return p.id === cartItem.id; });
+        if (product) {
+          var newStock = Math.max(0, parseInt(product.stock || 0) - cartItem.qty);
+          await sdb.from('shop_products')
+            .update({ stock: newStock })
+            .eq('id', cartItem.id);
+        }
+      }
+    }
 
     var digitalItems      = cart.filter(function(i) { return i.product_type === 'digital' && i.download_url; });
     var subscriptionItems = cart.filter(function(i) { return i.product_type === 'subscription'; });
 
     var baseMsg = selectedPay === 'Interac'
-      ? 'Your order ' + data.order_number + ' has been placed! Please send ' + fmt(total) + ' to ' + (S.interac_email || 'our email') + ' with your Order ID.'
-      : 'Your order ' + data.order_number + ' is confirmed!';
+      ? 'Your order ' + order.order_number + ' has been placed! Please send ' + fmt(total) + ' to ' + (S.interac_email || 'our email') + ' with your Order ID.'
+      : 'Your order ' + order.order_number + ' is confirmed!';
 
     cart = []; saveCart(); updateCartUI();
-    showSuccess(baseMsg, data.order_number, digitalItems, subscriptionItems);
+    showSuccess(baseMsg, order.order_number, digitalItems, subscriptionItems);
 
   } catch(e) {
     showError(e.message || 'Something went wrong. Please try again.');
@@ -3087,7 +3203,7 @@ function showSuccess(msg, orderNum, digitalItems, subscriptionItems) {
 
 function resetStore() {
   appliedDisc = null;
-  renderProducts();
+  renderLayout();
 }
 
 // ── Toast notifications ─────────────────────────────────────────
