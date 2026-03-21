@@ -484,6 +484,30 @@ const WorkVoltDB = {
     deleteItem: (id)   => getAdapter().delete('invoice_items', id),
   },
 
+   // ── NEW: Bills ──────────────────────────────────────────────────
+  bills: {
+    list:       (f={}) => getAdapter().list('bills', f, { order: 'due_date', asc: true }),
+    create:     (row)  => getAdapter().create('bills', row),
+    update:     (id,p) => getAdapter().update('bills', id, p),
+    delete:     (id)   => getAdapter().delete('bills', id),
+  },
+
+  // ── NEW: Budgets ────────────────────────────────────────────────
+  budgets: {
+    list:       (f={}) => getAdapter().list('budgets', f, { order: 'category', asc: true }),
+    create:     (row)  => getAdapter().create('budgets', row),
+    update:     (id,p) => getAdapter().update('budgets', id, p),
+    delete:     (id)   => getAdapter().delete('budgets', id),
+  },
+
+  // ── NEW: Accounts ───────────────────────────────────────────────
+  accounts: {
+    list:       (f={}) => getAdapter().list('accounts', f, { order: 'account_name', asc: true }),
+    create:     (row)  => getAdapter().create('accounts', row),
+    update:     (id,p) => getAdapter().update('accounts', id, p),
+    delete:     (id)   => getAdapter().delete('accounts', id),
+  },
+
   inventory: {
     items:          (f={}) => getAdapter().list('inventory_items', f, { order: 'name', asc: true }),
     movements:      (f={}) => getAdapter().list('inventory_movements', f, { order: 'created_at' }),
