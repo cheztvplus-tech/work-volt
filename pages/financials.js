@@ -1515,9 +1515,6 @@ if (!window.toggleCollapsibleSection) {
 }
   
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ACCOUNTS - Auto-Calculating Version
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ACCOUNTS - Fixed with Debugging
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function renderAccounts(c) {
@@ -1549,21 +1546,21 @@ function renderAccounts(c) {
   });
 
   // CORRECTED CALCULATION
-const assetTotal = (grouped['Asset'] || []).reduce((s, a) => {
-  const bal = parseFloat(a.current_balance) || 0;
-  return s + bal;
-}, 0);
+  const assetTotal = (grouped['Asset'] || []).reduce((s, a) => {
+    const bal = parseFloat(a.current_balance) || 0;
+    return s + bal;
+  }, 0);
 
-const liabilityTotal = (grouped['Liability'] || []).reduce((s, a) => {
-  const bal = parseFloat(a.current_balance) || 0;
-  // Use absolute value since liabilities should be positive (money owed)
-  return s + Math.abs(bal);
-}, 0);
+  const liabilityTotal = (grouped['Liability'] || []).reduce((s, a) => {
+    const bal = parseFloat(a.current_balance) || 0;
+    // Use absolute value since liabilities should be positive (money owed)
+    return s + Math.abs(bal);
+  }, 0);
 
-// Net Worth = Assets - Liabilities
-const netWorth = assetTotal - liabilityTotal;
+  // Net Worth = Assets - Liabilities
+  const netWorth = assetTotal - liabilityTotal;
   
-  console.log('Totals:', { assetTotal, liabilityTotal, equityTotal, netWorth });
+  console.log('Totals:', { assetTotal, liabilityTotal, netWorth });
 
   c.innerHTML = `
   <div class="p-6 max-w-5xl mx-auto fade-in space-y-5">
@@ -1805,7 +1802,7 @@ function showInvoiceModal(inv = null) {
       await loadInvoices();
       await loadAccounts(); // Refresh accounts to show updated balances
       const c = document.getElementById('fin-content'); 
-      if(c) renderAccounts(c);
+      if(c) renderInvoices(c);
       refreshLinkedTabs();
     } catch(e) { 
       toast(e.message,'error'); 
@@ -2062,347 +2059,6 @@ function showBillModal(bill = null) {
   };
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MODALS
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function modal(title, body, footer) {
-  closeModal();
-  const el = document.createElement('div');
-  el.id = 'fin-modal';
-  el.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm';
-  el.innerHTML = `
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-[slideUp_.25s_cubic-bezier(.16,1,.3,1)]">
-      <div class="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-        <h3 class="font-bold text-slate-900 text-base">${title}</h3>
-        <button onclick="closeModal()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
-          <i class="fas fa-times text-sm"></i>
-        </button>
-      </div>
-      <div class="p-5 overflow-y-auto flex-1 space-y-4">${body}</div>
-      <div class="px-5 py-4 border-t border-slate-100 flex items-center justify-end gap-2">${footer}</div>
-    </div>`;
-  const modalsRoot = document.getElementById('modals-root') || document.body;
-  modalsRoot.appendChild(el);
-  el.addEventListener('click', e => { if (e.target === el) closeModal(); });
-}
-window.closeModal = () => { 
-  const el = document.getElementById('fin-modal'); 
-  if (el) el.remove(); 
-};
-
-function field(label, name, type='text', value='', extra='') {
-  return `
-    <div>
-      <label class="block text-xs font-semibold text-slate-600 mb-1">${label}</label>
-      <input type="${type}" name="${name}" value="${value || ''}" ${extra}
-        class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white transition-all">
-    </div>`;
-}
-
-function sel(label, name, options, value='') {
-  const opts = options.map(o => {
-    const v = typeof o === 'string' ? o : o.value;
-    const l = typeof o === 'string' ? o : o.label;
-    return `<option value="${v}" ${v===value?'selected':''}>${l}</option>`;
-  }).join('');
-  return `
-    <div>
-      <label class="block text-xs font-semibold text-slate-600 mb-1">${label}</label>
-      <select name="${name}" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
-        ${opts}
-      </select>
-    </div>`;
-}
-
-function getForm(id) {
-  const form = document.getElementById(id);
-  if (!form) return {};
-  return Object.fromEntries(new FormData(form).entries());
-}
-
-function accountOptions(selectedName = '', types = null) {
-  const accounts = state.accounts.filter(a =>
-    a.is_active !== false && (!types || types.includes(a.type))
-  );
-  const fallback = [
-    { account_name: 'Cash & Bank',       type: 'Asset' },
-    { account_name: 'Business Checking', type: 'Asset' },
-    { account_name: 'Business Savings',  type: 'Asset' },
-    { account_name: 'Credit Card',       type: 'Liability' },
-    { account_name: 'Petty Cash',        type: 'Asset' },
-  ];
-  const list = accounts.length ? accounts : fallback;
-  return list.map(a => {
-    const name = a.account_name;
-    // REMOVED: ${a.type ? ' — ' + a.type : ''}
-    return `<option value="${name}" ${name === selectedName ? 'selected' : ''}>${name}</option>`;
-  }).join('');
-}
-
-function accountSel(label, name, selectedName = '', types = null) {
-  return `
-    <div>
-      <label class="block text-xs font-semibold text-slate-600 mb-1">${label}</label>
-      <select name="${name}" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
-        <option value="">— Select Account —</option>
-        ${accountOptions(selectedName, types)}
-      </select>
-    </div>`;
-}
-
-function dateVal(s) {
-  if (!s) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  if (s.includes('T')) return s.split('T')[0];
-  try {
-    const d = new Date(s);
-    if (!isNaN(d)) return d.toISOString().split('T')[0];
-  } catch(e) {}
-  return '';
-}
-
-// Invoice Modal
-function showInvoiceModal(inv = null) {
-  const isEdit = !!inv;
-  const today  = new Date().toISOString().split('T')[0];
-  modal(
-    isEdit ? 'Edit Invoice' : 'New Invoice',
-    `<form id="inv-form" class="space-y-3">
-      ${field('Customer Name', 'customer', 'text', inv?.customer)}
-      ${field('Customer Email', 'customer_email', 'email', inv?.customer_email)}
-      <div class="grid grid-cols-2 gap-3">
-        ${field('Issue Date', 'issue_date', 'date', dateVal(inv?.issue_date) || today)}
-        ${field('Due Date', 'due_date', 'date', dateVal(inv?.due_date))}
-      </div>
-      <div class="grid grid-cols-2 gap-3">
-        ${field('Subtotal ($)', 'subtotal', 'number', inv?.subtotal, 'step="0.01" min="0" oninput="FinPage._calcInvTotal()"')}
-        ${field('Tax Rate (%)', 'tax_rate', 'number', inv?.tax_rate || '0', 'step="0.1" min="0" max="100" oninput="FinPage._calcInvTotal()"')}
-      </div>
-      <div id="inv-tax-preview" class="text-xs text-slate-500 -mt-1 px-1"></div>
-      ${field('Total ($)', 'total', 'number', inv?.total, 'step="0.01" min="0" readonly style="background:#f8fafc;cursor:default"')}
-      ${sel('Status', 'status', ['Draft','Sent','Paid','Partial','Overdue'], inv?.status || 'Draft')}
-      ${accountSel('Deposit To Account', 'deposit_account', inv?.deposit_account || '', ['Asset'])}
-      <div>
-        <label class="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
-        <textarea name="notes" rows="2" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">${inv?.notes || ''}</textarea>
-      </div>
-    </form>`,
-    `<button onclick="closeModal()" class="btn-secondary">Cancel</button>
-     <button onclick="FinPage._saveInvoice(${isEdit ? `'${inv.id}'` : 'null'})" class="btn-primary" style="background:#10b981">${isEdit ? 'Save Changes' : 'Create Invoice'}</button>`
-  );
-
-  window.FinPage._saveInvoice = async (id) => {
-    const data = getForm('inv-form');
-    if (!data.customer) { toast('Customer is required','error'); return; }
-    if (!data.total)    { toast('Total is required','error'); return; }
-    
-    const sub = parseFloat(data.subtotal) || 0;
-    const rate = parseFloat(data.tax_rate) || 0;
-    data.tax_amount = (sub * rate / 100).toFixed(2);
-    if (!data.total || parseFloat(data.total) === 0) data.total = (sub + parseFloat(data.tax_amount)).toFixed(2);
-    
-    // Set balance_due to total for new invoices
-    if (!id) data.balance_due = data.total;
-    
-    try {
-      if (id) { 
-        await window.WorkVoltDB.update('invoices', id, data); 
-        toast('Invoice updated','success'); 
-      }
-      else { 
-        await window.WorkVoltDB.create('invoices', data); 
-        toast('Invoice created','success'); 
-      }
-      closeModal();
-      await loadInvoices();
-      const c = document.getElementById('fin-content'); 
-      if(c) renderInvoices(c);
-      refreshLinkedTabs();
-    } catch(e) { 
-      toast(e.message,'error'); 
-    }
-  };
-
-  window.FinPage._calcInvTotal = () => {
-    const sub  = parseFloat(document.querySelector('#inv-form [name=subtotal]')?.value) || 0;
-    const rate = parseFloat(document.querySelector('#inv-form [name=tax_rate]')?.value) || 0;
-    const tax  = sub * rate / 100;
-    const total = sub + tax;
-    const totalEl = document.querySelector('#inv-form [name=total]');
-    if (totalEl) totalEl.value = total.toFixed(2);
-    const preview = document.getElementById('inv-tax-preview');
-    if (preview) preview.textContent = rate > 0 ? `Tax (${rate}%): $${tax.toFixed(2)}  →  Total: $${total.toFixed(2)}` : '';
-  };
-  setTimeout(() => window.FinPage._calcInvTotal?.(), 50);
-}
-
-// Expense Modal
-const EXP_CATS = ['Salaries & Wages','Software & Subscriptions','Travel & Entertainment','Office Supplies','Marketing & Advertising','Professional Services','Rent & Utilities','Cost of Goods Sold','Other Expenses'];
-
-function showExpenseModal(exp = null) {
-  const today = new Date().toISOString().split('T')[0];
-  modal(
-    exp ? 'Edit Expense' : 'Log Expense',
-    `<form id="exp-form" class="space-y-3">
-      ${field('Date', 'date', 'date', dateVal(exp?.date) || today)}
-      ${field('Vendor', 'vendor', 'text', exp?.vendor)}
-      ${sel('Category', 'category', EXP_CATS, exp?.category || EXP_CATS[0])}
-      ${field('Description', 'description', 'text', exp?.description)}
-      <div class="grid grid-cols-2 gap-3">
-        ${field('Amount ($)', 'amount', 'number', exp?.amount, 'step="0.01" min="0"')}
-        ${accountSel('Paid From Account', 'paid_from', exp?.paid_from || '', ['Asset','Liability'])}
-      </div>
-      ${sel('Status', 'status', ['Pending','Approved','Rejected'], exp?.status || 'Pending')}
-    </form>`,
-    `<button onclick="closeModal()" class="btn-secondary">Cancel</button>
-     <button onclick="FinPage._saveExpense(${exp ? `'${exp.id}'` : 'null'})" class="btn-primary" style="background:#10b981">${exp ? 'Save Changes' : 'Log Expense'}</button>`
-  );
-
-  window.FinPage._saveExpense = async (id) => {
-    const data = getForm('exp-form');
-    if (!data.amount) { toast('Amount is required','error'); return; }
-    
-    // Add employee info for new expenses
-    if (!id) {
-      data.employee_id = user()?.id;
-      data.employee_name = user()?.name;
-    }
-    
-    try {
-      if (id) { 
-        await window.WorkVoltDB.update('expenses', id, data); 
-        toast('Updated','success'); 
-      }
-      else { 
-        await window.WorkVoltDB.create('expenses', data); 
-        toast('Expense logged','success'); 
-      }
-      closeModal();
-      await loadExpenses();
-      const c = document.getElementById('fin-content'); 
-      if(c) renderExpenses(c);
-      refreshLinkedTabs();
-    } catch(e) { 
-      toast(e.message,'error'); 
-    }
-  };
-}
-
-// Bill Modal
-function showBillModal(bill = null) {
-  const today = new Date().toISOString().split('T')[0];
-  const isRecurring = bill?.recurring === true || bill?.recurring === 'true';
-  modal(
-    bill ? 'Edit Bill' : 'New Bill',
-    `<form id="bill-form" class="space-y-3">
-      ${field('Vendor', 'vendor', 'text', bill?.vendor)}
-      ${field('Vendor Email', 'vendor_email', 'email', bill?.vendor_email)}
-      <div class="grid grid-cols-2 gap-3">
-        ${field('Issue Date', 'issue_date', 'date', dateVal(bill?.issue_date) || today)}
-        ${field('Due Date', 'due_date', 'date', dateVal(bill?.due_date))}
-      </div>
-      ${sel('Category', 'category', EXP_CATS, bill?.category || EXP_CATS[0])}
-      ${accountSel('Pay From Account', 'paid_from', bill?.paid_from || '', ['Asset','Liability'])}
-
-      <div class="grid grid-cols-2 gap-3">
-        ${field('Total Bill Amount ($)', 'amount', 'number', bill?.amount, 'step="0.01" min="0" oninput="FinPage._syncBillBalance()"')}
-        <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">Balance Due ($)</label>
-          <input type="number" name="balance_due" step="0.01" min="0"
-            value="${bill?.balance_due ?? bill?.amount ?? ''}"
-            class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
-          <p class="text-[10px] text-slate-400 mt-0.5">Remaining balance — auto-filled from total, reduces with each payment.</p>
-        </div>
-      </div>
-
-      <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
-        <label class="flex items-center gap-3 cursor-pointer">
-          <input type="checkbox" name="recurring" id="bill-recurring-toggle" value="true"
-            ${isRecurring ? 'checked' : ''}
-            onchange="FinPage._toggleRecurring(this.checked)"
-            class="w-4 h-4 accent-violet-600 rounded">
-          <div>
-            <span class="text-sm font-semibold text-slate-700">Recurring Monthly Bill</span>
-            <p class="text-[11px] text-slate-400">Auto-due every month on a set day. Balance reduces by monthly payment each time Pay is clicked.</p>
-          </div>
-        </label>
-      </div>
-
-      <div id="bill-recurring-opts" class="${isRecurring ? '' : 'hidden'} space-y-3 pl-1">
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Monthly Payment Amount ($)</label>
-            <input type="number" name="monthly_payment" step="0.01" min="0"
-              value="${bill?.monthly_payment || ''}"
-              placeholder="e.g. 100.00"
-              class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 outline-none bg-white">
-            <p class="text-[10px] text-slate-400 mt-0.5">Amount deducted from balance each month.</p>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Due Day of Month</label>
-            <input type="number" name="recurring_day" min="1" max="31"
-              value="${bill?.recurring_day || ''}"
-              placeholder="e.g. 15"
-              class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 outline-none bg-white">
-            <p class="text-[10px] text-slate-400 mt-0.5">Bill re-activates on this day each month.</p>
-          </div>
-        </div>
-        ${bill?.recurring_day ? `<p class="text-xs text-violet-600 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
-          <i class="fas fa-sync-alt mr-1"></i>Next due date will be automatically set to day <strong>${bill.recurring_day}</strong> of next month when marked paid.
-        </p>` : ''}
-      </div>
-
-      ${sel('Status', 'status', ['Unpaid','Partial','Paid','Overdue'], bill?.status || 'Unpaid')}
-      <div>
-        <label class="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
-        <textarea name="notes" rows="2" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">${bill?.notes||''}</textarea>
-      </div>
-    </form>`,
-    `<button onclick="closeModal()" class="btn-secondary">Cancel</button>
-     <button onclick="FinPage._saveBill(${bill ? `'${bill.id}'` : 'null'})" class="btn-primary" style="background:#10b981">${bill ? 'Save' : 'Add Bill'}</button>`
-  );
-
-  window.FinPage._syncBillBalance = () => {
-    const amt = document.querySelector('#bill-form [name=amount]')?.value;
-    const bal = document.querySelector('#bill-form [name=balance_due]');
-    if (bal && !bal.value) bal.value = amt;
-  };
-
-  window.FinPage._toggleRecurring = (on) => {
-    const opts = document.getElementById('bill-recurring-opts');
-    if (opts) opts.classList.toggle('hidden', !on);
-  };
-
-  window.FinPage._saveBill = async (id) => {
-    const data = getForm('bill-form');
-    if (!data.vendor) { toast('Vendor is required','error'); return; }
-
-    if (!id && (!data.balance_due || parseFloat(data.balance_due) === 0)) {
-      data.balance_due = data.amount;
-    }
-
-    if (!data.recurring) data.recurring = 'false';
-
-    try {
-      if (id) { 
-        await window.WorkVoltDB.update('bills', id, data); 
-        toast('Updated','success'); 
-      }
-      else { 
-        await window.WorkVoltDB.create('bills', data); 
-        toast('Bill added','success'); 
-      }
-      closeModal();
-      await loadBills();
-      const c = document.getElementById('fin-content'); 
-      if(c) renderBills(c);
-      refreshLinkedTabs();
-    } catch(e) { 
-      toast(e.message,'error'); 
-    }
-  };
-}
-
 // Payment Modal - Fixed to not save bill fields to payments table
 function showPaymentModal(refId, refType = 'bill', overrideAmount = null) {
   const today = new Date().toISOString().split('T')[0];
@@ -2626,34 +2282,134 @@ function showAccountModal(acc = null) {
      <button onclick="FinPage._saveAccount(${acc ? `'${acc.id}'` : 'null'})" class="btn-primary" style="background:#10b981">${acc ? 'Save' : 'Create'}</button>`
   );
 
-  // In showAccountModal, update the save handler:
-window.FinPage._saveAccount = async (id) => {
-  const data = getForm('acc-form');
-  if (!data.account_name) { toast('Name required','error'); return; }
-  
-  // Ensure current_balance is set
-  if (!data.current_balance || data.current_balance === '') {
-    data.current_balance = '0';
-  }
-  
-  try {
-    if (id) { 
-      await window.WorkVoltDB.update('accounts', id, data); 
-      toast('Updated','success'); 
+  window.FinPage._saveAccount = async (id) => {
+    const data = getForm('acc-form');
+    if (!data.account_name) { toast('Name required','error'); return; }
+    
+    // Ensure current_balance is set
+    if (!data.current_balance || data.current_balance === '') {
+      data.current_balance = '0';
     }
-    else { 
-      await window.WorkVoltDB.create('accounts', data); 
-      toast('Account created','success'); 
+    
+    try {
+      if (id) { 
+        await window.WorkVoltDB.update('accounts', id, data); 
+        toast('Updated','success'); 
+      }
+      else { 
+        await window.WorkVoltDB.create('accounts', data); 
+        toast('Account created','success'); 
+      }
+      closeModal();
+      await loadAccounts();
+      const c = document.getElementById('fin-content'); 
+      if(c) renderAccounts(c);
+    } catch(e) { 
+      toast(e.message,'error'); 
     }
-    closeModal();
-    await loadAccounts();
-    const c = document.getElementById('fin-content'); 
-    if(c) renderAccounts(c);
-  } catch(e) { 
-    toast(e.message,'error'); 
-  }
-};
+  };
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MODAL UTILITIES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function modal(title, body, footer) {
+  closeModal();
+  const el = document.createElement('div');
+  el.id = 'fin-modal';
+  el.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm';
+  el.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-[slideUp_.25s_cubic-bezier(.16,1,.3,1)]">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+        <h3 class="font-bold text-slate-900 text-base">${title}</h3>
+        <button onclick="closeModal()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+          <i class="fas fa-times text-sm"></i>
+        </button>
+      </div>
+      <div class="p-5 overflow-y-auto flex-1 space-y-4">${body}</div>
+      <div class="px-5 py-4 border-t border-slate-100 flex items-center justify-end gap-2">${footer}</div>
+    </div>`;
+  const modalsRoot = document.getElementById('modals-root') || document.body;
+  modalsRoot.appendChild(el);
+  el.addEventListener('click', e => { if (e.target === el) closeModal(); });
+}
+window.closeModal = () => { 
+  const el = document.getElementById('fin-modal'); 
+  if (el) el.remove(); 
+};
+
+function field(label, name, type='text', value='', extra='') {
+  return `
+    <div>
+      <label class="block text-xs font-semibold text-slate-600 mb-1">${label}</label>
+      <input type="${type}" name="${name}" value="${value || ''}" ${extra}
+        class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white transition-all">
+    </div>`;
+}
+
+function sel(label, name, options, value='') {
+  const opts = options.map(o => {
+    const v = typeof o === 'string' ? o : o.value;
+    const l = typeof o === 'string' ? o : o.label;
+    return `<option value="${v}" ${v===value?'selected':''}>${l}</option>`;
+  }).join('');
+  return `
+    <div>
+      <label class="block text-xs font-semibold text-slate-600 mb-1">${label}</label>
+      <select name="${name}" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
+        ${opts}
+      </select>
+    </div>`;
+}
+
+function getForm(id) {
+  const form = document.getElementById(id);
+  if (!form) return {};
+  return Object.fromEntries(new FormData(form).entries());
+}
+
+function accountOptions(selectedName = '', types = null) {
+  const accounts = state.accounts.filter(a =>
+    a.is_active !== false && (!types || types.includes(a.type))
+  );
+  const fallback = [
+    { account_name: 'Cash & Bank',       type: 'Asset' },
+    { account_name: 'Business Checking', type: 'Asset' },
+    { account_name: 'Business Savings',  type: 'Asset' },
+    { account_name: 'Credit Card',       type: 'Liability' },
+    { account_name: 'Petty Cash',        type: 'Asset' },
+  ];
+  const list = accounts.length ? accounts : fallback;
+  return list.map(a => {
+    const name = a.account_name;
+    return `<option value="${name}" ${name === selectedName ? 'selected' : ''}>${name}</option>`;
+  }).join('');
+}
+
+function accountSel(label, name, selectedName = '', types = null) {
+  return `
+    <div>
+      <label class="block text-xs font-semibold text-slate-600 mb-1">${label}</label>
+      <select name="${name}" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
+        <option value="">— Select Account —</option>
+        ${accountOptions(selectedName, types)}
+      </select>
+    </div>`;
+}
+
+function dateVal(s) {
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (s.includes('T')) return s.split('T')[0];
+  try {
+    const d = new Date(s);
+    if (!isNaN(d)) return d.toISOString().split('T')[0];
+  } catch(e) {}
+  return '';
+}
+
+// Expense categories constant
+const EXP_CATS = ['Salaries & Wages','Software & Subscriptions','Travel & Entertainment','Office Supplies','Marketing & Advertising','Professional Services','Rent & Utilities','Cost of Goods Sold','Other Expenses'];
 
 // Expose globals
 window.showInvoiceModal = showInvoiceModal;
@@ -2661,6 +2417,7 @@ window.showExpenseModal = showExpenseModal;
 window.showBillModal    = showBillModal;
 window.showBudgetModal  = showBudgetModal;
 window.showAccountModal = showAccountModal;
+window.showPaymentModal = showPaymentModal;  // ADDED: Expose payment modal
 window.loadReports      = loadReports;
 
 })();
