@@ -537,11 +537,66 @@
     setTimeout(()=>{ toast.style.animation='toastOut .3s ease forwards'; setTimeout(()=>toast.remove(),300); },duration);
   }
 
+    // ------API bridge for page modules (financials.js, etc.)
+async function apiCall(path, params = {}) {
+  const parts = path.split('/');
+  const module = parts[0];      // "financials"
+  const table = parts[1];       // "invoices", "expenses", etc.
+  const operation = parts[2] || 'list';  // "list", "create", "update", "delete", etc.
+  
+  // Map to Supabase table names
+  const tableMap = {
+    'invoices': 'financial_invoices',
+    'expenses': 'financial_expenses',
+    'bills': 'financial_bills',
+    'budgets': 'financial_budgets',
+    'accounts': 'financial_accounts',
+    'cost-centers': 'financial_cost_centers',
+    'payments': 'financial_payments'
+  };
+  
+  const supabaseTable = tableMap[table];
+  if (!supabaseTable) {
+    throw new Error('Unknown table: ' + table);
+  }
+  
+  switch(operation) {
+    case 'list':
+      const rows = await WorkVoltDB.list(supabaseTable, params);
+      return { rows: rows };
+      
+    case 'create':
+      return await WorkVoltDB.create(supabaseTable, params);
+      
+    case 'update':
+      const { id, ...patch } = params;
+      return await WorkVoltDB.update(supabaseTable, id, patch);
+      
+    case 'delete':
+      return await WorkVoltDB.delete(supabaseTable, params.id);
+      
+    case 'send':
+      return await WorkVoltDB.update(supabaseTable, params.id, { status: 'Sent' });
+      
+    case 'mark-paid':
+      return await WorkVoltDB.update(supabaseTable, params.id, { status: 'Paid', balance_due: 0 });
+      
+    case 'approve':
+      return await WorkVoltDB.update(supabaseTable, params.id, { status: 'Approved', approved_by: params.approved_by });
+      
+    case 'reject':
+      return await WorkVoltDB.update(supabaseTable, params.id, { status: 'Rejected', approved_by: params.approved_by });
+      
+    default:
+      throw new Error('Unknown operation: ' + operation);
+  }
+}
   // ──────────────────────────────────────────────────────────────
   //  GLOBAL API
   // ──────────────────────────────────────────────────────────────
   window.WorkVolt = {
     db:       WorkVoltDB,
+    api:      apiCall,
     user:     () => currentUser,
     toast:    showToast,
     navigate: showModule,
