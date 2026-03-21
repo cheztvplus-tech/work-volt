@@ -24,6 +24,7 @@ window.WorkVoltPages['store'] = function(container) {
     { id:'contracts',     label:'Contract Hub',         icon:'fa-file-signature',     category:'Legal',        version:'1.0.0', description:'Store and manage contracts with expiry alerts and status tracking.', tags:['contracts','legal'], color:'#0ea5e9', gradient:'from-sky-500 to-blue-600', featured:false },
     { id:'helpdesk',      label:'Help Desk',            icon:'fa-headset',            category:'Operations',   version:'1.0.0', description:'Internal ticket system for IT and HR support requests.', tags:['helpdesk','support'], color:'#14b8a6', gradient:'from-teal-500 to-cyan-600', featured:false },
     { id:'recruitment',   label:'Recruitment Pipeline', icon:'fa-user-tie',           category:'HR',           version:'1.0.0', description:'Track candidates through your hiring pipeline from application to offer.', tags:['recruitment','hr'], color:'#a855f7', gradient:'from-purple-500 to-violet-600', featured:false },
+    { id:'shop',          label:'Store & POS',          icon:'fa-store',              category:'Commerce',     version:'1.0.0', description:'Full e-commerce engine + point of sale. Manage products, orders, customers and discounts. Deploys a live public storefront.', tags:['ecommerce','pos','store','orders'], color:'#0ea5e9', gradient:'from-sky-500 to-blue-600', featured:true, requiresGasFiles:true, gasFiles:['Module_Shop.gs','Storefront.gs','Storefront.html'] },
   ];
 
   const CATEGORIES = ['All', ...new Set(CATALOGUE.map(m => m.category))];
@@ -33,6 +34,26 @@ window.WorkVoltPages['store'] = function(container) {
   let filterCategory = 'All';
   let searchQuery    = '';
   let activeModal    = null;
+  let availablePages = null; // null = not yet probed, Set = probed
+
+  // ── Auto-detect which pages exist by probing pages/{id}.js ──────────
+  async function probeAvailablePages() {
+    if (availablePages !== null) return;
+    availablePages = new Set();
+    await Promise.all(
+      CATALOGUE.map(async m => {
+        try {
+          const res = await fetch(`pages/${m.id}.js`, { method: 'HEAD', cache: 'no-store' });
+          if (res.ok) availablePages.add(m.id);
+        } catch(e) { /* not available */ }
+      })
+    );
+  }
+
+  function isComingSoon(m) {
+    if (availablePages === null) return false; // still probing — assume ready
+    return !availablePages.has(m.id);
+  }
 
   // ── Load installed modules ──────────────────────────────────────
   async function loadInstalled() {
@@ -164,19 +185,24 @@ window.WorkVoltPages['store'] = function(container) {
 
   function renderModuleCard(m, featured) {
     const requiresMissing = (m.requires || []).filter(r => !installedIds.includes(r));
+    const coming = isComingSoon(m);
+    
     return `
-      <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col ${featured ? 'ring-1 ring-blue-100' : ''}">
+      <div class="bg-white border ${coming ? 'border-amber-200' : 'border-slate-200'} rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col ${featured ? 'ring-1 ring-blue-100' : ''}">
         <div class="h-2 bg-gradient-to-r ${m.gradient}"></div>
         <div class="p-4 flex-1 flex flex-col gap-3">
           <div class="flex items-start gap-3">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br ${m.gradient} flex items-center justify-center flex-shrink-0 shadow-sm">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br ${m.gradient} ${coming ? 'opacity-60' : ''} flex items-center justify-center flex-shrink-0 shadow-sm">
               <i class="fas ${m.icon} text-white text-sm"></i>
             </div>
             <div class="flex-1 min-w-0">
               <div class="font-bold text-slate-900 text-sm">${m.label}</div>
               <div class="text-xs text-slate-400">${m.category} · v${m.version}</div>
             </div>
-            ${featured ? `<span class="text-[9px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded border border-amber-200 flex-shrink-0">Featured</span>` : ''}
+            ${coming 
+              ? `<span class="text-[9px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded border border-amber-200 flex-shrink-0">Coming Soon</span>`
+              : featured ? `<span class="text-[9px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded border border-amber-200 flex-shrink-0">Featured</span>` 
+              : ''}
           </div>
           <p class="text-xs text-slate-500 leading-relaxed flex-1">${m.description}</p>
           ${requiresMissing.length ? `
@@ -184,14 +210,19 @@ window.WorkVoltPages['store'] = function(container) {
               <i class="fas fa-exclamation-triangle mr-1"></i>
               Requires: ${requiresMissing.map(r => CATALOGUE.find(c=>c.id===r)?.label||r).join(', ')}
             </div>` : ''}
-          <button onclick="storeOpenInstall('${m.id}')"
-            ${requiresMissing.length ? 'disabled' : ''}
-            class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all
-              ${requiresMissing.length
-                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                : 'bg-gradient-to-r ' + m.gradient + ' text-white hover:opacity-90 shadow-sm active:scale-[.98]'}">
-            <i class="fas fa-download text-xs"></i> Install
-          </button>
+          ${coming 
+            ? `<div class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-600 border border-amber-200">
+                 <i class="fas fa-clock text-xs"></i> Coming Soon
+               </div>`
+            : `<button onclick="storeOpenInstall('${m.id}')"
+                ${requiresMissing.length ? 'disabled' : ''}
+                class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all
+                  ${requiresMissing.length
+                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r ' + m.gradient + ' text-white hover:opacity-90 shadow-sm active:scale-[.98]'}">
+                <i class="fas fa-download text-xs"></i> Install
+              </button>`
+          }
         </div>
       </div>`;
   }
@@ -339,5 +370,5 @@ window.WorkVoltPages['store'] = function(container) {
 
   // ── Boot ────────────────────────────────────────────────────────
   render();
-  loadInstalled();
+  probeAvailablePages().then(() => render());
 };
