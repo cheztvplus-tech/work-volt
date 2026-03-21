@@ -2514,7 +2514,7 @@ function showBillModal(bill = null) {
   };
 }
 
-// Payment Modal
+// Payment Modal - Fixed to not save bill fields to payments table
 function showPaymentModal(refId, refType = 'bill', overrideAmount = null) {
   const today = new Date().toISOString().split('T')[0];
   const ref = refType === 'bill' ? state.bills.find(r => r.id === refId) : state.invoices.find(r => r.id === refId);
@@ -2535,13 +2535,16 @@ function showPaymentModal(refId, refType = 'bill', overrideAmount = null) {
       <div class="p-3 bg-violet-50 border border-violet-200 rounded-lg text-xs text-violet-700">
         <i class="fas fa-info-circle mr-1"></i>
         This is a recurring bill. Paying <strong>${fmt.currency(monthly)}</strong> will reduce the balance to <strong>${fmt.currency(Math.max(0, balance - monthly))}</strong>.
-        ${ref?.recurring_day ? `Next due date will be set to day <strong>${ref.recurring_day}</strong> of next month.` : ''}
       </div>` : ''}
       ${field('Payment Date', 'date', 'date', today)}
       ${field('Amount ($)', 'amount', 'number', payAmt, 'step="0.01" min="0"')}
       ${sel('Method', 'method', ['Bank Transfer','Cash','Credit Card','PayPal','Stripe','Check'], '')}
       ${accountSel('Pay From Account', 'account', ref?.paid_from || '', ['Asset','Liability'])}
       ${field('Reference / Notes', 'notes', 'text', '')}
+      <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+        <i class="fas fa-info-circle mr-1"></i>
+        This payment will be deducted from the selected account balance.
+      </div>
       <input type="hidden" name="reference_id" value="${refId}">
       <input type="hidden" name="reference_type" value="${refType}">
     </form>`,
@@ -2552,35 +2555,80 @@ function showPaymentModal(refId, refType = 'bill', overrideAmount = null) {
   window.FinPage._savePayment = async () => {
     const data = getForm('pay-form');
     if (!data.amount) { toast('Amount required','error'); return; }
+    
+    const paymentAmount = parseFloat(data.amount) || 0;
+    
     try {
       data.created_by = user()?.name || '';
 
-      // For recurring bills: compute new balance and next due date
-      if (isRecurring && refType === 'bill' && ref) {
-        const paid       = parseFloat(data.amount) || 0;
-        const newBalance = Math.max(0, balance - paid);
-        data.balance_due = newBalance.toFixed(2);
-        data.status      = newBalance <= 0 ? 'Paid' : 'Partial';
+      // Deduct from account balance
+      if (data.account) {
+        await updateAccountBalance(data.account, -paymentAmount);
+      }
 
-        if (ref.recurring_day && newBalance > 0) {
-          const now   = new Date();
-          const year  = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
-          const month = now.getMonth() === 11 ? 0 : now.getMonth() + 1;
-          const day   = Math.min(parseInt(ref.recurring_day), new Date(year, month + 1, 0).getDate());
-          data.due_date = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      // Calculate new balance for the bill/invoice
+      let newBalance = 0;
+      let newStatus = 'Paid';
+      
+      if (refType === 'bill') {
+        if (isRecurring && ref) {
+          newBalance = Math.max(0, balance - paymentAmount);
+          newStatus = newBalance <= 0 ? 'Paid' : 'Partial';
+          
+          // Calculate next due date for recurring bills
+          let nextDueDate = null;
+          if (ref.recurring_day && newBalance > 0) {
+            const now   = new Date();
+            const year  = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+            const month = now.getMonth() === 11 ? 0 : now.getMonth() + 1;
+            const day   = Math.min(parseInt(ref.recurring_day), new Date(year, month + 1, 0).getDate());
+            nextDueDate = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+          }
+          
+          // Update the bill with new balance and status
+          await window.WorkVoltDB.update('bills', refId, { 
+            balance_due: newBalance.toFixed(2), 
+            status: newStatus,
+            ...(nextDueDate && { due_date: nextDueDate })
+          });
+        } else {
+          // Non-recurring bill
+          newBalance = Math.max(0, balance - paymentAmount);
+          newStatus = newBalance <= 0 ? 'Paid' : 'Partial';
+          
+          await window.WorkVoltDB.update('bills', refId, { 
+            balance_due: newBalance.toFixed(2), 
+            status: newStatus 
+          });
         }
-
-        await window.WorkVoltDB.update('bills', refId, { 
-          balance_due: data.balance_due, 
-          status: data.status, 
-          due_date: data.due_date 
+      } else if (refType === 'invoice') {
+        // Invoice: reduce balance_due
+        const inv = state.invoices.find(i => i.id === refId);
+        newBalance = Math.max(0, (parseFloat(inv?.balance_due) || 0) - paymentAmount);
+        newStatus = newBalance <= 0 ? 'Paid' : 'Partial';
+        
+        await window.WorkVoltDB.update('invoices', refId, { 
+          balance_due: newBalance.toFixed(2), 
+          status: newStatus 
         });
       }
 
-      await window.WorkVoltDB.create('payments', data);
+      // Create the payment record - CLEAN DATA (no bill/invoice fields)
+      const paymentData = {
+        date: data.date,
+        amount: data.amount,
+        method: data.method,
+        account: data.account,
+        notes: data.notes,
+        reference_id: data.reference_id,
+        reference_type: data.reference_type,
+        created_by: data.created_by
+      };
+      
+      await window.WorkVoltDB.create('payments', paymentData);
       toast('Payment recorded','success');
       closeModal();
-      await Promise.all([loadBills(), loadInvoices()]);
+      await Promise.all([loadBills(), loadInvoices(), loadAccounts()]);
       const c = document.getElementById('fin-content');
       if (c) { 
         if (refType === 'bill') renderBills(c); 
