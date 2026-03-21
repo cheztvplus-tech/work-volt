@@ -74,11 +74,12 @@ window.WorkVoltPages['store'] = function(container) {
       const matchSearch = !searchQuery
         || m.label.toLowerCase().includes(searchQuery.toLowerCase())
         || m.tags.some(t => t.includes(searchQuery.toLowerCase()));
-      return matchCat && matchSearch;
+      const notInstalled = !installedIds.includes(m.id);
+      return matchCat && matchSearch && notInstalled;
     });
 
-    const featured   = filtered.filter(m => m.featured && !installedIds.includes(m.id));
-    const others     = filtered.filter(m => !m.featured && !installedIds.includes(m.id));
+    const featured   = filtered.filter(m => m.featured);
+    const others     = filtered.filter(m => !m.featured);
     const installed  = CATALOGUE.filter(m => installedIds.includes(m.id));
 
     container.innerHTML = `
@@ -135,13 +136,13 @@ window.WorkVoltPages['store'] = function(container) {
           ` : ''}
 
           <!-- All available -->
-          ${others.length || (featured.length && (filterCategory !== 'All' || searchQuery)) ? `
+          ${others.length ? `
             <div>
               <h2 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
                 ${filterCategory !== 'All' || searchQuery ? 'Results' : 'All Modules'}
               </h2>
               <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                ${[...(filterCategory !== 'All' || searchQuery ? featured : []), ...others].map(m => renderModuleCard(m, false)).join('')}
+                ${others.map(m => renderModuleCard(m, false)).join('')}
               </div>
             </div>
           ` : ''}
