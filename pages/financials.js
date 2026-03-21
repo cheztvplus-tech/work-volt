@@ -1514,17 +1514,9 @@ if (!window.toggleCollapsibleSection) {
 }
   
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ACCOUNTS
+// ACCOUNTS - Auto-Calculating Version
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  function renderAccounts(c) {
-  // DEBUG: Log what data we have
-  console.log('=== ACCOUNTS TAB DEBUG ===');
-  console.log('state.accounts:', state.accounts);
-  console.log('state.accounts.length:', state.accounts?.length);
-  console.log('state.invoices:', state.invoices);
-  console.log('state.expenses:', state.expenses);
-  console.log('state.bills:', state.bills);
-
+function renderAccounts(c) {
   const typeOrder  = ['Asset','Liability','Equity','Revenue','Expense'];
   const typeColors = {
     Asset:     'bg-blue-50 text-blue-700 border-blue-200',
@@ -1538,15 +1530,6 @@ if (!window.toggleCollapsibleSection) {
     Equity: 'fa-scale-balanced', Revenue: 'fa-arrow-trend-up', Expense: 'fa-arrow-trend-down',
   };
 
-  // Check if ANY invoices have a deposit_account assigned yet
-  const anyInvoiceAssigned = state.invoices.some(i => i.deposit_account && i.deposit_account !== '');
-  const anyExpenseAssigned = state.expenses.some(e => e.paid_from && e.paid_from !== '');
-  const anyBillAssigned    = state.bills.some(b => b.paid_from && b.paid_from !== '');
-
-  console.log('anyInvoiceAssigned:', anyInvoiceAssigned);
-  console.log('anyExpenseAssigned:', anyExpenseAssigned);
-  console.log('anyBillAssigned:', anyBillAssigned);
-
   // Group accounts by type
   const grouped = {};
   typeOrder.forEach(t => grouped[t] = []);
@@ -1554,129 +1537,35 @@ if (!window.toggleCollapsibleSection) {
     if (grouped[a.type]) grouped[a.type].push(a); 
   });
 
-  // Get asset accounts
-  const assetAccounts = grouped['Asset'] || [];
-  console.log('assetAccounts:', assetAccounts);
-
-  // ========== FIXED: Calculate totals with proper number handling ==========
+  // Calculate totals by account type
+  const assetTotal = (grouped['Asset'] || []).reduce((s, a) => s + (parseFloat(a.current_balance) || 0), 0);
+  const liabilityTotal = (grouped['Liability'] || []).reduce((s, a) => s + (parseFloat(a.current_balance) || 0), 0);
+  const equityTotal = (grouped['Equity'] || []).reduce((s, a) => s + (parseFloat(a.current_balance) || 0), 0);
   
-  // Calculate inflows from invoices - with NaN protection
-  let totalInflows = 0;
-  
-  if (assetAccounts.length === 0) {
-    // No accounts yet - show all invoice totals as fallback
-    totalInflows = (state.invoices || []).reduce((s, i) => {
-      const val = parseFloat(i?.total) || 0;
-      return s + val;
-    }, 0);
-    console.log('No accounts, using all invoices. totalInflows:', totalInflows);
-  } else if (!anyInvoiceAssigned) {
-    // Accounts exist but nothing assigned - show all on first asset
-    totalInflows = (state.invoices || []).reduce((s, i) => {
-      const val = parseFloat(i?.total) || 0;
-      return s + val;
-    }, 0);
-    console.log('Accounts exist but unassigned, using all invoices. totalInflows:', totalInflows);
-  } else {
-    // Normal calculation - sum per assigned account
-    totalInflows = assetAccounts.reduce((s, a) => {
-      const invIn = (state.invoices || [])
-        .filter(i => i?.deposit_account === a?.account_name)
-        .reduce((sum, i) => sum + (parseFloat(i?.total) || 0), 0);
-      return s + invIn;
-    }, 0);
-    console.log('Using assigned accounts. totalInflows:', totalInflows);
-  }
-
-  // Calculate outflows from expenses and bills - with NaN protection
-  let totalOutflows = 0;
-  
-  if (assetAccounts.length === 0) {
-    // No accounts yet - aggregate all expenses/bills
-    const expTotal = (state.expenses || []).reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
-    const billTotal = (state.bills || [])
-      .filter(b => b?.status === 'Paid')
-      .reduce((s, b) => s + (parseFloat(b?.amount) || 0), 0);
-    totalOutflows = expTotal + billTotal;
-    console.log('No accounts, using all expenses/bills. totalOutflows:', totalOutflows);
-  } else if (!anyExpenseAssigned && !anyBillAssigned) {
-    // Accounts exist but nothing assigned
-    totalOutflows = 0;
-    console.log('Accounts exist but no expenses/bills assigned. totalOutflows:', totalOutflows);
-  } else {
-    // Normal calculation
-    totalOutflows = assetAccounts.reduce((s, a) => {
-      const expOut = (state.expenses || [])
-        .filter(e => e?.paid_from === a?.account_name)
-        .reduce((sum, e) => sum + (parseFloat(e?.amount) || 0), 0);
-      const billOut = (state.bills || [])
-        .filter(b => b?.paid_from === a?.account_name && b?.status === 'Paid')
-        .reduce((sum, b) => sum + (parseFloat(b?.amount) || 0), 0);
-      return s + expOut + billOut;
-    }, 0);
-    console.log('Using assigned accounts. totalOutflows:', totalOutflows);
-  }
-
-  // Ensure we have valid numbers (not NaN)
-  totalInflows = isNaN(totalInflows) ? 0 : totalInflows;
-  totalOutflows = isNaN(totalOutflows) ? 0 : totalOutflows;
-  
-  const netPosition = totalInflows - totalOutflows;
-  
-  console.log('FINAL TOTALS:', { totalInflows, totalOutflows, netPosition });
-
-  // Helper function for account cards
-  function accountActivity(accountName) {
-    const invoiceIn = anyInvoiceAssigned
-      ? (state.invoices || []).filter(i => i?.deposit_account === accountName).reduce((s,i) => s + (parseFloat(i?.total)||0), 0)
-      : (assetAccounts.length > 0 && assetAccounts[0]?.account_name === accountName ? (state.invoices || []).reduce((s,i) => s + (parseFloat(i?.total)||0), 0) : 0);
-
-    const expenseOut = anyExpenseAssigned
-      ? (state.expenses || []).filter(e => e?.paid_from === accountName).reduce((s,e) => s + (parseFloat(e?.amount)||0), 0)
-      : 0;
-
-    const billOut = anyBillAssigned
-      ? (state.bills || []).filter(b => b?.paid_from === accountName && b?.status === 'Paid').reduce((s,b) => s + (parseFloat(b?.amount)||0), 0)
-      : 0;
-
-    return { invoiceIn, expenseOut, billOut, net: invoiceIn - expenseOut - billOut };
-  }
+  // Net worth = Assets - Liabilities
+  const netWorth = assetTotal - liabilityTotal;
 
   c.innerHTML = `
   <div class="p-6 max-w-5xl mx-auto fade-in space-y-5">
 
-    <!-- Summary strip - ALWAYS SHOWS VALUES NOW -->
+    <!-- Summary strip - ACCOUNT BALANCES -->
     <div class="grid grid-cols-3 gap-4">
       <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Inflows</p>
-        <p class="text-xl font-extrabold text-emerald-600 mt-1">${fmt.currency(totalInflows)}</p>
-        <p class="text-[11px] text-slate-400 mt-0.5">
-          ${assetAccounts.length === 0 ? 'Create accounts to track per-account flows' : (anyInvoiceAssigned ? 'From assigned invoices' : 'Assign invoices to accounts')}
-        </p>
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Assets</p>
+        <p class="text-xl font-extrabold text-emerald-600 mt-1">${fmt.currency(assetTotal)}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">Cash, bank accounts, receivables</p>
       </div>
       <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Outflows</p>
-        <p class="text-xl font-extrabold text-red-500 mt-1">${fmt.currency(totalOutflows)}</p>
-        <p class="text-[11px] text-slate-400 mt-0.5">
-          ${anyExpenseAssigned || anyBillAssigned ? 'Expenses + paid bills' : 'Link expenses/bills to accounts'}
-        </p>
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Liabilities</p>
+        <p class="text-xl font-extrabold text-red-500 mt-1">${fmt.currency(liabilityTotal)}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">Credit cards, loans, payables</p>
       </div>
       <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Net Position</p>
-        <p class="text-xl font-extrabold ${netPosition >= 0 ? 'text-blue-600' : 'text-red-500'} mt-1">${fmt.currency(netPosition)}</p>
-        <p class="text-[11px] text-slate-400 mt-0.5">Inflows minus outflows</p>
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Net Worth</p>
+        <p class="text-xl font-extrabold ${netWorth >= 0 ? 'text-blue-600' : 'text-red-500'} mt-1">${fmt.currency(netWorth)}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">Assets minus liabilities</p>
       </div>
     </div>
-
-    <!-- Unassigned warnings -->
-    ${(!anyInvoiceAssigned && state.invoices.length > 0 && assetAccounts.length > 0) ? `
-    <div class="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-      <i class="fas fa-exclamation-triangle text-amber-500 mt-0.5 flex-shrink-0"></i>
-      <div>
-        <p class="font-semibold">Your invoices aren't linked to an account yet.</p>
-        <p class="text-xs mt-1 text-amber-700">Edit invoices and pick a "Deposit To Account" so inflows show correctly. For now, totals appear on your first Asset account.</p>
-      </div>
-    </div>` : ''}
 
     <!-- Account cards by type -->
     ${typeOrder.map(type => {
@@ -1692,8 +1581,8 @@ if (!window.toggleCollapsibleSection) {
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             ${rows.map(a => {
-              const act = accountActivity(a.account_name);
-              const hasActivity = act.invoiceIn > 0 || act.expenseOut > 0 || act.billOut > 0;
+              const balance = parseFloat(a.current_balance) || 0;
+              const isPositive = balance >= 0;
               return `
                 <div class="bg-white rounded-xl border border-slate-200 p-4 hover:border-slate-300 transition-colors">
                   <div class="flex items-start justify-between mb-3">
@@ -1709,18 +1598,17 @@ if (!window.toggleCollapsibleSection) {
                       <button onclick="FinPage._deleteAcc('${a.id}')" class="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"><i class="fas fa-trash text-xs"></i></button>
                     </div>
                   </div>
-                  ${hasActivity ? `
-                  <div class="space-y-1 border-t border-slate-100 pt-3">
-                    ${act.invoiceIn  > 0 ? `<div class="flex justify-between text-xs"><span class="text-slate-500">Invoice deposits</span><span class="font-semibold text-emerald-600">+${fmt.currency(act.invoiceIn)}</span></div>` : ''}
-                    ${act.expenseOut > 0 ? `<div class="flex justify-between text-xs"><span class="text-slate-500">Expenses paid</span><span class="font-semibold text-red-500">−${fmt.currency(act.expenseOut)}</span></div>` : ''}
-                    ${act.billOut    > 0 ? `<div class="flex justify-between text-xs"><span class="text-slate-500">Bills paid</span><span class="font-semibold text-red-500">−${fmt.currency(act.billOut)}</span></div>` : ''}
-                    <div class="flex justify-between text-xs pt-1 border-t border-slate-100">
-                      <span class="font-bold text-slate-600">Net</span>
-                      <span class="font-extrabold ${act.net >= 0 ? 'text-blue-600' : 'text-red-500'}">${act.net >= 0 ? '+' : ''}${fmt.currency(act.net)}</span>
+                  
+                  <!-- Account Balance Display -->
+                  <div class="border-t border-slate-100 pt-3">
+                    <div class="flex justify-between items-center">
+                      <span class="text-xs text-slate-500">Current Balance</span>
+                      <span class="text-lg font-extrabold ${isPositive ? 'text-emerald-600' : 'text-red-500'}">
+                        ${fmt.currency(balance)}
+                      </span>
                     </div>
-                  </div>` : `
-                  <p class="text-[11px] text-slate-300 border-t border-slate-100 pt-2 mt-1">No transactions linked yet — assign this account in invoices, expenses or bills.</p>`}
-                  ${a.description ? `<p class="text-[11px] text-slate-400 mt-2">${a.description}</p>` : ''}
+                    ${a.description ? `<p class="text-[11px] text-slate-400 mt-2">${a.description}</p>` : ''}
+                  </div>
                 </div>`;
             }).join('')}
           </div>
@@ -1735,7 +1623,7 @@ if (!window.toggleCollapsibleSection) {
         </div>
         <p class="font-semibold text-slate-600 mb-2">No accounts set up yet</p>
         <p class="text-sm text-slate-400 mb-6 max-w-md mx-auto">
-          Create accounts like "Business Checking", "Savings", or "Credit Card" to track where money flows in and out.
+          Create accounts like "Business Checking", "Savings", or "Credit Card" to track your balances.
         </p>
         <button onclick="showAccountModal()" class="px-5 py-2.5 bg-emerald-500 text-white text-sm font-semibold rounded-lg hover:bg-emerald-600 transition-colors shadow-sm">
           <i class="fas fa-plus mr-2"></i>Create First Account
@@ -1755,6 +1643,500 @@ if (!window.toggleCollapsibleSection) {
       toast('Account deleted','success'); 
       await loadAccounts(); 
       renderAccounts(document.getElementById('fin-content')); 
+    } catch(e) { 
+      toast(e.message,'error'); 
+    }
+  };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// HELPER: Update Account Balance
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function updateAccountBalance(accountName, amountChange) {
+  if (!accountName) return;
+  
+  try {
+    // Find the account by name
+    const account = state.accounts.find(a => a.account_name === accountName);
+    if (!account) {
+      console.warn(`Account "${accountName}" not found for balance update`);
+      return;
+    }
+    
+    // Calculate new balance
+    const currentBalance = parseFloat(account.current_balance) || 0;
+    const newBalance = currentBalance + parseFloat(amountChange);
+    
+    // Update in database
+    await window.WorkVoltDB.update('accounts', account.id, { 
+      current_balance: newBalance.toFixed(2)
+    });
+    
+    // Update local state immediately
+    account.current_balance = newBalance.toFixed(2);
+    
+    console.log(`Updated ${accountName}: ${currentBalance} → ${newBalance} (${amountChange > 0 ? '+' : ''}${amountChange})`);
+  } catch(e) {
+    console.error('Failed to update account balance:', e);
+    throw e;
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MODALS - Updated with Auto-Calculation
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Invoice Modal - Adds to account balance when created/sent
+function showInvoiceModal(inv = null) {
+  const isEdit = !!inv;
+  const today  = new Date().toISOString().split('T')[0];
+  modal(
+    isEdit ? 'Edit Invoice' : 'New Invoice',
+    `<form id="inv-form" class="space-y-3">
+      ${field('Customer Name', 'customer', 'text', inv?.customer)}
+      ${field('Customer Email', 'customer_email', 'email', inv?.customer_email)}
+      <div class="grid grid-cols-2 gap-3">
+        ${field('Issue Date', 'issue_date', 'date', dateVal(inv?.issue_date) || today)}
+        ${field('Due Date', 'due_date', 'date', dateVal(inv?.due_date))}
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        ${field('Subtotal ($)', 'subtotal', 'number', inv?.subtotal, 'step="0.01" min="0" oninput="FinPage._calcInvTotal()"')}
+        ${field('Tax Rate (%)', 'tax_rate', 'number', inv?.tax_rate || '0', 'step="0.1" min="0" max="100" oninput="FinPage._calcInvTotal()"')}
+      </div>
+      <div id="inv-tax-preview" class="text-xs text-slate-500 -mt-1 px-1"></div>
+      ${field('Total ($)', 'total', 'number', inv?.total, 'step="0.01" min="0" readonly style="background:#f8fafc;cursor:default"')}
+      ${sel('Status', 'status', ['Draft','Sent','Unpaid','Paid','Partial','Overdue'], inv?.status || 'Draft')}
+      ${accountSel('Deposit To Account', 'deposit_account', inv?.deposit_account || '', ['Asset'])}
+      <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+        <i class="fas fa-info-circle mr-1"></i>
+        When saved as <strong>Sent</strong> or <strong>Paid</strong>, the total will be added to the selected account balance.
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
+        <textarea name="notes" rows="2" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">${inv?.notes || ''}</textarea>
+      </div>
+    </form>`,
+    `<button onclick="closeModal()" class="btn-secondary">Cancel</button>
+     <button onclick="FinPage._saveInvoice(${isEdit ? `'${inv.id}'` : 'null'})" class="btn-primary" style="background:#10b981">${isEdit ? 'Save Changes' : 'Create Invoice'}</button>`
+  );
+
+  window.FinPage._saveInvoice = async (id) => {
+    const data = getForm('inv-form');
+    if (!data.customer) { toast('Customer is required','error'); return; }
+    if (!data.total)    { toast('Total is required','error'); return; }
+    
+    const sub = parseFloat(data.subtotal) || 0;
+    const rate = parseFloat(data.tax_rate) || 0;
+    data.tax_amount = (sub * rate / 100).toFixed(2);
+    if (!data.total || parseFloat(data.total) === 0) data.total = (sub + parseFloat(data.tax_amount)).toFixed(2);
+    
+    // Set balance_due to total for new invoices
+    if (!id) data.balance_due = data.total;
+    
+    try {
+      const oldData = id ? state.invoices.find(i => i.id === id) : null;
+      const oldStatus = oldData?.status;
+      const oldDeposit = oldData?.deposit_account;
+      const oldTotal = parseFloat(oldData?.total) || 0;
+      
+      if (id) { 
+        await window.WorkVoltDB.update('invoices', id, data); 
+        toast('Invoice updated','success'); 
+        
+        // Handle account balance changes for edits
+        const newStatus = data.status;
+        const newDeposit = data.deposit_account;
+        const newTotal = parseFloat(data.total) || 0;
+        
+        // If status changed from Draft to Sent/Paid, add to account
+        if (oldStatus === 'Draft' && ['Sent','Paid','Partial'].includes(newStatus) && newDeposit) {
+          await updateAccountBalance(newDeposit, newTotal);
+        }
+        // If status changed from Sent/Paid to Draft, remove from account
+        else if (['Sent','Paid','Partial'].includes(oldStatus) && newStatus === 'Draft' && oldDeposit) {
+          await updateAccountBalance(oldDeposit, -oldTotal);
+        }
+        // If deposit account changed while active, transfer between accounts
+        else if (['Sent','Paid','Partial'].includes(newStatus) && oldDeposit && newDeposit && oldDeposit !== newDeposit) {
+          await updateAccountBalance(oldDeposit, -oldTotal);
+          await updateAccountBalance(newDeposit, newTotal);
+        }
+        // If total changed while active, adjust the difference
+        else if (['Sent','Paid','Partial'].includes(newStatus) && oldDeposit && newTotal !== oldTotal) {
+          await updateAccountBalance(oldDeposit, newTotal - oldTotal);
+        }
+      }
+      else { 
+        await window.WorkVoltDB.create('invoices', data); 
+        toast('Invoice created','success'); 
+        
+        // If creating as Sent/Paid, add to account balance immediately
+        if (['Sent','Paid'].includes(data.status) && data.deposit_account) {
+          await updateAccountBalance(data.deposit_account, parseFloat(data.total));
+        }
+      }
+      
+      closeModal();
+      await loadInvoices();
+      await loadAccounts(); // Refresh accounts to show updated balances
+      const c = document.getElementById('fin-content'); 
+      if(c) renderAccounts(c);
+      refreshLinkedTabs();
+    } catch(e) { 
+      toast(e.message,'error'); 
+    }
+  };
+
+  window.FinPage._calcInvTotal = () => {
+    const sub  = parseFloat(document.querySelector('#inv-form [name=subtotal]')?.value) || 0;
+    const rate = parseFloat(document.querySelector('#inv-form [name=tax_rate]')?.value) || 0;
+    const tax  = sub * rate / 100;
+    const total = sub + tax;
+    const totalEl = document.querySelector('#inv-form [name=total]');
+    if (totalEl) totalEl.value = total.toFixed(2);
+    const preview = document.getElementById('inv-tax-preview');
+    if (preview) preview.textContent = rate > 0 ? `Tax (${rate}%): $${tax.toFixed(2)}  →  Total: $${total.toFixed(2)}` : '';
+  };
+  setTimeout(() => window.FinPage._calcInvTotal?.(), 50);
+}
+
+// Expense Modal - Subtracts from account when approved
+function showExpenseModal(exp = null) {
+  const today = new Date().toISOString().split('T')[0];
+  modal(
+    exp ? 'Edit Expense' : 'Log Expense',
+    `<form id="exp-form" class="space-y-3">
+      ${field('Date', 'date', 'date', dateVal(exp?.date) || today)}
+      ${field('Vendor', 'vendor', 'text', exp?.vendor)}
+      ${sel('Category', 'category', EXP_CATS, exp?.category || EXP_CATS[0])}
+      ${field('Description', 'description', 'text', exp?.description)}
+      <div class="grid grid-cols-2 gap-3">
+        ${field('Amount ($)', 'amount', 'number', exp?.amount, 'step="0.01" min="0"')}
+        ${accountSel('Paid From Account', 'paid_from', exp?.paid_from || '', ['Asset','Liability'])}
+      </div>
+      ${sel('Status', 'status', ['Pending','Approved','Rejected'], exp?.status || 'Pending')}
+      <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+        <i class="fas fa-info-circle mr-1"></i>
+        When marked as <strong>Approved</strong>, the amount will be deducted from the selected account.
+      </div>
+    </form>`,
+    `<button onclick="closeModal()" class="btn-secondary">Cancel</button>
+     <button onclick="FinPage._saveExpense(${exp ? `'${exp.id}'` : 'null'})" class="btn-primary" style="background:#10b981">${exp ? 'Save Changes' : 'Log Expense'}</button>`
+  );
+
+  window.FinPage._saveExpense = async (id) => {
+    const data = getForm('exp-form');
+    if (!data.amount) { toast('Amount is required','error'); return; }
+    
+    if (!id) {
+      data.employee_id = user()?.id;
+      data.employee_name = user()?.name;
+    }
+    
+    try {
+      const oldData = id ? state.expenses.find(e => e.id === id) : null;
+      const oldStatus = oldData?.status;
+      const oldAccount = oldData?.paid_from;
+      const oldAmount = parseFloat(oldData?.amount) || 0;
+      
+      if (id) { 
+        await window.WorkVoltDB.update('expenses', id, data); 
+        toast('Updated','success'); 
+        
+        // Handle account balance changes
+        const newStatus = data.status;
+        const newAccount = data.paid_from;
+        const newAmount = parseFloat(data.amount) || 0;
+        
+        // If status changed to Approved, deduct from account
+        if (oldStatus !== 'Approved' && newStatus === 'Approved' && newAccount) {
+          await updateAccountBalance(newAccount, -newAmount);
+        }
+        // If status changed from Approved to something else, refund account
+        else if (oldStatus === 'Approved' && newStatus !== 'Approved' && oldAccount) {
+          await updateAccountBalance(oldAccount, oldAmount);
+        }
+        // If account changed while approved, transfer between accounts
+        else if (newStatus === 'Approved' && oldAccount && newAccount && oldAccount !== newAccount) {
+          await updateAccountBalance(oldAccount, oldAmount); // refund old
+          await updateAccountBalance(newAccount, -newAmount); // deduct new
+        }
+        // If amount changed while approved, adjust the difference
+        else if (newStatus === 'Approved' && oldAccount && newAmount !== oldAmount) {
+          await updateAccountBalance(oldAccount, oldAmount - newAmount); // reverse old, apply new difference
+        }
+      }
+      else { 
+        await window.WorkVoltDB.create('expenses', data); 
+        toast('Expense logged','success'); 
+        
+        // If creating as Approved, deduct immediately
+        if (data.status === 'Approved' && data.paid_from) {
+          await updateAccountBalance(data.paid_from, -parseFloat(data.amount));
+        }
+      }
+      
+      closeModal();
+      await loadExpenses();
+      await loadAccounts();
+      const c = document.getElementById('fin-content'); 
+      if(c) renderExpenses(c);
+      refreshLinkedTabs();
+    } catch(e) { 
+      toast(e.message,'error'); 
+    }
+  };
+}
+
+// Bill Modal - Subtracts from account when paid
+function showBillModal(bill = null) {
+  const today = new Date().toISOString().split('T')[0];
+  const isRecurring = bill?.recurring === true || bill?.recurring === 'true';
+  modal(
+    bill ? 'Edit Bill' : 'New Bill',
+    `<form id="bill-form" class="space-y-3">
+      ${field('Vendor', 'vendor', 'text', bill?.vendor)}
+      ${field('Vendor Email', 'vendor_email', 'email', bill?.vendor_email)}
+      <div class="grid grid-cols-2 gap-3">
+        ${field('Issue Date', 'issue_date', 'date', dateVal(bill?.issue_date) || today)}
+        ${field('Due Date', 'due_date', 'date', dateVal(bill?.due_date))}
+      </div>
+      ${sel('Category', 'category', EXP_CATS, bill?.category || EXP_CATS[0])}
+      ${accountSel('Pay From Account', 'paid_from', bill?.paid_from || '', ['Asset','Liability'])}
+
+      <div class="grid grid-cols-2 gap-3">
+        ${field('Total Bill Amount ($)', 'amount', 'number', bill?.amount, 'step="0.01" min="0" oninput="FinPage._syncBillBalance()"')}
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Balance Due ($)</label>
+          <input type="number" name="balance_due" step="0.01" min="0"
+            value="${bill?.balance_due ?? bill?.amount ?? ''}"
+            class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">
+          <p class="text-[10px] text-slate-400 mt-0.5">Remaining balance — reduces with each payment.</p>
+        </div>
+      </div>
+
+      <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" name="recurring" id="bill-recurring-toggle" value="true"
+            ${isRecurring ? 'checked' : ''}
+            onchange="FinPage._toggleRecurring(this.checked)"
+            class="w-4 h-4 accent-violet-600 rounded">
+          <div>
+            <span class="text-sm font-semibold text-slate-700">Recurring Monthly Bill</span>
+            <p class="text-[11px] text-slate-400">Auto-due every month. Balance reduces by monthly payment each time Pay is clicked.</p>
+          </div>
+        </label>
+      </div>
+
+      <div id="bill-recurring-opts" class="${isRecurring ? '' : 'hidden'} space-y-3 pl-1">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Monthly Payment Amount ($)</label>
+            <input type="number" name="monthly_payment" step="0.01" min="0"
+              value="${bill?.monthly_payment || ''}"
+              placeholder="e.g. 100.00"
+              class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 outline-none bg-white">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Due Day of Month</label>
+            <input type="number" name="recurring_day" min="1" max="31"
+              value="${bill?.recurring_day || ''}"
+              placeholder="e.g. 15"
+              class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 outline-none bg-white">
+          </div>
+        </div>
+      </div>
+
+      ${sel('Status', 'status', ['Unpaid','Partial','Paid','Overdue'], bill?.status || 'Unpaid')}
+      <div class="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+        <i class="fas fa-info-circle mr-1"></i>
+        When marked as <strong>Paid</strong>, the amount will be deducted from the selected account.
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
+        <textarea name="notes" rows="2" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white">${bill?.notes||''}</textarea>
+      </div>
+    </form>`,
+    `<button onclick="closeModal()" class="btn-secondary">Cancel</button>
+     <button onclick="FinPage._saveBill(${bill ? `'${bill.id}'` : 'null'})" class="btn-primary" style="background:#10b981">${bill ? 'Save' : 'Add Bill'}</button>`
+  );
+
+  window.FinPage._syncBillBalance = () => {
+    const amt = document.querySelector('#bill-form [name=amount]')?.value;
+    const bal = document.querySelector('#bill-form [name=balance_due]');
+    if (bal && !bal.value) bal.value = amt;
+  };
+
+  window.FinPage._toggleRecurring = (on) => {
+    const opts = document.getElementById('bill-recurring-opts');
+    if (opts) opts.classList.toggle('hidden', !on);
+  };
+
+  window.FinPage._saveBill = async (id) => {
+    const data = getForm('bill-form');
+    if (!data.vendor) { toast('Vendor is required','error'); return; }
+
+    if (!id && (!data.balance_due || parseFloat(data.balance_due) === 0)) {
+      data.balance_due = data.amount;
+    }
+
+    if (!data.recurring) data.recurring = 'false';
+
+    try {
+      const oldData = id ? state.bills.find(b => b.id === id) : null;
+      const oldStatus = oldData?.status;
+      const oldAccount = oldData?.paid_from;
+      const oldAmount = parseFloat(oldData?.amount) || 0;
+      
+      if (id) { 
+        await window.WorkVoltDB.update('bills', id, data); 
+        toast('Updated','success'); 
+        
+        // Handle account balance changes
+        const newStatus = data.status;
+        const newAccount = data.paid_from;
+        const newAmount = parseFloat(data.amount) || 0;
+        
+        // If status changed to Paid, deduct from account
+        if (oldStatus !== 'Paid' && newStatus === 'Paid' && newAccount) {
+          await updateAccountBalance(newAccount, -newAmount);
+        }
+        // If status changed from Paid to something else, refund account
+        else if (oldStatus === 'Paid' && newStatus !== 'Paid' && oldAccount) {
+          await updateAccountBalance(oldAccount, newAmount);
+        }
+        // If account changed while paid, transfer between accounts
+        else if (newStatus === 'Paid' && oldAccount && newAccount && oldAccount !== newAccount) {
+          await updateAccountBalance(oldAccount, newAmount); // refund old
+          await updateAccountBalance(newAccount, -newAmount); // deduct new
+        }
+        // If amount changed while paid, adjust the difference
+        else if (newStatus === 'Paid' && oldAccount && newAmount !== oldAmount) {
+          await updateAccountBalance(oldAccount, oldAmount - newAmount);
+        }
+      }
+      else { 
+        await window.WorkVoltDB.create('bills', data); 
+        toast('Bill added','success'); 
+        
+        // If creating as Paid, deduct immediately
+        if (data.status === 'Paid' && data.paid_from) {
+          await updateAccountBalance(data.paid_from, -parseFloat(data.amount));
+        }
+      }
+      
+      closeModal();
+      await loadBills();
+      await loadAccounts();
+      const c = document.getElementById('fin-content'); 
+      if(c) renderBills(c);
+      refreshLinkedTabs();
+    } catch(e) { 
+      toast(e.message,'error'); 
+    }
+  };
+}
+
+// Payment Modal - Also updates account balance
+function showPaymentModal(refId, refType = 'bill', overrideAmount = null) {
+  const today = new Date().toISOString().split('T')[0];
+  const ref = refType === 'bill' ? state.bills.find(r => r.id === refId) : state.invoices.find(r => r.id === refId);
+  const isRecurring = refType === 'bill' && (ref?.recurring === true || ref?.recurring === 'true');
+  const payAmt = overrideAmount ?? ref?.balance_due ?? '';
+  const balance = parseFloat(ref?.balance_due) || parseFloat(ref?.amount) || 0;
+  const monthly = parseFloat(ref?.monthly_payment) || 0;
+
+  modal(
+    'Record Payment',
+    `<form id="pay-form" class="space-y-3">
+      <div class="p-3 bg-slate-50 rounded-lg text-sm text-slate-600">
+        Recording payment for: <span class="font-bold text-slate-800">${ref ? (ref.bill_number || ref.invoice_number || ref.vendor || ref.customer) : refId}</span>
+        ${ref ? `— Balance: <span class="font-bold text-red-500">${fmt.currency(balance)}</span>` : ''}
+        ${isRecurring && monthly > 0 ? `<span class="ml-2 text-xs font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full"><i class="fas fa-sync-alt mr-1"></i>Monthly: ${fmt.currency(monthly)}</span>` : ''}
+      </div>
+      ${isRecurring && monthly > 0 ? `
+      <div class="p-3 bg-violet-50 border border-violet-200 rounded-lg text-xs text-violet-700">
+        <i class="fas fa-info-circle mr-1"></i>
+        This is a recurring bill. Paying <strong>${fmt.currency(monthly)}</strong> will reduce the balance to <strong>${fmt.currency(Math.max(0, balance - monthly))}</strong>.
+      </div>` : ''}
+      ${field('Payment Date', 'date', 'date', today)}
+      ${field('Amount ($)', 'amount', 'number', payAmt, 'step="0.01" min="0"')}
+      ${sel('Method', 'method', ['Bank Transfer','Cash','Credit Card','PayPal','Stripe','Check'], '')}
+      ${accountSel('Pay From Account', 'account', ref?.paid_from || '', ['Asset','Liability'])}
+      ${field('Reference / Notes', 'notes', 'text', '')}
+      <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+        <i class="fas fa-info-circle mr-1"></i>
+        This payment will be deducted from the selected account balance.
+      </div>
+      <input type="hidden" name="reference_id" value="${refId}">
+      <input type="hidden" name="reference_type" value="${refType}">
+    </form>`,
+    `<button onclick="closeModal()" class="btn-secondary">Cancel</button>
+     <button onclick="FinPage._savePayment()" class="btn-primary" style="background:#10b981">Record Payment</button>`
+  );
+
+  window.FinPage._savePayment = async () => {
+    const data = getForm('pay-form');
+    if (!data.amount) { toast('Amount required','error'); return; }
+    
+    const paymentAmount = parseFloat(data.amount) || 0;
+    
+    try {
+      data.created_by = user()?.name || '';
+
+      // Deduct from account balance
+      if (data.account) {
+        await updateAccountBalance(data.account, -paymentAmount);
+      }
+
+      // For recurring bills: compute new balance and next due date
+      if (isRecurring && refType === 'bill' && ref) {
+        const newBalance = Math.max(0, balance - paymentAmount);
+        data.balance_due = newBalance.toFixed(2);
+        data.status      = newBalance <= 0 ? 'Paid' : 'Partial';
+
+        if (ref.recurring_day && newBalance > 0) {
+          const now   = new Date();
+          const year  = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+          const month = now.getMonth() === 11 ? 0 : now.getMonth() + 1;
+          const day   = Math.min(parseInt(ref.recurring_day), new Date(year, month + 1, 0).getDate());
+          data.due_date = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        }
+
+        await window.WorkVoltDB.update('bills', refId, { 
+          balance_due: data.balance_due, 
+          status: data.status, 
+          due_date: data.due_date 
+        });
+      } else if (refType === 'bill') {
+        // Non-recurring bill: mark as paid if fully paid
+        const newBalance = Math.max(0, balance - paymentAmount);
+        const newStatus = newBalance <= 0 ? 'Paid' : 'Partial';
+        await window.WorkVoltDB.update('bills', refId, { 
+          balance_due: newBalance.toFixed(2), 
+          status: newStatus 
+        });
+      } else if (refType === 'invoice') {
+        // Invoice: reduce balance_due
+        const inv = state.invoices.find(i => i.id === refId);
+        const newBalance = Math.max(0, (parseFloat(inv?.balance_due) || 0) - paymentAmount);
+        const newStatus = newBalance <= 0 ? 'Paid' : 'Partial';
+        await window.WorkVoltDB.update('invoices', refId, { 
+          balance_due: newBalance.toFixed(2), 
+          status: newStatus 
+        });
+      }
+
+      await window.WorkVoltDB.create('payments', data);
+      toast('Payment recorded','success');
+      closeModal();
+      await Promise.all([loadBills(), loadInvoices(), loadAccounts()]);
+      const c = document.getElementById('fin-content');
+      if (c) { 
+        if (refType === 'bill') renderBills(c); 
+        else renderInvoices(c); 
+      }
+      refreshLinkedTabs();
     } catch(e) { 
       toast(e.message,'error'); 
     }
