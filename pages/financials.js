@@ -356,6 +356,7 @@ async function loadAccounts() {
     console.log('Loading accounts...');
     const data = await window.WorkVoltDB.list('accounts', {}, { order: 'account_name', asc: true });
     console.log('Accounts loaded:', data);
+    console.log('First account fields:', data?.[0] ? Object.keys(data[0]) : 'No accounts');
     state.accounts = data || [];
   } catch(e) {
     console.error('Accounts load error:', e);
@@ -1516,7 +1517,15 @@ if (!window.toggleCollapsibleSection) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ACCOUNTS - Auto-Calculating Version
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ACCOUNTS - Fixed with Debugging
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function renderAccounts(c) {
+  console.log('=== RENDER ACCOUNTS DEBUG ===');
+  console.log('state.accounts:', state.accounts);
+  console.log('state.accounts.length:', state.accounts?.length);
+  console.log('First account (if any):', state.accounts?.[0]);
+  
   const typeOrder  = ['Asset','Liability','Equity','Revenue','Expense'];
   const typeColors = {
     Asset:     'bg-blue-50 text-blue-700 border-blue-200',
@@ -1533,17 +1542,33 @@ function renderAccounts(c) {
   // Group accounts by type
   const grouped = {};
   typeOrder.forEach(t => grouped[t] = []);
+  
   (state.accounts || []).forEach(a => { 
+    console.log('Processing account:', a.account_name, 'Type:', a.type, 'Balance:', a.current_balance);
     if (grouped[a.type]) grouped[a.type].push(a); 
   });
 
-  // Calculate totals by account type
-  const assetTotal = (grouped['Asset'] || []).reduce((s, a) => s + (parseFloat(a.current_balance) || 0), 0);
-  const liabilityTotal = (grouped['Liability'] || []).reduce((s, a) => s + (parseFloat(a.current_balance) || 0), 0);
-  const equityTotal = (grouped['Equity'] || []).reduce((s, a) => s + (parseFloat(a.current_balance) || 0), 0);
+  // Calculate totals by account type - handle null/undefined safely
+  const assetTotal = (grouped['Asset'] || []).reduce((s, a) => {
+    const bal = parseFloat(a.current_balance) || 0;
+    console.log('Asset:', a.account_name, 'Balance:', bal);
+    return s + bal;
+  }, 0);
+  
+  const liabilityTotal = (grouped['Liability'] || []).reduce((s, a) => {
+    const bal = parseFloat(a.current_balance) || 0;
+    return s + bal;
+  }, 0);
+  
+  const equityTotal = (grouped['Equity'] || []).reduce((s, a) => {
+    const bal = parseFloat(a.current_balance) || 0;
+    return s + bal;
+  }, 0);
   
   // Net worth = Assets - Liabilities
   const netWorth = assetTotal - liabilityTotal;
+  
+  console.log('Totals:', { assetTotal, liabilityTotal, equityTotal, netWorth });
 
   c.innerHTML = `
   <div class="p-6 max-w-5xl mx-auto fade-in space-y-5">
@@ -1581,14 +1606,19 @@ function renderAccounts(c) {
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             ${rows.map(a => {
-              const balance = parseFloat(a.current_balance) || 0;
+              // Safely get balance with multiple fallback field names
+              const rawBalance = a.current_balance ?? a.balance ?? a.amount ?? 0;
+              const balance = parseFloat(rawBalance) || 0;
               const isPositive = balance >= 0;
+              
+              console.log('Rendering account card:', a.account_name, 'Raw:', rawBalance, 'Parsed:', balance);
+              
               return `
                 <div class="bg-white rounded-xl border border-slate-200 p-4 hover:border-slate-300 transition-colors">
                   <div class="flex items-start justify-between mb-3">
                     <div>
-                      <p class="font-bold text-slate-800 text-sm">${a.account_name}</p>
-                      <p class="text-xs text-slate-400 mt-0.5">${a.account_number ? '#' + a.account_number + ' · ' : ''}${a.category || a.type}</p>
+                      <p class="font-bold text-slate-800 text-sm">${a.account_name || 'Unnamed'}</p>
+                      <p class="text-xs text-slate-400 mt-0.5">${a.account_number ? '#' + a.account_number + ' · ' : ''}${a.category || a.type || 'Unknown'}</p>
                     </div>
                     <div class="flex items-center gap-1">
                       ${a.is_active !== false
@@ -2659,26 +2689,33 @@ function showAccountModal(acc = null) {
      <button onclick="FinPage._saveAccount(${acc ? `'${acc.id}'` : 'null'})" class="btn-primary" style="background:#10b981">${acc ? 'Save' : 'Create'}</button>`
   );
 
-  window.FinPage._saveAccount = async (id) => {
-    const data = getForm('acc-form');
-    if (!data.account_name) { toast('Name required','error'); return; }
-    try {
-      if (id) { 
-        await window.WorkVoltDB.update('accounts', id, data); 
-        toast('Updated','success'); 
-      }
-      else { 
-        await window.WorkVoltDB.create('accounts', data); 
-        toast('Account created','success'); 
-      }
-      closeModal();
-      await loadAccounts();
-      const c = document.getElementById('fin-content'); 
-      if(c) renderAccounts(c);
-    } catch(e) { 
-      toast(e.message,'error'); 
+  // In showAccountModal, update the save handler:
+window.FinPage._saveAccount = async (id) => {
+  const data = getForm('acc-form');
+  if (!data.account_name) { toast('Name required','error'); return; }
+  
+  // Ensure current_balance is set
+  if (!data.current_balance || data.current_balance === '') {
+    data.current_balance = '0';
+  }
+  
+  try {
+    if (id) { 
+      await window.WorkVoltDB.update('accounts', id, data); 
+      toast('Updated','success'); 
     }
-  };
+    else { 
+      await window.WorkVoltDB.create('accounts', data); 
+      toast('Account created','success'); 
+    }
+    closeModal();
+    await loadAccounts();
+    const c = document.getElementById('fin-content'); 
+    if(c) renderAccounts(c);
+  } catch(e) { 
+    toast(e.message,'error'); 
+  }
+};
 }
 
 // Expose globals
