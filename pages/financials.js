@@ -1516,7 +1516,15 @@ if (!window.toggleCollapsibleSection) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ACCOUNTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function renderAccounts(c) {
+  function renderAccounts(c) {
+  // DEBUG: Log what data we have
+  console.log('=== ACCOUNTS TAB DEBUG ===');
+  console.log('state.accounts:', state.accounts);
+  console.log('state.accounts.length:', state.accounts?.length);
+  console.log('state.invoices:', state.invoices);
+  console.log('state.expenses:', state.expenses);
+  console.log('state.bills:', state.bills);
+
   const typeOrder  = ['Asset','Liability','Equity','Revenue','Expense'];
   const typeColors = {
     Asset:     'bg-blue-50 text-blue-700 border-blue-200',
@@ -1535,70 +1543,100 @@ function renderAccounts(c) {
   const anyExpenseAssigned = state.expenses.some(e => e.paid_from && e.paid_from !== '');
   const anyBillAssigned    = state.bills.some(b => b.paid_from && b.paid_from !== '');
 
+  console.log('anyInvoiceAssigned:', anyInvoiceAssigned);
+  console.log('anyExpenseAssigned:', anyExpenseAssigned);
+  console.log('anyBillAssigned:', anyBillAssigned);
+
   // Group accounts by type
   const grouped = {};
   typeOrder.forEach(t => grouped[t] = []);
-  state.accounts.forEach(a => { if (grouped[a.type]) grouped[a.type].push(a); });
+  (state.accounts || []).forEach(a => { 
+    if (grouped[a.type]) grouped[a.type].push(a); 
+  });
 
   // Get asset accounts
   const assetAccounts = grouped['Asset'] || [];
+  console.log('assetAccounts:', assetAccounts);
 
-  // ========== FIXED: Calculate totals properly ==========
-  let totalInflows = 0;
-  let totalOutflows = 0;
+  // ========== FIXED: Calculate totals with proper number handling ==========
   
-  // Calculate inflows from invoices
+  // Calculate inflows from invoices - with NaN protection
+  let totalInflows = 0;
+  
   if (assetAccounts.length === 0) {
     // No accounts yet - show all invoice totals as fallback
-    totalInflows = state.invoices.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
+    totalInflows = (state.invoices || []).reduce((s, i) => {
+      const val = parseFloat(i?.total) || 0;
+      return s + val;
+    }, 0);
+    console.log('No accounts, using all invoices. totalInflows:', totalInflows);
   } else if (!anyInvoiceAssigned) {
     // Accounts exist but nothing assigned - show all on first asset
-    totalInflows = state.invoices.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
+    totalInflows = (state.invoices || []).reduce((s, i) => {
+      const val = parseFloat(i?.total) || 0;
+      return s + val;
+    }, 0);
+    console.log('Accounts exist but unassigned, using all invoices. totalInflows:', totalInflows);
   } else {
     // Normal calculation - sum per assigned account
     totalInflows = assetAccounts.reduce((s, a) => {
-      const invIn = state.invoices
-        .filter(i => i.deposit_account === a.account_name)
-        .reduce((sum, i) => sum + (parseFloat(i.total) || 0), 0);
+      const invIn = (state.invoices || [])
+        .filter(i => i?.deposit_account === a?.account_name)
+        .reduce((sum, i) => sum + (parseFloat(i?.total) || 0), 0);
       return s + invIn;
     }, 0);
+    console.log('Using assigned accounts. totalInflows:', totalInflows);
   }
 
-  // Calculate outflows from expenses and bills
+  // Calculate outflows from expenses and bills - with NaN protection
+  let totalOutflows = 0;
+  
   if (assetAccounts.length === 0) {
     // No accounts yet - aggregate all expenses/bills
-    totalOutflows = state.expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0)
-                  + state.bills.filter(b => b.status === 'Paid').reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+    const expTotal = (state.expenses || []).reduce((s, e) => s + (parseFloat(e?.amount) || 0), 0);
+    const billTotal = (state.bills || [])
+      .filter(b => b?.status === 'Paid')
+      .reduce((s, b) => s + (parseFloat(b?.amount) || 0), 0);
+    totalOutflows = expTotal + billTotal;
+    console.log('No accounts, using all expenses/bills. totalOutflows:', totalOutflows);
   } else if (!anyExpenseAssigned && !anyBillAssigned) {
     // Accounts exist but nothing assigned
     totalOutflows = 0;
+    console.log('Accounts exist but no expenses/bills assigned. totalOutflows:', totalOutflows);
   } else {
     // Normal calculation
     totalOutflows = assetAccounts.reduce((s, a) => {
-      const expOut = state.expenses
-        .filter(e => e.paid_from === a.account_name)
-        .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-      const billOut = state.bills
-        .filter(b => b.paid_from === a.account_name && b.status === 'Paid')
-        .reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
+      const expOut = (state.expenses || [])
+        .filter(e => e?.paid_from === a?.account_name)
+        .reduce((sum, e) => sum + (parseFloat(e?.amount) || 0), 0);
+      const billOut = (state.bills || [])
+        .filter(b => b?.paid_from === a?.account_name && b?.status === 'Paid')
+        .reduce((sum, b) => sum + (parseFloat(b?.amount) || 0), 0);
       return s + expOut + billOut;
     }, 0);
+    console.log('Using assigned accounts. totalOutflows:', totalOutflows);
   }
 
+  // Ensure we have valid numbers (not NaN)
+  totalInflows = isNaN(totalInflows) ? 0 : totalInflows;
+  totalOutflows = isNaN(totalOutflows) ? 0 : totalOutflows;
+  
   const netPosition = totalInflows - totalOutflows;
+  
+  console.log('FINAL TOTALS:', { totalInflows, totalOutflows, netPosition });
 
   // Helper function for account cards
   function accountActivity(accountName) {
     const invoiceIn = anyInvoiceAssigned
-      ? state.invoices.filter(i => i.deposit_account === accountName).reduce((s,i) => s + (parseFloat(i.total)||0), 0)
-      : (assetAccounts.length > 0 && assetAccounts[0].account_name === accountName ? state.invoices.reduce((s,i) => s + (parseFloat(i.total)||0), 0) : 0);
+      ? (state.invoices || []).filter(i => i?.deposit_account === accountName).reduce((s,i) => s + (parseFloat(i?.total)||0), 0)
+      : (assetAccounts.length > 0 && assetAccounts[0]?.account_name === accountName ? (state.invoices || []).reduce((s,i) => s + (parseFloat(i?.total)||0), 0) : 0);
 
     const expenseOut = anyExpenseAssigned
-      ? state.expenses.filter(e => e.paid_from === accountName).reduce((s,e) => s + (parseFloat(e.amount)||0), 0)
+      ? (state.expenses || []).filter(e => e?.paid_from === accountName).reduce((s,e) => s + (parseFloat(e?.amount)||0), 0)
       : 0;
 
     const billOut = anyBillAssigned
-      ? state.bills.filter(b => b.paid_from === accountName && b.status === 'Paid').reduce((s,b) => s + (parseFloat(b.amount)||0), 0)
+      ? (state.bills || []).filter(b => b?.paid_from === accountName && b?.status === 'Paid').reduce((s,b) => s + (parseFloat(b?.amount)||0), 0)
       : 0;
 
     return { invoiceIn, expenseOut, billOut, net: invoiceIn - expenseOut - billOut };
