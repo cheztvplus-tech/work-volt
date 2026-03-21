@@ -1556,7 +1556,8 @@ const assetTotal = (grouped['Asset'] || []).reduce((s, a) => {
 
 const liabilityTotal = (grouped['Liability'] || []).reduce((s, a) => {
   const bal = parseFloat(a.current_balance) || 0;
-  return s + bal;  // Liabilities are POSITIVE (money you owe)
+  // Use absolute value since liabilities should be positive (money owed)
+  return s + Math.abs(bal);
 }, 0);
 
 // Net Worth = Assets - Liabilities
