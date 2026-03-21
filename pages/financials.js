@@ -353,10 +353,12 @@ function computeBudgetVsActualLocally() {
 
 async function loadAccounts() {
   try {
+    console.log('Loading accounts...');
     const data = await window.WorkVoltDB.list('accounts', {}, { order: 'account_name', asc: true });
+    console.log('Accounts loaded:', data);
     state.accounts = data || [];
   } catch(e) {
-    console.warn('Accounts load error:', e);
+    console.error('Accounts load error:', e);
     state.accounts = [];
   }
 }
@@ -1533,23 +1535,30 @@ function renderAccounts(c) {
   const anyBillAssigned    = state.bills.some(b => b.paid_from && b.paid_from !== '');
 
   function accountActivity(accountName) {
-    const assetAccounts = state.accounts.filter(a => a.type === 'Asset' && a.is_active !== false);
-    const isFirstAsset  = !anyInvoiceAssigned && assetAccounts.length > 0 && assetAccounts[0].account_name === accountName;
+  // Get all asset accounts for fallback logic
+  const assetAccounts = state.accounts.filter(a => a.type === 'Asset' && a.is_active !== false);
+  const isFirstAsset = assetAccounts.length > 0 && assetAccounts[0].account_name === accountName;
+  
+  // Check if ANY invoices have deposit_account assigned
+  const anyInvoiceAssigned = state.invoices.some(i => i.deposit_account && i.deposit_account !== '');
+  const anyExpenseAssigned = state.expenses.some(e => e.paid_from && e.paid_from !== '');
+  const anyBillAssigned = state.bills.some(b => b.paid_from && b.paid_from !== '');
 
-    const invoiceIn = anyInvoiceAssigned
-      ? state.invoices.filter(i => i.deposit_account === accountName).reduce((s,i) => s + (parseFloat(i.total)||0), 0)
-      : (isFirstAsset ? state.invoices.reduce((s,i) => s + (parseFloat(i.total)||0), 0) : 0);
+  // If no invoices assigned anywhere AND this is first asset, show ALL invoice totals
+  const invoiceIn = anyInvoiceAssigned
+    ? state.invoices.filter(i => i.deposit_account === accountName).reduce((s,i) => s + (parseFloat(i.total)||0), 0)
+    : (isFirstAsset ? state.invoices.reduce((s,i) => s + (parseFloat(i.total)||0), 0) : 0);
 
-    const expenseOut = anyExpenseAssigned
-      ? state.expenses.filter(e => e.paid_from === accountName).reduce((s,e) => s + (parseFloat(e.amount)||0), 0)
-      : 0;
+  const expenseOut = anyExpenseAssigned
+    ? state.expenses.filter(e => e.paid_from === accountName).reduce((s,e) => s + (parseFloat(e.amount)||0), 0)
+    : 0;
 
-    const billOut = anyBillAssigned
-      ? state.bills.filter(b => b.paid_from === accountName && b.status === 'Paid').reduce((s,b) => s + (parseFloat(b.amount)||0), 0)
-      : 0;
+  const billOut = anyBillAssigned
+    ? state.bills.filter(b => b.paid_from === accountName && b.status === 'Paid').reduce((s,b) => s + (parseFloat(b.amount)||0), 0)
+    : 0;
 
-    return { invoiceIn, expenseOut, billOut, net: invoiceIn - expenseOut - billOut };
-  }
+  return { invoiceIn, expenseOut, billOut, net: invoiceIn - expenseOut - billOut };
+}
 
   const grouped = {};
   typeOrder.forEach(t => grouped[t] = []);
@@ -1584,23 +1593,29 @@ function renderAccounts(c) {
     </div>` : ''}
 
     <!-- Summary strip -->
-    <div class="grid grid-cols-3 gap-4">
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Inflows</p>
-        <p class="text-xl font-extrabold text-emerald-600 mt-1">${fmt.currency(totalInflows)}</p>
-        <p class="text-[11px] text-slate-400 mt-0.5">${anyInvoiceAssigned ? 'From invoices → assigned accounts' : 'All invoices (none assigned yet)'}</p>
-      </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Outflows</p>
-        <p class="text-xl font-extrabold text-red-500 mt-1">${fmt.currency(totalOutflows)}</p>
-        <p class="text-[11px] text-slate-400 mt-0.5">${anyExpenseAssigned ? 'Expenses + paid bills' : 'Assign expenses to see per-account'}</p>
-      </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4">
-        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Net Position</p>
-        <p class="text-xl font-extrabold ${totalInflows - totalOutflows >= 0 ? 'text-blue-600' : 'text-red-500'} mt-1">${fmt.currency(totalInflows - totalOutflows)}</p>
-        <p class="text-[11px] text-slate-400 mt-0.5">Inflows minus outflows</p>
-      </div>
-    </div>
+<div class="grid grid-cols-3 gap-4 mb-6">
+  <div class="bg-white rounded-xl border border-slate-200 p-4">
+    <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Inflows</p>
+    <p class="text-xl font-extrabold text-emerald-600 mt-1">${fmt.currency(totalInflows || 0)}</p>
+    <p class="text-[11px] text-slate-400 mt-0.5">
+      ${anyInvoiceAssigned ? 'From assigned invoices' : state.invoices.length ? 'Create accounts & assign invoices' : 'No invoices yet'}
+    </p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-4">
+    <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Outflows</p>
+    <p class="text-xl font-extrabold text-red-500 mt-1">${fmt.currency(totalOutflows || 0)}</p>
+    <p class="text-[11px] text-slate-400 mt-0.5">
+      ${anyExpenseAssigned ? 'Expenses + paid bills' : 'Link expenses to accounts'}
+    </p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-4">
+    <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Net Position</p>
+    <p class="text-xl font-extrabold ${(totalInflows - totalOutflows) >= 0 ? 'text-blue-600' : 'text-red-500'} mt-1">
+      ${fmt.currency((totalInflows - totalOutflows) || 0)}
+    </p>
+    <p class="text-[11px] text-slate-400 mt-0.5">Inflows minus outflows</p>
+  </div>
+</div>
 
     <!-- Account cards -->
     ${typeOrder.map(type => {
@@ -1652,14 +1667,18 @@ function renderAccounts(c) {
     }).join('')}
 
     ${!state.accounts.length ? `
-      <div class="text-center py-16 text-slate-400">
-        <i class="fas fa-university text-4xl mb-3 block opacity-20"></i>
-        <p class="font-semibold text-slate-500 mb-1">No accounts set up yet</p>
-        <p class="text-sm mb-4">Add your bank accounts, credit cards and cash accounts. Then assign them when creating invoices, expenses and bills.</p>
-        <button onclick="showAccountModal()" class="px-4 py-2 bg-emerald-500 text-white text-sm font-semibold rounded-lg hover:bg-emerald-600 transition-colors">
-          <i class="fas fa-plus mr-2"></i>Add First Account
-        </button>
-      </div>` : ''}
+  <div class="text-center py-16 text-slate-400 bg-white rounded-xl border border-slate-200">
+    <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+      <i class="fas fa-university text-3xl text-slate-300"></i>
+    </div>
+    <p class="font-semibold text-slate-600 mb-2">No accounts set up yet</p>
+    <p class="text-sm text-slate-400 mb-6 max-w-md mx-auto">
+      Create accounts like "Business Checking", "Savings", or "Credit Card" to track where money flows in and out.
+    </p>
+    <button onclick="showAccountModal()" class="px-5 py-2.5 bg-emerald-500 text-white text-sm font-semibold rounded-lg hover:bg-emerald-600 transition-colors shadow-sm">
+      <i class="fas fa-plus mr-2"></i>Create First Account
+    </button>
+  </div>` : ''}
   </div>`;
 
   window.FinPage._editAcc = (id) => { 
@@ -1752,7 +1771,8 @@ function accountOptions(selectedName = '', types = null) {
   const list = accounts.length ? accounts : fallback;
   return list.map(a => {
     const name = a.account_name;
-    return `<option value="${name}" ${name === selectedName ? 'selected' : ''}>${name}${a.type ? ' — ' + a.type : ''}</option>`;
+    // REMOVED: ${a.type ? ' — ' + a.type : ''}
+    return `<option value="${name}" ${name === selectedName ? 'selected' : ''}>${name}</option>`;
   }).join('');
 }
 
