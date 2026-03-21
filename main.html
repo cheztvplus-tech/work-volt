@@ -376,36 +376,55 @@
   }
 
   function renderPagePlaceholder(name, container) {
-    const def = ADDON_CATALOGUE[name] || {};
-    const icon  = def.icon  || 'fa-layer-group';
-    const label = def.label || name.charAt(0).toUpperCase() + name.slice(1);
+  const def = ADDON_CATALOGUE[name] || {};
+  const isInstalled = (window.INSTALLED_MODULES || []).some(m => m.id === name);
+  
+  // Check if the JS file actually exists by checking if WorkVoltPages loaded
+  const hasPageFile = window.WorkVoltPages?.[name];
+  
+  if (!hasPageFile && isInstalled) {
+    // Module is installed but page file doesn't exist - show "Coming Soon"
     container.innerHTML = `
       <div class="p-6 md:p-8 fade-in">
-        <div class="max-w-md mx-auto mt-20 text-center">
-          <div class="relative inline-flex mb-6">
-            <div class="w-24 h-24 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-3xl flex items-center justify-center shadow-sm">
-              <i class="fas ${icon} text-blue-400 text-4xl"></i>
-            </div>
-            <span class="absolute -top-2 -right-2 w-8 h-8 bg-amber-400 rounded-full flex items-center justify-center shadow-sm">
-              <i class="fas fa-clock text-white text-xs"></i>
-            </span>
+        <div class="max-w-2xl mx-auto mt-16 text-center">
+          <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-amber-100 to-orange-100 rounded-2xl mb-6 shadow-sm">
+            <i class="fas fa-rocket text-amber-500 text-3xl"></i>
           </div>
-          <h2 class="text-2xl font-extrabold text-slate-800 mb-2">${label}</h2>
-          <div class="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold px-3 py-1.5 rounded-full mb-4">
-            <i class="fas fa-hammer text-[10px]"></i>
-            Coming Soon
-          </div>
-          <p class="text-slate-400 text-sm leading-relaxed">
-            This module is installed and your data is ready in Supabase.<br>
-            The interface is being built and will appear here automatically when ready.
+          <h2 class="text-2xl font-extrabold text-slate-800 mb-2">${def.label || name}</h2>
+          <p class="text-slate-500 mb-6 text-sm leading-relaxed max-w-md mx-auto">
+            This module is installed and ready, but the page file is still in development. 
+            Check back soon for updates!
           </p>
-          <button onclick="window.WorkVolt.navigate('dashboard')"
-            class="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">
-            <i class="fas fa-arrow-left text-xs"></i> Back to Dashboard
-          </button>
+          <div class="flex items-center justify-center gap-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 max-w-sm mx-auto">
+            <i class="fas fa-clock"></i>
+            <span>Coming in the next update</span>
+          </div>
+          ${def.description ? `
+          <div class="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-100 max-w-sm mx-auto text-left">
+            <p class="text-xs text-slate-400 uppercase font-bold tracking-wider mb-2">Planned Features</p>
+            <p class="text-sm text-slate-600">${def.description}</p>
+          </div>` : ''}
+        </div>
+      </div>`;
+  } else {
+    // Module not installed or file exists - show default message
+    container.innerHTML = `
+      <div class="p-6 md:p-8 fade-in">
+        <div class="max-w-2xl mx-auto mt-16 text-center">
+          <div class="inline-flex items-center justify-center w-20 h-20 bg-blue-50 rounded-2xl mb-6">
+            <i class="fas ${def.icon || 'fa-layer-group'} text-blue-400 text-3xl"></i>
+          </div>
+          <h2 class="text-2xl font-extrabold text-slate-800 mb-2">${def.label || name}</h2>
+          <p class="text-slate-500 mb-6 text-sm leading-relaxed">
+            ${isInstalled 
+              ? `Create <code class="bg-slate-100 px-2 py-0.5 rounded text-blue-600 font-mono text-xs">pages/${name}.js</code> and register it as <code class="bg-slate-100 px-2 py-0.5 rounded text-blue-600 font-mono text-xs">WorkVoltPages.${name}</code>.`
+              : `Install this module from the <a href="#store" onclick="showModule('store'); return false;" class="text-blue-600 hover:underline">Module Store</a> to get started.`
+            }
+          </p>
         </div>
       </div>`;
   }
+}
 
   window.addEventListener('popstate', e => showModule(e.state?.module||'dashboard', false));
   function updateBackButton() { document.getElementById('app-back-btn').classList.toggle('hidden', history.length<=1); }
