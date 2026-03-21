@@ -1548,25 +1548,19 @@ function renderAccounts(c) {
     if (grouped[a.type]) grouped[a.type].push(a); 
   });
 
-  // Calculate totals by account type - handle null/undefined safely
-  const assetTotal = (grouped['Asset'] || []).reduce((s, a) => {
-    const bal = parseFloat(a.current_balance) || 0;
-    console.log('Asset:', a.account_name, 'Balance:', bal);
-    return s + bal;
-  }, 0);
-  
-  const liabilityTotal = (grouped['Liability'] || []).reduce((s, a) => {
-    const bal = parseFloat(a.current_balance) || 0;
-    return s + bal;
-  }, 0);
-  
-  const equityTotal = (grouped['Equity'] || []).reduce((s, a) => {
-    const bal = parseFloat(a.current_balance) || 0;
-    return s + bal;
-  }, 0);
-  
-  // Net worth = Assets - Liabilities
-  const netWorth = assetTotal - liabilityTotal;
+  // CORRECTED CALCULATION
+const assetTotal = (grouped['Asset'] || []).reduce((s, a) => {
+  const bal = parseFloat(a.current_balance) || 0;
+  return s + bal;
+}, 0);
+
+const liabilityTotal = (grouped['Liability'] || []).reduce((s, a) => {
+  const bal = parseFloat(a.current_balance) || 0;
+  return s + bal;  // Liabilities are POSITIVE (money you owe)
+}, 0);
+
+// Net Worth = Assets - Liabilities
+const netWorth = assetTotal - liabilityTotal;
   
   console.log('Totals:', { assetTotal, liabilityTotal, equityTotal, netWorth });
 
