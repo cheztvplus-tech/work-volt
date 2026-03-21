@@ -1530,94 +1530,117 @@ function renderAccounts(c) {
     Equity: 'fa-scale-balanced', Revenue: 'fa-arrow-trend-up', Expense: 'fa-arrow-trend-down',
   };
 
+  // Check if ANY invoices have a deposit_account assigned yet
   const anyInvoiceAssigned = state.invoices.some(i => i.deposit_account && i.deposit_account !== '');
   const anyExpenseAssigned = state.expenses.some(e => e.paid_from && e.paid_from !== '');
   const anyBillAssigned    = state.bills.some(b => b.paid_from && b.paid_from !== '');
 
-  function accountActivity(accountName) {
-  // Get all asset accounts for fallback logic
-  const assetAccounts = state.accounts.filter(a => a.type === 'Asset' && a.is_active !== false);
-  const isFirstAsset = assetAccounts.length > 0 && assetAccounts[0].account_name === accountName;
-  
-  // Check if ANY invoices have deposit_account assigned
-  const anyInvoiceAssigned = state.invoices.some(i => i.deposit_account && i.deposit_account !== '');
-  const anyExpenseAssigned = state.expenses.some(e => e.paid_from && e.paid_from !== '');
-  const anyBillAssigned = state.bills.some(b => b.paid_from && b.paid_from !== '');
-
-  // If no invoices assigned anywhere AND this is first asset, show ALL invoice totals
-  const invoiceIn = anyInvoiceAssigned
-    ? state.invoices.filter(i => i.deposit_account === accountName).reduce((s,i) => s + (parseFloat(i.total)||0), 0)
-    : (isFirstAsset ? state.invoices.reduce((s,i) => s + (parseFloat(i.total)||0), 0) : 0);
-
-  const expenseOut = anyExpenseAssigned
-    ? state.expenses.filter(e => e.paid_from === accountName).reduce((s,e) => s + (parseFloat(e.amount)||0), 0)
-    : 0;
-
-  const billOut = anyBillAssigned
-    ? state.bills.filter(b => b.paid_from === accountName && b.status === 'Paid').reduce((s,b) => s + (parseFloat(b.amount)||0), 0)
-    : 0;
-
-  return { invoiceIn, expenseOut, billOut, net: invoiceIn - expenseOut - billOut };
-}
-
+  // Group accounts by type
   const grouped = {};
   typeOrder.forEach(t => grouped[t] = []);
   state.accounts.forEach(a => { if (grouped[a.type]) grouped[a.type].push(a); });
 
+  // Get asset accounts
   const assetAccounts = grouped['Asset'] || [];
-  const totalInflows  = assetAccounts.reduce((s,a) => s + accountActivity(a.account_name).invoiceIn, 0);
-  const totalOutflows = assetAccounts.reduce((s,a) => {
-    const act = accountActivity(a.account_name);
-    return s + act.expenseOut + act.billOut;
-  }, 0);
+
+  // ========== FIXED: Calculate totals properly ==========
+  let totalInflows = 0;
+  let totalOutflows = 0;
+  
+  // Calculate inflows from invoices
+  if (assetAccounts.length === 0) {
+    // No accounts yet - show all invoice totals as fallback
+    totalInflows = state.invoices.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
+  } else if (!anyInvoiceAssigned) {
+    // Accounts exist but nothing assigned - show all on first asset
+    totalInflows = state.invoices.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
+  } else {
+    // Normal calculation - sum per assigned account
+    totalInflows = assetAccounts.reduce((s, a) => {
+      const invIn = state.invoices
+        .filter(i => i.deposit_account === a.account_name)
+        .reduce((sum, i) => sum + (parseFloat(i.total) || 0), 0);
+      return s + invIn;
+    }, 0);
+  }
+
+  // Calculate outflows from expenses and bills
+  if (assetAccounts.length === 0) {
+    // No accounts yet - aggregate all expenses/bills
+    totalOutflows = state.expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0)
+                  + state.bills.filter(b => b.status === 'Paid').reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+  } else if (!anyExpenseAssigned && !anyBillAssigned) {
+    // Accounts exist but nothing assigned
+    totalOutflows = 0;
+  } else {
+    // Normal calculation
+    totalOutflows = assetAccounts.reduce((s, a) => {
+      const expOut = state.expenses
+        .filter(e => e.paid_from === a.account_name)
+        .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+      const billOut = state.bills
+        .filter(b => b.paid_from === a.account_name && b.status === 'Paid')
+        .reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
+      return s + expOut + billOut;
+    }, 0);
+  }
+
+  const netPosition = totalInflows - totalOutflows;
+
+  // Helper function for account cards
+  function accountActivity(accountName) {
+    const invoiceIn = anyInvoiceAssigned
+      ? state.invoices.filter(i => i.deposit_account === accountName).reduce((s,i) => s + (parseFloat(i.total)||0), 0)
+      : (assetAccounts.length > 0 && assetAccounts[0].account_name === accountName ? state.invoices.reduce((s,i) => s + (parseFloat(i.total)||0), 0) : 0);
+
+    const expenseOut = anyExpenseAssigned
+      ? state.expenses.filter(e => e.paid_from === accountName).reduce((s,e) => s + (parseFloat(e.amount)||0), 0)
+      : 0;
+
+    const billOut = anyBillAssigned
+      ? state.bills.filter(b => b.paid_from === accountName && b.status === 'Paid').reduce((s,b) => s + (parseFloat(b.amount)||0), 0)
+      : 0;
+
+    return { invoiceIn, expenseOut, billOut, net: invoiceIn - expenseOut - billOut };
+  }
 
   c.innerHTML = `
   <div class="p-6 max-w-5xl mx-auto fade-in space-y-5">
 
+    <!-- Summary strip - ALWAYS SHOWS VALUES NOW -->
+    <div class="grid grid-cols-3 gap-4">
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Inflows</p>
+        <p class="text-xl font-extrabold text-emerald-600 mt-1">${fmt.currency(totalInflows)}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">
+          ${assetAccounts.length === 0 ? 'Create accounts to track per-account flows' : (anyInvoiceAssigned ? 'From assigned invoices' : 'Assign invoices to accounts')}
+        </p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Outflows</p>
+        <p class="text-xl font-extrabold text-red-500 mt-1">${fmt.currency(totalOutflows)}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">
+          ${anyExpenseAssigned || anyBillAssigned ? 'Expenses + paid bills' : 'Link expenses/bills to accounts'}
+        </p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Net Position</p>
+        <p class="text-xl font-extrabold ${netPosition >= 0 ? 'text-blue-600' : 'text-red-500'} mt-1">${fmt.currency(netPosition)}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">Inflows minus outflows</p>
+      </div>
+    </div>
+
     <!-- Unassigned warnings -->
-    ${(!anyInvoiceAssigned && state.invoices.length > 0) ? `
+    ${(!anyInvoiceAssigned && state.invoices.length > 0 && assetAccounts.length > 0) ? `
     <div class="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
       <i class="fas fa-exclamation-triangle text-amber-500 mt-0.5 flex-shrink-0"></i>
       <div>
         <p class="font-semibold">Your invoices aren't linked to an account yet.</p>
-        <p class="text-xs mt-1 text-amber-700">Edit each invoice and pick a "Deposit To Account" so the inflows show on the correct account. For now, all invoice revenue is shown on your first Asset account as a placeholder.</p>
-      </div>
-    </div>` : ''}
-    ${(!anyExpenseAssigned && state.expenses.length > 0) ? `
-    <div class="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
-      <i class="fas fa-info-circle text-blue-500 mt-0.5 flex-shrink-0"></i>
-      <div>
-        <p class="font-semibold">Expenses aren't linked to an account yet.</p>
-        <p class="text-xs mt-1 text-blue-700">Edit each expense and pick a "Paid From Account" so outflows are tracked per account.</p>
+        <p class="text-xs mt-1 text-amber-700">Edit invoices and pick a "Deposit To Account" so inflows show correctly. For now, totals appear on your first Asset account.</p>
       </div>
     </div>` : ''}
 
-    <!-- Summary strip -->
-<div class="grid grid-cols-3 gap-4 mb-6">
-  <div class="bg-white rounded-xl border border-slate-200 p-4">
-    <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Inflows</p>
-    <p class="text-xl font-extrabold text-emerald-600 mt-1">${fmt.currency(totalInflows || 0)}</p>
-    <p class="text-[11px] text-slate-400 mt-0.5">
-      ${anyInvoiceAssigned ? 'From assigned invoices' : state.invoices.length ? 'Create accounts & assign invoices' : 'No invoices yet'}
-    </p>
-  </div>
-  <div class="bg-white rounded-xl border border-slate-200 p-4">
-    <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Outflows</p>
-    <p class="text-xl font-extrabold text-red-500 mt-1">${fmt.currency(totalOutflows || 0)}</p>
-    <p class="text-[11px] text-slate-400 mt-0.5">
-      ${anyExpenseAssigned ? 'Expenses + paid bills' : 'Link expenses to accounts'}
-    </p>
-  </div>
-  <div class="bg-white rounded-xl border border-slate-200 p-4">
-    <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Net Position</p>
-    <p class="text-xl font-extrabold ${(totalInflows - totalOutflows) >= 0 ? 'text-blue-600' : 'text-red-500'} mt-1">
-      ${fmt.currency((totalInflows - totalOutflows) || 0)}
-    </p>
-    <p class="text-[11px] text-slate-400 mt-0.5">Inflows minus outflows</p>
-  </div>
-</div>
-
-    <!-- Account cards -->
+    <!-- Account cards by type -->
     ${typeOrder.map(type => {
       const rows = grouped[type] || [];
       if (!rows.length) return '';
@@ -1666,19 +1689,20 @@ function renderAccounts(c) {
         </div>`;
     }).join('')}
 
+    <!-- Empty state -->
     ${!state.accounts.length ? `
-  <div class="text-center py-16 text-slate-400 bg-white rounded-xl border border-slate-200">
-    <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-      <i class="fas fa-university text-3xl text-slate-300"></i>
-    </div>
-    <p class="font-semibold text-slate-600 mb-2">No accounts set up yet</p>
-    <p class="text-sm text-slate-400 mb-6 max-w-md mx-auto">
-      Create accounts like "Business Checking", "Savings", or "Credit Card" to track where money flows in and out.
-    </p>
-    <button onclick="showAccountModal()" class="px-5 py-2.5 bg-emerald-500 text-white text-sm font-semibold rounded-lg hover:bg-emerald-600 transition-colors shadow-sm">
-      <i class="fas fa-plus mr-2"></i>Create First Account
-    </button>
-  </div>` : ''}
+      <div class="text-center py-16 text-slate-400 bg-white rounded-xl border border-slate-200">
+        <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <i class="fas fa-university text-3xl text-slate-300"></i>
+        </div>
+        <p class="font-semibold text-slate-600 mb-2">No accounts set up yet</p>
+        <p class="text-sm text-slate-400 mb-6 max-w-md mx-auto">
+          Create accounts like "Business Checking", "Savings", or "Credit Card" to track where money flows in and out.
+        </p>
+        <button onclick="showAccountModal()" class="px-5 py-2.5 bg-emerald-500 text-white text-sm font-semibold rounded-lg hover:bg-emerald-600 transition-colors shadow-sm">
+          <i class="fas fa-plus mr-2"></i>Create First Account
+        </button>
+      </div>` : ''}
   </div>`;
 
   window.FinPage._editAcc = (id) => { 
