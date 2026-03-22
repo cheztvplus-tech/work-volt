@@ -65,221 +65,6 @@ window.WorkVoltPages['payroll'] = function(container) {
     return Promise.reject(new Error('No API handler for: ' + path));
   }
 
-  // ── Migration SQL (Non-destructive - for auto-provisioning) ────
-  var MIGRATION_SQL = [
-    'create table if not exists public.payroll_runs (',
-    '  id uuid primary key default gen_random_uuid(),',
-    '  employee_id text,',
-    '  employee_name text,',
-    '  period_start date,',
-    '  period_end date,',
-    '  pay_type text,',
-    '  rate numeric default 0,',
-    '  hours_regular numeric default 0,',
-    '  hours_ot numeric default 0,',
-    '  hours_total numeric default 0,',
-    '  gross numeric default 0,',
-    '  bonuses numeric default 0,',
-    '  deductions numeric default 0,',
-    '  tax_federal numeric default 0,',
-    '  tax_fica numeric default 0,',
-    '  tax_state numeric default 0,',
-    '  tax_total numeric default 0,',
-    '  net numeric default 0,',
-    '  status text default \'Draft\',',
-    '  notes text,',
-    '  approved_by text,',
-    '  created_by text,',
-    '  gross_salary numeric default 0,',
-    '  tax numeric default 0,',
-    '  overtime_pay numeric default 0,',
-    '  overtime_hours numeric default 0,',
-    '  created_at timestamptz default now()',
-    ');',
-    'create table if not exists public.payroll_employees (',
-    '  id uuid primary key default gen_random_uuid(),',
-    '  employee_id text,',
-    '  pay_type text,',
-    '  salary numeric,',
-    '  hourly_rate numeric,',
-    '  created_at timestamptz default now()',
-    ');',
-    'create table if not exists public.payroll_audit (',
-    '  id uuid primary key default gen_random_uuid(),',
-    '  run_id text,',
-    '  action text,',
-    '  old_status text,',
-    '  new_status text,',
-    '  performed_by text,',
-    '  note text,',
-    '  created_at timestamptz default now()',
-    ');',
-    'alter table public.payroll_runs enable row level security;',
-    'alter table public.payroll_employees enable row level security;',
-    'alter table public.payroll_audit enable row level security;',
-    'drop policy if exists "payroll_runs_select" on public.payroll_runs;',
-    'drop policy if exists "payroll_runs_insert" on public.payroll_runs;',
-    'drop policy if exists "payroll_runs_update" on public.payroll_runs;',
-    'drop policy if exists "payroll_runs_delete" on public.payroll_runs;',
-    'drop policy if exists "payroll_employees_select" on public.payroll_employees;',
-    'drop policy if exists "payroll_employees_insert" on public.payroll_employees;',
-    'drop policy if exists "payroll_employees_update" on public.payroll_employees;',
-    'drop policy if exists "payroll_employees_delete" on public.payroll_employees;',
-    'drop policy if exists "payroll_audit_select" on public.payroll_audit;',
-    'drop policy if exists "payroll_audit_insert" on public.payroll_audit;',
-    'create policy "payroll_runs_select" on public.payroll_runs for select using (auth.role() = \'authenticated\');',
-    'create policy "payroll_runs_insert" on public.payroll_runs for insert with check (auth.role() = \'authenticated\');',
-    'create policy "payroll_runs_update" on public.payroll_runs for update using (auth.role() = \'authenticated\');',
-    'create policy "payroll_runs_delete" on public.payroll_runs for delete using ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
-    'create policy "payroll_employees_select" on public.payroll_employees for select using (auth.role() = \'authenticated\');',
-    'create policy "payroll_employees_insert" on public.payroll_employees for insert with check ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
-    'create policy "payroll_employees_update" on public.payroll_employees for update using ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
-    'create policy "payroll_employees_delete" on public.payroll_employees for delete using ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
-    'create policy "payroll_audit_select" on public.payroll_audit for select using (auth.role() = \'authenticated\');',
-    'create policy "payroll_audit_insert" on public.payroll_audit for insert with check (auth.role() = \'authenticated\');'
-  ].join('\n');
-
-  // ── Migration SQL (Destructive - drops first for clean reinstall) ──
-  var MIGRATION_SQL_DROP_FIRST = [
-    'drop table if exists public.payroll_audit cascade;',
-    'drop table if exists public.payroll_employees cascade;',
-    'drop table if exists public.payroll_runs cascade;',
-    'create table if not exists public.payroll_runs (',
-    '  id uuid primary key default gen_random_uuid(),',
-    '  employee_id text,',
-    '  employee_name text,',
-    '  period_start date,',
-    '  period_end date,',
-    '  pay_type text,',
-    '  rate numeric default 0,',
-    '  hours_regular numeric default 0,',
-    '  hours_ot numeric default 0,',
-    '  hours_total numeric default 0,',
-    '  gross numeric default 0,',
-    '  bonuses numeric default 0,',
-    '  deductions numeric default 0,',
-    '  tax_federal numeric default 0,',
-    '  tax_fica numeric default 0,',
-    '  tax_state numeric default 0,',
-    '  tax_total numeric default 0,',
-    '  net numeric default 0,',
-    '  status text default \'Draft\',',
-    '  notes text,',
-    '  approved_by text,',
-    '  created_by text,',
-    '  gross_salary numeric default 0,',
-    '  tax numeric default 0,',
-    '  overtime_pay numeric default 0,',
-    '  overtime_hours numeric default 0,',
-    '  created_at timestamptz default now()',
-    ');',
-    'create table if not exists public.payroll_employees (',
-    '  id uuid primary key default gen_random_uuid(),',
-    '  employee_id text,',
-    '  pay_type text,',
-    '  salary numeric,',
-    '  hourly_rate numeric,',
-    '  created_at timestamptz default now()',
-    ');',
-    'create table if not exists public.payroll_audit (',
-    '  id uuid primary key default gen_random_uuid(),',
-    '  run_id text,',
-    '  action text,',
-    '  old_status text,',
-    '  new_status text,',
-    '  performed_by text,',
-    '  note text,',
-    '  created_at timestamptz default now()',
-    ');',
-    'alter table public.payroll_runs enable row level security;',
-    'alter table public.payroll_employees enable row level security;',
-    'alter table public.payroll_audit enable row level security;',
-    'drop policy if exists "payroll_runs_select" on public.payroll_runs;',
-    'drop policy if exists "payroll_runs_insert" on public.payroll_runs;',
-    'drop policy if exists "payroll_runs_update" on public.payroll_runs;',
-    'drop policy if exists "payroll_runs_delete" on public.payroll_runs;',
-    'drop policy if exists "payroll_employees_select" on public.payroll_employees;',
-    'drop policy if exists "payroll_employees_insert" on public.payroll_employees;',
-    'drop policy if exists "payroll_employees_update" on public.payroll_employees;',
-    'drop policy if exists "payroll_employees_delete" on public.payroll_employees;',
-    'drop policy if exists "payroll_audit_select" on public.payroll_audit;',
-    'drop policy if exists "payroll_audit_insert" on public.payroll_audit;',
-    'create policy "payroll_runs_select" on public.payroll_runs for select using (auth.role() = \'authenticated\');',
-    'create policy "payroll_runs_insert" on public.payroll_runs for insert with check (auth.role() = \'authenticated\');',
-    'create policy "payroll_runs_update" on public.payroll_runs for update using (auth.role() = \'authenticated\');',
-    'create policy "payroll_runs_delete" on public.payroll_runs for delete using ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
-    'create policy "payroll_employees_select" on public.payroll_employees for select using (auth.role() = \'authenticated\');',
-    'create policy "payroll_employees_insert" on public.payroll_employees for insert with check ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
-    'create policy "payroll_employees_update" on public.payroll_employees for update using ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
-    'create policy "payroll_employees_delete" on public.payroll_employees for delete using ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
-    'create policy "payroll_audit_select" on public.payroll_audit for select using (auth.role() = \'authenticated\');',
-    'create policy "payroll_audit_insert" on public.payroll_audit for insert with check (auth.role() = \'authenticated\');',
-    'select pg_notification_queue_usage();',
-    'NOTIFY pgrst, \'reload schema\';',
-    'SELECT pg_stat_clear_snapshot();'
-  ].join('\n');
-
-// ── Schema cache refresh helper ───────────────────────────────
-function refreshSchemaCache(client) {
-  // If client not passed, try to find it
-  if (!client) {
-    if (window.WorkVolt && window.WorkVolt.db && window.WorkVolt.db._client) {
-      client = window.WorkVolt.db._client;
-    } else if (window.WorkVoltDB) {
-      if (window.WorkVoltDB._client) {
-        client = window.WorkVoltDB._client;
-      } else if (typeof window.WorkVoltDB.getAdapter === 'function') {
-        try {
-          var adapter = window.WorkVoltDB.getAdapter();
-          client = adapter._client;
-        } catch(e) {}
-      }
-    }
-  }
-
-  if (!client) {
-    return Promise.reject(new Error('Schema refresh only works with Supabase'));
-  }
-
-  var refreshQueries = [
-    "select pg_notification_queue_usage();",
-    "NOTIFY pgrst, 'reload schema';",
-    "SELECT pg_stat_clear_snapshot();"
-  ];
-
-  return refreshQueries.reduce(function(chain, query) {
-    return chain.then(function() {
-      return client.rpc('exec_sql', { query: query })
-        .catch(function(err) { 
-          console.log('Schema refresh query failed (non-critical):', query, err);
-          return { error: null }; 
-        });
-    });
-  }, Promise.resolve());
-}
-
-  // ── Main Fix Module function ──────────────────────────────────
-function fixModule(dropFirst) {
-  dropFirst = dropFirst !== false;
-  
-  var statusEl = document.getElementById('pr-fix-status') || document.getElementById('pr-msg');
-  var btn = document.getElementById('pr-fix-dropdown-btn') || document.getElementById('pr-fix-btn');
-  
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> ' + (dropFirst ? 'Reinstalling…' : 'Fixing…');
-  }
-  
-  if (statusEl) {
-    statusEl.classList.remove('hidden');
-    statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">' +
-      '<i class="fas fa-circle-notch fa-spin"></i>' +
-      (dropFirst ? 'Dropping and recreating payroll tables…' : 'Creating missing tables/columns…') +
-      '</div>';
-  }
-
-  var sqlToRun = dropFirst ? MIGRATION_SQL_DROP_FIRST : MIGRATION_SQL;
-  
   // ========== CLIENT DETECTION (ADDED) ==========
   var client = null;
   
@@ -367,47 +152,6 @@ function fixModule(dropFirst) {
       }
     });
 }
-
-  // ── Helper to show SQL block ───────────────────────────────────
-  function showSQLBlock() {
-    var sqlBlock = document.getElementById('pr-sql-block');
-    if (sqlBlock) sqlBlock.classList.remove('hidden');
-  }
-
-  // ── Table provisioning ────────────────────────────────────────
-  function runMigrationSQL() {
-    var creds = null;
-    try {
-      var raw = localStorage.getItem('wv_db_config');
-      creds = raw ? JSON.parse(raw) : null;
-    } catch(e) {}
-
-    if (!creds || creds.provider !== 'supabase') {
-      return Promise.reject(new Error('Auto-fix only works with Supabase. Please run the SQL manually in your Supabase SQL Editor.'));
-    }
-
-    var adapter = window.WorkVolt.db;
-    var client  = adapter && adapter._client;
-
-    if (!client || typeof client.rpc !== 'function') {
-      return Promise.reject(new Error('Supabase client not available.'));
-    }
-
-    return client.rpc('exec_sql', { query: MIGRATION_SQL })
-      .then(function(res) {
-        if (res.error) throw new Error(res.error.message || 'Migration failed');
-        return { autoRan: true };
-      });
-  }
-
-  function provisionTables() {
-    var db = window.WorkVolt.db;
-    return db.list('payroll_runs', {}, { limit: 1 })
-      .then(function() { return; })
-      .catch(function() {
-        sessionStorage.setItem('wv_payroll_needs_setup', '1');
-      });
-  }
 
   // ── Utilities ─────────────────────────────────────────────────
   function esc(s) {
@@ -710,55 +454,7 @@ function fixModule(dropFirst) {
   }
 
   // ── Setup banner ──────────────────────────────────────────────
-  function renderSetupBanner() {
-    return (
-      '<div class="max-w-2xl mx-auto mt-8 p-6 bg-amber-50 border border-amber-300 rounded-2xl">' +
-        '<div class="flex items-center gap-3 mb-4">' +
-          '<div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">' +
-            '<i class="fas fa-database text-amber-600"></i>' +
-          '</div>' +
-          '<div>' +
-            '<p class="font-extrabold text-slate-900">Payroll tables not found</p>' +
-            '<p class="text-xs text-slate-500 mt-0.5">The required database tables don\'t exist in your Supabase project yet.</p>' +
-          '</div>' +
-        '</div>' +
-        '<div id="pr-setup-status" class="hidden mb-4"></div>' +
-        '<div class="flex gap-3 mb-5">' +
-          '<button id="pr-fix-btn" class="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white rounded-xl border-none cursor-pointer" style="background:#10b981">' +
-            '<i class="fas fa-wrench text-xs"></i>Fix Tables' +
-          '</button>' +
-          '<button id="pr-show-sql-btn" class="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">' +
-            '<i class="fas fa-code text-xs"></i>Show SQL' +
-          '</button>' +
-        '</div>' +
-        '<div id="pr-sql-block" class="hidden">' +
-          '<p class="text-xs text-slate-500 mb-2">Copy and run this in your ' +
-            '<a href="https://supabase.com/dashboard" target="_blank" class="text-blue-600 underline font-semibold">Supabase SQL Editor</a>' +
-            ', then click Reload:' +
-          '</p>' +
-          '<div class="relative">' +
-            '<pre id="pr-sql-pre" class="bg-slate-900 text-emerald-300 text-xs rounded-xl p-4 overflow-x-auto whitespace-pre-wrap">' + esc(MIGRATION_SQL) + '</pre>' +
-            '<button id="pr-copy-sql-btn" class="absolute top-2 right-2 px-2 py-1 text-[10px] font-bold bg-slate-700 hover:bg-slate-600 text-white rounded-lg cursor-pointer border-none">' +
-              '<i class="fas fa-copy mr-1"></i>Copy' +
-            '</button>' +
-          '</div>' +
-          '<button id="pr-reload-btn" class="mt-3 flex items-center gap-2 px-4 py-2 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-100">' +
-            '<i class="fas fa-rotate-right text-xs"></i>Reload page' +
-          '</button>' +
-        '</div>' +
-      '</div>'
-    );
-  }
-
-  function bindSetupBanner(el) {
-    var statusEl  = document.getElementById('pr-setup-status');
-    var fixBtn    = document.getElementById('pr-fix-btn');
-    var sqlBtn    = document.getElementById('pr-show-sql-btn');
-    var sqlBlock  = document.getElementById('pr-sql-block');
-    var copyBtn   = document.getElementById('pr-copy-sql-btn');
-    var reloadBtn = document.getElementById('pr-reload-btn');
-
-    function setStatus(msg, type) {
+  function setStatus(msg, type) {
       var styles = {
         loading: 'bg-blue-50 border-blue-200 text-blue-700',
         success: 'bg-emerald-50 border-emerald-200 text-emerald-700',
@@ -837,15 +533,6 @@ function fixModule(dropFirst) {
     var el = document.getElementById('pr-content');
     if (el) el.innerHTML = '<div class="flex items-center justify-center py-24 text-slate-400"><i class="fas fa-circle-notch fa-spin text-2xl mr-3"></i>Loading payroll…</div>';
 
-    provisionTables().catch(function(){}).then(function() {
-
-    if (sessionStorage.getItem('wv_payroll_needs_setup') === '1') {
-      sessionStorage.removeItem('wv_payroll_needs_setup');
-      if (el) el.innerHTML = renderSetupBanner();
-      bindSetupBanner(el);
-      return;
-    }
-
     loadTaxConfig().catch(function(){}).then(function() {
       updateCountryBadge();
       return Promise.all([
@@ -870,7 +557,6 @@ function fixModule(dropFirst) {
       if (el) el.innerHTML = '<div class="flex flex-col items-center justify-center py-20 text-slate-400"><i class="fas fa-exclamation-triangle text-3xl mb-3 text-amber-400"></i><p class="font-semibold">Could not load payroll</p><p class="text-sm mt-1">'+esc(e.message)+'</p></div>';
     });
 
-    });
   }
 
   function rerender() {
@@ -1058,79 +744,6 @@ function fixModule(dropFirst) {
     );
   }
 
-  // ── Render Fix Module dropdown ────────────────────────────────
-  function renderFixModuleDropdown() {
-    return '<div class="relative">' +
-      '<button id="pr-fix-dropdown-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 cursor-pointer">' +
-        '<i class="fas fa-wrench text-[10px]"></i>Fix Module<i class="fas fa-chevron-down text-[10px] ml-1"></i>' +
-      '</button>' +
-      '<div id="pr-fix-dropdown" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">' +
-        '<div class="px-3 py-2 bg-slate-50 border-b border-slate-100">' +
-          '<p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Database Actions</p>' +
-        '</div>' +
-        '<button id="pr-fix-quick" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">' +
-          '<i class="fas fa-magic text-emerald-500 w-4"></i>Quick Fix (Add Missing)' +
-        '</button>' +
-        '<button id="pr-fix-reinstall" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">' +
-          '<i class="fas fa-trash-restore text-amber-500 w-4"></i>Reinstall (Drop & Recreate)' +
-        '</button>' +
-        '<button id="pr-fix-showsql" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">' +
-          '<i class="fas fa-code text-blue-500 w-4"></i>Show SQL Only' +
-        '</button>' +
-      '</div>' +
-    '</div>';
-  }
-
-  // ── Bind Fix Module dropdown events ───────────────────────────
-  function bindFixModuleDropdown() {
-    var dropdownBtn = document.getElementById('pr-fix-dropdown-btn');
-    var dropdown = document.getElementById('pr-fix-dropdown');
-    
-    if (!dropdownBtn || !dropdown) return;
-    
-    dropdownBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      var isHidden = dropdown.classList.contains('hidden');
-      dropdown.classList.toggle('hidden', !isHidden);
-    });
-    
-    document.addEventListener('click', function(e) {
-      if (!dropdownBtn.contains(e.target) && !dropdown.contains(e.target)) {
-        dropdown.classList.add('hidden');
-      }
-    });
-    
-    var quickBtn = document.getElementById('pr-fix-quick');
-    if (quickBtn) {
-      quickBtn.addEventListener('click', function() {
-        dropdown.classList.add('hidden');
-        fixModule(false);
-      });
-    }
-    
-    var reinstallBtn = document.getElementById('pr-fix-reinstall');
-    if (reinstallBtn) {
-      reinstallBtn.addEventListener('click', function() {
-        dropdown.classList.add('hidden');
-        if (confirm('WARNING: This will DELETE all existing payroll data and recreate the tables. Continue?')) {
-          fixModule(true);
-        }
-      });
-    }
-    
-    var showSqlBtn = document.getElementById('pr-fix-showsql');
-    if (showSqlBtn) {
-      showSqlBtn.addEventListener('click', function() {
-        dropdown.classList.add('hidden');
-        var sqlBlock = document.getElementById('pr-sql-block');
-        if (sqlBlock) {
-          sqlBlock.classList.remove('hidden');
-          sqlBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-      });
-    }
-  }
-
   // ── Main Shell ────────────────────────────────────────────────
   function render() {
      // Check if DB is ready before rendering
@@ -1207,7 +820,7 @@ function fixModule(dropFirst) {
               (isPayAdmin()?'<button id="pr-run-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl text-white border-none cursor-pointer" style="background:#10b981"><i class="fas fa-plus text-[10px]"></i>New Pay Run</button>':'') +
               (isPayAdmin()?'<button id="pr-bulk-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer"><i class="fas fa-bolt text-[10px]"></i>Bulk Run</button>':'') +
               (canViewTaxRates()?'<button id="pr-tax-settings-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer"><i class="fas fa-sliders-h text-[10px]"></i>Tax Settings</button>':'') +
-              (isPayAdmin() ? renderFixModuleDropdown() : '') +
+              
             '</div>'+
           '</div>'+
           
@@ -1275,32 +888,7 @@ function fixModule(dropFirst) {
     if (bb) bb.addEventListener('click', openBulkRunModal);
     var tb = document.getElementById('pr-tax-settings-btn');
     if (tb) tb.addEventListener('click', openTaxSettingsModal);
-    
-    bindFixModuleDropdown();
-    
-    var copyBtn = document.getElementById('pr-copy-sql-btn');
-    if (copyBtn) {
-      copyBtn.addEventListener('click', function() {
-        navigator.clipboard.writeText(MIGRATION_SQL_DROP_FIRST).then(function() {
-          copyBtn.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
-          setTimeout(function() { copyBtn.innerHTML = '<i class="fas fa-copy mr-1"></i>Copy'; }, 2000);
-        }).catch(function() {
-          var pre = document.getElementById('pr-sql-pre');
-          if (pre) {
-            var range = document.createRange();
-            range.selectNodeContents(pre);
-            window.getSelection().removeAllRanges();
-            window.getSelection().addRange(range);
-          }
-        });
-      });
-    }
-    
-    var reloadBtn = document.getElementById('pr-reload-btn');
-    if (reloadBtn) {
-      reloadBtn.addEventListener('click', function() { window.location.reload(); });
-    }
-
+  
     loadData();
   }
 
