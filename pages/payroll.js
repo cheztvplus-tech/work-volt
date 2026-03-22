@@ -220,132 +220,149 @@ window.WorkVoltPages['payroll'] = function(container) {
   ].join('\n');
 
   // ── Schema cache refresh helper ───────────────────────────────
-  function refreshSchemaCache() {
-    var creds = null;
-    try {
-      var raw = localStorage.getItem('wv_db_config');
-      creds = raw ? JSON.parse(raw) : null;
-    } catch(e) {}
-
-    if (!creds || creds.provider !== 'supabase') {
-      return Promise.reject(new Error('Schema refresh only works with Supabase'));
+function refreshSchemaCache(client) {
+  if (!client) {
+    // Try to find client if not passed
+    if (window.WorkVolt && window.WorkVolt.db && window.WorkVolt.db._client) {
+      client = window.WorkVolt.db._client;
+    } else if (window.WorkVoltDB) {
+      if (window.WorkVoltDB._client) {
+        client = window.WorkVoltDB._client;
+      } else if (typeof window.WorkVoltDB.getAdapter === 'function') {
+        try {
+          var adapter = window.WorkVoltDB.getAdapter();
+          client = adapter._client;
+        } catch(e) {}
+      }
     }
-
-    var adapter = window.WorkVolt.db;
-    var client = adapter && adapter._client;
-
-    if (!client) {
-      return Promise.reject(new Error('Database client not available'));
-    }
-
-    var refreshQueries = [
-      "select pg_notification_queue_usage();",
-      "NOTIFY pgrst, 'reload schema';",
-      "SELECT pg_stat_clear_snapshot();"
-    ];
-
-    return refreshQueries.reduce(function(chain, query) {
-      return chain.then(function() {
-        return client.rpc('exec_sql', { query: query })
-          .catch(function() { return { error: null }; });
-      });
-    }, Promise.resolve());
   }
+
+  if (!client) {
+    return Promise.reject(new Error('Schema refresh only works with Supabase'));
+  }
+
+  var refreshQueries = [
+    "select pg_notification_queue_usage();",
+    "NOTIFY pgrst, 'reload schema';",
+    "SELECT pg_stat_clear_snapshot();"
+  ];
+
+  return refreshQueries.reduce(function(chain, query) {
+    return chain.then(function() {
+      return client.rpc('exec_sql', { query: query })
+        .catch(function(err) { 
+          console.log('Schema refresh query failed (non-critical):', query, err);
+          return { error: null }; 
+        });
+    });
+  }, Promise.resolve());
+}
 
   // ── Main Fix Module function ──────────────────────────────────
-  function fixModule(dropFirst) {
-    dropFirst = dropFirst !== false;
-    
-    var statusEl = document.getElementById('pr-fix-status') || document.getElementById('pr-msg');
-    var btn = document.getElementById('pr-fix-module-btn') || document.getElementById('pr-fix-dropdown-btn');
-    
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> ' + (dropFirst ? 'Reinstalling…' : 'Fixing…');
+function fixModule(dropFirst) {
+  dropFirst = dropFirst !== false;
+  
+  var statusEl = document.getElementById('pr-fix-status') || document.getElementById('pr-msg');
+  var btn = document.getElementById('pr-fix-dropdown-btn') || document.getElementById('pr-fix-btn');
+  
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> ' + (dropFirst ? 'Reinstalling…' : 'Fixing…');
+  }
+  
+  if (statusEl) {
+    statusEl.classList.remove('hidden');
+    statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">' +
+      '<i class="fas fa-circle-notch fa-spin"></i>' +
+      (dropFirst ? 'Dropping and recreating payroll tables…' : 'Creating missing tables/columns…') +
+      '</div>';
+  }
+
+  var sqlToRun = dropFirst ? MIGRATION_SQL_DROP_FIRST : MIGRATION_SQL;
+  
+  // Try multiple ways to get the database client
+  var client = null;
+  var adapter = null;
+  
+  // Method 1: window.WorkVolt.db (preferred)
+  if (window.WorkVolt && window.WorkVolt.db) {
+    adapter = window.WorkVolt.db;
+    if (adapter._client) {
+      client = adapter._client;
     }
-    
+  }
+  
+  // Method 2: window.WorkVoltDB (fallback)
+  if (!client && window.WorkVoltDB) {
+    adapter = window.WorkVoltDB;
+    if (adapter._client) {
+      client = adapter._client;
+    } else if (typeof adapter.getAdapter === 'function') {
+      try {
+        var subAdapter = adapter.getAdapter();
+        if (subAdapter && subAdapter._client) {
+          client = subAdapter._client;
+        }
+      } catch(e) {}
+    }
+  }
+  
+  // Method 3: Direct Supabase client
+  if (!client && window.supabase) {
+    client = window.supabase;
+  }
+
+  if (!client || typeof client.rpc !== 'function') {
     if (statusEl) {
-      statusEl.classList.remove('hidden');
-      statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">' +
-        '<i class="fas fa-circle-notch fa-spin"></i>' +
-        (dropFirst ? 'Dropping and recreating payroll tables…' : 'Creating missing tables/columns…') +
+      statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200">' +
+        '<i class="fas fa-exclamation-circle"></i>Database client not available. Please refresh the page and try again.' +
         '</div>';
     }
+    showSQLBlock();
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-wrench text-xs"></i> Fix Module';
+    }
+    return Promise.reject(new Error('No client'));
+  }
 
-    var sqlToRun = dropFirst ? MIGRATION_SQL_DROP_FIRST : MIGRATION_SQL;
-    
-    var creds = null;
-    try {
-      var raw = localStorage.getItem('wv_db_config');
-      creds = raw ? JSON.parse(raw) : null;
-    } catch(e) {}
-
-    if (!creds || creds.provider !== 'supabase') {
+  return client.rpc('exec_sql', { query: sqlToRun })
+    .then(function(res) {
+      if (res.error) throw new Error(res.error.message || 'Migration failed');
+      
+      // Force schema cache refresh with multiple methods
+      return refreshSchemaCache(client);
+    })
+    .then(function() {
       if (statusEl) {
-        statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200">' +
-          '<i class="fas fa-exclamation-circle"></i>Auto-fix only works with Supabase. Please run SQL manually.' +
+        statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-700 border border-green-200">' +
+          '<i class="fas fa-check-circle"></i>Payroll module fixed! Reloading page…' +
           '</div>';
       }
-      showSQLBlock();
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-wrench text-xs"></i> Fix Module';
-      }
-      return Promise.reject(new Error('Not Supabase'));
-    }
-
-    var adapter = window.WorkVolt.db;
-    var client = adapter && adapter._client;
-
-    if (!client || typeof client.rpc !== 'function') {
+      toast('Payroll module ' + (dropFirst ? 'reinstalled' : 'fixed') + ' successfully!', 'success');
+      setTimeout(function() { window.location.reload(); }, 3500);
+    })
+    .catch(function(err) {
+      console.error('Fix module error:', err);
       if (statusEl) {
-        statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200">' +
-          '<i class="fas fa-exclamation-circle"></i>Database client not available.' +
-          '</div>';
-      }
-      showSQLBlock();
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-wrench text-xs"></i> Fix Module';
-      }
-      return Promise.reject(new Error('No client'));
-    }
-
-    return client.rpc('exec_sql', { query: sqlToRun })
-      .then(function(res) {
-        if (res.error) throw new Error(res.error.message || 'Migration failed');
-        return refreshSchemaCache();
-      })
-      .then(function() {
-        if (statusEl) {
-          statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-700 border border-green-200">' +
-            '<i class="fas fa-check-circle"></i>Payroll module fixed! Reloading page…' +
+        var msg = err.message || 'Unknown error';
+        if (msg.indexOf('exec_sql') !== -1 || msg.indexOf('function') !== -1 || msg.indexOf('does not exist') !== -1) {
+          statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200">' +
+            '<i class="fas fa-exclamation-triangle"></i>Auto-fix requires an exec_sql helper. Run SQL manually below.' +
+            '</div>';
+        } else {
+          statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200">' +
+            '<i class="fas fa-exclamation-circle"></i>' + esc(msg) +
             '</div>';
         }
-        toast('Payroll module ' + (dropFirst ? 'reinstalled' : 'fixed') + ' successfully!', 'success');
-        setTimeout(function() { window.location.reload(); }, 1500);
-      })
-      .catch(function(err) {
-        console.error('Fix module error:', err);
-        if (statusEl) {
-          var msg = err.message || 'Unknown error';
-          if (msg.indexOf('exec_sql') !== -1 || msg.indexOf('function') !== -1 || msg.indexOf('does not exist') !== -1) {
-            statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200">' +
-              '<i class="fas fa-exclamation-triangle"></i>Auto-fix requires an exec_sql helper. Run SQL manually below.' +
-              '</div>';
-          } else {
-            statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200">' +
-              '<i class="fas fa-exclamation-circle"></i>' + esc(msg) +
-              '</div>';
-          }
-        }
-        showSQLBlock();
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-wrench text-xs"></i> Fix Module';
-        }
-      });
-  }
+      }
+      showSQLBlock();
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-wrench text-xs"></i> Fix Module';
+      }
+    });
+}
 
   // ── Helper to show SQL block ───────────────────────────────────
   function showSQLBlock() {
