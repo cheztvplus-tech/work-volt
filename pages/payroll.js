@@ -219,10 +219,10 @@ window.WorkVoltPages['payroll'] = function(container) {
     'SELECT pg_stat_clear_snapshot();'
   ].join('\n');
 
-  // ── Schema cache refresh helper ───────────────────────────────
+// ── Schema cache refresh helper ───────────────────────────────
 function refreshSchemaCache(client) {
+  // If client not passed, try to find it
   if (!client) {
-    // Try to find client if not passed
     if (window.WorkVolt && window.WorkVolt.db && window.WorkVolt.db._client) {
       client = window.WorkVolt.db._client;
     } else if (window.WorkVoltDB) {
