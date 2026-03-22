@@ -1129,6 +1129,23 @@ function fixModule(dropFirst) {
 
   // ── Main Shell ────────────────────────────────────────────────
   function render() {
+     // Check if DB is ready before rendering
+    if (!window.WorkVoltDB && !(window.WorkVolt && window.WorkVolt.db)) {
+      container.innerHTML = 
+        '<div class="flex flex-col items-center justify-center h-full p-8 text-center">' +
+          '<div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4">' +
+            '<i class="fas fa-plug text-amber-600 text-2xl"></i>' +
+          '</div>' +
+          '<h2 class="text-lg font-bold text-slate-900 mb-2">Database Not Connected</h2>' +
+          '<p class="text-sm text-slate-500 mb-4 max-w-md">Please configure your database connection in Settings first.</p>' +
+          '<button onclick="window.WorkVolt.toast(\'Go to Settings → Database to connect\', \'info\')" ' +
+            'class="px-4 py-2 bg-emerald-500 text-white text-sm font-semibold rounded-lg hover:bg-emerald-600">' +
+            'Go to Settings' +
+          '</button>' +
+        '</div>';
+      return;
+    }
+    
     var empOpts = isAdmin()
       ? '<option value="">All Employees</option>' + usersCache.map(function(u){
           var uid=u.user_id||u.id;
