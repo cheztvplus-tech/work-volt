@@ -36,7 +36,6 @@ window.WorkVoltPages['payroll'] = function(container) {
   function myName()     { try { return window.WorkVolt.user().name    || ''; } catch(e) { return ''; } }
 
   // ── API ───────────────────────────────────────────────────────
-  // Routed through WorkVoltDB — no GAS dependency
   function api(path, params) {
     params = params || {};
     var db = window.WorkVolt.db;
@@ -44,31 +43,20 @@ window.WorkVoltPages['payroll'] = function(container) {
     var rest = Object.assign({}, params);
     delete rest.id;
 
-    // ── Payroll runs ──────────────────────────────────────────
     if (path === 'payroll/runs/list')
       return db.list('payroll_runs', {}, { order: 'period_start' }).then(function(r){ return { rows: r }; });
     if (path === 'payroll/runs/create')
       return db.create('payroll_runs', Object.assign({}, params, { created_at: new Date().toISOString() }));
     if (path === 'payroll/runs/update')
       return db.update('payroll_runs', id, rest);
-
-    // ── Payroll employees ─────────────────────────────────────
     if (path === 'payroll/employees/list')
       return db.list('payroll_employees', {}, { order: 'created_at' }).then(function(r){ return { rows: r }; });
-
-    // ── Audit log ─────────────────────────────────────────────
     if (path === 'payroll/audit/list')
       return db.list('payroll_audit', {}, { order: 'created_at' }).then(function(r){ return { rows: r }; });
-
-    // ── Users ─────────────────────────────────────────────────
     if (path === 'users/list')
       return db.list('users', {}, { order: 'name', asc: true }).then(function(r){ return { rows: r }; });
-
-    // ── Timesheets ────────────────────────────────────────────
     if (path === 'timesheets/list')
       return db.list('timesheets', {}, { order: 'date' }).then(function(r){ return { rows: r }; });
-
-    // ── Config ────────────────────────────────────────────────
     if (path === 'config/get-all')
       return db.config.getAll().then(function(settings){ return { settings: settings }; });
     if (path === 'config/set')
@@ -77,19 +65,16 @@ window.WorkVoltPages['payroll'] = function(container) {
     return Promise.reject(new Error('No API handler for: ' + path));
   }
 
-  // ── Table provisioning ────────────────────────────────────────
-  // The migration SQL — idempotent, safe to run multiple times.
-  // Uses IF NOT EXISTS for tables and ADD COLUMN IF NOT EXISTS for columns
-  // so it only creates what's missing and never touches existing data.
+  // ── Migration SQL (Non-destructive - for auto-provisioning) ────
   var MIGRATION_SQL = [
-    'create table if not exists payroll_runs (',
-    '  id text primary key,',
+    'create table if not exists public.payroll_runs (',
+    '  id uuid primary key default gen_random_uuid(),',
     '  employee_id text,',
     '  employee_name text,',
     '  period_start date,',
     '  period_end date,',
     '  pay_type text,',
-    '  rate numeric,',
+    '  rate numeric default 0,',
     '  hours_regular numeric default 0,',
     '  hours_ot numeric default 0,',
     '  hours_total numeric default 0,',
@@ -111,15 +96,15 @@ window.WorkVoltPages['payroll'] = function(container) {
     '  overtime_hours numeric default 0,',
     '  created_at timestamptz default now()',
     ');',
-    'create table if not exists payroll_employees (',
-    '  id text primary key,',
+    'create table if not exists public.payroll_employees (',
+    '  id uuid primary key default gen_random_uuid(),',
     '  employee_id text,',
     '  pay_type text,',
     '  salary numeric,',
     '  hourly_rate numeric,',
     '  created_at timestamptz default now()',
     ');',
-    'create table if not exists payroll_audit (',
+    'create table if not exists public.payroll_audit (',
     '  id uuid primary key default gen_random_uuid(),',
     '  run_id text,',
     '  action text,',
@@ -129,42 +114,246 @@ window.WorkVoltPages['payroll'] = function(container) {
     '  note text,',
     '  created_at timestamptz default now()',
     ');',
-    // ADD COLUMN IF NOT EXISTS guards — covers installs that already have
-    // payroll_runs from the old unified schema (which was missing many columns).
-    // Safe to run multiple times — only adds what is actually missing.
-    'alter table payroll_runs add column if not exists pay_type text;',
-    'alter table payroll_runs add column if not exists rate numeric default 0;',
-    'alter table payroll_runs add column if not exists hours_regular numeric default 0;',
-    'alter table payroll_runs add column if not exists hours_ot numeric default 0;',
-    'alter table payroll_runs add column if not exists hours_total numeric default 0;',
-    'alter table payroll_runs add column if not exists bonuses numeric default 0;',
-    'alter table payroll_runs add column if not exists deductions numeric default 0;',
-    'alter table payroll_runs add column if not exists tax_federal numeric default 0;',
-    'alter table payroll_runs add column if not exists tax_fica numeric default 0;',
-    'alter table payroll_runs add column if not exists tax_state numeric default 0;',
-    'alter table payroll_runs add column if not exists tax_total numeric default 0;',
-    'alter table payroll_runs add column if not exists gross_salary numeric default 0;',
-    'alter table payroll_runs add column if not exists tax numeric default 0;',
-    'alter table payroll_runs add column if not exists overtime_pay numeric default 0;',
-    'alter table payroll_runs add column if not exists overtime_hours numeric default 0;',
-    'alter table payroll_runs add column if not exists approved_by text;',
-    'alter table payroll_runs add column if not exists created_by text;',
-    'alter table payroll_runs add column if not exists employee_name text;',
-    'alter table payroll_runs add column if not exists notes text;',
-    'alter table payroll_employees add column if not exists hourly_rate numeric;',
-    'alter table payroll_employees add column if not exists employee_id text;',
-    'alter table payroll_employees add column if not exists pay_type text;',
-    'alter table payroll_employees add column if not exists salary numeric;',
+    'alter table public.payroll_runs enable row level security;',
+    'alter table public.payroll_employees enable row level security;',
+    'alter table public.payroll_audit enable row level security;',
+    'drop policy if exists "payroll_runs_select" on public.payroll_runs;',
+    'drop policy if exists "payroll_runs_insert" on public.payroll_runs;',
+    'drop policy if exists "payroll_runs_update" on public.payroll_runs;',
+    'drop policy if exists "payroll_runs_delete" on public.payroll_runs;',
+    'drop policy if exists "payroll_employees_select" on public.payroll_employees;',
+    'drop policy if exists "payroll_employees_insert" on public.payroll_employees;',
+    'drop policy if exists "payroll_employees_update" on public.payroll_employees;',
+    'drop policy if exists "payroll_employees_delete" on public.payroll_employees;',
+    'drop policy if exists "payroll_audit_select" on public.payroll_audit;',
+    'drop policy if exists "payroll_audit_insert" on public.payroll_audit;',
+    'create policy "payroll_runs_select" on public.payroll_runs for select using (auth.role() = \'authenticated\');',
+    'create policy "payroll_runs_insert" on public.payroll_runs for insert with check (auth.role() = \'authenticated\');',
+    'create policy "payroll_runs_update" on public.payroll_runs for update using (auth.role() = \'authenticated\');',
+    'create policy "payroll_runs_delete" on public.payroll_runs for delete using ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
+    'create policy "payroll_employees_select" on public.payroll_employees for select using (auth.role() = \'authenticated\');',
+    'create policy "payroll_employees_insert" on public.payroll_employees for insert with check ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
+    'create policy "payroll_employees_update" on public.payroll_employees for update using ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
+    'create policy "payroll_employees_delete" on public.payroll_employees for delete using ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
+    'create policy "payroll_audit_select" on public.payroll_audit for select using (auth.role() = \'authenticated\');',
+    'create policy "payroll_audit_insert" on public.payroll_audit for insert with check (auth.role() = \'authenticated\');'
   ].join('\n');
 
-  // Execute SQL directly against Supabase using stored credentials.
-  // Supabase exposes a /rest/v1/rpc or /pg endpoint — we use the
-  // pg query endpoint which is available when pg_net / pg extension is on,
-  // but more reliably we use the Management API's SQL endpoint via service key.
-  // Since we only have the anon key, we use the Supabase REST /rpc approach
-  // with a stored procedure — but the safest universal approach is the
-  // supabase-js query() method exposed on newer SDK versions.
-  // We call it via the adapter's internal _client if available.
+  // ── Migration SQL (Destructive - drops first for clean reinstall) ──
+  var MIGRATION_SQL_DROP_FIRST = [
+    'drop table if exists public.payroll_audit cascade;',
+    'drop table if exists public.payroll_employees cascade;',
+    'drop table if exists public.payroll_runs cascade;',
+    'create table if not exists public.payroll_runs (',
+    '  id uuid primary key default gen_random_uuid(),',
+    '  employee_id text,',
+    '  employee_name text,',
+    '  period_start date,',
+    '  period_end date,',
+    '  pay_type text,',
+    '  rate numeric default 0,',
+    '  hours_regular numeric default 0,',
+    '  hours_ot numeric default 0,',
+    '  hours_total numeric default 0,',
+    '  gross numeric default 0,',
+    '  bonuses numeric default 0,',
+    '  deductions numeric default 0,',
+    '  tax_federal numeric default 0,',
+    '  tax_fica numeric default 0,',
+    '  tax_state numeric default 0,',
+    '  tax_total numeric default 0,',
+    '  net numeric default 0,',
+    '  status text default \'Draft\',',
+    '  notes text,',
+    '  approved_by text,',
+    '  created_by text,',
+    '  gross_salary numeric default 0,',
+    '  tax numeric default 0,',
+    '  overtime_pay numeric default 0,',
+    '  overtime_hours numeric default 0,',
+    '  created_at timestamptz default now()',
+    ');',
+    'create table if not exists public.payroll_employees (',
+    '  id uuid primary key default gen_random_uuid(),',
+    '  employee_id text,',
+    '  pay_type text,',
+    '  salary numeric,',
+    '  hourly_rate numeric,',
+    '  created_at timestamptz default now()',
+    ');',
+    'create table if not exists public.payroll_audit (',
+    '  id uuid primary key default gen_random_uuid(),',
+    '  run_id text,',
+    '  action text,',
+    '  old_status text,',
+    '  new_status text,',
+    '  performed_by text,',
+    '  note text,',
+    '  created_at timestamptz default now()',
+    ');',
+    'alter table public.payroll_runs enable row level security;',
+    'alter table public.payroll_employees enable row level security;',
+    'alter table public.payroll_audit enable row level security;',
+    'drop policy if exists "payroll_runs_select" on public.payroll_runs;',
+    'drop policy if exists "payroll_runs_insert" on public.payroll_runs;',
+    'drop policy if exists "payroll_runs_update" on public.payroll_runs;',
+    'drop policy if exists "payroll_runs_delete" on public.payroll_runs;',
+    'drop policy if exists "payroll_employees_select" on public.payroll_employees;',
+    'drop policy if exists "payroll_employees_insert" on public.payroll_employees;',
+    'drop policy if exists "payroll_employees_update" on public.payroll_employees;',
+    'drop policy if exists "payroll_employees_delete" on public.payroll_employees;',
+    'drop policy if exists "payroll_audit_select" on public.payroll_audit;',
+    'drop policy if exists "payroll_audit_insert" on public.payroll_audit;',
+    'create policy "payroll_runs_select" on public.payroll_runs for select using (auth.role() = \'authenticated\');',
+    'create policy "payroll_runs_insert" on public.payroll_runs for insert with check (auth.role() = \'authenticated\');',
+    'create policy "payroll_runs_update" on public.payroll_runs for update using (auth.role() = \'authenticated\');',
+    'create policy "payroll_runs_delete" on public.payroll_runs for delete using ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
+    'create policy "payroll_employees_select" on public.payroll_employees for select using (auth.role() = \'authenticated\');',
+    'create policy "payroll_employees_insert" on public.payroll_employees for insert with check ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
+    'create policy "payroll_employees_update" on public.payroll_employees for update using ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
+    'create policy "payroll_employees_delete" on public.payroll_employees for delete using ((auth.jwt() -> \'user_metadata\' ->> \'role\') in (\'SuperAdmin\',\'Admin\'));',
+    'create policy "payroll_audit_select" on public.payroll_audit for select using (auth.role() = \'authenticated\');',
+    'create policy "payroll_audit_insert" on public.payroll_audit for insert with check (auth.role() = \'authenticated\');',
+    'select pg_notification_queue_usage();',
+    'NOTIFY pgrst, \'reload schema\';',
+    'SELECT pg_stat_clear_snapshot();'
+  ].join('\n');
+
+  // ── Schema cache refresh helper ───────────────────────────────
+  function refreshSchemaCache() {
+    var creds = null;
+    try {
+      var raw = localStorage.getItem('wv_db_config');
+      creds = raw ? JSON.parse(raw) : null;
+    } catch(e) {}
+
+    if (!creds || creds.provider !== 'supabase') {
+      return Promise.reject(new Error('Schema refresh only works with Supabase'));
+    }
+
+    var adapter = window.WorkVolt.db;
+    var client = adapter && adapter._client;
+
+    if (!client) {
+      return Promise.reject(new Error('Database client not available'));
+    }
+
+    var refreshQueries = [
+      "select pg_notification_queue_usage();",
+      "NOTIFY pgrst, 'reload schema';",
+      "SELECT pg_stat_clear_snapshot();"
+    ];
+
+    return refreshQueries.reduce(function(chain, query) {
+      return chain.then(function() {
+        return client.rpc('exec_sql', { query: query })
+          .catch(function() { return { error: null }; });
+      });
+    }, Promise.resolve());
+  }
+
+  // ── Main Fix Module function ──────────────────────────────────
+  function fixModule(dropFirst) {
+    dropFirst = dropFirst !== false;
+    
+    var statusEl = document.getElementById('pr-fix-status') || document.getElementById('pr-msg');
+    var btn = document.getElementById('pr-fix-module-btn') || document.getElementById('pr-fix-dropdown-btn');
+    
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> ' + (dropFirst ? 'Reinstalling…' : 'Fixing…');
+    }
+    
+    if (statusEl) {
+      statusEl.classList.remove('hidden');
+      statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">' +
+        '<i class="fas fa-circle-notch fa-spin"></i>' +
+        (dropFirst ? 'Dropping and recreating payroll tables…' : 'Creating missing tables/columns…') +
+        '</div>';
+    }
+
+    var sqlToRun = dropFirst ? MIGRATION_SQL_DROP_FIRST : MIGRATION_SQL;
+    
+    var creds = null;
+    try {
+      var raw = localStorage.getItem('wv_db_config');
+      creds = raw ? JSON.parse(raw) : null;
+    } catch(e) {}
+
+    if (!creds || creds.provider !== 'supabase') {
+      if (statusEl) {
+        statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200">' +
+          '<i class="fas fa-exclamation-circle"></i>Auto-fix only works with Supabase. Please run SQL manually.' +
+          '</div>';
+      }
+      showSQLBlock();
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-wrench text-xs"></i> Fix Module';
+      }
+      return Promise.reject(new Error('Not Supabase'));
+    }
+
+    var adapter = window.WorkVolt.db;
+    var client = adapter && adapter._client;
+
+    if (!client || typeof client.rpc !== 'function') {
+      if (statusEl) {
+        statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200">' +
+          '<i class="fas fa-exclamation-circle"></i>Database client not available.' +
+          '</div>';
+      }
+      showSQLBlock();
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-wrench text-xs"></i> Fix Module';
+      }
+      return Promise.reject(new Error('No client'));
+    }
+
+    return client.rpc('exec_sql', { query: sqlToRun })
+      .then(function(res) {
+        if (res.error) throw new Error(res.error.message || 'Migration failed');
+        return refreshSchemaCache();
+      })
+      .then(function() {
+        if (statusEl) {
+          statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-700 border border-green-200">' +
+            '<i class="fas fa-check-circle"></i>Payroll module fixed! Reloading page…' +
+            '</div>';
+        }
+        toast('Payroll module ' + (dropFirst ? 'reinstalled' : 'fixed') + ' successfully!', 'success');
+        setTimeout(function() { window.location.reload(); }, 1500);
+      })
+      .catch(function(err) {
+        console.error('Fix module error:', err);
+        if (statusEl) {
+          var msg = err.message || 'Unknown error';
+          if (msg.indexOf('exec_sql') !== -1 || msg.indexOf('function') !== -1 || msg.indexOf('does not exist') !== -1) {
+            statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200">' +
+              '<i class="fas fa-exclamation-triangle"></i>Auto-fix requires an exec_sql helper. Run SQL manually below.' +
+              '</div>';
+          } else {
+            statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200">' +
+              '<i class="fas fa-exclamation-circle"></i>' + esc(msg) +
+              '</div>';
+          }
+        }
+        showSQLBlock();
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-wrench text-xs"></i> Fix Module';
+        }
+      });
+  }
+
+  // ── Helper to show SQL block ───────────────────────────────────
+  function showSQLBlock() {
+    var sqlBlock = document.getElementById('pr-sql-block');
+    if (sqlBlock) sqlBlock.classList.remove('hidden');
+  }
+
+  // ── Table provisioning ────────────────────────────────────────
   function runMigrationSQL() {
     var creds = null;
     try {
@@ -183,8 +372,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       return Promise.reject(new Error('Supabase client not available.'));
     }
 
-    // Tries exec_sql RPC (requires the helper function in your DB).
-    // If it doesn't exist, the catch in bindSetupBanner falls back to Show SQL.
     return client.rpc('exec_sql', { query: MIGRATION_SQL })
       .then(function(res) {
         if (res.error) throw new Error(res.error.message || 'Migration failed');
@@ -192,11 +379,10 @@ window.WorkVoltPages['payroll'] = function(container) {
       });
   }
 
-  // Check if tables exist — sets wv_payroll_needs_setup if missing
   function provisionTables() {
     var db = window.WorkVolt.db;
     return db.list('payroll_runs', {}, { limit: 1 })
-      .then(function() { return; }) // all good
+      .then(function() { return; })
       .catch(function() {
         sessionStorage.setItem('wv_payroll_needs_setup', '1');
       });
@@ -255,9 +441,8 @@ window.WorkVoltPages['payroll'] = function(container) {
     return fmtDate(start) + (end ? ' – ' + fmtDate(end) : '');
   }
 
-  // ── Tax config (loaded from admin settings) ───────────────────
+  // ── Tax config ────────────────────────────────────────────────
   var _taxCfg = null;
-
   var _TAX_DEFAULTS = {
     USA: {
       country:'USA', tax_calculation_enabled:false, pay_periods_per_year:26,
@@ -279,11 +464,9 @@ window.WorkVoltPages['payroll'] = function(container) {
       currency:'CAD', currency_symbol:'$',
     },
   };
-
-  var _taxVisibleRoles = null; // loaded from config; null = not yet loaded
+  var _taxVisibleRoles = null;
 
   function loadTaxConfig() {
-    // If settings.js already loaded config this session, use both caches
     if (window.WV_PAYROLL_TAX_CONFIG) {
       _taxCfg = window.WV_PAYROLL_TAX_CONFIG;
       if (window.WV_PAYROLL_TAX_VISIBLE_ROLES) {
@@ -307,7 +490,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       });
   }
 
-  // Can the current user VIEW the tax rates panel?
   function canViewTaxRates() {
     var roles = _taxVisibleRoles || window.WV_PAYROLL_TAX_VISIBLE_ROLES || ['SuperAdmin', 'Admin'];
     return roles.includes(getRole());
@@ -315,7 +497,6 @@ window.WorkVoltPages['payroll'] = function(container) {
 
   function getTaxCfg() { return _taxCfg || _TAX_DEFAULTS.USA; }
 
-  // Progressive bracket helper
   function _fromBrackets(grossPerPeriod, brackets, payPeriods) {
     var annual = grossPerPeriod * payPeriods, annualTax = 0, prev = 0;
     for (var i = 0; i < brackets.length; i++) {
@@ -335,16 +516,11 @@ window.WorkVoltPages['payroll'] = function(container) {
     {max:220000,rate:.29},{max:Infinity,rate:.33}
   ];
 
-  // Returns a normalised result object with keys:
-  //   federal, fica (SS+Med / CPP+EI), state (state+local / provincial+addl), other, total
-  //   + country-specific detail keys for display
   function taxEnabled() {
     var cfg = getTaxCfg();
-    // Must be explicitly true — missing/undefined/false all mean disabled
     return cfg.tax_calculation_enabled === true;
   }
 
-  // Returns a zero-tax object when tax calc is disabled by admin
   var ZERO_TAXES = { federal:0, fica:0, state:0, other:0, total:0, cpp:0, ei:0, provincial:0, additional:0, ss:0, medicare:0, addlMed:0, local:0 };
 
   function estimateTaxes(gross) {
@@ -367,11 +543,10 @@ window.WorkVoltPages['payroll'] = function(container) {
       var other = rnd(gross * (cfg.other_deduction_rate||0)   / 100);
       return {
         federal: fed, cpp: cpp, ei: ei, provincial: prov, additional: addl, other: other,
-        fica: rnd(cpp+ei), state: rnd(prov+addl),          // normalised aliases
+        fica: rnd(cpp+ei), state: rnd(prov+addl),
         total: rnd(fed + cpp + ei + prov + addl + other),
       };
     } else {
-      // USA
       var fed2 = cfg.federal_use_brackets
         ? _fromBrackets(gross, _US_BRACKETS, periods)
         : rnd(gross * (cfg.federal_flat_rate||22) / 100);
@@ -413,12 +588,12 @@ window.WorkVoltPages['payroll'] = function(container) {
       tax_state:   taxes.state,
       tax_total:   taxes.total,
       net:         net,
-      _taxes:      taxes,        // full breakdown for UI display
+      _taxes:      taxes,
       _country:    cfg.country,
       _cfg:        cfg,
     };
   }
-  // Legacy helpers for backward-compat with old sheet fields
+
   function calcGross(r) {
     if (r.gross !== undefined && r.gross !== '') return parseFloat(r.gross)||0;
     return (parseFloat(r.gross_salary)||0)+(parseFloat(r.bonus)||0)+(parseFloat(r.overtime_pay)||0)+(parseFloat(r.extra_pay)||0);
@@ -434,8 +609,6 @@ window.WorkVoltPages['payroll'] = function(container) {
     return t2+(parseFloat(r.health_insurance)||0)+(parseFloat(r.pension)||0)+(parseFloat(r.other_deductions)||0);
   }
   function calcNet(r) {
-    // Always recalculate when tax is enabled so deductions are reflected live,
-    // regardless of what net value was stored when the run was created with taxes off.
     if (taxEnabled()) return Math.max(0, calcGross(r) - calcDeductions(r));
     if (r.net !== undefined && r.net !== '') return Math.max(0, parseFloat(r.net)||0);
     return Math.max(0, calcGross(r) - calcDeductions(r));
@@ -471,7 +644,6 @@ window.WorkVoltPages['payroll'] = function(container) {
   function hasOvertimeRisk(r) {
     var hrs = parseFloat(r.hours_total||r.overtime_hours)||0;
     if (!hrs) return false;
-    // Calculate OT threshold based on pay period length (40hrs per week)
     var weeksInPeriod = 1;
     if (r.period_start && r.period_end) {
       var days = (new Date(r.period_end) - new Date(r.period_start)) / (1000*60*60*24) + 1;
@@ -515,7 +687,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       '<i class="fas '+(ok?'fa-check-circle':'fa-exclamation-circle')+'"></i><span>'+esc(msg)+'</span></div>' : '';
   }
 
-  // ── Load data ─────────────────────────────────────────────────
   // ── Setup banner ──────────────────────────────────────────────
   function renderSetupBanner() {
     return (
@@ -529,11 +700,7 @@ window.WorkVoltPages['payroll'] = function(container) {
             '<p class="text-xs text-slate-500 mt-0.5">The required database tables don\'t exist in your Supabase project yet.</p>' +
           '</div>' +
         '</div>' +
-
-        // Status area
         '<div id="pr-setup-status" class="hidden mb-4"></div>' +
-
-        // Primary action
         '<div class="flex gap-3 mb-5">' +
           '<button id="pr-fix-btn" class="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white rounded-xl border-none cursor-pointer" style="background:#10b981">' +
             '<i class="fas fa-wrench text-xs"></i>Fix Tables' +
@@ -542,8 +709,6 @@ window.WorkVoltPages['payroll'] = function(container) {
             '<i class="fas fa-code text-xs"></i>Show SQL' +
           '</button>' +
         '</div>' +
-
-        // Collapsible SQL block
         '<div id="pr-sql-block" class="hidden">' +
           '<p class="text-xs text-slate-500 mb-2">Copy and run this in your ' +
             '<a href="https://supabase.com/dashboard" target="_blank" class="text-blue-600 underline font-semibold">Supabase SQL Editor</a>' +
@@ -572,7 +737,6 @@ window.WorkVoltPages['payroll'] = function(container) {
     var reloadBtn = document.getElementById('pr-reload-btn');
 
     function setStatus(msg, type) {
-      // type: 'loading' | 'success' | 'error'
       var styles = {
         loading: 'bg-blue-50 border-blue-200 text-blue-700',
         success: 'bg-emerald-50 border-emerald-200 text-emerald-700',
@@ -602,15 +766,12 @@ window.WorkVoltPages['payroll'] = function(container) {
             }
           })
           .catch(function(err) {
-            // Auto-execute failed — fall back to showing SQL
             var msg = err.message || 'Could not auto-run SQL.';
-            // If exec_sql RPC doesn't exist, give a clear explanation
             if (msg.indexOf('exec_sql') !== -1 || msg.indexOf('function') !== -1 || msg.indexOf('does not exist') !== -1) {
               setStatus('Auto-fix requires an exec_sql helper in your database. Showing SQL below — copy and run it manually.', 'error');
             } else {
               setStatus(msg + ' — showing SQL below to run manually.', 'error');
             }
-            // Show SQL block as fallback
             if (sqlBlock) sqlBlock.classList.remove('hidden');
             fixBtn.disabled = false;
             fixBtn.innerHTML = '<i class="fas fa-wrench text-xs"></i>Fix Tables';
@@ -633,7 +794,6 @@ window.WorkVoltPages['payroll'] = function(container) {
           copyBtn.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
           setTimeout(function() { copyBtn.innerHTML = '<i class="fas fa-copy mr-1"></i>Copy'; }, 2000);
         }).catch(function() {
-          // Fallback: select the pre text
           var pre = document.getElementById('pr-sql-pre');
           if (pre) {
             var range = document.createRange();
@@ -650,14 +810,13 @@ window.WorkVoltPages['payroll'] = function(container) {
     }
   }
 
+  // ── Load data ─────────────────────────────────────────────────
   function loadData() {
     var el = document.getElementById('pr-content');
     if (el) el.innerHTML = '<div class="flex items-center justify-center py-24 text-slate-400"><i class="fas fa-circle-notch fa-spin text-2xl mr-3"></i>Loading payroll…</div>';
 
-    // Provision tables on first load, then continue regardless
     provisionTables().catch(function(){}).then(function() {
 
-    // Show setup banner if tables were detected as missing
     if (sessionStorage.getItem('wv_payroll_needs_setup') === '1') {
       sessionStorage.removeItem('wv_payroll_needs_setup');
       if (el) el.innerHTML = renderSetupBanner();
@@ -665,8 +824,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       return;
     }
 
-    // Load tax config FIRST, then fetch all payroll data — prevents race condition
-    // where rerender() runs before tax settings are known (causes country flip + wrong deductions)
     loadTaxConfig().catch(function(){}).then(function() {
       updateCountryBadge();
       return Promise.all([
@@ -691,7 +848,7 @@ window.WorkVoltPages['payroll'] = function(container) {
       if (el) el.innerHTML = '<div class="flex flex-col items-center justify-center py-20 text-slate-400"><i class="fas fa-exclamation-triangle text-3xl mb-3 text-amber-400"></i><p class="font-semibold">Could not load payroll</p><p class="text-sm mt-1">'+esc(e.message)+'</p></div>';
     });
 
-    }); // end provisionTables wrapper
+    });
   }
 
   function rerender() {
@@ -699,7 +856,6 @@ window.WorkVoltPages['payroll'] = function(container) {
     var sorted   = applySort(filtered);
     renderStats(filtered);
     renderLiveCounter();
-    // Populate tax rates panel for permitted roles (main admin view)
     var taxPanel = document.getElementById('pr-tax-rates-panel');
     if (taxPanel) taxPanel.innerHTML = renderTaxRatesPanel();
     if      (activeView==='employees') renderEmployees();
@@ -769,9 +925,7 @@ window.WorkVoltPages['payroll'] = function(container) {
       : 'USA — IRS/FICA/State rates active';
   }
 
-  // ── Tax Rates Info Panel (read-only, role-gated) ──────────────
-  // Returns HTML string of a clean info card showing the configured rates.
-  // Admins see an "Edit in Settings" link; other permitted roles see read-only.
+  // ── Tax Rates Info Panel ─────────────────────────────────────
   function renderTaxRatesPanel() {
     var cfg = getTaxCfg();
     if (!cfg || cfg.tax_calculation_enabled === false) return '';
@@ -853,7 +1007,6 @@ window.WorkVoltPages['payroll'] = function(container) {
 
     return (
       '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:1rem;overflow:hidden;margin-bottom:.75rem">' +
-        // Header
         '<div style="padding:.625rem 1rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">' +
           '<div style="display:flex;align-items:center;gap:.5rem">' +
             '<div style="width:1.75rem;height:1.75rem;background:#ecfdf5;border-radius:.5rem;display:flex;align-items:center;justify-content:center">' +
@@ -865,14 +1018,13 @@ window.WorkVoltPages['payroll'] = function(container) {
             '</span>' +
           '</div>' +
           (admin ?
-            '<a href="#" onclick="if(window.settingsTab)window.settingsTab(&apos;modules&apos;);return false;" style="font-size:.7rem;font-weight:700;color:#10b981;text-decoration:none;display:flex;align-items:center;gap:.25rem">' +
+            '<a href="#" onclick="if(window.settingsTab)window.settingsTab(\'modules\');return false;" style="font-size:.7rem;font-weight:700;color:#10b981;text-decoration:none;display:flex;align-items:center;gap:.25rem">' +
               '<i class="fas fa-external-link-alt" style="font-size:.6rem"></i>Edit in Settings' +
             '</a>'
           :
             '<span style="font-size:.65rem;color:#94a3b8;font-style:italic">Read-only · Set by Admin</span>'
           ) +
         '</div>' +
-        // Rates grid
         '<div style="padding:1rem">' +
           ratesHtml +
           '<p style="font-size:.65rem;color:#94a3b8;margin-top:.75rem;padding-top:.5rem;border-top:1px solid #f1f5f9">' +
@@ -882,6 +1034,79 @@ window.WorkVoltPages['payroll'] = function(container) {
         '</div>' +
       '</div>'
     );
+  }
+
+  // ── Render Fix Module dropdown ────────────────────────────────
+  function renderFixModuleDropdown() {
+    return '<div class="relative">' +
+      '<button id="pr-fix-dropdown-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 cursor-pointer">' +
+        '<i class="fas fa-wrench text-[10px]"></i>Fix Module<i class="fas fa-chevron-down text-[10px] ml-1"></i>' +
+      '</button>' +
+      '<div id="pr-fix-dropdown" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">' +
+        '<div class="px-3 py-2 bg-slate-50 border-b border-slate-100">' +
+          '<p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Database Actions</p>' +
+        '</div>' +
+        '<button id="pr-fix-quick" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">' +
+          '<i class="fas fa-magic text-emerald-500 w-4"></i>Quick Fix (Add Missing)' +
+        '</button>' +
+        '<button id="pr-fix-reinstall" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">' +
+          '<i class="fas fa-trash-restore text-amber-500 w-4"></i>Reinstall (Drop & Recreate)' +
+        '</button>' +
+        '<button id="pr-fix-showsql" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">' +
+          '<i class="fas fa-code text-blue-500 w-4"></i>Show SQL Only' +
+        '</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // ── Bind Fix Module dropdown events ───────────────────────────
+  function bindFixModuleDropdown() {
+    var dropdownBtn = document.getElementById('pr-fix-dropdown-btn');
+    var dropdown = document.getElementById('pr-fix-dropdown');
+    
+    if (!dropdownBtn || !dropdown) return;
+    
+    dropdownBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var isHidden = dropdown.classList.contains('hidden');
+      dropdown.classList.toggle('hidden', !isHidden);
+    });
+    
+    document.addEventListener('click', function(e) {
+      if (!dropdownBtn.contains(e.target) && !dropdown.contains(e.target)) {
+        dropdown.classList.add('hidden');
+      }
+    });
+    
+    var quickBtn = document.getElementById('pr-fix-quick');
+    if (quickBtn) {
+      quickBtn.addEventListener('click', function() {
+        dropdown.classList.add('hidden');
+        fixModule(false);
+      });
+    }
+    
+    var reinstallBtn = document.getElementById('pr-fix-reinstall');
+    if (reinstallBtn) {
+      reinstallBtn.addEventListener('click', function() {
+        dropdown.classList.add('hidden');
+        if (confirm('WARNING: This will DELETE all existing payroll data and recreate the tables. Continue?')) {
+          fixModule(true);
+        }
+      });
+    }
+    
+    var showSqlBtn = document.getElementById('pr-fix-showsql');
+    if (showSqlBtn) {
+      showSqlBtn.addEventListener('click', function() {
+        dropdown.classList.add('hidden');
+        var sqlBlock = document.getElementById('pr-sql-block');
+        if (sqlBlock) {
+          sqlBlock.classList.remove('hidden');
+          sqlBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+    }
   }
 
   // ── Main Shell ────────────────────────────────────────────────
@@ -899,7 +1124,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       ['summary','fa-chart-bar','Summary'],
       ['audit','fa-history','Audit Log'],
     ];
-    // Non-admins skip audit + employees views
     var visibleViews = isAdmin() ? VIEWS : VIEWS.slice(0,1);
 
     container.innerHTML =
@@ -925,7 +1149,6 @@ window.WorkVoltPages['payroll'] = function(container) {
 
       '<div class="flex flex-col h-full" style="font-family:\'DM Sans\',sans-serif">'+
 
-        // ── Header
         '<div class="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-4">'+
           '<div class="flex items-center justify-between gap-4 mb-3">'+
             '<div class="flex items-center gap-3">'+
@@ -945,8 +1168,12 @@ window.WorkVoltPages['payroll'] = function(container) {
               (isPayAdmin()?'<button id="pr-run-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl text-white border-none cursor-pointer" style="background:#10b981"><i class="fas fa-plus text-[10px]"></i>New Pay Run</button>':'') +
               (isPayAdmin()?'<button id="pr-bulk-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer"><i class="fas fa-bolt text-[10px]"></i>Bulk Run</button>':'') +
               (canViewTaxRates()?'<button id="pr-tax-settings-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 cursor-pointer"><i class="fas fa-sliders-h text-[10px]"></i>Tax Settings</button>':'') +
+              (isPayAdmin() ? renderFixModuleDropdown() : '') +
             '</div>'+
           '</div>'+
+          
+          '<div id="pr-fix-status" class="hidden mb-3"></div>'+
+          
           '<div id="pr-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3"></div>'+
           (canViewTaxRates() ? '<div id="pr-tax-rates-panel" class="mb-3"></div>' : '')+
           '<div class="flex items-center gap-2 flex-wrap">'+
@@ -968,12 +1195,26 @@ window.WorkVoltPages['payroll'] = function(container) {
               }).join('')+
             '</div>'+
           '</div>'+
+          
+          '<div id="pr-sql-block" class="hidden mt-3">' +
+            '<div class="bg-slate-900 rounded-xl p-4 overflow-hidden">' +
+              '<div class="flex items-center justify-between mb-2">' +
+                '<span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Migration SQL</span>' +
+                '<button id="pr-copy-sql-btn" class="px-2 py-1 text-[10px] font-bold bg-slate-700 hover:bg-slate-600 text-white rounded-lg cursor-pointer border-none">' +
+                  '<i class="fas fa-copy mr-1"></i>Copy' +
+                '</button>' +
+              '</div>' +
+              '<pre id="pr-sql-pre" class="text-emerald-300 text-xs overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto" style="font-family:monospace">' + esc(MIGRATION_SQL_DROP_FIRST) + '</pre>' +
+            '</div>' +
+            '<button id="pr-reload-btn" class="mt-2 flex items-center gap-2 px-4 py-2 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-100">' +
+              '<i class="fas fa-rotate-right text-xs"></i>Reload page' +
+            '</button>' +
+          '</div>' +
         '</div>'+
 
         '<div id="pr-content" class="flex-1 overflow-y-auto px-6 py-4"></div>'+
       '</div>';
 
-    // Bind toolbar
     document.getElementById('pr-search').addEventListener('input', function(){
       clearTimeout(_searchTimer);
       var v = this.value;
@@ -995,6 +1236,31 @@ window.WorkVoltPages['payroll'] = function(container) {
     if (bb) bb.addEventListener('click', openBulkRunModal);
     var tb = document.getElementById('pr-tax-settings-btn');
     if (tb) tb.addEventListener('click', openTaxSettingsModal);
+    
+    bindFixModuleDropdown();
+    
+    var copyBtn = document.getElementById('pr-copy-sql-btn');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function() {
+        navigator.clipboard.writeText(MIGRATION_SQL_DROP_FIRST).then(function() {
+          copyBtn.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
+          setTimeout(function() { copyBtn.innerHTML = '<i class="fas fa-copy mr-1"></i>Copy'; }, 2000);
+        }).catch(function() {
+          var pre = document.getElementById('pr-sql-pre');
+          if (pre) {
+            var range = document.createRange();
+            range.selectNodeContents(pre);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+          }
+        });
+      });
+    }
+    
+    var reloadBtn = document.getElementById('pr-reload-btn');
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', function() { window.location.reload(); });
+    }
 
     loadData();
   }
@@ -1007,7 +1273,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       return;
     }
 
-    // ── Employee self-view (non-admin) — card-based breakdown
     if (!isAdmin()) {
       renderSelfView(rows);
       return;
@@ -1142,7 +1407,6 @@ window.WorkVoltPages['payroll'] = function(container) {
 
     var html = '<div class="max-w-2xl mx-auto space-y-4">';
 
-    // Personal summary hero
     html += '<div class="bg-gradient-to-br from-slate-900 to-emerald-950 rounded-2xl p-6 text-white">'+
       '<p class="text-xs font-bold uppercase tracking-widest opacity-60 mb-1">My Payroll</p>'+
       '<div class="flex items-end gap-4">'+
@@ -1151,7 +1415,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       '</div>'+
     '</div>';
 
-    // Latest payslip breakdown
     if (latest) {
       var g=calcGross(latest), d=calcDeductions(latest), n=calcNet(latest);
       html += '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">'+
@@ -1165,7 +1428,6 @@ window.WorkVoltPages['payroll'] = function(container) {
           '<div class="text-center border-x border-slate-100"><p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Deductions</p><p class="text-xl font-black text-red-500">-'+fmtMoney(d,0)+'</p></div>'+
           '<div class="text-center"><p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Net Pay</p><p class="text-xl font-black text-emerald-700">'+fmtMoney(n,0)+'</p></div>'+
         '</div>'+
-        // Breakdown rows
         '<div class="px-5 py-3 space-y-0.5">'+
           _lineItem('Base / Rate', fmtMoney(parseFloat(latest.gross_salary||latest.gross)||0), '')+
           (parseFloat(latest.hours_total||latest.overtime_hours||0)?_lineItem('Hours', fmtHours(latest.hours_total||latest.overtime_hours||0)+' total', ''):'') +
@@ -1188,7 +1450,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       '</div>';
     }
 
-    // History table
     html += '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">'+
       '<div class="px-5 py-3 border-b border-slate-100"><p class="font-bold text-slate-900 text-sm">Pay History</p></div>'+
       '<table class="w-full text-sm"><thead class="bg-slate-50"><tr>'+
@@ -1207,7 +1468,6 @@ window.WorkVoltPages['payroll'] = function(container) {
     });
     html += '</tbody></table></div>';
 
-    // Tax rates panel — shown if this user's role has access
     if (canViewTaxRates()) {
       html += renderTaxRatesPanel();
     }
@@ -1317,7 +1577,6 @@ window.WorkVoltPages['payroll'] = function(container) {
         sCard('Total Net Pay','fa-check','bg-emerald-700',fmtMoney(totalNet,0),'Employee take-home')+
       '</div>'+
 
-      // Export row
       '<div class="flex gap-2 mb-4">'+
         '<button id="pr-export-all" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold border border-slate-200 rounded-xl bg-white hover:bg-slate-50 text-slate-600 cursor-pointer"><i class="fas fa-file-csv text-emerald-500"></i>Export CSV</button>'+
       '</div>'+
@@ -1416,7 +1675,6 @@ window.WorkVoltPages['payroll'] = function(container) {
     var isEdit = !!run;
     var r = run || prefill || {};
 
-    // Timesheet autofill
     var tsHours = 0;
     if (r.employee_id && tsCache.length) {
       tsHours = tsCache
@@ -1424,7 +1682,6 @@ window.WorkVoltPages['payroll'] = function(container) {
         .reduce(function(s,t){ return s+(parseFloat(t.hours)||parseFloat(t.total_hours)||0); }, 0);
     }
 
-    // Last pay period for "copy" feature
     var lastRun = null;
     if (r.employee_id) {
       lastRun = runsCache.filter(function(x){ return x.employee_id===r.employee_id&&x.id!==(r.id||''); })
@@ -1436,7 +1693,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       return '<option value="'+esc(uid)+'" data-name="'+esc(u.name||u.email||uid)+'"'+(r.employee_id===uid?' selected':'')+'>'+esc(u.name||u.email||uid)+'</option>';
     }).join('');
 
-    // Determine initial compute values — for new runs, pull rate from Users sheet
     var _initUser = !r.id ? usersCache.find(function(u){ return (u.user_id||u.id)===r.employee_id; }) : null;
     var _initPayType = (_initUser && _initUser.pay_type) || r.pay_type || '';
     var _initRate = _initPayType === 'Salary'
@@ -1455,7 +1711,6 @@ window.WorkVoltPages['payroll'] = function(container) {
     var initTaxTot  = r.tax_total   || r.tax || '';
 
     var html =
-      // ── Sticky header
       '<div class="sticky-header flex items-center justify-between">'+
         '<div class="flex items-center gap-2">'+
           '<div class="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center"><i class="fas fa-file-invoice-dollar text-emerald-600 text-sm"></i></div>'+
@@ -1474,7 +1729,6 @@ window.WorkVoltPages['payroll'] = function(container) {
         '<div id="pr-msg"></div>'+
         '<div id="prf-warnings"></div>'+
 
-        // ── SECTION 1: Employee & Period ──────────────────────────
         '<div class="pr-section">'+
           '<div class="pr-section-head"><i class="fas fa-user text-slate-400 text-xs"></i><span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Employee &amp; Pay Period</span></div>'+
           '<div class="p-4 grid grid-cols-2 gap-3">'+
@@ -1496,7 +1750,6 @@ window.WorkVoltPages['payroll'] = function(container) {
           '</div>'+
         '</div>'+
 
-        // ── SECTION 2: Hours & Earnings ───────────────────────────
         '<div class="pr-section">'+
           '<div class="pr-section-head"><i class="fas fa-arrow-up text-emerald-500 text-xs"></i><span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Hours &amp; Earnings</span></div>'+
           '<div class="p-4 grid grid-cols-3 gap-3">'+
@@ -1513,7 +1766,6 @@ window.WorkVoltPages['payroll'] = function(container) {
           '</div>'+
         '</div>'+
 
-        // ── SECTION 3: Deductions ─────────────────────────────────
         '<div class="pr-section">'+
           '<div class="pr-section-head"><i class="fas fa-arrow-down text-red-400 text-xs"></i><span class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Deductions</span></div>'+
           '<div class="p-4 grid grid-cols-2 gap-3">'+
@@ -1524,7 +1776,6 @@ window.WorkVoltPages['payroll'] = function(container) {
               '</div>'+
             '</div>'+
           '</div>'+
-          // Tax breakdown — shows disabled notice or live-updating rows based on admin config
           '<div class="mx-4 mb-4 border border-slate-200 rounded-xl overflow-hidden">'+
             (function(){
               var cfg = getTaxCfg();
@@ -1533,7 +1784,6 @@ window.WorkVoltPages['payroll'] = function(container) {
               var yr = new Date().getFullYear();
 
               if (!enabled) {
-                // Admin turned off auto tax calc — show a clean notice instead of rows
                 return (
                   '<div class="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center gap-2">'+
                     '<i class="fas fa-calculator-alt text-slate-300 text-xs"></i>'+
@@ -1580,7 +1830,6 @@ window.WorkVoltPages['payroll'] = function(container) {
           '</div>'+
         '</div>'+
 
-        // ── NET PAY HERO ───────────────────────────────────────────
         '<div class="net-pay-hero">'+
           '<div>'+
             '<div class="text-xs font-bold uppercase tracking-widest opacity-60 mb-1">Net Pay</div>'+
@@ -1593,7 +1842,6 @@ window.WorkVoltPages['payroll'] = function(container) {
           '</div>'+
         '</div>'+
 
-        // ── Notes ──────────────────────────────────────────────────
         '<div class="pr-field mb-5">'+
           '<label>Internal Notes</label>'+
           '<textarea id="prf-notes" rows="2" class="pr-input" placeholder="Any internal notes about this pay run…" style="resize:vertical">'+esc(r.notes||'')+'</textarea>'+
@@ -1601,14 +1849,12 @@ window.WorkVoltPages['payroll'] = function(container) {
 
         '<div class="flex gap-3">'+
           '<button id="prf-cancel" class="btn-secondary flex-1 py-2.5">Cancel</button>'+
-  
           '<button id="prf-save" class="btn-primary flex-1 py-2.5" style="background:#10b981"><i class="fas fa-save mr-1.5 text-xs"></i>'+(isEdit?'Save Changes':'Create Pay Run')+'</button>'+
         '</div>'+
       '</div>';
 
     showModal(html, '720px');
 
-    // ── Live recalculator
     var calcIds = ['prf-rate','prf-hrs-reg','prf-hrs-ot','prf-bonuses','prf-ded'];
 
     function recalc() {
@@ -1632,13 +1878,12 @@ window.WorkVoltPages['payroll'] = function(container) {
       setTxt('prf-net-pay',     fmtMoney(computed.net));
       setTxt('prf-net-formula', fmtMoney(computed.gross)+' − '+fmtMoney(computed.tax_total)+' − '+fmtMoney(computed.deductions));
 
-      // Populate per-country tax rows
       var tx = computed._taxes || {};
       var cfg2 = getTaxCfg();
       if (cfg2.country === 'Canada') {
         setTxt('prf-tax-fed',   fmtMoney(tx.federal||0));
-        setTxt('prf-tax-fica',  fmtMoney(tx.cpp||0));    // CPP
-        setTxt('prf-tax-fica2', fmtMoney(tx.ei||0));     // EI
+        setTxt('prf-tax-fica',  fmtMoney(tx.cpp||0));
+        setTxt('prf-tax-fica2', fmtMoney(tx.ei||0));
         setTxt('prf-tax-state', fmtMoney(tx.provincial||0));
         setTxt('prf-tax-addl',  fmtMoney(tx.additional||0));
         setTxt('prf-tax-other', fmtMoney(tx.other||0));
@@ -1653,7 +1898,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       var warn = document.getElementById('prf-net-warn');
       if (warn) warn.classList.toggle('hidden', computed.net >= 0);
 
-      // OT warning
       updateWarnings(hrsOT, computed, payType, hrsReg, rate);
     }
 
@@ -1680,10 +1924,8 @@ window.WorkVoltPages['payroll'] = function(container) {
     var ptEl = document.getElementById('prf-paytype');
     if (ptEl) ptEl.addEventListener('change', recalc);
 
-    // Run initial calc if editing
     if (isEdit || r.rate) recalc();
 
-    // Copy last period
     var copyBtn = document.getElementById('prf-copy-last');
     if (copyBtn && lastRun) {
       copyBtn.addEventListener('click', function(){
@@ -1700,7 +1942,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       });
     }
 
-    // Timesheet autofill
     var tsBtn = document.getElementById('prf-ts-fill');
     if (tsBtn) {
       tsBtn.addEventListener('click', function(){
@@ -1709,7 +1950,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       });
     }
 
-    // Employee change → auto-fill rate + pay_type from Users sheet data
     var empSel = document.getElementById('prf-emp');
     if (empSel && empSel.tagName==='SELECT') {
       empSel.addEventListener('change', function(){
@@ -1718,9 +1958,7 @@ window.WorkVoltPages['payroll'] = function(container) {
         var userRecord = usersCache.find(function(u){ return (u.user_id||u.id)===uid; });
         var rateEl   = document.getElementById('prf-rate');
         var ptEl     = document.getElementById('prf-paytype');
-        // Pay type: user record first, empCache fallback
         var payType = (userRecord && userRecord.pay_type) || (empRecord && empRecord.pay_type) || '';
-        // Rate: hourly_rate for hourly/contractor, salary for salaried — user record first
         var rate = payType === 'Salary'
           ? (parseFloat(userRecord && userRecord.salary) || parseFloat(empRecord && empRecord.salary) || 0)
           : (parseFloat(userRecord && userRecord.hourly_rate) || parseFloat(empRecord && empRecord.salary) || 0);
@@ -1732,12 +1970,8 @@ window.WorkVoltPages['payroll'] = function(container) {
 
     document.getElementById('prf-close').addEventListener('click', closeModal);
     document.getElementById('prf-cancel').addEventListener('click', closeModal);
-
-    // Preview payslip before saving
-
     document.getElementById('prf-save').addEventListener('click', function(){ submitRunForm(isEdit ? run.id : null); });
 
-    // Keyboard: Escape to close
     var escHandler = function(e){ if(e.key==='Escape') { closeModal(); document.removeEventListener('keydown',escHandler); } };
     document.addEventListener('keydown', escHandler);
   }
@@ -1778,7 +2012,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       gross:         String(computed.gross),
       net:           String(computed.net),
       notes:         (document.getElementById('prf-notes')||{}).value||'',
-      // legacy compat fields
       gross_salary:  String(computed.gross),
       tax:           String(computed.tax_total),
       overtime_pay:  String(hrsOT*rate*1.5),
@@ -1792,7 +2025,6 @@ window.WorkVoltPages['payroll'] = function(container) {
     var empId  = empEl ? empEl.value : myUserId();
     var start  = (document.getElementById('prf-start')||{}).value||'';
 
-    // Validation
     if (!empId) { modalMsg('Please select an employee.', false); return; }
     if (!start) { modalMsg('Period start date is required.', false); document.getElementById('prf-start').classList.add('error'); return; }
     if (!(document.getElementById('prf-end')||{}).value) { modalMsg('Period end date is required.', false); document.getElementById('prf-end').classList.add('error'); return; }
@@ -1803,7 +2035,6 @@ window.WorkVoltPages['payroll'] = function(container) {
     var net = parseFloat(params.net)||0;
     if (net <= 0 && !confirm('Net pay is '+fmtMoney(net)+'. Save anyway?')) return;
 
-    // Duplicate detection
     if (!isEdit) {
       var dup = runsCache.find(function(r){
         return r.employee_id===empId && r.period_start===start && r.status!=='Void' && r.status!=='Rejected';
@@ -2014,7 +2245,6 @@ window.WorkVoltPages['payroll'] = function(container) {
           usersCache.map(function(u){
             var uid=u.user_id||u.id;
             var emp=empCache.find(function(e){return e.id===uid;})||{};
-            // Resolve pay_type and rate from user record first (Users sheet), then empCache fallback
             var payType = u.pay_type || emp.pay_type || 'Hourly';
             var rate = payType==='Salary'
               ? (parseFloat(u.salary)||parseFloat(emp.salary)||0)
@@ -2053,7 +2283,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       var bulkHrs   = parseFloat(document.getElementById('bulk-hours').value)    || 0;
       var bulkHrsOT = parseFloat(document.getElementById('bulk-hours-ot').value) || 0;
       var btn=this; btn.disabled=true; btn.innerHTML='<i class="fas fa-circle-notch fa-spin text-xs mr-1"></i>Generating…';
-      // Build all payloads first (unique IDs generated synchronously before any async calls)
       var payloads = selected.map(function(cb){
         var computed = computeRun({ pay_type:cb.dataset.paytype||'Hourly', rate:parseFloat(cb.dataset.rate)||0, hours_regular:bulkHrs, hours_ot:bulkHrsOT, bonuses:0, deductions:0 });
         return {
@@ -2077,8 +2306,6 @@ window.WorkVoltPages['payroll'] = function(container) {
           created_by:    myUserId(),
         };
       });
-      // Run sequentially — failures are collected but do NOT abort the chain
-      // so every employee always gets processed regardless of individual errors.
       var results = { ok: 0, fail: [] };
       payloads.reduce(function(chain, payload) {
         return chain.then(function() {
@@ -2111,12 +2338,10 @@ window.WorkVoltPages['payroll'] = function(container) {
     var anom  = detectAnomaly(r, runsCache);
     var isPreview = r.id==='PREVIEW';
 
-    // Audit trail for this run
     var runAudit = auditCache.filter(function(a){ return a.run_id===r.id; })
       .sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
 
     var html =
-      // Dark header
       '<div class="bg-gradient-to-br from-slate-900 to-emerald-950 px-6 pt-6 pb-8 text-white relative">'+
         '<div class="absolute -right-4 -bottom-4 opacity-10"><i class="fas fa-money-bill-wave text-9xl"></i></div>'+
         (isPreview?'<div class="absolute top-4 left-4 bg-amber-400 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Preview</div>':'')+
@@ -2137,7 +2362,6 @@ window.WorkVoltPages['payroll'] = function(container) {
         '</div>'+
       '</div>'+
 
-      // Three column: hours · earnings · deductions
       '<div class="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">'+
         '<div class="px-4 py-4 text-center">'+
           '<div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Hours</div>'+
@@ -2155,7 +2379,6 @@ window.WorkVoltPages['payroll'] = function(container) {
         '</div>'+
       '</div>'+
 
-      // Earnings + Deductions side by side
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0">'+
         '<div class="px-5 py-4 border-r border-slate-100">'+
           '<p class="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><i class="fas fa-arrow-up text-emerald-500 text-[10px]"></i>Earnings</p>'+
@@ -2174,7 +2397,6 @@ window.WorkVoltPages['payroll'] = function(container) {
             var isCA = cfg2.country === 'Canada';
             var taxOn = cfg2.tax_calculation_enabled === true;
             var lines = '';
-            // Only show tax breakdown lines if tax calculation is actively enabled
             if (taxOn) {
               if (isCA) {
                 lines += (parseFloat(r.tax_federal||0)?_lineItem('Federal Tax (CRA)', '-'+fmtMoney(r.tax_federal), 'text-red-500'):'');
@@ -2185,7 +2407,6 @@ window.WorkVoltPages['payroll'] = function(container) {
                 lines += (parseFloat(r.tax_fica||0)?_lineItem('FICA (SS + Medicare)', '-'+fmtMoney(r.tax_fica), 'text-red-500'):'');
                 lines += (parseFloat(r.tax_state||0)?_lineItem(cfg2.state_tax_label||'State Tax', '-'+fmtMoney(r.tax_state), 'text-red-500'):'');
               }
-              // Fallback: old-style single tax field
               if (!parseFloat(r.tax_federal||0) && !parseFloat(r.tax_fica||0) && parseFloat(r.tax_total||r.tax||0)) {
                 lines += _lineItem('Income Tax', '-'+fmtMoney(r.tax_total||r.tax||0), 'text-red-500');
               }
@@ -2202,11 +2423,9 @@ window.WorkVoltPages['payroll'] = function(container) {
         '</div>'+
       '</div>'+
 
-      // Anomaly + notes
       (anom&&!isFlagReviewed(r)?'<div class="mx-5 mb-2 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700"><i class="fas fa-exclamation-triangle text-red-400 mt-0.5 flex-shrink-0"></i><div class="flex-1"><strong>Anomaly:</strong> Net pay changed '+anom.pct+'% ('+anom.dir+') vs previous period. Review before approving.</div><button class="pr-flag-review flex-shrink-0 text-[10px] font-bold text-red-600 border border-red-300 bg-white hover:bg-red-50 rounded-lg px-2 py-1 cursor-pointer" data-id="'+esc(r.id)+'" title="Mark as reviewed">Mark Reviewed</button></div>':'')+
       (r.notes?'<div class="mx-5 mb-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600"><i class="fas fa-sticky-note text-slate-400 mr-1.5"></i>'+esc(r.notes)+'</div>':'')+
 
-      // Audit mini-trail
       (runAudit.length&&!isPreview?
         '<div class="mx-5 mb-4">'+
           '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5">History</p>'+
@@ -2220,7 +2439,6 @@ window.WorkVoltPages['payroll'] = function(container) {
           }).join('')+
         '</div>':'') +
 
-      // Actions
       '<div class="px-5 pb-5 flex gap-2 flex-wrap">'+
         (!isPreview&&isPayAdmin()&&r.status==='Draft'  ?'<button class="ps-act flex-1 py-2.5 text-sm font-bold rounded-xl border-none cursor-pointer" style="background:#f59e0b;color:#fff" data-action="submit"  data-id="'+esc(r.id)+'"><i class="fas fa-paper-plane mr-1.5 text-xs"></i>Submit</button>':'')+
         (!isPreview&&isPayAdmin()&&r.status==='Pending'?'<button class="ps-act flex-1 py-2.5 text-sm font-bold rounded-xl border-none cursor-pointer" style="background:#16a34a;color:#fff" data-action="approve" data-id="'+esc(r.id)+'"><i class="fas fa-check mr-1.5 text-xs"></i>Approve</button>':'')+
@@ -2243,7 +2461,6 @@ window.WorkVoltPages['payroll'] = function(container) {
     });
     var expBtn = document.getElementById('ps-export');
     if (expBtn) expBtn.addEventListener('click', function(){ exportPayslipCSV(r); });
-    // Wire flag review button inside payslip
     document.querySelectorAll('.pr-flag-review').forEach(function(btn){
       btn.addEventListener('click', function(e){
         e.stopPropagation();
