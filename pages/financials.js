@@ -45,6 +45,238 @@ const STATUS_COLORS = {
   'Over Budget': 'bg-red-100 text-red-700',
 };
 
+  // ── Migration SQL (Non-destructive - for auto-provisioning) ────
+const FIN_MIGRATION_SQL_NON_DESTRUCTIVE = `
+create extension if not exists "uuid-ossp";
+
+create table if not exists public.accounts (
+  id              uuid primary key default uuid_generate_v4(),
+  account_name    text not null,
+  account_number  text,
+  type            text not null default 'Asset',
+  category        text,
+  current_balance numeric(14,2) default 0,
+  description     text,
+  is_active       boolean default true,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create table if not exists public.invoices (
+  id              uuid primary key default uuid_generate_v4(),
+  invoice_number  text,
+  customer        text not null,
+  customer_email  text,
+  issue_date      date,
+  due_date        date,
+  status          text default 'Draft',
+  subtotal        numeric(14,2) default 0,
+  tax_rate        numeric(5,2) default 0,
+  tax_amount      numeric(14,2) default 0,
+  total           numeric(14,2) default 0,
+  balance_due     numeric(14,2) default 0,
+  deposit_account text,
+  notes           text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create table if not exists public.expenses (
+  id               uuid primary key default uuid_generate_v4(),
+  date             date not null,
+  vendor           text,
+  category         text,
+  description      text,
+  amount           numeric(12,2) not null default 0,
+  paid_from        text,
+  status           text default 'Pending',
+  approved_by      text,
+  notes            text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+
+create table if not exists public.bills (
+  id              uuid primary key default uuid_generate_v4(),
+  bill_number     text,
+  vendor          text not null,
+  vendor_email    text,
+  category        text,
+  issue_date      date,
+  due_date        date,
+  amount          numeric(14,2) not null default 0,
+  balance_due     numeric(14,2) default 0,
+  status          text default 'Unpaid',
+  recurring       boolean default false,
+  recurring_day   int,
+  monthly_payment numeric(14,2) default 0,
+  paid_from       text,
+  notes           text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create table if not exists public.budgets (
+  id             uuid primary key default uuid_generate_v4(),
+  year           int not null,
+  month          int not null,
+  category       text not null,
+  budget_amount  numeric(14,2) not null default 0,
+  notes          text,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+
+create table if not exists public.payments (
+  id             uuid primary key default uuid_generate_v4(),
+  reference_id   text not null,
+  reference_type text not null,
+  date           date not null,
+  amount         numeric(14,2) not null,
+  method         text,
+  account        text,
+  notes          text,
+  created_by     text,
+  created_at     timestamptz not null default now()
+);
+
+-- ADD COLUMN IF NOT EXISTS guards for columns that may be missing on older installs
+alter table public.invoices    add column if not exists deposit_account text;
+alter table public.invoices    add column if not exists subtotal        numeric(14,2) default 0;
+alter table public.invoices    add column if not exists tax_rate        numeric(5,2)  default 0;
+alter table public.invoices    add column if not exists tax_amount      numeric(14,2) default 0;
+alter table public.invoices    add column if not exists balance_due     numeric(14,2) default 0;
+alter table public.expenses    add column if not exists paid_from       text;
+alter table public.expenses    add column if not exists approved_by     text;
+alter table public.bills       add column if not exists recurring       boolean default false;
+alter table public.bills       add column if not exists recurring_day   int;
+alter table public.bills       add column if not exists monthly_payment numeric(14,2) default 0;
+alter table public.bills       add column if not exists paid_from       text;
+alter table public.bills       add column if not exists balance_due     numeric(14,2) default 0;
+alter table public.bills       add column if not exists vendor_email    text;
+alter table public.accounts    add column if not exists is_active       boolean default true;
+alter table public.accounts    add column if not exists current_balance numeric(14,2) default 0;
+
+-- RLS
+alter table public.accounts enable row level security;
+alter table public.invoices  enable row level security;
+alter table public.expenses  enable row level security;
+alter table public.bills     enable row level security;
+alter table public.budgets   enable row level security;
+alter table public.payments  enable row level security;
+
+drop policy if exists "Authenticated can manage accounts" on public.accounts;
+drop policy if exists "Authenticated can manage invoices" on public.invoices;
+drop policy if exists "Authenticated can manage expenses" on public.expenses;
+drop policy if exists "Authenticated can manage bills"    on public.bills;
+drop policy if exists "Authenticated can manage budgets"  on public.budgets;
+drop policy if exists "Authenticated can create payments" on public.payments;
+drop policy if exists "Authenticated can read payments"   on public.payments;
+
+create policy "Authenticated can manage accounts" on public.accounts for all using (auth.role() = 'authenticated');
+create policy "Authenticated can manage invoices" on public.invoices  for all using (auth.role() = 'authenticated');
+create policy "Authenticated can manage expenses" on public.expenses  for all using (auth.role() = 'authenticated');
+create policy "Authenticated can manage bills"    on public.bills     for all using (auth.role() = 'authenticated');
+create policy "Authenticated can manage budgets"  on public.budgets   for all using (auth.role() = 'authenticated');
+create policy "Authenticated can read payments"   on public.payments  for select using (auth.role() = 'authenticated');
+create policy "Authenticated can create payments" on public.payments  for insert with check (auth.role() = 'authenticated');
+
+-- Database helper functions used by the reports tab
+create or replace function public.get_financial_dashboard()
+returns jsonb as $$
+declare
+  v_monthly_revenue numeric; v_monthly_expenses numeric;
+  v_outstanding_ar numeric; v_overdue_ar numeric; v_bills_due numeric;
+  v_this_month text;
+begin
+  v_this_month := to_char(current_date, 'YYYY-MM');
+  select coalesce(sum(total),0) into v_monthly_revenue from public.invoices where to_char(issue_date,'YYYY-MM') = v_this_month;
+  select coalesce(sum(amount),0) into v_monthly_expenses from public.expenses where to_char(date,'YYYY-MM') = v_this_month and status = 'Approved';
+  select coalesce(sum(balance_due),0) into v_outstanding_ar from public.invoices where status in ('Sent','Partial','Overdue');
+  select coalesce(sum(balance_due),0) into v_overdue_ar from public.invoices where status = 'Overdue';
+  select coalesce(sum(balance_due),0) into v_bills_due from public.bills where status in ('Unpaid','Partial');
+  return jsonb_build_object(
+    'monthly_revenue', v_monthly_revenue, 'monthly_expenses', v_monthly_expenses,
+    'net_profit', v_monthly_revenue - v_monthly_expenses,
+    'outstanding_ar', v_outstanding_ar, 'overdue_ar', v_overdue_ar, 'bills_due', v_bills_due,
+    'total_invoices', (select count(*) from public.invoices),
+    'total_expenses', (select count(*) from public.expenses where status = 'Approved')
+  );
+end;
+$$ language plpgsql security definer;
+
+create or replace function public.get_budget_vs_actual(p_year int, p_month int)
+returns table (category text, budget numeric, actual numeric, variance numeric, status text) as $$
+begin
+  return query
+  with actuals as (
+    select e.category as cat, coalesce(sum(e.amount),0) as spent
+    from public.expenses e
+    where extract(year from e.date) = p_year and extract(month from e.date) = p_month
+    group by e.category
+  ),
+  budgeted as (
+    select b.category as cat, b.budget_amount as budg from public.budgets b
+    where b.year = p_year and b.month = p_month
+  )
+  select coalesce(b.cat,a.cat),
+    coalesce(b.budg,0), coalesce(a.spent,0),
+    coalesce(b.budg,0) - coalesce(a.spent,0),
+    case when coalesce(b.budg,0) = 0 then 'Unbudgeted'
+         when coalesce(a.spent,0) > coalesce(b.budg,0) then 'Over Budget'
+         when coalesce(a.spent,0) > coalesce(b.budg,0)*0.9 then 'Near Limit'
+         else 'On Track' end
+  from budgeted b full outer join actuals a on b.cat = a.cat
+  where coalesce(b.budg,0) > 0 or coalesce(a.spent,0) > 0;
+end;
+$$ language plpgsql security definer;
+
+create or replace function public.get_income_statement(p_start_date date, p_end_date date)
+returns jsonb as $$
+declare v_revenue numeric; v_expenses numeric;
+begin
+  select coalesce(sum(total),0) into v_revenue from public.invoices
+    where status in ('Paid','Partial') and issue_date between p_start_date and p_end_date;
+  select coalesce(sum(amount),0) into v_expenses from (
+    select amount from public.expenses where status = 'Approved' and date between p_start_date and p_end_date
+    union all
+    select amount from public.bills where status = 'Paid' and issue_date between p_start_date and p_end_date
+  ) x;
+  return jsonb_build_object(
+    'revenue', v_revenue, 'expenses', v_expenses, 'net_profit', v_revenue - v_expenses,
+    'profit_margin', case when v_revenue > 0 then round(((v_revenue-v_expenses)/v_revenue)*100,2) else 0 end
+  );
+end;
+$$ language plpgsql security definer;
+
+create or replace function public.get_balance_sheet()
+returns jsonb as $$
+declare v_ar numeric; v_cash numeric; v_ap numeric;
+begin
+  select coalesce(sum(balance_due),0) into v_ar from public.invoices where status in ('Sent','Partial','Overdue');
+  select coalesce(sum(current_balance),0) into v_cash from public.accounts where type = 'Asset' and is_active = true;
+  select coalesce(sum(balance_due),0) into v_ap from public.bills where status in ('Unpaid','Partial','Overdue');
+  return jsonb_build_object(
+    'assets',      jsonb_build_object('cash', v_cash, 'accounts_receivable', v_ar, 'total', v_cash + v_ar),
+    'liabilities', jsonb_build_object('accounts_payable', v_ap, 'total', v_ap),
+    'equity',      jsonb_build_object('retained_earnings', v_cash + v_ar - v_ap, 'total', v_cash + v_ar - v_ap),
+    'balanced', true
+  );
+end;
+$$ language plpgsql security definer;
+`;
+
+// ── Migration SQL (Destructive - drops first for clean reinstall) ──
+const FIN_MIGRATION_SQL_DESTRUCTIVE = `
+drop table if exists public.payments cascade;
+drop table if exists public.budgets cascade;
+drop table if exists public.bills cascade;
+drop table if exists public.expenses cascade;
+drop table if exists public.invoices cascade;
+drop table if exists public.accounts cascade;
+
+` + FIN_MIGRATION_SQL_NON_DESTRUCTIVE;
+
 function badge(status) {
   const cls = STATUS_COLORS[status] || 'bg-slate-100 text-slate-600';
   return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${cls}">${status || '—'}</span>`;
@@ -274,29 +506,168 @@ $$ language plpgsql security definer;
 `;
 
 // ── Auto-provision: check tables + run migration ───────────────────
-async function provisionTables() {
-  const db = window.WorkVoltDB;
+// ── Schema cache refresh helper ───────────────────────────────
+async function refreshSchemaCache() {
+  let creds = null;
   try {
-    await db.list('invoices', {}, { limit: 1 });
+    creds = JSON.parse(localStorage.getItem('wv_db_config') || 'null');
+  } catch(e) {}
+
+  if (!creds || creds.provider !== 'supabase') {
+    return Promise.reject(new Error('Schema refresh only works with Supabase'));
+  }
+
+  const adapter = window.WorkVoltDB;
+  const client = adapter && adapter._client;
+
+  if (!client) {
+    return Promise.reject(new Error('Database client not available'));
+  }
+
+  const refreshQueries = [
+    "select pg_notification_queue_usage();",
+    "NOTIFY pgrst, 'reload schema';",
+    "SELECT pg_stat_clear_snapshot();"
+  ];
+
+  return refreshQueries.reduce(function(chain, query) {
+    return chain.then(function() {
+      return client.rpc('exec_sql', { query: query })
+        .catch(function() { return { error: null }; });
+    });
+  }, Promise.resolve());
+}
+
+// ── Main Fix Module function ──────────────────────────────────
+async function fixModule(dropFirst) {
+  dropFirst = dropFirst !== false;
+  
+  const statusEl = document.getElementById('fin-fix-status') || document.getElementById('fin-msg');
+  const btn = document.getElementById('fin-fix-dropdown-btn') || document.getElementById('fin-fix-btn');
+  
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> ' + (dropFirst ? 'Reinstalling…' : 'Fixing…');
+  }
+  
+  if (statusEl) {
+    statusEl.classList.remove('hidden');
+    statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">' +
+      '<i class="fas fa-circle-notch fa-spin"></i>' +
+      (dropFirst ? 'Dropping and recreating financial tables…' : 'Creating missing tables/columns…') +
+      '</div>';
+  }
+
+  const sqlToRun = dropFirst ? FIN_MIGRATION_SQL_DESTRUCTIVE : FIN_MIGRATION_SQL_NON_DESTRUCTIVE;
+  
+  let creds = null;
+  try {
+    creds = JSON.parse(localStorage.getItem('wv_db_config') || 'null');
+  } catch(e) {}
+
+  if (!creds || creds.provider !== 'supabase') {
+    if (statusEl) {
+      statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200">' +
+        '<i class="fas fa-exclamation-circle"></i>Auto-fix only works with Supabase. Please run SQL manually.' +
+        '</div>';
+    }
+    showSQLBlock();
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-wrench text-xs"></i> Fix Module';
+    }
+    return Promise.reject(new Error('Not Supabase'));
+  }
+
+  const adapter = window.WorkVoltDB;
+  const client = adapter && adapter._client;
+
+  if (!client || typeof client.rpc !== 'function') {
+    if (statusEl) {
+      statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200">' +
+        '<i class="fas fa-exclamation-circle"></i>Database client not available.' +
+        '</div>';
+    }
+    showSQLBlock();
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-wrench text-xs"></i> Fix Module';
+    }
+    return Promise.reject(new Error('No client'));
+  }
+
+  try {
+    const res = await client.rpc('exec_sql', { query: sqlToRun });
+    if (res.error) throw new Error(res.error.message || 'Migration failed');
+    
+    await refreshSchemaCache();
+    
+    if (statusEl) {
+      statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-700 border border-green-200">' +
+        '<i class="fas fa-check-circle"></i>Financials module fixed! Reloading page…' +
+        '</div>';
+    }
+    toast('Financials module ' + (dropFirst ? 'reinstalled' : 'fixed') + ' successfully!', 'success');
+    setTimeout(function() { window.location.reload(); }, 1500);
+    
+  } catch (err) {
+    console.error('Fix module error:', err);
+    if (statusEl) {
+      const msg = err.message || 'Unknown error';
+      if (msg.indexOf('exec_sql') !== -1 || msg.indexOf('function') !== -1 || msg.indexOf('does not exist') !== -1) {
+        statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200">' +
+          '<i class="fas fa-exclamation-triangle"></i>Auto-fix requires an exec_sql helper. Run SQL manually below.' +
+          '</div>';
+      } else {
+        statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200">' +
+          '<i class="fas fa-exclamation-circle"></i>' + esc(msg) +
+          '</div>';
+      }
+    }
+    showSQLBlock();
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-wrench text-xs"></i> Fix Module';
+    }
+  }
+}
+
+// ── Helper to show SQL block ───────────────────────────────────
+function showSQLBlock() {
+  const sqlBlock = document.getElementById('fin-sql-block');
+  if (sqlBlock) sqlBlock.classList.remove('hidden');
+}
+
+// ── Table provisioning ────────────────────────────────────────
+async function runMigrationSQL() {
+  let creds = null;
+  try {
+    creds = JSON.parse(localStorage.getItem('wv_db_config') || 'null');
+  } catch(e) {}
+
+  if (!creds || creds.provider !== 'supabase') {
+    return Promise.reject(new Error('Auto-fix only works with Supabase. Please run the SQL manually in your Supabase SQL Editor.'));
+  }
+
+  const adapter = window.WorkVoltDB;
+  const client  = adapter && adapter._client;
+
+  if (!client || typeof client.rpc !== 'function') {
+    return Promise.reject(new Error('Supabase client not available.'));
+  }
+
+  const { data, error } = await client.rpc('exec_sql', { query: FIN_MIGRATION_SQL_NON_DESTRUCTIVE });
+  if (error) throw new Error(error.message || 'Migration failed');
+  return { autoRan: true };
+}
+
+async function provisionTables() {
+  try {
+    await window.WorkVoltDB.list('invoices', {}, { limit: 1 });
     return; // tables exist
   } catch(e) {
     sessionStorage.setItem('wv_fin_needs_setup', '1');
   }
-}
-
-async function runMigrationSQL() {
-  let creds = null;
-  try { creds = JSON.parse(localStorage.getItem('wv_db_config') || 'null'); } catch(e) {}
-  if (!creds || creds.provider !== 'supabase') {
-    throw new Error('Auto-fix only works with Supabase. Please run the SQL manually in your Supabase SQL Editor.');
-  }
-  const client = window.WorkVoltDB.getAdapter()._client;
-  if (!client || typeof client.rpc !== 'function') {
-    throw new Error('Supabase client not available.');
-  }
-  const { error } = await client.rpc('exec_sql', { query: FIN_MIGRATION_SQL });
-  if (error) throw new Error(error.message || 'Migration failed');
-  return { autoRan: true };
 }
 
 function renderSetupBanner() {
@@ -326,7 +697,7 @@ function renderSetupBanner() {
           then click Reload:
         </p>
         <div class="relative">
-          <pre id="fin-sql-pre" class="bg-slate-900 text-emerald-300 text-xs rounded-xl p-4 overflow-x-auto whitespace-pre-wrap max-h-72">${FIN_MIGRATION_SQL.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+          <pre id="fin-sql-pre" class="bg-slate-900 text-emerald-300 text-xs rounded-xl p-4 overflow-x-auto whitespace-pre-wrap max-h-72">${esc(FIN_MIGRATION_SQL_NON_DESTRUCTIVE)}</pre>
           <button id="fin-copy-sql-btn" class="absolute top-2 right-2 px-2 py-1 text-[10px] font-bold bg-slate-700 hover:bg-slate-600 text-white rounded-lg cursor-pointer border-none">
             <i class="fas fa-copy mr-1"></i>Copy
           </button>
@@ -338,6 +709,84 @@ function renderSetupBanner() {
     </div>`;
 }
 
+// ── Render Fix Module dropdown ────────────────────────────────
+function renderFixModuleDropdown() {
+  return '<div class="relative">' +
+    '<button id="fin-fix-dropdown-btn" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 cursor-pointer">' +
+      '<i class="fas fa-wrench text-[10px]"></i>Fix Module<i class="fas fa-chevron-down text-[10px] ml-1"></i>' +
+    '</button>' +
+    '<div id="fin-fix-dropdown" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">' +
+      '<div class="px-3 py-2 bg-slate-50 border-b border-slate-100">' +
+        '<p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Database Actions</p>' +
+      '</div>' +
+      '<button id="fin-fix-quick" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">' +
+        '<i class="fas fa-magic text-emerald-500 w-4"></i>Quick Fix (Add Missing)' +
+      '</button>' +
+      '<button id="fin-fix-reinstall" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">' +
+        '<i class="fas fa-trash-restore text-amber-500 w-4"></i>Reinstall (Drop & Recreate)' +
+      '</button>' +
+      '<button id="fin-fix-showsql" class="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">' +
+        '<i class="fas fa-code text-blue-500 w-4"></i>Show SQL Only' +
+      '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+// ── Bind Fix Module dropdown events ───────────────────────────
+function bindFixModuleDropdown() {
+  const dropdownBtn = document.getElementById('fin-fix-dropdown-btn');
+  const dropdown = document.getElementById('fin-fix-dropdown');
+  
+  if (!dropdownBtn || !dropdown) return;
+  
+  dropdownBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const isHidden = dropdown.classList.contains('hidden');
+    dropdown.classList.toggle('hidden', !isHidden);
+  });
+  
+  document.addEventListener('click', function(e) {
+    if (!dropdownBtn.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.classList.add('hidden');
+    }
+  });
+  
+  const quickBtn = document.getElementById('fin-fix-quick');
+  if (quickBtn) {
+    quickBtn.addEventListener('click', function() {
+      dropdown.classList.add('hidden');
+      fixModule(false);
+    });
+  }
+  
+  const reinstallBtn = document.getElementById('fin-fix-reinstall');
+  if (reinstallBtn) {
+    reinstallBtn.addEventListener('click', function() {
+      dropdown.classList.add('hidden');
+      if (confirm('WARNING: This will DELETE all existing financial data and recreate the tables. Continue?')) {
+        fixModule(true);
+      }
+    });
+  }
+  
+  const showSqlBtn = document.getElementById('fin-fix-showsql');
+  if (showSqlBtn) {
+    showSqlBtn.addEventListener('click', function() {
+      dropdown.classList.add('hidden');
+      const sqlBlock = document.getElementById('fin-sql-block');
+      if (sqlBlock) {
+        sqlBlock.classList.remove('hidden');
+        sqlBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+  }
+}
+
+// ── Escaping helper ───────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+  
 function bindSetupBanner() {
   const statusEl = document.getElementById('fin-setup-status');
   const fixBtn   = document.getElementById('fin-fix-btn');
@@ -464,6 +913,25 @@ function render() {
       <div id="fin-header-actions" class="flex items-center gap-2"></div>
     </div>
 
+    <!-- Fix Module Status -->
+    <div id="fin-fix-status" class="hidden px-6 pt-2"></div>
+
+    <!-- SQL Block (initially hidden) -->
+    <div id="fin-sql-block" class="hidden px-6 py-3 bg-slate-50 border-b border-slate-200">
+      <div class="bg-slate-900 rounded-xl p-4 overflow-hidden">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Migration SQL</span>
+          <button id="fin-copy-sql-btn" class="px-2 py-1 text-[10px] font-bold bg-slate-700 hover:bg-slate-600 text-white rounded-lg cursor-pointer border-none">
+            <i class="fas fa-copy mr-1"></i>Copy
+          </button>
+        </div>
+        <pre id="fin-sql-pre" class="text-emerald-300 text-xs overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto" style="font-family:monospace">${esc(FIN_MIGRATION_SQL_DESTRUCTIVE)}</pre>
+      </div>
+      <button id="fin-reload-btn" class="mt-2 flex items-center gap-2 px-4 py-2 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-100">
+        <i class="fas fa-rotate-right text-xs"></i>Reload page
+      </button>
+    </div>
+
     <!-- Tab bar -->
     <div class="bg-white border-b border-slate-200 px-6 flex items-center gap-1 overflow-x-auto flex-shrink-0" id="fin-tabs">
       ${[
@@ -491,9 +959,33 @@ function render() {
     </div>
   </div>`;
 
+  // Bind SQL block buttons
+  const copyBtn = document.getElementById('fin-copy-sql-btn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function() {
+      navigator.clipboard.writeText(FIN_MIGRATION_SQL_DESTRUCTIVE).then(function() {
+        copyBtn.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
+        setTimeout(function() { copyBtn.innerHTML = '<i class="fas fa-copy mr-1"></i>Copy'; }, 2000);
+      }).catch(function() {
+        const pre = document.getElementById('fin-sql-pre');
+        if (pre) {
+          const range = document.createRange();
+          range.selectNodeContents(pre);
+          window.getSelection().removeAllRanges();
+          window.getSelection().addRange(range);
+        }
+      });
+    });
+  }
+
+  const reloadBtn = document.getElementById('fin-reload-btn');
+  if (reloadBtn) {
+    reloadBtn.addEventListener('click', function() { window.location.reload(); });
+  }
+
   // expose tab switcher
   window.FinPage = { tab: switchTab, refresh: loadAll };
-}
+} 
 
 function switchTab(t) {
   state.tab = t;
@@ -512,6 +1004,17 @@ function switchTab(t) {
 function updateHeaderActions() {
   const el = document.getElementById('fin-header-actions');
   if (!el) return;
+  
+  // Check if user is admin (adjust role check as needed)
+  const isAdmin = () => {
+    try { 
+      const user = window.WorkVolt.user();
+      return ['SuperAdmin','Admin'].includes(user?.role); 
+    } catch(e) { 
+      return false; 
+    }
+  };
+
   const actions = {
     invoices: `<button onclick="FinPage.newInvoice()" class="btn-fin-primary"><i class="fas fa-plus text-xs"></i>New Invoice</button>`,
     expenses: `<button onclick="FinPage.newExpense()" class="btn-fin-primary"><i class="fas fa-plus text-xs"></i>New Expense</button>`,
@@ -519,8 +1022,10 @@ function updateHeaderActions() {
     budgets:  `<button onclick="FinPage.newBudget()" class="btn-fin-primary"><i class="fas fa-plus text-xs"></i>Set Budget</button>`,
     accounts: `<button onclick="FinPage.newAccount()" class="btn-fin-primary"><i class="fas fa-plus text-xs"></i>New Account</button>`,
   };
-    el.innerHTML = (actions[state.tab] || '') + `
-    <style>
+  
+  el.innerHTML = (actions[state.tab] || '') + 
+    (isAdmin() ? renderFixModuleDropdown() : '') +
+    `<style>
       .btn-fin-primary{display:flex;align-items:center;gap:.4rem;padding:.5rem 1rem;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:.8125rem;font-weight:600;cursor:pointer;transition:background .15s;font-family:inherit}
       .btn-fin-primary:hover{background:#059669}
       .btn-fin-secondary{display:flex;align-items:center;gap:.4rem;padding:.5rem 1rem;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:.8125rem;font-weight:600;cursor:pointer;transition:background .15s;font-family:inherit}
@@ -535,6 +1040,9 @@ function updateHeaderActions() {
       .collapsible-content.collapsed{max-height:0;max-width:0}
       .collapsible-content.expanded{max-height:500px;max-width:100%}
     </style>`;
+
+  // Bind Fix Module dropdown
+  bindFixModuleDropdown();
 
   // Attach handlers
   window.FinPage.newInvoice = () => showInvoiceModal();
