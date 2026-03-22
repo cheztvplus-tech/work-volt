@@ -78,73 +78,150 @@ window.WorkVoltPages['payroll'] = function(container) {
   }
 
   // ── Table provisioning ────────────────────────────────────────
-  // Creates required Supabase tables on first install if they don't exist.
-  // Uses the REST API directly — safe to call every load, skips if tables exist.
+  // The migration SQL — idempotent, safe to run multiple times.
+  // Uses IF NOT EXISTS for tables and ADD COLUMN IF NOT EXISTS for columns
+  // so it only creates what's missing and never touches existing data.
+  var MIGRATION_SQL = [
+    'create table if not exists payroll_runs (',
+    '  id text primary key,',
+    '  employee_id text,',
+    '  employee_name text,',
+    '  period_start date,',
+    '  period_end date,',
+    '  pay_type text,',
+    '  rate numeric,',
+    '  hours_regular numeric default 0,',
+    '  hours_ot numeric default 0,',
+    '  hours_total numeric default 0,',
+    '  gross numeric default 0,',
+    '  bonuses numeric default 0,',
+    '  deductions numeric default 0,',
+    '  tax_federal numeric default 0,',
+    '  tax_fica numeric default 0,',
+    '  tax_state numeric default 0,',
+    '  tax_total numeric default 0,',
+    '  net numeric default 0,',
+    '  status text default \'Draft\',',
+    '  notes text,',
+    '  approved_by text,',
+    '  created_by text,',
+    '  gross_salary numeric default 0,',
+    '  tax numeric default 0,',
+    '  overtime_pay numeric default 0,',
+    '  overtime_hours numeric default 0,',
+    '  created_at timestamptz default now()',
+    ');',
+    'create table if not exists payroll_employees (',
+    '  id text primary key,',
+    '  employee_id text,',
+    '  pay_type text,',
+    '  salary numeric,',
+    '  hourly_rate numeric,',
+    '  created_at timestamptz default now()',
+    ');',
+    'create table if not exists payroll_audit (',
+    '  id uuid primary key default gen_random_uuid(),',
+    '  run_id text,',
+    '  action text,',
+    '  old_status text,',
+    '  new_status text,',
+    '  performed_by text,',
+    '  note text,',
+    '  created_at timestamptz default now()',
+    ');',
+    // ADD COLUMN IF NOT EXISTS guards — safe to run even if columns already exist
+    'alter table payroll_runs add column if not exists gross_salary numeric default 0;',
+    'alter table payroll_runs add column if not exists tax numeric default 0;',
+    'alter table payroll_runs add column if not exists overtime_pay numeric default 0;',
+    'alter table payroll_runs add column if not exists overtime_hours numeric default 0;',
+    'alter table payroll_runs add column if not exists tax_federal numeric default 0;',
+    'alter table payroll_runs add column if not exists tax_fica numeric default 0;',
+    'alter table payroll_runs add column if not exists tax_state numeric default 0;',
+    'alter table payroll_runs add column if not exists tax_total numeric default 0;',
+    'alter table payroll_runs add column if not exists approved_by text;',
+    'alter table payroll_runs add column if not exists created_by text;',
+    'alter table payroll_employees add column if not exists hourly_rate numeric;',
+    'alter table payroll_employees add column if not exists employee_id text;',
+  ].join('\n');
+
+  // Execute SQL directly against Supabase using stored credentials.
+  // Supabase exposes a /rest/v1/rpc or /pg endpoint — we use the
+  // pg query endpoint which is available when pg_net / pg extension is on,
+  // but more reliably we use the Management API's SQL endpoint via service key.
+  // Since we only have the anon key, we use the Supabase REST /rpc approach
+  // with a stored procedure — but the safest universal approach is the
+  // supabase-js query() method exposed on newer SDK versions.
+  // We call it via the adapter's internal _client if available.
+  function runMigrationSQL() {
+    var creds = null;
+    try {
+      var raw = localStorage.getItem('wv_db_config');
+      creds = raw ? JSON.parse(raw) : null;
+    } catch(e) {}
+
+    if (!creds || creds.provider !== 'supabase') {
+      return Promise.reject(new Error('Auto-fix only works with Supabase. Please run the SQL manually in your Supabase dashboard.'));
+    }
+
+    var url     = creds.credentials.url;
+    var anonKey = creds.credentials.anonKey;
+
+    // Use Supabase's pg REST endpoint — available on all projects
+    // POST /rest/v1/rpc/exec_sql with { sql } — requires the function to exist.
+    // More reliably: POST to the query endpoint via supabase-js internal client.
+    // The safest cross-project approach is the Supabase REST SQL endpoint:
+    // https://<project>.supabase.co/rest/v1/ doesn't expose raw SQL,
+    // but we can reach it via the adapter's _client.rpc if we create a helper fn,
+    // OR we use fetch to the pg endpoint that supabase exposes for service roles.
+    //
+    // Best universal approach without a service key: use the adapter's _client
+    // which has already authenticated and has the anon key loaded.
+    var adapter = window.WorkVolt.db;
+    var client  = adapter && adapter._client; // SupabaseAdapter stores this
+
+    // supabase-js v2 exposes client.rpc() — we can call a helper RPC if it exists,
+    // or use the newer client.rpc('exec_sql', {sql}) pattern.
+    // Even simpler: supabase-js v2 exposes client.schema or client.from().
+    // The most reliable path is to split statements and run them individually
+    // via a try/catch approach using the REST insert/select trick isn't viable.
+    //
+    // ✅ ACTUAL APPROACH: POST to Supabase's /pg/query endpoint
+    // This endpoint is available on all Supabase projects and accepts raw SQL
+    // when called with the service role key. Since we only have anon key,
+    // we POST to /rest/v1/rpc/exec_sql which requires creating that function.
+    //
+    // The cleanest universal solution: use the postgres-meta endpoint or
+    // call supabase-js client.rpc directly. Since we already loaded the SDK,
+    // we can call window.supabase client methods.
+    //
+    // Final decision: use the /pg/query API that Supabase exposes — it works
+    // with the anon key when RLS allows it, but for DDL we need elevated access.
+    // We'll use the approach of sending each statement via a special RPC function.
+    //
+    // REAL SOLUTION: Supabase REST API for DDL requires the Postgres URL or
+    // service role key. We don't have those. So we do the NEXT best thing:
+    // attempt to use client.rpc('exec_sql', {query: sql}) and if that fails
+    // (function doesn't exist), fall back to showing the SQL with a copy button.
+    //
+    // This means: first try auto-execute, gracefully fall back to copy-paste.
+
+    if (!client || typeof client.rpc !== 'function') {
+      return Promise.reject(new Error('Supabase client not available'));
+    }
+
+    return client.rpc('exec_sql', { query: MIGRATION_SQL })
+      .then(function(res) {
+        if (res.error) throw new Error(res.error.message || 'Migration failed');
+        return { autoRan: true };
+      });
+  }
+
+  // Check if tables exist — sets wv_payroll_needs_setup if missing
   function provisionTables() {
     var db = window.WorkVolt.db;
-    // Quick check: if we can list payroll_runs without error, tables exist
     return db.list('payroll_runs', {}, { limit: 1 })
-      .then(function() { return; }) // tables exist, nothing to do
+      .then(function() { return; }) // all good
       .catch(function() {
-        // Tables missing — show a one-time setup notice
-        // Actual table creation requires Supabase dashboard or migration tool.
-        // We surface the SQL so the user/admin can run it once.
-        var sql = [
-          '-- Run this once in your Supabase SQL Editor',
-          '',
-          'create table if not exists payroll_runs (',
-          '  id text primary key,',
-          '  employee_id text,',
-          '  employee_name text,',
-          '  period_start date,',
-          '  period_end date,',
-          '  pay_type text,',
-          '  rate numeric,',
-          '  hours_regular numeric default 0,',
-          '  hours_ot numeric default 0,',
-          '  hours_total numeric default 0,',
-          '  gross numeric default 0,',
-          '  bonuses numeric default 0,',
-          '  deductions numeric default 0,',
-          '  tax_federal numeric default 0,',
-          '  tax_fica numeric default 0,',
-          '  tax_state numeric default 0,',
-          '  tax_total numeric default 0,',
-          '  net numeric default 0,',
-          '  status text default \'Draft\',',
-          '  notes text,',
-          '  approved_by text,',
-          '  created_by text,',
-          '  gross_salary numeric default 0,',
-          '  tax numeric default 0,',
-          '  overtime_pay numeric default 0,',
-          '  overtime_hours numeric default 0,',
-          '  created_at timestamptz default now()',
-          ');',
-          '',
-          'create table if not exists payroll_employees (',
-          '  id text primary key,',
-          '  employee_id text,',
-          '  pay_type text,',
-          '  salary numeric,',
-          '  hourly_rate numeric,',
-          '  created_at timestamptz default now()',
-          ');',
-          '',
-          'create table if not exists payroll_audit (',
-          '  id uuid primary key default gen_random_uuid(),',
-          '  run_id text,',
-          '  action text,',
-          '  old_status text,',
-          '  new_status text,',
-          '  performed_by text,',
-          '  note text,',
-          '  created_at timestamptz default now()',
-          ');',
-        ].join('\n');
-
-        // Store SQL in sessionStorage so the setup banner can show it
-        sessionStorage.setItem('wv_payroll_setup_sql', sql);
         sessionStorage.setItem('wv_payroll_needs_setup', '1');
       });
   }
@@ -463,6 +540,140 @@ window.WorkVoltPages['payroll'] = function(container) {
   }
 
   // ── Load data ─────────────────────────────────────────────────
+  // ── Setup banner ──────────────────────────────────────────────
+  function renderSetupBanner() {
+    return (
+      '<div class="max-w-2xl mx-auto mt-8 p-6 bg-amber-50 border border-amber-300 rounded-2xl">' +
+        '<div class="flex items-center gap-3 mb-4">' +
+          '<div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">' +
+            '<i class="fas fa-database text-amber-600"></i>' +
+          '</div>' +
+          '<div>' +
+            '<p class="font-extrabold text-slate-900">Payroll tables not found</p>' +
+            '<p class="text-xs text-slate-500 mt-0.5">The required database tables don\'t exist in your Supabase project yet.</p>' +
+          '</div>' +
+        '</div>' +
+
+        // Status area
+        '<div id="pr-setup-status" class="hidden mb-4"></div>' +
+
+        // Primary action
+        '<div class="flex gap-3 mb-5">' +
+          '<button id="pr-fix-btn" class="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white rounded-xl border-none cursor-pointer" style="background:#10b981">' +
+            '<i class="fas fa-wrench text-xs"></i>Fix Tables' +
+          '</button>' +
+          '<button id="pr-show-sql-btn" class="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">' +
+            '<i class="fas fa-code text-xs"></i>Show SQL' +
+          '</button>' +
+        '</div>' +
+
+        // Collapsible SQL block
+        '<div id="pr-sql-block" class="hidden">' +
+          '<p class="text-xs text-slate-500 mb-2">Copy and run this in your ' +
+            '<a href="https://supabase.com/dashboard" target="_blank" class="text-blue-600 underline font-semibold">Supabase SQL Editor</a>' +
+            ', then click Reload:' +
+          '</p>' +
+          '<div class="relative">' +
+            '<pre id="pr-sql-pre" class="bg-slate-900 text-emerald-300 text-xs rounded-xl p-4 overflow-x-auto whitespace-pre-wrap">' + esc(MIGRATION_SQL) + '</pre>' +
+            '<button id="pr-copy-sql-btn" class="absolute top-2 right-2 px-2 py-1 text-[10px] font-bold bg-slate-700 hover:bg-slate-600 text-white rounded-lg cursor-pointer border-none">' +
+              '<i class="fas fa-copy mr-1"></i>Copy' +
+            '</button>' +
+          '</div>' +
+          '<button id="pr-reload-btn" class="mt-3 flex items-center gap-2 px-4 py-2 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-100">' +
+            '<i class="fas fa-rotate-right text-xs"></i>Reload page' +
+          '</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function bindSetupBanner(el) {
+    var statusEl  = document.getElementById('pr-setup-status');
+    var fixBtn    = document.getElementById('pr-fix-btn');
+    var sqlBtn    = document.getElementById('pr-show-sql-btn');
+    var sqlBlock  = document.getElementById('pr-sql-block');
+    var copyBtn   = document.getElementById('pr-copy-sql-btn');
+    var reloadBtn = document.getElementById('pr-reload-btn');
+
+    function setStatus(msg, type) {
+      // type: 'loading' | 'success' | 'error'
+      var styles = {
+        loading: 'bg-blue-50 border-blue-200 text-blue-700',
+        success: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+        error:   'bg-red-50 border-red-200 text-red-700',
+      };
+      var icons = {
+        loading: '<i class="fas fa-circle-notch fa-spin mr-2"></i>',
+        success: '<i class="fas fa-check-circle mr-2"></i>',
+        error:   '<i class="fas fa-exclamation-circle mr-2"></i>',
+      };
+      statusEl.className = 'flex items-center p-3 rounded-xl border text-sm font-medium ' + (styles[type] || styles.error);
+      statusEl.innerHTML = (icons[type] || '') + esc(msg);
+      statusEl.classList.remove('hidden');
+    }
+
+    if (fixBtn) {
+      fixBtn.addEventListener('click', function() {
+        fixBtn.disabled = true;
+        fixBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Fixing…';
+        setStatus('Running migration — creating missing tables and columns…', 'loading');
+
+        runMigrationSQL()
+          .then(function(result) {
+            if (result && result.autoRan) {
+              setStatus('Tables created successfully! Reloading…', 'success');
+              setTimeout(function() { window.location.reload(); }, 1200);
+            }
+          })
+          .catch(function(err) {
+            // Auto-execute failed — fall back to showing SQL
+            var msg = err.message || 'Could not auto-run SQL.';
+            // If exec_sql RPC doesn't exist, give a clear explanation
+            if (msg.indexOf('exec_sql') !== -1 || msg.indexOf('function') !== -1 || msg.indexOf('does not exist') !== -1) {
+              setStatus('Auto-fix requires an exec_sql helper in your database. Showing SQL below — copy and run it manually.', 'error');
+            } else {
+              setStatus(msg + ' — showing SQL below to run manually.', 'error');
+            }
+            // Show SQL block as fallback
+            if (sqlBlock) sqlBlock.classList.remove('hidden');
+            fixBtn.disabled = false;
+            fixBtn.innerHTML = '<i class="fas fa-wrench text-xs"></i>Fix Tables';
+          });
+      });
+    }
+
+    if (sqlBtn) {
+      sqlBtn.addEventListener('click', function() {
+        if (sqlBlock) sqlBlock.classList.toggle('hidden');
+        sqlBtn.innerHTML = sqlBlock && sqlBlock.classList.contains('hidden')
+          ? '<i class="fas fa-code text-xs"></i>Show SQL'
+          : '<i class="fas fa-code text-xs"></i>Hide SQL';
+      });
+    }
+
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function() {
+        navigator.clipboard.writeText(MIGRATION_SQL).then(function() {
+          copyBtn.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
+          setTimeout(function() { copyBtn.innerHTML = '<i class="fas fa-copy mr-1"></i>Copy'; }, 2000);
+        }).catch(function() {
+          // Fallback: select the pre text
+          var pre = document.getElementById('pr-sql-pre');
+          if (pre) {
+            var range = document.createRange();
+            range.selectNodeContents(pre);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+          }
+        });
+      });
+    }
+
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', function() { window.location.reload(); });
+    }
+  }
+
   function loadData() {
     var el = document.getElementById('pr-content');
     if (el) el.innerHTML = '<div class="flex items-center justify-center py-24 text-slate-400"><i class="fas fa-circle-notch fa-spin text-2xl mr-3"></i>Loading payroll…</div>';
@@ -470,23 +681,11 @@ window.WorkVoltPages['payroll'] = function(container) {
     // Provision tables on first load, then continue regardless
     provisionTables().catch(function(){}).then(function() {
 
-    // Show setup SQL banner if tables were just detected as missing
+    // Show setup banner if tables were detected as missing
     if (sessionStorage.getItem('wv_payroll_needs_setup') === '1') {
       sessionStorage.removeItem('wv_payroll_needs_setup');
-      var sql = sessionStorage.getItem('wv_payroll_setup_sql') || '';
-      if (el) el.innerHTML =
-        '<div class="max-w-2xl mx-auto mt-8 p-6 bg-amber-50 border border-amber-300 rounded-2xl">' +
-          '<div class="flex items-center gap-3 mb-4">' +
-            '<div class="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center"><i class="fas fa-database text-amber-600"></i></div>' +
-            '<div><p class="font-extrabold text-slate-900">One-time setup required</p>' +
-            '<p class="text-xs text-slate-500">Payroll tables don\'t exist yet in your Supabase project.</p></div>' +
-          '</div>' +
-          '<p class="text-sm text-slate-700 mb-3">Copy and run this SQL in your <a href="https://supabase.com/dashboard" target="_blank" class="text-blue-600 underline font-semibold">Supabase SQL Editor</a>, then reload this page:</p>' +
-          '<pre class="bg-slate-900 text-emerald-300 text-xs rounded-xl p-4 overflow-x-auto whitespace-pre-wrap mb-4">' + sql + '</pre>' +
-          '<button onclick="window.location.reload()" class="px-4 py-2 bg-emerald-500 text-white text-sm font-bold rounded-xl hover:bg-emerald-600 cursor-pointer border-none">' +
-            '<i class="fas fa-refresh mr-2"></i>Reload after running SQL' +
-          '</button>' +
-        '</div>';
+      if (el) el.innerHTML = renderSetupBanner();
+      bindSetupBanner(el);
       return;
     }
 
