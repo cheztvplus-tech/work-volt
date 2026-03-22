@@ -261,9 +261,9 @@ window.WorkVoltPages['payroll'] = function(container) {
           copyBtn.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
           setTimeout(function() { copyBtn.innerHTML = '<i class="fas fa-copy mr-1"></i>Copy'; }, 2000);
         }).catch(function() {
-          var pre = document.getElementById('pr-sql-pre');
+          var pre = .getElementById('pr-sql-pre');
           if (pre) {
-            var range = document.createRange();
+            var range = .createRange();
             range.selectNodeContents(pre);
             window.getSelection().removeAllRanges();
             window.getSelection().addRange(range);
@@ -305,11 +305,11 @@ window.WorkVoltPages['payroll'] = function(container) {
     catch(e) { return d; }
   }
   function genId(prefix) {
-    // Return proper UUID instead of custom string
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
       var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
     });
+    return prefix ? prefix + '-' + uuid : uuid;
   }
   function toast(msg, type) {
     if (window.WorkVolt && window.WorkVolt.toast) window.WorkVolt.toast(msg, type||'info');
@@ -2211,4 +2211,5 @@ window.WorkVoltPages['payroll'] = function(container) {
   var old = document.getElementById(MODAL_ID);
   if (old) old.innerHTML = '';
   render();
+};
 };
