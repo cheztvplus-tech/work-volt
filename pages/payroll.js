@@ -433,11 +433,12 @@ function fixModule(dropFirst) {
     catch(e) { return d; }
   }
   function genId(prefix) {
-    var d = new Date();
-    var ds = String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') + d.getFullYear();
-    var rand = Math.random().toString(36).slice(2,8) + Math.random().toString(36).slice(2,6);
-    return (prefix||'PR') + '-' + ds + '-' + rand.slice(0,8).toUpperCase();
-  }
+  // Return proper UUID instead of custom string
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
   function toast(msg, type) {
     if (window.WorkVolt && window.WorkVolt.toast) window.WorkVolt.toast(msg, type||'info');
   }
