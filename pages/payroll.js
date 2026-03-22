@@ -129,19 +129,32 @@ window.WorkVoltPages['payroll'] = function(container) {
     '  note text,',
     '  created_at timestamptz default now()',
     ');',
-    // ADD COLUMN IF NOT EXISTS guards — safe to run even if columns already exist
-    'alter table payroll_runs add column if not exists gross_salary numeric default 0;',
-    'alter table payroll_runs add column if not exists tax numeric default 0;',
-    'alter table payroll_runs add column if not exists overtime_pay numeric default 0;',
-    'alter table payroll_runs add column if not exists overtime_hours numeric default 0;',
+    // ADD COLUMN IF NOT EXISTS guards — covers installs that already have
+    // payroll_runs from the old unified schema (which was missing many columns).
+    // Safe to run multiple times — only adds what is actually missing.
+    'alter table payroll_runs add column if not exists pay_type text;',
+    'alter table payroll_runs add column if not exists rate numeric default 0;',
+    'alter table payroll_runs add column if not exists hours_regular numeric default 0;',
+    'alter table payroll_runs add column if not exists hours_ot numeric default 0;',
+    'alter table payroll_runs add column if not exists hours_total numeric default 0;',
+    'alter table payroll_runs add column if not exists bonuses numeric default 0;',
+    'alter table payroll_runs add column if not exists deductions numeric default 0;',
     'alter table payroll_runs add column if not exists tax_federal numeric default 0;',
     'alter table payroll_runs add column if not exists tax_fica numeric default 0;',
     'alter table payroll_runs add column if not exists tax_state numeric default 0;',
     'alter table payroll_runs add column if not exists tax_total numeric default 0;',
+    'alter table payroll_runs add column if not exists gross_salary numeric default 0;',
+    'alter table payroll_runs add column if not exists tax numeric default 0;',
+    'alter table payroll_runs add column if not exists overtime_pay numeric default 0;',
+    'alter table payroll_runs add column if not exists overtime_hours numeric default 0;',
     'alter table payroll_runs add column if not exists approved_by text;',
     'alter table payroll_runs add column if not exists created_by text;',
+    'alter table payroll_runs add column if not exists employee_name text;',
+    'alter table payroll_runs add column if not exists notes text;',
     'alter table payroll_employees add column if not exists hourly_rate numeric;',
     'alter table payroll_employees add column if not exists employee_id text;',
+    'alter table payroll_employees add column if not exists pay_type text;',
+    'alter table payroll_employees add column if not exists salary numeric;',
   ].join('\n');
 
   // Execute SQL directly against Supabase using stored credentials.
@@ -160,55 +173,18 @@ window.WorkVoltPages['payroll'] = function(container) {
     } catch(e) {}
 
     if (!creds || creds.provider !== 'supabase') {
-      return Promise.reject(new Error('Auto-fix only works with Supabase. Please run the SQL manually in your Supabase dashboard.'));
+      return Promise.reject(new Error('Auto-fix only works with Supabase. Please run the SQL manually in your Supabase SQL Editor.'));
     }
 
-    var url     = creds.credentials.url;
-    var anonKey = creds.credentials.anonKey;
-
-    // Use Supabase's pg REST endpoint — available on all projects
-    // POST /rest/v1/rpc/exec_sql with { sql } — requires the function to exist.
-    // More reliably: POST to the query endpoint via supabase-js internal client.
-    // The safest cross-project approach is the Supabase REST SQL endpoint:
-    // https://<project>.supabase.co/rest/v1/ doesn't expose raw SQL,
-    // but we can reach it via the adapter's _client.rpc if we create a helper fn,
-    // OR we use fetch to the pg endpoint that supabase exposes for service roles.
-    //
-    // Best universal approach without a service key: use the adapter's _client
-    // which has already authenticated and has the anon key loaded.
     var adapter = window.WorkVolt.db;
-    var client  = adapter && adapter._client; // SupabaseAdapter stores this
-
-    // supabase-js v2 exposes client.rpc() — we can call a helper RPC if it exists,
-    // or use the newer client.rpc('exec_sql', {sql}) pattern.
-    // Even simpler: supabase-js v2 exposes client.schema or client.from().
-    // The most reliable path is to split statements and run them individually
-    // via a try/catch approach using the REST insert/select trick isn't viable.
-    //
-    // ✅ ACTUAL APPROACH: POST to Supabase's /pg/query endpoint
-    // This endpoint is available on all Supabase projects and accepts raw SQL
-    // when called with the service role key. Since we only have anon key,
-    // we POST to /rest/v1/rpc/exec_sql which requires creating that function.
-    //
-    // The cleanest universal solution: use the postgres-meta endpoint or
-    // call supabase-js client.rpc directly. Since we already loaded the SDK,
-    // we can call window.supabase client methods.
-    //
-    // Final decision: use the /pg/query API that Supabase exposes — it works
-    // with the anon key when RLS allows it, but for DDL we need elevated access.
-    // We'll use the approach of sending each statement via a special RPC function.
-    //
-    // REAL SOLUTION: Supabase REST API for DDL requires the Postgres URL or
-    // service role key. We don't have those. So we do the NEXT best thing:
-    // attempt to use client.rpc('exec_sql', {query: sql}) and if that fails
-    // (function doesn't exist), fall back to showing the SQL with a copy button.
-    //
-    // This means: first try auto-execute, gracefully fall back to copy-paste.
+    var client  = adapter && adapter._client;
 
     if (!client || typeof client.rpc !== 'function') {
-      return Promise.reject(new Error('Supabase client not available'));
+      return Promise.reject(new Error('Supabase client not available.'));
     }
 
+    // Tries exec_sql RPC (requires the helper function in your DB).
+    // If it doesn't exist, the catch in bindSetupBanner falls back to Show SQL.
     return client.rpc('exec_sql', { query: MIGRATION_SQL })
       .then(function(res) {
         if (res.error) throw new Error(res.error.message || 'Migration failed');
