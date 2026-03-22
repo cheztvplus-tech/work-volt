@@ -2060,7 +2060,9 @@ function fixModule(dropFirst) {
       if (dup && !confirm('A pay run for this employee and period already exists ('+dup.id+'). Create another?')) return;
     }
 
-    if (!isEdit) { params.id = genId('PR'); params.created_by = myUserId(); params.status = 'Draft'; }
+    if (!isEdit) { 
+  params.created_by = myUserId(); 
+  params.status = 'Draft'; }
     else          params.id = runId;
 
     var btn = document.getElementById('prf-save');
