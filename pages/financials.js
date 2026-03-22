@@ -50,6 +50,350 @@ function badge(status) {
   return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${cls}">${status || '—'}</span>`;
 }
 
+// ── Migration SQL ─────────────────────────────────────────────────
+// Idempotent — safe to run multiple times. Creates tables + columns
+// that are missing without touching anything that already exists.
+const FIN_MIGRATION_SQL = `
+create extension if not exists "uuid-ossp";
+
+create table if not exists public.accounts (
+  id              uuid primary key default uuid_generate_v4(),
+  account_name    text not null,
+  account_number  text,
+  type            text not null default 'Asset',
+  category        text,
+  current_balance numeric(14,2) default 0,
+  description     text,
+  is_active       boolean default true,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create table if not exists public.invoices (
+  id              uuid primary key default uuid_generate_v4(),
+  invoice_number  text,
+  customer        text not null,
+  customer_email  text,
+  issue_date      date,
+  due_date        date,
+  status          text default 'Draft',
+  subtotal        numeric(14,2) default 0,
+  tax_rate        numeric(5,2) default 0,
+  tax_amount      numeric(14,2) default 0,
+  total           numeric(14,2) default 0,
+  balance_due     numeric(14,2) default 0,
+  deposit_account text,
+  notes           text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create table if not exists public.expenses (
+  id               uuid primary key default uuid_generate_v4(),
+  date             date not null,
+  vendor           text,
+  category         text,
+  description      text,
+  amount           numeric(12,2) not null default 0,
+  paid_from        text,
+  status           text default 'Pending',
+  approved_by      text,
+  notes            text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+
+create table if not exists public.bills (
+  id              uuid primary key default uuid_generate_v4(),
+  bill_number     text,
+  vendor          text not null,
+  vendor_email    text,
+  category        text,
+  issue_date      date,
+  due_date        date,
+  amount          numeric(14,2) not null default 0,
+  balance_due     numeric(14,2) default 0,
+  status          text default 'Unpaid',
+  recurring       boolean default false,
+  recurring_day   int,
+  monthly_payment numeric(14,2) default 0,
+  paid_from       text,
+  notes           text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create table if not exists public.budgets (
+  id             uuid primary key default uuid_generate_v4(),
+  year           int not null,
+  month          int not null,
+  category       text not null,
+  budget_amount  numeric(14,2) not null default 0,
+  notes          text,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+
+create table if not exists public.payments (
+  id             uuid primary key default uuid_generate_v4(),
+  reference_id   text not null,
+  reference_type text not null,
+  date           date not null,
+  amount         numeric(14,2) not null,
+  method         text,
+  account        text,
+  notes          text,
+  created_by     text,
+  created_at     timestamptz not null default now()
+);
+
+-- ADD COLUMN IF NOT EXISTS guards for columns that may be missing on older installs
+alter table public.invoices    add column if not exists deposit_account text;
+alter table public.invoices    add column if not exists subtotal        numeric(14,2) default 0;
+alter table public.invoices    add column if not exists tax_rate        numeric(5,2)  default 0;
+alter table public.invoices    add column if not exists tax_amount      numeric(14,2) default 0;
+alter table public.invoices    add column if not exists balance_due     numeric(14,2) default 0;
+alter table public.expenses    add column if not exists paid_from       text;
+alter table public.expenses    add column if not exists approved_by     text;
+alter table public.bills       add column if not exists recurring       boolean default false;
+alter table public.bills       add column if not exists recurring_day   int;
+alter table public.bills       add column if not exists monthly_payment numeric(14,2) default 0;
+alter table public.bills       add column if not exists paid_from       text;
+alter table public.bills       add column if not exists balance_due     numeric(14,2) default 0;
+alter table public.bills       add column if not exists vendor_email    text;
+alter table public.accounts    add column if not exists is_active       boolean default true;
+alter table public.accounts    add column if not exists current_balance numeric(14,2) default 0;
+
+-- RLS
+alter table public.accounts enable row level security;
+alter table public.invoices  enable row level security;
+alter table public.expenses  enable row level security;
+alter table public.bills     enable row level security;
+alter table public.budgets   enable row level security;
+alter table public.payments  enable row level security;
+
+drop policy if exists "Authenticated can manage accounts" on public.accounts;
+drop policy if exists "Authenticated can manage invoices" on public.invoices;
+drop policy if exists "Authenticated can manage expenses" on public.expenses;
+drop policy if exists "Authenticated can manage bills"    on public.bills;
+drop policy if exists "Authenticated can manage budgets"  on public.budgets;
+drop policy if exists "Authenticated can create payments" on public.payments;
+drop policy if exists "Authenticated can read payments"   on public.payments;
+
+create policy "Authenticated can manage accounts" on public.accounts for all using (auth.role() = 'authenticated');
+create policy "Authenticated can manage invoices" on public.invoices  for all using (auth.role() = 'authenticated');
+create policy "Authenticated can manage expenses" on public.expenses  for all using (auth.role() = 'authenticated');
+create policy "Authenticated can manage bills"    on public.bills     for all using (auth.role() = 'authenticated');
+create policy "Authenticated can manage budgets"  on public.budgets   for all using (auth.role() = 'authenticated');
+create policy "Authenticated can read payments"   on public.payments  for select using (auth.role() = 'authenticated');
+create policy "Authenticated can create payments" on public.payments  for insert with check (auth.role() = 'authenticated');
+
+-- Database helper functions used by the reports tab
+create or replace function public.get_financial_dashboard()
+returns jsonb as $$
+declare
+  v_monthly_revenue numeric; v_monthly_expenses numeric;
+  v_outstanding_ar numeric; v_overdue_ar numeric; v_bills_due numeric;
+  v_this_month text;
+begin
+  v_this_month := to_char(current_date, 'YYYY-MM');
+  select coalesce(sum(total),0) into v_monthly_revenue from public.invoices where to_char(issue_date,'YYYY-MM') = v_this_month;
+  select coalesce(sum(amount),0) into v_monthly_expenses from public.expenses where to_char(date,'YYYY-MM') = v_this_month and status = 'Approved';
+  select coalesce(sum(balance_due),0) into v_outstanding_ar from public.invoices where status in ('Sent','Partial','Overdue');
+  select coalesce(sum(balance_due),0) into v_overdue_ar from public.invoices where status = 'Overdue';
+  select coalesce(sum(balance_due),0) into v_bills_due from public.bills where status in ('Unpaid','Partial');
+  return jsonb_build_object(
+    'monthly_revenue', v_monthly_revenue, 'monthly_expenses', v_monthly_expenses,
+    'net_profit', v_monthly_revenue - v_monthly_expenses,
+    'outstanding_ar', v_outstanding_ar, 'overdue_ar', v_overdue_ar, 'bills_due', v_bills_due,
+    'total_invoices', (select count(*) from public.invoices),
+    'total_expenses', (select count(*) from public.expenses where status = 'Approved')
+  );
+end;
+$$ language plpgsql security definer;
+
+create or replace function public.get_budget_vs_actual(p_year int, p_month int)
+returns table (category text, budget numeric, actual numeric, variance numeric, status text) as $$
+begin
+  return query
+  with actuals as (
+    select e.category as cat, coalesce(sum(e.amount),0) as spent
+    from public.expenses e
+    where extract(year from e.date) = p_year and extract(month from e.date) = p_month
+    group by e.category
+  ),
+  budgeted as (
+    select b.category as cat, b.budget_amount as budg from public.budgets b
+    where b.year = p_year and b.month = p_month
+  )
+  select coalesce(b.cat,a.cat),
+    coalesce(b.budg,0), coalesce(a.spent,0),
+    coalesce(b.budg,0) - coalesce(a.spent,0),
+    case when coalesce(b.budg,0) = 0 then 'Unbudgeted'
+         when coalesce(a.spent,0) > coalesce(b.budg,0) then 'Over Budget'
+         when coalesce(a.spent,0) > coalesce(b.budg,0)*0.9 then 'Near Limit'
+         else 'On Track' end
+  from budgeted b full outer join actuals a on b.cat = a.cat
+  where coalesce(b.budg,0) > 0 or coalesce(a.spent,0) > 0;
+end;
+$$ language plpgsql security definer;
+
+create or replace function public.get_income_statement(p_start_date date, p_end_date date)
+returns jsonb as $$
+declare v_revenue numeric; v_expenses numeric;
+begin
+  select coalesce(sum(total),0) into v_revenue from public.invoices
+    where status in ('Paid','Partial') and issue_date between p_start_date and p_end_date;
+  select coalesce(sum(amount),0) into v_expenses from (
+    select amount from public.expenses where status = 'Approved' and date between p_start_date and p_end_date
+    union all
+    select amount from public.bills where status = 'Paid' and issue_date between p_start_date and p_end_date
+  ) x;
+  return jsonb_build_object(
+    'revenue', v_revenue, 'expenses', v_expenses, 'net_profit', v_revenue - v_expenses,
+    'profit_margin', case when v_revenue > 0 then round(((v_revenue-v_expenses)/v_revenue)*100,2) else 0 end
+  );
+end;
+$$ language plpgsql security definer;
+
+create or replace function public.get_balance_sheet()
+returns jsonb as $$
+declare v_ar numeric; v_cash numeric; v_ap numeric;
+begin
+  select coalesce(sum(balance_due),0) into v_ar from public.invoices where status in ('Sent','Partial','Overdue');
+  select coalesce(sum(current_balance),0) into v_cash from public.accounts where type = 'Asset' and is_active = true;
+  select coalesce(sum(balance_due),0) into v_ap from public.bills where status in ('Unpaid','Partial','Overdue');
+  return jsonb_build_object(
+    'assets',      jsonb_build_object('cash', v_cash, 'accounts_receivable', v_ar, 'total', v_cash + v_ar),
+    'liabilities', jsonb_build_object('accounts_payable', v_ap, 'total', v_ap),
+    'equity',      jsonb_build_object('retained_earnings', v_cash + v_ar - v_ap, 'total', v_cash + v_ar - v_ap),
+    'balanced', true
+  );
+end;
+$$ language plpgsql security definer;
+`;
+
+// ── Auto-provision: check tables + run migration ───────────────────
+async function provisionTables() {
+  const db = window.WorkVoltDB;
+  try {
+    await db.list('invoices', {}, { limit: 1 });
+    return; // tables exist
+  } catch(e) {
+    sessionStorage.setItem('wv_fin_needs_setup', '1');
+  }
+}
+
+async function runMigrationSQL() {
+  let creds = null;
+  try { creds = JSON.parse(localStorage.getItem('wv_db_config') || 'null'); } catch(e) {}
+  if (!creds || creds.provider !== 'supabase') {
+    throw new Error('Auto-fix only works with Supabase. Please run the SQL manually in your Supabase SQL Editor.');
+  }
+  const client = window.WorkVoltDB.getAdapter()._client;
+  if (!client || typeof client.rpc !== 'function') {
+    throw new Error('Supabase client not available.');
+  }
+  const { error } = await client.rpc('exec_sql', { query: FIN_MIGRATION_SQL });
+  if (error) throw new Error(error.message || 'Migration failed');
+  return { autoRan: true };
+}
+
+function renderSetupBanner() {
+  return `
+    <div class="max-w-2xl mx-auto mt-8 p-6 bg-amber-50 border border-amber-300 rounded-2xl">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+          <i class="fas fa-database text-amber-600"></i>
+        </div>
+        <div>
+          <p class="font-extrabold text-slate-900">Financials tables not found</p>
+          <p class="text-xs text-slate-500 mt-0.5">The required database tables don't exist in your Supabase project yet.</p>
+        </div>
+      </div>
+      <div id="fin-setup-status" class="hidden mb-4"></div>
+      <div class="flex gap-3 mb-5">
+        <button id="fin-fix-btn" class="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white rounded-xl border-none cursor-pointer" style="background:#10b981">
+          <i class="fas fa-wrench text-xs"></i>Fix Tables
+        </button>
+        <button id="fin-show-sql-btn" class="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
+          <i class="fas fa-code text-xs"></i>Show SQL
+        </button>
+      </div>
+      <div id="fin-sql-block" class="hidden">
+        <p class="text-xs text-slate-500 mb-2">Copy and run this in your
+          <a href="https://supabase.com/dashboard" target="_blank" class="text-blue-600 underline font-semibold">Supabase SQL Editor</a>,
+          then click Reload:
+        </p>
+        <div class="relative">
+          <pre id="fin-sql-pre" class="bg-slate-900 text-emerald-300 text-xs rounded-xl p-4 overflow-x-auto whitespace-pre-wrap max-h-72">${FIN_MIGRATION_SQL.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+          <button id="fin-copy-sql-btn" class="absolute top-2 right-2 px-2 py-1 text-[10px] font-bold bg-slate-700 hover:bg-slate-600 text-white rounded-lg cursor-pointer border-none">
+            <i class="fas fa-copy mr-1"></i>Copy
+          </button>
+        </div>
+        <button id="fin-reload-btn" class="mt-3 flex items-center gap-2 px-4 py-2 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-100">
+          <i class="fas fa-rotate-right text-xs"></i>Reload page
+        </button>
+      </div>
+    </div>`;
+}
+
+function bindSetupBanner() {
+  const statusEl = document.getElementById('fin-setup-status');
+  const fixBtn   = document.getElementById('fin-fix-btn');
+  const sqlBtn   = document.getElementById('fin-show-sql-btn');
+  const sqlBlock = document.getElementById('fin-sql-block');
+  const copyBtn  = document.getElementById('fin-copy-sql-btn');
+  const reloadBtn= document.getElementById('fin-reload-btn');
+
+  function setStatus(msg, type) {
+    const styles = { loading:'bg-blue-50 border-blue-200 text-blue-700', success:'bg-emerald-50 border-emerald-200 text-emerald-700', error:'bg-red-50 border-red-200 text-red-700' };
+    const icons  = { loading:'<i class="fas fa-circle-notch fa-spin mr-2"></i>', success:'<i class="fas fa-check-circle mr-2"></i>', error:'<i class="fas fa-exclamation-circle mr-2"></i>' };
+    statusEl.className = `flex items-center p-3 rounded-xl border text-sm font-medium ${styles[type]}`;
+    statusEl.innerHTML = (icons[type] || '') + msg;
+    statusEl.classList.remove('hidden');
+  }
+
+  if (fixBtn) fixBtn.addEventListener('click', async () => {
+    fixBtn.disabled = true;
+    fixBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-xs"></i> Fixing…';
+    setStatus('Running migration — creating missing tables and columns…', 'loading');
+    try {
+      await runMigrationSQL();
+      setStatus('Tables created successfully! Reloading…', 'success');
+      setTimeout(() => window.location.reload(), 1200);
+    } catch(err) {
+      const msg = err.message || 'Could not auto-run SQL.';
+      const isRpcMissing = msg.includes('exec_sql') || msg.includes('function') || msg.includes('does not exist');
+      setStatus(isRpcMissing
+        ? 'Auto-fix requires an exec_sql helper in your database. Showing SQL below — copy and run it manually.'
+        : msg + ' — showing SQL below to run manually.', 'error');
+      if (sqlBlock) sqlBlock.classList.remove('hidden');
+      fixBtn.disabled = false;
+      fixBtn.innerHTML = '<i class="fas fa-wrench text-xs"></i>Fix Tables';
+    }
+  });
+
+  if (sqlBtn) sqlBtn.addEventListener('click', () => {
+    sqlBlock.classList.toggle('hidden');
+    sqlBtn.innerHTML = sqlBlock.classList.contains('hidden')
+      ? '<i class="fas fa-code text-xs"></i>Show SQL'
+      : '<i class="fas fa-code text-xs"></i>Hide SQL';
+  });
+
+  if (copyBtn) copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(FIN_MIGRATION_SQL).then(() => {
+      copyBtn.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
+      setTimeout(() => { copyBtn.innerHTML = '<i class="fas fa-copy mr-1"></i>Copy'; }, 2000);
+    }).catch(() => {
+      const pre = document.getElementById('fin-sql-pre');
+      if (pre) { const r = document.createRange(); r.selectNodeContents(pre); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); }
+    });
+  });
+
+  if (reloadBtn) reloadBtn.addEventListener('click', () => window.location.reload());
+}
+
 // ── State ─────────────────────────────────────────────────────────
 let state = {
   tab:          'dashboard',
@@ -82,9 +426,22 @@ let container; // root DOM element
 
 // ── Entry ──────────────────────────────────────────────────────────
 window.WorkVoltPages = window.WorkVoltPages || {};
-window.WorkVoltPages.financials = function(el) {
+window.WorkVoltPages.financials = async function(el) {
   container = el;
   render();
+
+  // Check tables exist — show Fix Tables banner if not
+  await provisionTables();
+  if (sessionStorage.getItem('wv_fin_needs_setup') === '1') {
+    sessionStorage.removeItem('wv_fin_needs_setup');
+    const content = document.getElementById('fin-content');
+    if (content) {
+      content.innerHTML = renderSetupBanner();
+      bindSetupBanner();
+    }
+    return;
+  }
+
   loadAll();
 };
 
