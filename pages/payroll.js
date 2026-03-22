@@ -3,8 +3,6 @@ window.WorkVoltPages = window.WorkVoltPages || {};
 window.WorkVoltPages['payroll'] = function(container) {
 
   // ── State ──────────────────────────────────────────────────────
-  var savedUrl    = localStorage.getItem('wv_gas_url')    || '';
-  var savedSecret = localStorage.getItem('wv_api_secret') || '';
   var runsCache   = [];
   var empCache    = [];
   var usersCache  = [];
@@ -38,25 +36,117 @@ window.WorkVoltPages['payroll'] = function(container) {
   function myName()     { try { return window.WorkVolt.user().name    || ''; } catch(e) { return ''; } }
 
   // ── API ───────────────────────────────────────────────────────
-    function api(path, params) {
-    if (!savedUrl || !savedSecret) return Promise.reject(new Error('Google Sheet not connected'));
-    var savedSheetId = localStorage.getItem('wv_sheet_id') || '';
-    var sessionId = '';
-    try { sessionId = window.WorkVolt.session() || ''; } catch(e) {}
-    
-    var url = new URL(savedUrl);
-    url.searchParams.set('path',  path);
-    url.searchParams.set('token', savedSecret);
-    url.searchParams.set('sheet_id', savedSheetId);
-    url.searchParams.set('session_id', sessionId);
-    
-    if (params) Object.keys(params).forEach(function(k) {
-      if (params[k] !== undefined && params[k] !== null && String(params[k]) !== '')
-        url.searchParams.set(k, String(params[k]));
-    });
-    return fetch(url.toString(), { cache: 'no-cache' })
-      .then(function(r) { return r.json(); })
-      .then(function(d) { if (d.error) throw new Error(d.error); return d; });
+  // Routed through WorkVoltDB — no GAS dependency
+  function api(path, params) {
+    params = params || {};
+    var db = window.WorkVolt.db;
+    var id = params.id;
+    var rest = Object.assign({}, params);
+    delete rest.id;
+
+    // ── Payroll runs ──────────────────────────────────────────
+    if (path === 'payroll/runs/list')
+      return db.list('payroll_runs', {}, { order: 'period_start' }).then(function(r){ return { rows: r }; });
+    if (path === 'payroll/runs/create')
+      return db.create('payroll_runs', Object.assign({}, params, { created_at: new Date().toISOString() }));
+    if (path === 'payroll/runs/update')
+      return db.update('payroll_runs', id, rest);
+
+    // ── Payroll employees ─────────────────────────────────────
+    if (path === 'payroll/employees/list')
+      return db.list('payroll_employees', {}, { order: 'created_at' }).then(function(r){ return { rows: r }; });
+
+    // ── Audit log ─────────────────────────────────────────────
+    if (path === 'payroll/audit/list')
+      return db.list('payroll_audit', {}, { order: 'created_at' }).then(function(r){ return { rows: r }; });
+
+    // ── Users ─────────────────────────────────────────────────
+    if (path === 'users/list')
+      return db.list('users', {}, { order: 'name', asc: true }).then(function(r){ return { rows: r }; });
+
+    // ── Timesheets ────────────────────────────────────────────
+    if (path === 'timesheets/list')
+      return db.list('timesheets', {}, { order: 'date' }).then(function(r){ return { rows: r }; });
+
+    // ── Config ────────────────────────────────────────────────
+    if (path === 'config/get-all')
+      return db.config.getAll().then(function(settings){ return { settings: settings }; });
+    if (path === 'config/set')
+      return db.config.set(params.key, params.value);
+
+    return Promise.reject(new Error('No API handler for: ' + path));
+  }
+
+  // ── Table provisioning ────────────────────────────────────────
+  // Creates required Supabase tables on first install if they don't exist.
+  // Uses the REST API directly — safe to call every load, skips if tables exist.
+  function provisionTables() {
+    var db = window.WorkVolt.db;
+    // Quick check: if we can list payroll_runs without error, tables exist
+    return db.list('payroll_runs', {}, { limit: 1 })
+      .then(function() { return; }) // tables exist, nothing to do
+      .catch(function() {
+        // Tables missing — show a one-time setup notice
+        // Actual table creation requires Supabase dashboard or migration tool.
+        // We surface the SQL so the user/admin can run it once.
+        var sql = [
+          '-- Run this once in your Supabase SQL Editor',
+          '',
+          'create table if not exists payroll_runs (',
+          '  id text primary key,',
+          '  employee_id text,',
+          '  employee_name text,',
+          '  period_start date,',
+          '  period_end date,',
+          '  pay_type text,',
+          '  rate numeric,',
+          '  hours_regular numeric default 0,',
+          '  hours_ot numeric default 0,',
+          '  hours_total numeric default 0,',
+          '  gross numeric default 0,',
+          '  bonuses numeric default 0,',
+          '  deductions numeric default 0,',
+          '  tax_federal numeric default 0,',
+          '  tax_fica numeric default 0,',
+          '  tax_state numeric default 0,',
+          '  tax_total numeric default 0,',
+          '  net numeric default 0,',
+          '  status text default \'Draft\',',
+          '  notes text,',
+          '  approved_by text,',
+          '  created_by text,',
+          '  gross_salary numeric default 0,',
+          '  tax numeric default 0,',
+          '  overtime_pay numeric default 0,',
+          '  overtime_hours numeric default 0,',
+          '  created_at timestamptz default now()',
+          ');',
+          '',
+          'create table if not exists payroll_employees (',
+          '  id text primary key,',
+          '  employee_id text,',
+          '  pay_type text,',
+          '  salary numeric,',
+          '  hourly_rate numeric,',
+          '  created_at timestamptz default now()',
+          ');',
+          '',
+          'create table if not exists payroll_audit (',
+          '  id uuid primary key default gen_random_uuid(),',
+          '  run_id text,',
+          '  action text,',
+          '  old_status text,',
+          '  new_status text,',
+          '  performed_by text,',
+          '  note text,',
+          '  created_at timestamptz default now()',
+          ');',
+        ].join('\n');
+
+        // Store SQL in sessionStorage so the setup banner can show it
+        sessionStorage.setItem('wv_payroll_setup_sql', sql);
+        sessionStorage.setItem('wv_payroll_needs_setup', '1');
+      });
   }
 
   // ── Utilities ─────────────────────────────────────────────────
@@ -376,6 +466,30 @@ window.WorkVoltPages['payroll'] = function(container) {
   function loadData() {
     var el = document.getElementById('pr-content');
     if (el) el.innerHTML = '<div class="flex items-center justify-center py-24 text-slate-400"><i class="fas fa-circle-notch fa-spin text-2xl mr-3"></i>Loading payroll…</div>';
+
+    // Provision tables on first load, then continue regardless
+    provisionTables().catch(function(){}).then(function() {
+
+    // Show setup SQL banner if tables were just detected as missing
+    if (sessionStorage.getItem('wv_payroll_needs_setup') === '1') {
+      sessionStorage.removeItem('wv_payroll_needs_setup');
+      var sql = sessionStorage.getItem('wv_payroll_setup_sql') || '';
+      if (el) el.innerHTML =
+        '<div class="max-w-2xl mx-auto mt-8 p-6 bg-amber-50 border border-amber-300 rounded-2xl">' +
+          '<div class="flex items-center gap-3 mb-4">' +
+            '<div class="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center"><i class="fas fa-database text-amber-600"></i></div>' +
+            '<div><p class="font-extrabold text-slate-900">One-time setup required</p>' +
+            '<p class="text-xs text-slate-500">Payroll tables don\'t exist yet in your Supabase project.</p></div>' +
+          '</div>' +
+          '<p class="text-sm text-slate-700 mb-3">Copy and run this SQL in your <a href="https://supabase.com/dashboard" target="_blank" class="text-blue-600 underline font-semibold">Supabase SQL Editor</a>, then reload this page:</p>' +
+          '<pre class="bg-slate-900 text-emerald-300 text-xs rounded-xl p-4 overflow-x-auto whitespace-pre-wrap mb-4">' + sql + '</pre>' +
+          '<button onclick="window.location.reload()" class="px-4 py-2 bg-emerald-500 text-white text-sm font-bold rounded-xl hover:bg-emerald-600 cursor-pointer border-none">' +
+            '<i class="fas fa-refresh mr-2"></i>Reload after running SQL' +
+          '</button>' +
+        '</div>';
+      return;
+    }
+
     // Load tax config FIRST, then fetch all payroll data — prevents race condition
     // where rerender() runs before tax settings are known (causes country flip + wrong deductions)
     loadTaxConfig().catch(function(){}).then(function() {
@@ -401,6 +515,8 @@ window.WorkVoltPages['payroll'] = function(container) {
     }).catch(function(e) {
       if (el) el.innerHTML = '<div class="flex flex-col items-center justify-center py-20 text-slate-400"><i class="fas fa-exclamation-triangle text-3xl mb-3 text-amber-400"></i><p class="font-semibold">Could not load payroll</p><p class="text-sm mt-1">'+esc(e.message)+'</p></div>';
     });
+
+    }); // end provisionTables wrapper
   }
 
   function rerender() {
