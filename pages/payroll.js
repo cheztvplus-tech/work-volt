@@ -280,26 +280,31 @@ function fixModule(dropFirst) {
 
   var sqlToRun = dropFirst ? MIGRATION_SQL_DROP_FIRST : MIGRATION_SQL;
   
-  // Try multiple ways to get the database client
+  // ========== CLIENT DETECTION (ADDED) ==========
   var client = null;
-  var adapter = null;
   
   // Method 1: window.WorkVolt.db (preferred)
   if (window.WorkVolt && window.WorkVolt.db) {
-    adapter = window.WorkVolt.db;
-    if (adapter._client) {
-      client = adapter._client;
+    var db = window.WorkVolt.db;
+    if (db._client) {
+      client = db._client;
+    } else if (typeof db.getAdapter === 'function') {
+      try {
+        var adapter = db.getAdapter();
+        if (adapter && adapter._client) {
+          client = adapter._client;
+        }
+      } catch(e) {}
     }
   }
   
   // Method 2: window.WorkVoltDB (fallback)
   if (!client && window.WorkVoltDB) {
-    adapter = window.WorkVoltDB;
-    if (adapter._client) {
-      client = adapter._client;
-    } else if (typeof adapter.getAdapter === 'function') {
+    if (window.WorkVoltDB._client) {
+      client = window.WorkVoltDB._client;
+    } else if (typeof window.WorkVoltDB.getAdapter === 'function') {
       try {
-        var subAdapter = adapter.getAdapter();
+        var subAdapter = window.WorkVoltDB.getAdapter();
         if (subAdapter && subAdapter._client) {
           client = subAdapter._client;
         }
@@ -311,11 +316,12 @@ function fixModule(dropFirst) {
   if (!client && window.supabase) {
     client = window.supabase;
   }
+  // ===============================================
 
   if (!client || typeof client.rpc !== 'function') {
     if (statusEl) {
       statusEl.innerHTML = '<div class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200">' +
-        '<i class="fas fa-exclamation-circle"></i>Database client not available. Please refresh the page and try again.' +
+        '<i class="fas fa-exclamation-circle"></i>Database client not available. Please configure database in Settings first.' +
         '</div>';
     }
     showSQLBlock();
@@ -329,8 +335,6 @@ function fixModule(dropFirst) {
   return client.rpc('exec_sql', { query: sqlToRun })
     .then(function(res) {
       if (res.error) throw new Error(res.error.message || 'Migration failed');
-      
-      // Force schema cache refresh with multiple methods
       return refreshSchemaCache(client);
     })
     .then(function() {
