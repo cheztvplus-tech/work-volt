@@ -823,9 +823,7 @@ window.WorkVoltPages['payroll'] = function(container) {
               
             '</div>'+
           '</div>'+
-          
-          '<div id="pr-fix-status" class="hidden mb-3"></div>'+
-          
+                 
           '<div id="pr-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3"></div>'+
           (canViewTaxRates() ? '<div id="pr-tax-rates-panel" class="mb-3"></div>' : '')+
           '<div class="flex items-center gap-2 flex-wrap">'+
@@ -847,21 +845,6 @@ window.WorkVoltPages['payroll'] = function(container) {
               }).join('')+
             '</div>'+
           '</div>'+
-          
-          '<div id="pr-sql-block" class="hidden mt-3">' +
-            '<div class="bg-slate-900 rounded-xl p-4 overflow-hidden">' +
-              '<div class="flex items-center justify-between mb-2">' +
-                '<span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Migration SQL</span>' +
-                '<button id="pr-copy-sql-btn" class="px-2 py-1 text-[10px] font-bold bg-slate-700 hover:bg-slate-600 text-white rounded-lg cursor-pointer border-none">' +
-                  '<i class="fas fa-copy mr-1"></i>Copy' +
-                '</button>' +
-              '</div>' +
-              '<pre id="pr-sql-pre" class="text-emerald-300 text-xs overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto" style="font-family:monospace">' + esc(MIGRATION_SQL_DROP_FIRST) + '</pre>' +
-            '</div>' +
-            '<button id="pr-reload-btn" class="mt-2 flex items-center gap-2 px-4 py-2 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-100">' +
-              '<i class="fas fa-rotate-right text-xs"></i>Reload page' +
-            '</button>' +
-          '</div>' +
         '</div>'+
 
         '<div id="pr-content" class="flex-1 overflow-y-auto px-6 py-4"></div>'+
