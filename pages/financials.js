@@ -437,7 +437,7 @@ let state = {
   // Cross-module data (populated only if modules installed)
   modules: {
     payroll:  { installed: false, data: [] },
-    assets:   { installed: false, data: [] },
+    assets:   { installed: false, data: [], maintenance: [] },
     tasks:    { installed: false, data: [] },
   },
 };
@@ -785,6 +785,15 @@ async function loadCrossModuleData() {
     tryLoad('assets', 'assets'),
     tryLoad('tasks', 'tasks'),
   ]);
+
+  // Also load maintenance records if assets module is present
+  if (state.modules.assets.installed) {
+    try {
+      state.modules.assets.maintenance = await window.WorkVoltDB.list('asset_maintenance', {}, { order: 'date' });
+    } catch(e) {
+      state.modules.assets.maintenance = [];
+    }
+  }
 }
 
 function calcPayrollNet(r) {
@@ -859,11 +868,15 @@ function computeReportsLocally() {
   const ap = state.bills
     .filter(b => ['Unpaid','Partial','Overdue'].includes(b.status))
     .reduce((s, b) => s + (parseFloat(b.balance_due)||0), 0);
+
+  // Include asset book value (purchase_price sum) if assets module present
+  const assetBookValue = state.modules.assets.installed
+    ? state.modules.assets.data.reduce((s,a) => s + (parseFloat(a.purchase_price)||0), 0) : 0;
     
   state.balanceSheet = {
-    assets: { cash, accounts_receivable: ar, total: cash + ar },
+    assets: { cash, accounts_receivable: ar, fixed_assets: assetBookValue, total: cash + ar + assetBookValue },
     liabilities: { accounts_payable: ap, total: ap },
-    equity: { retained_earnings: cash + ar - ap, total: cash + ar - ap },
+    equity: { retained_earnings: cash + ar + assetBookValue - ap, total: cash + ar + assetBookValue - ap },
     balanced: true
   };
   
@@ -881,10 +894,14 @@ function computeCashflowLocally() {
     + state.bills
     .filter(b => b.status === 'Paid')
     .reduce((s, b) => s + (parseFloat(b.amount)||0), 0);
+
+  // Asset purchases are investing outflows (capital expenditure)
+  const investingOut = state.modules.assets.installed
+    ? state.modules.assets.data.reduce((s,a) => s + (parseFloat(a.purchase_price)||0), 0) : 0;
     
   state.cashflow = {
     operating: { inflow: operatingIn, outflow: operatingOut, net: operatingIn - operatingOut },
-    investing: { net: 0 },
+    investing: { outflow: investingOut, net: -investingOut },
     financing: { net: 0 }
   };
 }
@@ -929,8 +946,11 @@ function renderDashboard(c) {
   // Cross-module costs
   const payrollCost = state.modules.payroll.installed
     ? state.modules.payroll.data.reduce((s,p) => s + calcPayrollNet(p), 0) : 0;
-  const maintCost = state.modules.assets.installed
-    ? state.modules.assets.data.reduce((s,m) => s + (parseFloat(m.purchase_value||0)), 0) : 0;
+  const assetPurchaseCost = state.modules.assets.installed
+    ? state.modules.assets.data.reduce((s,a) => s + (parseFloat(a.purchase_price)||0), 0) : 0;
+  const assetMaintCost = state.modules.assets.installed
+    ? (state.modules.assets.maintenance||[]).reduce((s,m) => s + (parseFloat(m.cost)||0), 0) : 0;
+  const maintCost = assetPurchaseCost + assetMaintCost;
   const taskCost = state.modules.tasks.installed
     ? state.modules.tasks.data.reduce((s,t) => s + (parseFloat(t.pay_amount||0)), 0) : 0;
 
@@ -957,7 +977,8 @@ function renderDashboard(c) {
     if (e.category) expBreakRaw[e.category] = (expBreakRaw[e.category]||0) + (parseFloat(e.amount)||0);
   });
   if (payrollCost > 0) expBreakRaw['Payroll'] = (expBreakRaw['Payroll']||0) + payrollCost;
-  if (maintCost > 0) expBreakRaw['Asset Maintenance'] = (expBreakRaw['Asset Maintenance']||0) + maintCost;
+  if (assetPurchaseCost > 0) expBreakRaw['Asset Purchases'] = (expBreakRaw['Asset Purchases']||0) + assetPurchaseCost;
+  if (assetMaintCost > 0)    expBreakRaw['Asset Maintenance'] = (expBreakRaw['Asset Maintenance']||0) + assetMaintCost;
   if (taskCost > 0) expBreakRaw['Task Costs'] = (expBreakRaw['Task Costs']||0) + taskCost;
   if (monthBills > 0) expBreakRaw['Bills'] = (expBreakRaw['Bills']||0) + monthBills;
 
@@ -1286,6 +1307,65 @@ function renderExpenses(c) {
 
   const categories = ['Salaries & Wages','Software & Subscriptions','Travel & Entertainment','Office Supplies','Marketing & Advertising','Professional Services','Rent & Utilities','Other Expenses'];
 
+  // ── Asset purchases panel (read-only, from Assets module) ────────
+  const assetsMod = state.modules.assets;
+  const assetPurchaseRows = assetsMod.installed
+    ? assetsMod.data
+        .filter(a => parseFloat(a.purchase_price) > 0)
+        .sort((a,b) => {
+          const da = a.purchase_date || ''; const db = b.purchase_date || '';
+          return db.localeCompare(da);
+        })
+    : [];
+  const assetPurchaseTotal = assetPurchaseRows.reduce((s,a) => s + (parseFloat(a.purchase_price)||0), 0);
+
+  const assetPurchasesPanel = assetsMod.installed ? `
+    <div class="bg-white rounded-xl border border-orange-200 overflow-hidden mb-5">
+      <div class="flex items-center justify-between px-4 py-3 bg-orange-50 border-b border-orange-200">
+        <div class="flex items-center gap-2">
+          <span class="w-6 h-6 bg-orange-100 rounded-lg flex items-center justify-center">
+            <i class="fas fa-box-open text-orange-600 text-xs"></i>
+          </span>
+          <span class="text-sm font-bold text-orange-800">Asset Purchases</span>
+          <span class="text-xs font-semibold bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">From Assets Module · Read-only</span>
+        </div>
+        <span class="text-sm font-extrabold text-orange-700">${fmt.currency(assetPurchaseTotal)}</span>
+      </div>
+      ${assetPurchaseRows.length ? `
+      <table class="w-full text-sm">
+        <thead><tr class="bg-slate-50 border-b border-slate-100">
+          <th class="text-left px-4 py-2 text-xs font-bold text-slate-400 uppercase tracking-wide">Date</th>
+          <th class="text-left px-4 py-2 text-xs font-bold text-slate-400 uppercase tracking-wide">Asset</th>
+          <th class="text-left px-4 py-2 text-xs font-bold text-slate-400 uppercase tracking-wide hidden md:table-cell">Category</th>
+          <th class="text-left px-4 py-2 text-xs font-bold text-slate-400 uppercase tracking-wide hidden lg:table-cell">Supplier</th>
+          <th class="text-left px-4 py-2 text-xs font-bold text-slate-400 uppercase tracking-wide hidden lg:table-cell">Paid From</th>
+          <th class="text-right px-4 py-2 text-xs font-bold text-slate-400 uppercase tracking-wide">Amount</th>
+          <th class="text-center px-4 py-2 text-xs font-bold text-slate-400 uppercase tracking-wide">Status</th>
+        </tr></thead>
+        <tbody>
+          ${assetPurchaseRows.map(a => `
+            <tr class="border-b border-slate-50 hover:bg-orange-50/40 transition-colors">
+              <td class="px-4 py-2.5 text-slate-500 text-xs">${fmt.date(a.purchase_date)}</td>
+              <td class="px-4 py-2.5">
+                <div class="font-medium text-slate-800 text-xs">${a.asset_name||'—'}</div>
+                <div class="text-[10px] text-slate-400 font-mono">${a.asset_id||''}</div>
+              </td>
+              <td class="px-4 py-2.5 text-slate-500 text-xs hidden md:table-cell">${a.category||'—'}</td>
+              <td class="px-4 py-2.5 text-slate-500 text-xs hidden lg:table-cell">${a.supplier||'—'}</td>
+              <td class="px-4 py-2.5 hidden lg:table-cell">
+                ${a.paid_from_account ? `<span class="text-xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-medium">${a.paid_from_account}</span>` : '<span class="text-xs text-slate-300">—</span>'}
+              </td>
+              <td class="px-4 py-2.5 text-right font-bold text-slate-800 text-xs">${fmt.currency(a.purchase_price)}</td>
+              <td class="px-4 py-2.5 text-center">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${a.paid_from_account ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
+                  ${a.paid_from_account ? 'Paid' : 'Pending'}
+                </span>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` : `<p class="px-4 py-4 text-xs text-slate-400 italic">No assets with a purchase price recorded.</p>`}
+    </div>` : '';
+
   c.innerHTML = `
   <div class="p-6 max-w-7xl mx-auto fade-in">
     <div class="flex flex-wrap items-center gap-3 mb-5">
@@ -1301,7 +1381,13 @@ function renderExpenses(c) {
       </select>
     </div>
 
+    ${assetPurchasesPanel}
+
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
+        <span class="text-sm font-bold text-slate-700">Logged Expenses</span>
+        <span class="text-xs text-slate-400">${rows.length} record${rows.length !== 1 ? 's' : ''}</span>
+      </div>
       <table class="w-full text-sm">
         <thead><tr class="bg-slate-50 border-b border-slate-200">
           <th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Date</th>
@@ -1650,12 +1736,14 @@ function renderReports(c) {
           // Cross-module costs
           const payrollTotal = state.modules.payroll.installed
             ? state.modules.payroll.data.reduce((s,p)=>s+calcPayrollNet(p),0) : 0;
-          const maintTotal   = state.modules.assets.installed
-            ? state.modules.assets.data.reduce((s,m)=>s+(parseFloat(m.purchase_value||0)),0) : 0;
+          const assetPurchaseTotal = state.modules.assets.installed
+            ? state.modules.assets.data.reduce((s,a)=>s+(parseFloat(a.purchase_price)||0),0) : 0;
+          const assetMaintTotal = state.modules.assets.installed
+            ? (state.modules.assets.maintenance||[]).reduce((s,m)=>s+(parseFloat(m.cost)||0),0) : 0;
           const taskTotal    = state.modules.tasks.installed
             ? state.modules.tasks.data.reduce((s,t)=>s+(parseFloat(t.pay_amount||0)),0) : 0;
 
-          const totalAllExpenses = baseExpenses + billsTotal + payrollTotal + maintTotal + taskTotal;
+          const totalAllExpenses = baseExpenses + billsTotal + payrollTotal + assetPurchaseTotal + assetMaintTotal + taskTotal;
           const netProfit  = baseRevenue - totalAllExpenses;
           const profitMargin = baseRevenue > 0 ? (netProfit / baseRevenue * 100) : 0;
 
@@ -1664,10 +1752,11 @@ function renderReports(c) {
           state.expenses.forEach(e => { 
             if(e.category) expBreakdown[e.category]=(expBreakdown[e.category]||0)+(parseFloat(e.amount)||0); 
           });
-          if (billsTotal > 0)   expBreakdown['Bills & Payables']  = (expBreakdown['Bills & Payables']||0) + billsTotal;
-          if (payrollTotal > 0) expBreakdown['Payroll']           = (expBreakdown['Payroll']||0) + payrollTotal;
-          if (maintTotal > 0)   expBreakdown['Asset Maintenance'] = (expBreakdown['Asset Maintenance']||0) + maintTotal;
-          if (taskTotal > 0)    expBreakdown['Task Costs']        = (expBreakdown['Task Costs']||0) + taskTotal;
+          if (billsTotal > 0)          expBreakdown['Bills & Payables']  = (expBreakdown['Bills & Payables']||0) + billsTotal;
+          if (payrollTotal > 0)        expBreakdown['Payroll']           = (expBreakdown['Payroll']||0) + payrollTotal;
+          if (assetPurchaseTotal > 0)  expBreakdown['Asset Purchases']   = (expBreakdown['Asset Purchases']||0) + assetPurchaseTotal;
+          if (assetMaintTotal > 0)     expBreakdown['Asset Maintenance'] = (expBreakdown['Asset Maintenance']||0) + assetMaintTotal;
+          if (taskTotal > 0)           expBreakdown['Task Costs']        = (expBreakdown['Task Costs']||0) + taskTotal;
 
           // Revenue breakdown
           const revBreakdown = {};
@@ -1684,11 +1773,31 @@ function renderReports(c) {
             false
           );
 
+          // Asset purchases sub-breakdown (collapsible)
+          let assetPurchaseSection = '';
+          if (assetPurchaseTotal > 0) {
+            const assetLines = state.modules.assets.data
+              .filter(a => parseFloat(a.purchase_price) > 0)
+              .sort((a,b) => (parseFloat(b.purchase_price)||0) - (parseFloat(a.purchase_price)||0))
+              .slice(0, 10)
+              .map(a => reportLine(
+                (a.asset_name||a.asset_id) + (a.purchase_date ? ' <span class="text-slate-400 text-xs">· ' + fmt.date(a.purchase_date) + '</span>' : ''),
+                fmt.currency(a.purchase_price),
+                'text-slate-600 text-xs'
+              )).join('');
+            assetPurchaseSection = collapsibleSection(
+              `Asset Purchases (${state.modules.assets.data.filter(a=>parseFloat(a.purchase_price)>0).length})`,
+              assetLines,
+              false
+            );
+          }
+
           return revenueSection
             + reportLine('Total Revenue', fmt.currency(baseRevenue), 'font-semibold text-emerald-600')
             + '<div class="h-px bg-slate-100 my-2"></div>'
             + '<p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Operating Expenses</p>'
             + Object.entries(expBreakdown).map(([cat, amt]) => reportLine(cat, fmt.currency(amt), 'text-slate-600')).join('')
+            + (assetPurchaseSection ? '<div class="pl-3 border-l-2 border-orange-200 my-1">' + assetPurchaseSection + '</div>' : '')
             + reportLine('Total Expenses', fmt.currency(totalAllExpenses), 'font-semibold text-red-500')
             + '<div class="h-px bg-slate-100 my-2"></div>'
             + reportLine('Net Profit / (Loss)', fmt.currency(netProfit), `font-extrabold text-lg ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`)
@@ -1711,6 +1820,7 @@ function renderReports(c) {
           <p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Assets</p>
           ${reportLine('Cash', fmt.currency(bs.assets?.cash), 'text-slate-600')}
           ${reportLine('Accounts Receivable', fmt.currency(bs.assets?.accounts_receivable), 'text-slate-600')}
+          ${(bs.assets?.fixed_assets > 0) ? reportLine('Fixed Assets (at cost)', fmt.currency(bs.assets?.fixed_assets), 'text-slate-600') : ''}
           ${reportLine('Total Assets', fmt.currency(bs.assets?.total), 'font-bold text-slate-800')}
         </div>
         <div>
@@ -1743,6 +1853,7 @@ function renderReports(c) {
         </div>
         <div>
           <p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Investing Activities</p>
+          ${cf.investing?.outflow > 0 ? reportLine('Asset Purchases (CapEx)', fmt.currency(-cf.investing?.outflow), 'text-red-500') : ''}
           ${reportLine('Net Investing', fmt.currency(cf.investing?.net), 'font-bold text-slate-800')}
         </div>
         <div>
@@ -1850,20 +1961,73 @@ function renderCrossModuleReport() {
 
   // Assets
   if (mods.assets.installed) {
-    const assets = mods.assets.data;
-    const totalValue = assets.reduce((s,a) => s + (parseFloat(a.purchase_value || 0)), 0);
+    const assets      = mods.assets.data;
+    const maintenance = mods.assets.maintenance || [];
+
+    const totalPurchaseCost = assets.reduce((s,a) => s + (parseFloat(a.purchase_price)||0), 0);
+    const totalMaintCost    = maintenance.reduce((s,m) => s + (parseFloat(m.cost)||0), 0);
+    const totalAssetSpend   = totalPurchaseCost + totalMaintCost;
+
+    // Status breakdown
+    const byStatus = {};
+    assets.forEach(a => { byStatus[a.status] = (byStatus[a.status]||0) + 1; });
+
+    // Category spend breakdown
+    const byCat = {};
+    assets.forEach(a => {
+      if (a.category && parseFloat(a.purchase_price) > 0) {
+        byCat[a.category] = (byCat[a.category]||0) + (parseFloat(a.purchase_price)||0);
+      }
+    });
+    const catLines = Object.entries(byCat).sort((a,b)=>b[1]-a[1])
+      .map(([cat,amt]) => reportLine(cat, fmt.currency(amt), 'text-slate-600 text-xs')).join('');
+    const catSection = catLines ? collapsibleSection(
+      `Purchase Cost by Category (${Object.keys(byCat).length})`,
+      catLines, false
+    ) : '';
+
+    // Top maintenance costs
+    const maintByAsset = {};
+    maintenance.forEach(m => {
+      const key = m.asset_id;
+      maintByAsset[key] = (maintByAsset[key]||0) + (parseFloat(m.cost)||0);
+    });
+    const topMaint = Object.entries(maintByAsset)
+      .sort((a,b)=>b[1]-a[1]).slice(0,5);
+    const maintLines = topMaint.map(([aid, amt]) => {
+      const a = assets.find(x => x.asset_id === aid);
+      const label = a ? (a.asset_name||aid) : aid;
+      return reportLine(label, fmt.currency(amt), 'text-slate-600 text-xs');
+    }).join('');
+    const maintSection = maintLines ? collapsibleSection(
+      `Top Maintenance Costs (${topMaint.length})`,
+      maintLines, false
+    ) : '';
+
     sections.push(`
       <div class="bg-white rounded-xl border border-slate-200 p-6">
         <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
-          <span class="w-7 h-7 bg-orange-100 rounded-lg flex items-center justify-center"><i class="fas fa-box text-orange-600 text-xs"></i></span>
+          <span class="w-7 h-7 bg-orange-100 rounded-lg flex items-center justify-center"><i class="fas fa-box-open text-orange-600 text-xs"></i></span>
           Assets
           <span class="ml-2 text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Connected</span>
         </h3>
         <div class="space-y-1">
-          ${reportLine('Total Asset Value', fmt.currency(totalValue), 'font-semibold text-slate-800')}
-          ${reportLine('Active Assets', String(assets.filter(a => a.status === 'Active').length), 'text-emerald-600')}
           ${reportLine('Total Assets', String(assets.length), 'text-slate-500')}
+          ${reportLine('Available', String(byStatus['Available']||0), 'text-emerald-600')}
+          ${reportLine('Assigned', String(byStatus['Assigned']||0), 'text-blue-600')}
+          ${reportLine('In Maintenance', String(byStatus['Maintenance']||0), 'text-amber-600')}
+          ${reportLine('Retired / Disposed', String((byStatus['Retired']||0)+(byStatus['Disposed']||0)), 'text-slate-400')}
+          <div class="h-px bg-slate-100 my-2"></div>
+          ${reportLine('Total Purchase Cost (CapEx)', fmt.currency(totalPurchaseCost), 'font-semibold text-orange-600')}
+          ${reportLine('Total Maintenance Cost', fmt.currency(totalMaintCost), 'font-semibold text-red-500')}
+          ${reportLine('Total Asset Spend', fmt.currency(totalAssetSpend), 'font-bold text-slate-800')}
+          ${catSection ? '<div class="h-px bg-slate-100 my-2"></div>' + catSection : ''}
+          ${maintSection ? '<div class="h-px bg-slate-100 my-1"></div>' + maintSection : ''}
         </div>
+        <p class="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100">
+          <i class="fas fa-info-circle mr-1"></i>
+          Purchase costs appear as <strong>Asset Purchases</strong> in the Income Statement and as <strong>Fixed Assets</strong> on the Balance Sheet.
+        </p>
       </div>`);
   }
 
