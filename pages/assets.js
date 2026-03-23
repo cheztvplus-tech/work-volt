@@ -2,6 +2,72 @@ window.WorkVoltPages = window.WorkVoltPages || {};
 
 window.WorkVoltPages['assets'] = function(container) {
 
+  // ── Supabase client ────────────────────────────────────────────
+  // Reads credentials from localStorage (set by your Settings page)
+  var SUPA_URL = localStorage.getItem('wv_supabase_url') || '';
+  var SUPA_KEY = localStorage.getItem('wv_supabase_key') || '';
+
+  // Low-level Supabase REST helper
+  async function supa(method, table, opts) {
+    opts = opts || {};
+    if (!SUPA_URL || !SUPA_KEY) throw new Error('Supabase not configured — add URL & Key in Settings');
+
+    var url = SUPA_URL.replace(/\/$/, '') + '/rest/v1/' + table;
+    var params = [];
+    if (opts.select)  params.push('select=' + encodeURIComponent(opts.select));
+    if (opts.filter)  params.push(opts.filter);   // e.g. "status=eq.Available"
+    if (opts.order)   params.push('order=' + encodeURIComponent(opts.order));
+    if (opts.limit)   params.push('limit=' + opts.limit);
+    if (params.length) url += '?' + params.join('&');
+
+    var headers = {
+      'apikey':        SUPA_KEY,
+      'Authorization': 'Bearer ' + SUPA_KEY,
+      'Content-Type':  'application/json',
+      'Prefer':        'return=representation',
+    };
+
+    // For upsert we need a different Prefer header
+    if (opts.upsert) headers['Prefer'] = 'resolution=merge-duplicates,return=representation';
+
+    var body = (opts.body !== undefined) ? JSON.stringify(opts.body) : undefined;
+    var res  = await fetch(url, { method: method, headers: headers, body: body });
+
+    // 204 No Content is fine for DELETE/UPDATE with no return
+    if (res.status === 204) return [];
+
+    var text = await res.text();
+    if (!res.ok) {
+      var err;
+      try { err = JSON.parse(text); } catch(e) { err = { message: text }; }
+      throw new Error(err.message || err.error || ('Supabase error ' + res.status));
+    }
+    if (!text) return [];
+    return JSON.parse(text);
+  }
+
+  // Convenience wrappers
+  var db = {
+    select:  function(table, opts)       { return supa('GET',    table, opts); },
+    insert:  function(table, body)       { return supa('POST',   table, { body: body }); },
+    update:  function(table, filter, body){ return supa('PATCH', table, { filter: filter, body: body }); },
+    upsert:  function(table, body)       { return supa('POST',   table, { body: body, upsert: true }); },
+    delete:  function(table, filter)     { return supa('DELETE', table, { filter: filter }); },
+  };
+
+  // ── ID generators ──────────────────────────────────────────────
+  function genAssetId() {
+    // Uses a timestamp + random suffix to avoid collisions
+    var ts  = Date.now().toString().slice(-6);
+    var rnd = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return 'AST-' + ts + rnd;
+  }
+  function genId(prefix) {
+    var ts  = Date.now().toString().slice(-5);
+    var rnd = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+    return prefix + '-' + ts + rnd;
+  }
+
   // ── State ──────────────────────────────────────────────────────
   var state = {
     tab:          'dashboard',
@@ -20,19 +86,19 @@ window.WorkVoltPages['assets'] = function(container) {
     search:       '',
     filterStatus: '',
     filterCat:    '',
-    modal:        null,   // { type, data }
+    modal:        null,
   };
 
-  var api = WorkVolt.api;
   var toast = WorkVolt.toast;
+  var api   = WorkVolt.api;   // still used for users/list from GAS
 
   // ── Lifecycle / status config ──────────────────────────────────
   var STATUS_CFG = {
-    'Available':   { cls: 'bg-emerald-100 text-emerald-700',  dot: 'bg-emerald-500' },
-    'Assigned':    { cls: 'bg-blue-100 text-blue-700',        dot: 'bg-blue-500' },
-    'Maintenance': { cls: 'bg-amber-100 text-amber-700',      dot: 'bg-amber-500' },
-    'Retired':     { cls: 'bg-slate-100 text-slate-500',      dot: 'bg-slate-400' },
-    'Disposed':    { cls: 'bg-red-100 text-red-600',          dot: 'bg-red-500' },
+    'Available':   { cls: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+    'Assigned':    { cls: 'bg-blue-100 text-blue-700',       dot: 'bg-blue-500' },
+    'Maintenance': { cls: 'bg-amber-100 text-amber-700',     dot: 'bg-amber-500' },
+    'Retired':     { cls: 'bg-slate-100 text-slate-500',     dot: 'bg-slate-400' },
+    'Disposed':    { cls: 'bg-red-100 text-red-600',         dot: 'bg-red-500' },
   };
   var CONDITION_CFG = {
     'New':     'bg-emerald-100 text-emerald-700',
@@ -46,6 +112,29 @@ window.WorkVoltPages['assets'] = function(container) {
     info:    { cls: 'bg-blue-50 border-blue-200 text-blue-800',    icon: 'fa-info-circle text-blue-500' },
   };
 
+  // ── Category / Type seed fallback ──────────────────────────────
+  var CAT_SEEDS = [
+    'Computers','Vehicles','Office Equipment','Furniture',
+    'Consumables','Tools','Networking','Electronics','Studio Equipment','Other'
+  ];
+  var TYPE_SEEDS = [
+    {category:'Computers',        type:'Laptop'},   {category:'Computers',        type:'Desktop'},
+    {category:'Computers',        type:'Monitor'},  {category:'Computers',        type:'Tablet'},
+    {category:'Vehicles',         type:'Car'},      {category:'Vehicles',         type:'Truck'},
+    {category:'Vehicles',         type:'Forklift'}, {category:'Vehicles',         type:'Van'},
+    {category:'Office Equipment', type:'Printer'},  {category:'Office Equipment', type:'Phone'},
+    {category:'Office Equipment', type:'Scanner'},  {category:'Furniture',        type:'Desk'},
+    {category:'Furniture',        type:'Chair'},    {category:'Furniture',        type:'Cabinet'},
+    {category:'Consumables',      type:'Pen'},      {category:'Consumables',      type:'Paper'},
+    {category:'Consumables',      type:'Toner'},    {category:'Tools',            type:'Power Drill'},
+    {category:'Networking',       type:'Router'},   {category:'Networking',       type:'Switch'},
+    {category:'Electronics',      type:'Cell Phone'},{category:'Electronics',     type:'TV'},
+    {category:'Electronics',      type:'Headphones'},{category:'Electronics',     type:'Keyboard'},
+    {category:'Studio Equipment', type:'Microphone'},{category:'Studio Equipment',type:'Camera'},
+    {category:'Studio Equipment', type:'Audio Interface'},{category:'Studio Equipment',type:'Lighting'},
+    {category:'Studio Equipment', type:'Speaker'},  {category:'Other',            type:'Other'},
+  ];
+
   // ── Helpers ────────────────────────────────────────────────────
   function badge(label, cfg) {
     cfg = cfg || {};
@@ -55,20 +144,20 @@ window.WorkVoltPages['assets'] = function(container) {
       + label + '</span>';
   }
   function statusBadge(s) { return badge(s || '—', STATUS_CFG[s] || {}); }
-  function condBadge(c)   { return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold ' + (CONDITION_CFG[c] || 'bg-slate-100 text-slate-500') + '">' + (c || '—') + '</span>'; }
-  function fmtDate(d)     { if (!d) return '—'; try { return new Date(d).toLocaleDateString(); } catch(e) { return d; } }
-  function fmtMoney(v)    { var n = parseFloat(v); return isNaN(n) ? '—' : '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); }
-  function esc(s)         { return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+  function condBadge(c)   {
+    return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold '
+      + (CONDITION_CFG[c] || 'bg-slate-100 text-slate-500') + '">' + (c || '—') + '</span>';
+  }
+  function fmtDate(d)  { if (!d) return '—'; try { return new Date(d).toLocaleDateString(); } catch(e) { return d; } }
+  function fmtMoney(v) { var n = parseFloat(v); return isNaN(n) ? '—' : '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function esc(s)      { return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
-  // Resolve user display name from ID or raw string
   function getUserName(idOrName) {
     if (!idOrName) return '—';
     var u = state.users.find(function(u){ return (u.user_id||u.id||'') === idOrName; });
-    if (u) return u.name || u.email || idOrName;
-    return idOrName; // fallback: already a name or unknown
+    return u ? (u.name || u.email || idOrName) : idOrName;
   }
 
-  // Render a rich asset cell: name (bold) + id · SN sub-line
   function assetCell(assetId) {
     if (!assetId) return '<span class="text-slate-400">—</span>';
     var a = state.assets.find(function(a){ return a.asset_id === assetId; });
@@ -78,8 +167,6 @@ window.WorkVoltPages['assets'] = function(container) {
       + (a.serial_number ? ' · SN: ' + esc(a.serial_number) : '') + '</div>';
   }
 
-  // Build an asset searchable combobox for modals (replaces plain text input)
-  // Returns HTML string; id prefix used for the hidden input and visible input
   function assetComboField(label, presetId, required) {
     var presetAsset = presetId ? state.assets.find(function(a){ return a.asset_id === presetId; }) : null;
     var displayVal  = presetAsset ? presetAsset.asset_name + ' (' + presetAsset.asset_id + ')' : (presetId || '');
@@ -113,113 +200,183 @@ window.WorkVoltPages['assets'] = function(container) {
       + label + '</button>';
   }
 
-  // ── Category / Type seed data (fallback if sheets not ready) ──
-  var CAT_SEEDS = [
-    'Computers','Vehicles','Office Equipment','Furniture',
-    'Consumables','Tools','Networking','Electronics','Studio Equipment','Other'
-  ];
-  var TYPE_SEEDS = [
-    {category:'Computers',        type:'Laptop'},
-    {category:'Computers',        type:'Desktop'},
-    {category:'Computers',        type:'Monitor'},
-    {category:'Computers',        type:'Tablet'},
-    {category:'Vehicles',         type:'Car'},
-    {category:'Vehicles',         type:'Truck'},
-    {category:'Vehicles',         type:'Forklift'},
-    {category:'Vehicles',         type:'Van'},
-    {category:'Office Equipment', type:'Printer'},
-    {category:'Office Equipment', type:'Phone'},
-    {category:'Office Equipment', type:'Scanner'},
-    {category:'Furniture',        type:'Desk'},
-    {category:'Furniture',        type:'Chair'},
-    {category:'Furniture',        type:'Cabinet'},
-    {category:'Consumables',      type:'Pen'},
-    {category:'Consumables',      type:'Paper'},
-    {category:'Consumables',      type:'Toner'},
-    {category:'Tools',            type:'Power Drill'},
-    {category:'Networking',       type:'Router'},
-    {category:'Networking',       type:'Switch'},
-    {category:'Electronics',      type:'Cell Phone'},
-    {category:'Electronics',      type:'TV'},
-    {category:'Electronics',      type:'Headphones'},
-    {category:'Electronics',      type:'Keyboard'},
-    {category:'Studio Equipment', type:'Microphone'},
-    {category:'Studio Equipment', type:'Camera'},
-    {category:'Studio Equipment', type:'Audio Interface'},
-    {category:'Studio Equipment', type:'Lighting'},
-    {category:'Studio Equipment', type:'Speaker'},
-    {category:'Other',            type:'Other'},
-  ];
+  // ── Depreciation calculator (client-side) ──────────────────────
+  function calcDepreciation(row) {
+    var price   = parseFloat(row.purchase_price)    || 0;
+    var life    = parseFloat(row.useful_life_years) || 1;
+    var salvage = parseFloat(row.salvage_value)     || 0;
+    var method  = row.method || 'Straight Line';
+    // Use the asset's purchase_date if available
+    var asset   = state.assets.find(function(a){ return a.asset_id === row.asset_id; });
+    var pd      = asset ? asset.purchase_date : null;
+    if (!pd) return price;
+    var years = (Date.now() - new Date(pd)) / (1000 * 60 * 60 * 24 * 365.25);
+    years = Math.min(years, life);
+    if (method === 'Straight Line') {
+      return Math.max(price - ((price - salvage) / life) * years, salvage).toFixed(2);
+    }
+    if (method === 'Declining Balance') {
+      var rate = 2 / life;
+      var val  = price;
+      for (var y = 0; y < years; y++) val = val * (1 - rate);
+      return Math.max(val, salvage).toFixed(2);
+    }
+    return price;
+  }
+
+  // ── Alert builder (client-side) ───────────────────────────────
+  function buildAlerts() {
+    var alerts = [];
+    var now    = Date.now();
+    var in30   = now + 30 * 24 * 60 * 60 * 1000;
+
+    state.assets.forEach(function(a) {
+      if (a.warranty_expiry && a.status !== 'Retired') {
+        var exp = new Date(a.warranty_expiry).getTime();
+        if (!isNaN(exp) && exp <= in30 && exp >= now) {
+          alerts.push({ type:'warranty', level:'warning', asset_id: a.asset_id,
+            message: 'Warranty expiring: ' + a.asset_name + ' (' + a.asset_id + ')',
+            date: a.warranty_expiry });
+        }
+      }
+    });
+
+    state.assignments.forEach(function(a) {
+      if (!a.return_date && a.assigned_date) {
+        var days = Math.floor((now - new Date(a.assigned_date)) / 86400000);
+        if (days > 90) {
+          alerts.push({ type:'overdue', level:'error', asset_id: a.asset_id,
+            message: 'Overdue return: ' + a.asset_id + ' assigned to '
+              + getUserName(a.assigned_to) + ' (' + days + ' days)' });
+        }
+      }
+    });
+
+    state.consumables.forEach(function(c) {
+      if (parseFloat(c.quantity) <= parseFloat(c.reorder_level || 0)) {
+        alerts.push({ type:'low_stock', level:'warning', item_id: c.item_id,
+          message: 'Low stock: ' + c.item_name + ' (' + c.quantity
+            + ' remaining, reorder at ' + c.reorder_level + ')' });
+      }
+    });
+
+    state.alerts = alerts;
+  }
+
+  // ── Dashboard stats builder (client-side) ─────────────────────
+  function buildDashboardStats() {
+    var byStatus   = {};
+    var byCategory = {};
+    state.assets.forEach(function(a) {
+      byStatus[a.status]     = (byStatus[a.status]     || 0) + 1;
+      byCategory[a.category] = (byCategory[a.category] || 0) + 1;
+    });
+    var mntCost = state.maintenance.reduce(function(s, m){ return s + (parseFloat(m.cost)||0); }, 0);
+    var now = Date.now();
+    var in30 = now + 30 * 24 * 60 * 60 * 1000;
+    var warrantyExpiring = state.assets.filter(function(a) {
+      if (!a.warranty_expiry || a.status === 'Retired') return false;
+      var exp = new Date(a.warranty_expiry).getTime();
+      return !isNaN(exp) && exp <= in30 && exp >= now;
+    }).length;
+
+    state.dashboard = {
+      total:             state.assets.length,
+      assigned:          byStatus['Assigned']    || 0,
+      available:         byStatus['Available']   || 0,
+      maintenance:       byStatus['Maintenance'] || 0,
+      retired:           byStatus['Retired']     || 0,
+      warranty_expiring: warrantyExpiring,
+      total_maint_cost:  mntCost,
+      by_status:         byStatus,
+      by_category:       byCategory,
+    };
+  }
 
   // ── Data loaders ───────────────────────────────────────────────
   async function loadAll() {
     state.loading = true;
     render();
+    try {
+      var [assetsRes, catsRes, typesRes, usersRes] = await Promise.all([
+        db.select('assets', { order: 'created_at.desc' }),
+        db.select('asset_categories', { order: 'category_id.asc' }),
+        db.select('asset_types',      { order: 'type_id.asc' }),
+        api('users/list').catch(function(){ return {}; }),
+      ]);
 
-    // Install sheets if missing, then load all data — each call isolated
-    var [assets, cats, types, alerts, dash, usersRes] = await Promise.all([
-      api('assets/list').catch(function(e){ if (e.message === 'Session expired') throw e; return {}; }),
-      api('assets/categories').catch(function(e){ if (e.message === 'Session expired') throw e; return {}; }),
-      api('assets/types').catch(function(e){ if (e.message === 'Session expired') throw e; return {}; }),
-      api('assets/alerts').catch(function(e){ if (e.message === 'Session expired') throw e; return {}; }),
-      api('assets/dashboard').catch(function(e){ if (e.message === 'Session expired') throw e; return {}; }),
-      api('users/list').catch(function(e){ if (e.message === 'Session expired') throw e; return {}; }),
-    ]);
+      state.assets  = assetsRes || [];
+      state.users   = usersRes.users || usersRes.rows || [];
 
-    state.assets    = assets.rows   || [];
-    state.alerts    = alerts.alerts || [];
-    state.dashboard = dash          || {};
-    state.users     = usersRes.users || usersRes.rows || [];
+      state.categories = (catsRes && catsRes.length)
+        ? catsRes
+        : CAT_SEEDS.map(function(c, i){ return { category_id: 'CAT'+String(i+1).padStart(3,'0'), category: c }; });
 
-    // Use sheet data if available, otherwise use hardcoded seeds
-    state.categories = (cats.rows && cats.rows.length)
-      ? cats.rows
-      : CAT_SEEDS.map(function(c, i) { return { category_id: 'CAT' + String(i+1).padStart(3,'0'), category: c }; });
+      state.types = (typesRes && typesRes.length)
+        ? typesRes
+        : TYPE_SEEDS;
 
-    state.types = (types.rows && types.rows.length)
-      ? types.rows
-      : TYPE_SEEDS;
+      // Load assignments + consumables for alerts & dashboard
+      var [asnRes, conRes] = await Promise.all([
+        db.select('asset_assignments', { filter: 'return_date=is.null', order: 'created_at.desc' }),
+        db.select('asset_consumables', { order: 'item_name.asc' }),
+      ]);
+      state.assignments = asnRes  || [];
+      state.consumables = conRes  || [];
 
+      buildDashboardStats();
+      buildAlerts();
+
+    } catch(e) {
+      toast(e.message, 'error');
+    }
     state.loading = false;
     render();
   }
 
   async function loadAssignments() {
     try {
-      var r = await api('assets/assignments/list');
-      state.assignments = r.rows || [];
+      var rows = await db.select('asset_assignments', { order: 'created_at.desc' });
+      state.assignments = rows || [];
+      buildAlerts();
     } catch(e) { toast(e.message, 'error'); }
     render();
   }
 
   async function loadMaintenance() {
     try {
-      var r = await api('assets/maintenance/list');
-      state.maintenance = r.rows || [];
+      var rows = await db.select('asset_maintenance', { order: 'date.desc' });
+      state.maintenance = rows || [];
+      buildDashboardStats();
     } catch(e) { toast(e.message, 'error'); }
     render();
   }
 
   async function loadConsumables() {
     try {
-      var r = await api('assets/consumables/list');
-      state.consumables = r.rows || [];
+      var rows = await db.select('asset_consumables', { order: 'item_name.asc' });
+      state.consumables = rows || [];
+      buildAlerts();
     } catch(e) { toast(e.message, 'error'); }
     render();
   }
 
   async function loadDepreciation() {
     try {
-      var r = await api('assets/depreciation/list');
-      state.depreciation = r.rows || [];
+      var rows = await db.select('asset_depreciation', { order: 'asset_id.asc' });
+      // Attach current_value computed client-side
+      state.depreciation = (rows || []).map(function(r) {
+        r.current_value = calcDepreciation(r);
+        return r;
+      });
     } catch(e) { toast(e.message, 'error'); }
     render();
   }
 
   async function loadDocuments() {
     try {
-      var r = await api('assets/documents/list');
-      state.documents = r.rows || [];
+      var rows = await db.select('asset_documents', { order: 'created_at.desc' });
+      state.documents = rows || [];
     } catch(e) { toast(e.message, 'error'); }
     render();
   }
@@ -234,7 +391,7 @@ window.WorkVoltPages['assets'] = function(container) {
     if (tab === 'assignments' && !state.assignments.length) loadAssignments();
     if (tab === 'maintenance' && !state.maintenance.length) loadMaintenance();
     if (tab === 'consumables' && !state.consumables.length) loadConsumables();
-    if (tab === 'depreciation' && !state.depreciation.length) loadDepreciation();
+    if (tab === 'depreciation'&& !state.depreciation.length) loadDepreciation();
     if (tab === 'documents'   && !state.documents.length)   loadDocuments();
   };
 
@@ -248,73 +405,67 @@ window.WorkVoltPages['assets'] = function(container) {
     var alertCount = state.alerts.length;
     return '<div class="flex flex-col h-full">'
 
-      // ── Header
       + '<div class="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0">'
       +   '<div class="flex items-center justify-between mb-4">'
       +     '<div>'
       +       '<h1 class="text-xl font-extrabold text-slate-900 flex items-center gap-2.5">'
       +         '<div class="w-9 h-9 bg-gradient-to-br from-slate-600 to-slate-800 rounded-xl flex items-center justify-center shadow-sm">'
       +           '<i class="fas fa-box-open text-white text-sm"></i></div>Asset Management</h1>'
-      +       '<p class="text-slate-500 text-sm mt-0.5 ml-11">Track, assign & maintain your company assets</p>'
+      +       '<p class="text-slate-500 text-sm mt-0.5 ml-11">Track, assign &amp; maintain your company assets</p>'
       +     '</div>'
       +     '<div class="flex items-center gap-2">'
-      +       (alertCount ? '<button onclick="assetTab(\'dashboard\')" class="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-xl hover:bg-amber-100 transition-colors">'
-      +         '<i class="fas fa-triangle-exclamation"></i>' + alertCount + ' Alert' + (alertCount > 1 ? 's' : '') + '</button>' : '')
-      +       '<button onclick="assetRunSetup()" class="flex items-center gap-1.5 px-3 py-1.5 bg-violet-50 border border-violet-200 text-violet-700 text-xs font-bold rounded-xl hover:bg-violet-100 transition-colors"><i class="fas fa-database mr-1"></i>Setup Sheets</button>'
+      +       (alertCount
+          ? '<button onclick="assetTab(\'dashboard\')" class="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-xl hover:bg-amber-100 transition-colors">'
+          + '<i class="fas fa-triangle-exclamation"></i>' + alertCount + ' Alert' + (alertCount > 1 ? 's' : '') + '</button>'
+          : '')
       +       '<button onclick="assetOpenModal(\'asset\',null)" class="btn-primary"><i class="fas fa-plus text-xs"></i>Add Asset</button>'
       +     '</div>'
       +   '</div>'
-
-      // ── Tab bar
       +   '<div class="flex gap-1 overflow-x-auto thin-scroll pb-0.5">'
-      +     tabBtn('dashboard',   'fa-chart-bar',        'Dashboard')
-      +     tabBtn('assets',      'fa-box-open',         'Assets')
-      +     tabBtn('assignments', 'fa-user-tag',         'Assignments')
-      +     tabBtn('maintenance', 'fa-wrench',           'Maintenance')
-      +     tabBtn('consumables', 'fa-cubes',            'Consumables')
-      +     tabBtn('depreciation','fa-chart-line-down',  'Depreciation')
-      +     tabBtn('documents',   'fa-file-alt',         'Documents')
+      +     tabBtn('dashboard',    'fa-chart-bar',       'Dashboard')
+      +     tabBtn('assets',       'fa-box-open',        'Assets')
+      +     tabBtn('assignments',  'fa-user-tag',        'Assignments')
+      +     tabBtn('maintenance',  'fa-wrench',          'Maintenance')
+      +     tabBtn('consumables',  'fa-cubes',           'Consumables')
+      +     tabBtn('depreciation', 'fa-chart-line-down', 'Depreciation')
+      +     tabBtn('documents',    'fa-file-alt',        'Documents')
       +   '</div>'
       + '</div>'
 
-      // ── Content
       + '<div class="flex-1 overflow-y-auto thin-scroll">'
       +   (state.loading ? loader() : buildTab())
       + '</div>'
-
-      // ── Modal
       + buildModal()
       + '</div>';
   }
 
   function buildTab() {
     switch(state.tab) {
-      case 'dashboard':   return buildDashboard();
-      case 'assets':      return buildAssets();
-      case 'assignments': return buildAssignments();
-      case 'maintenance': return buildMaintenance();
-      case 'consumables': return buildConsumables();
-      case 'depreciation':return buildDepreciation();
-      case 'documents':   return buildDocuments();
-      default:            return '';
+      case 'dashboard':    return buildDashboard();
+      case 'assets':       return buildAssets();
+      case 'assignments':  return buildAssignments();
+      case 'maintenance':  return buildMaintenance();
+      case 'consumables':  return buildConsumables();
+      case 'depreciation': return buildDepreciation();
+      case 'documents':    return buildDocuments();
+      default:             return '';
     }
   }
 
   // ── DASHBOARD ──────────────────────────────────────────────────
   function buildDashboard() {
-    var d  = state.dashboard;
+    var d = state.dashboard;
     var stats = [
-      { label:'Total Assets',        val: d.total            || 0, icon:'fa-box-open',         color:'from-slate-600 to-slate-800' },
-      { label:'Assigned',            val: d.assigned         || 0, icon:'fa-user-tag',          color:'from-blue-500 to-blue-700' },
-      { label:'Available',           val: d.available        || 0, icon:'fa-check-circle',      color:'from-emerald-500 to-teal-600' },
-      { label:'In Maintenance',      val: d.maintenance      || 0, icon:'fa-wrench',            color:'from-amber-500 to-orange-500' },
-      { label:'Retired',             val: d.retired          || 0, icon:'fa-archive',           color:'from-slate-400 to-slate-500' },
-      { label:'Warranty Expiring',   val: d.warranty_expiring|| 0, icon:'fa-shield-exclamation',color:'from-red-500 to-rose-600' },
+      { label:'Total Assets',      val: d.total            || 0, icon:'fa-box-open',          color:'from-slate-600 to-slate-800' },
+      { label:'Assigned',          val: d.assigned         || 0, icon:'fa-user-tag',           color:'from-blue-500 to-blue-700' },
+      { label:'Available',         val: d.available        || 0, icon:'fa-check-circle',       color:'from-emerald-500 to-teal-600' },
+      { label:'In Maintenance',    val: d.maintenance      || 0, icon:'fa-wrench',             color:'from-amber-500 to-orange-500' },
+      { label:'Retired',           val: d.retired          || 0, icon:'fa-archive',            color:'from-slate-400 to-slate-500' },
+      { label:'Warranty Expiring', val: d.warranty_expiring|| 0, icon:'fa-shield-exclamation', color:'from-red-500 to-rose-600' },
     ];
 
     var html = '<div class="p-6 space-y-6 fade-in">';
 
-    // Stat cards
     html += '<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">';
     stats.forEach(function(s) {
       html += '<div class="bg-white border border-slate-200 rounded-2xl p-4 card-hover">'
@@ -326,12 +477,9 @@ window.WorkVoltPages['assets'] = function(container) {
     });
     html += '</div>';
 
-    // Alerts
     if (state.alerts.length) {
-      html += '<div>'
-        + '<h2 class="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">'
-        + '<i class="fas fa-bell text-amber-500"></i>Active Alerts</h2>'
-        + '<div class="space-y-2">';
+      html += '<div><h2 class="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">'
+        + '<i class="fas fa-bell text-amber-500"></i>Active Alerts</h2><div class="space-y-2">';
       state.alerts.forEach(function(a) {
         var cfg = ALERT_LEVEL[a.level] || ALERT_LEVEL.info;
         html += '<div class="flex items-center gap-3 px-4 py-3 rounded-xl border ' + cfg.cls + '">'
@@ -347,7 +495,6 @@ window.WorkVoltPages['assets'] = function(container) {
         + '<p class="text-sm font-semibold text-emerald-700">All clear — no active alerts</p></div>';
     }
 
-    // By category breakdown
     var byCat = d.by_category || {};
     var catKeys = Object.keys(byCat);
     if (catKeys.length) {
@@ -357,26 +504,22 @@ window.WorkVoltPages['assets'] = function(container) {
       var total = d.total || 1;
       catKeys.forEach(function(k) {
         var pct = Math.round((byCat[k] / total) * 100);
-        html += '<div>'
-          + '<div class="flex justify-between text-sm mb-1.5">'
+        html += '<div><div class="flex justify-between text-sm mb-1.5">'
           + '<span class="font-medium text-slate-700">' + esc(k) + '</span>'
           + '<span class="text-slate-500">' + byCat[k] + ' <span class="text-slate-400 text-xs">(' + pct + '%)</span></span>'
-          + '</div>'
-          + '<div class="h-2 bg-slate-100 rounded-full overflow-hidden">'
-          + '<div class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all" style="width:' + pct + '%"></div>'
+          + '</div><div class="h-2 bg-slate-100 rounded-full overflow-hidden">'
+          + '<div class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full" style="width:' + pct + '%"></div>'
           + '</div></div>';
       });
       html += '</div></div>';
     }
 
-    // Maintenance cost
     if (d.total_maint_cost) {
       html += '<div class="bg-white border border-slate-200 rounded-2xl p-5 flex items-center gap-4">'
         + '<div class="w-12 h-12 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl flex items-center justify-center flex-shrink-0">'
         + '<i class="fas fa-wrench text-white"></i></div>'
         + '<div><p class="text-xs text-slate-500 font-medium uppercase tracking-wide">Total Maintenance Cost</p>'
-        + '<p class="text-2xl font-extrabold text-slate-900">' + fmtMoney(d.total_maint_cost) + '</p></div>'
-        + '</div>';
+        + '<p class="text-2xl font-extrabold text-slate-900">' + fmtMoney(d.total_maint_cost) + '</p></div></div>';
     }
 
     html += '</div>';
@@ -387,17 +530,20 @@ window.WorkVoltPages['assets'] = function(container) {
   function buildAssets() {
     var rows = state.assets.filter(function(r) {
       var q = state.search.toLowerCase();
-      var matchQ  = !q || (r.asset_name||'').toLowerCase().includes(q)
-                       || (r.asset_id||'').toLowerCase().includes(q)
-                       || (r.serial_number||'').toLowerCase().includes(q)
-                       || (r.brand||'').toLowerCase().includes(q);
-      var matchS  = !state.filterStatus || r.status === state.filterStatus;
-      var matchC  = !state.filterCat    || r.category === state.filterCat;
+      var matchQ = !q
+        || (r.asset_name||'').toLowerCase().includes(q)
+        || (r.asset_id||'').toLowerCase().includes(q)
+        || (r.serial_number||'').toLowerCase().includes(q)
+        || (r.brand||'').toLowerCase().includes(q);
+      var matchS = !state.filterStatus || r.status === state.filterStatus;
+      var matchC = !state.filterCat    || r.category === state.filterCat;
       return matchQ && matchS && matchC;
     });
 
     var catOptions = '<option value="">All Categories</option>'
-      + state.categories.map(function(c){ return '<option value="' + esc(c.category) + '" ' + (state.filterCat===c.category?'selected':'') + '>' + esc(c.category) + '</option>'; }).join('');
+      + state.categories.map(function(c){
+          return '<option value="' + esc(c.category) + '" ' + (state.filterCat===c.category?'selected':'') + '>' + esc(c.category) + '</option>';
+        }).join('');
     var statusOptions = '<option value="">All Statuses</option>'
       + ['Available','Assigned','Maintenance','Retired','Disposed'].map(function(s){
           return '<option value="' + s + '" ' + (state.filterStatus===s?'selected':'') + '>' + s + '</option>';
@@ -414,10 +560,8 @@ window.WorkVoltPages['assets'] = function(container) {
     if (!rows.length) {
       html += emptyState('fa-box-open', 'No assets found', 'Add your first asset or adjust your filters');
     } else {
-      html += '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">'
-        + '<div class="overflow-x-auto">'
-        + '<table class="w-full text-sm">'
-        + '<thead><tr class="border-b border-slate-100 bg-slate-50">'
+      html += '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden"><div class="overflow-x-auto">'
+        + '<table class="w-full text-sm"><thead><tr class="border-b border-slate-100 bg-slate-50">'
         + '<th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Asset</th>'
         + '<th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide hidden md:table-cell">Category / Type</th>'
         + '<th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Status</th>'
@@ -425,21 +569,29 @@ window.WorkVoltPages['assets'] = function(container) {
         + '<th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide hidden xl:table-cell">Warranty</th>'
         + '<th class="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Actions</th>'
         + '</tr></thead><tbody>';
+
       rows.forEach(function(r) {
-        var nowMs = Date.now();
-        var warnWar = r.warranty_expiry && (new Date(r.warranty_expiry) - nowMs) < 30*24*60*60*1000 && new Date(r.warranty_expiry) > nowMs;
+        var nowMs   = Date.now();
+        var warnWar = r.warranty_expiry
+          && (new Date(r.warranty_expiry).getTime() - nowMs) < 30*24*60*60*1000
+          && new Date(r.warranty_expiry).getTime() > nowMs;
+
         html += '<tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">'
           + '<td class="px-4 py-3.5"><div class="font-semibold text-slate-900">' + esc(r.asset_name) + '</div>'
-          + '<div class="text-xs text-slate-400 font-mono mt-0.5">' + esc(r.asset_id) + (r.serial_number ? ' · SN: '+esc(r.serial_number) : '') + '</div></td>'
-          + '<td class="px-4 py-3.5 hidden md:table-cell"><div class="text-slate-700">' + esc(r.category||'—') + '</div><div class="text-xs text-slate-400">' + esc(r.asset_type||'') + '</div></td>'
+          + '<div class="text-xs text-slate-400 font-mono mt-0.5">' + esc(r.asset_id)
+          + (r.serial_number ? ' · SN: ' + esc(r.serial_number) : '') + '</div></td>'
+          + '<td class="px-4 py-3.5 hidden md:table-cell"><div class="text-slate-700">' + esc(r.category||'—') + '</div>'
+          + '<div class="text-xs text-slate-400">' + esc(r.asset_type||'') + '</div></td>'
           + '<td class="px-4 py-3.5">' + statusBadge(r.status) + '<div class="mt-1">' + condBadge(r.condition) + '</div></td>'
           + '<td class="px-4 py-3.5 hidden lg:table-cell text-slate-600 text-sm">' + esc(getUserName(r.assigned_to)) + '</td>'
           + '<td class="px-4 py-3.5 hidden xl:table-cell text-sm ' + (warnWar?'text-amber-600 font-semibold':'text-slate-500') + '">'
-          + (r.warranty_expiry ? (warnWar?'<i class="fas fa-triangle-exclamation mr-1"></i>':'')+fmtDate(r.warranty_expiry) : '—') + '</td>'
+          + (r.warranty_expiry ? (warnWar?'<i class="fas fa-triangle-exclamation mr-1"></i>':'') + fmtDate(r.warranty_expiry) : '—') + '</td>'
           + '<td class="px-4 py-3.5"><div class="flex items-center justify-end gap-1">'
           + '<button onclick="assetOpenModal(\'asset\',\'' + esc(r.asset_id) + '\')" class="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Edit"><i class="fas fa-pen text-xs"></i></button>'
-          + (r.status === 'Available' ? '<button onclick="assetOpenModal(\'assign\',\'' + esc(r.asset_id) + '\')" class="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" title="Assign"><i class="fas fa-user-plus text-xs"></i></button>' : '')
-          + (r.status !== 'Retired' ? '<button onclick="assetRetire(\'' + esc(r.asset_id) + '\')" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors" title="Retire"><i class="fas fa-archive text-xs"></i></button>' : '')
+          + (r.status === 'Available'
+            ? '<button onclick="assetOpenModal(\'assign\',\'' + esc(r.asset_id) + '\')" class="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" title="Assign"><i class="fas fa-user-plus text-xs"></i></button>' : '')
+          + (r.status !== 'Retired'
+            ? '<button onclick="assetRetire(\'' + esc(r.asset_id) + '\')" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors" title="Retire"><i class="fas fa-archive text-xs"></i></button>' : '')
           + '</div></td></tr>';
       });
       html += '</tbody></table></div></div>';
@@ -450,17 +602,15 @@ window.WorkVoltPages['assets'] = function(container) {
 
   // ── ASSIGNMENTS ────────────────────────────────────────────────
   function buildAssignments() {
-    if (!state.assignments.length && !state.loading) {
+    if (!state.assignments.length) {
       return '<div class="p-6 fade-in">' + emptyState('fa-user-tag','No assignments yet','Assign an asset from the Assets tab') + '</div>';
     }
     var active   = state.assignments.filter(function(r){ return !r.return_date; });
     var returned = state.assignments.filter(function(r){ return !!r.return_date; });
-
     var html = '<div class="p-6 space-y-6 fade-in">';
 
     if (active.length) {
-      html += '<div>'
-        + '<h2 class="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">'
+      html += '<div><h2 class="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">'
         + '<span class="w-2 h-2 rounded-full bg-blue-500"></span>Active Assignments (' + active.length + ')</h2>'
         + '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden"><div class="overflow-x-auto">'
         + '<table class="w-full text-sm"><thead><tr class="border-b border-slate-100 bg-slate-50">'
@@ -471,14 +621,13 @@ window.WorkVoltPages['assets'] = function(container) {
         + '<th class="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">Actions</th>'
         + '</tr></thead><tbody>';
       active.forEach(function(r) {
-        var daysAssigned = r.assigned_date ? Math.floor((Date.now() - new Date(r.assigned_date)) / 86400000) : 0;
-        var overdue = daysAssigned > 90;
+        var days   = r.assigned_date ? Math.floor((Date.now() - new Date(r.assigned_date)) / 86400000) : 0;
+        var overdue = days > 90;
         html += '<tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">'
           + '<td class="px-4 py-3.5">' + assetCell(r.asset_id) + '</td>'
           + '<td class="px-4 py-3.5 font-medium text-slate-700">' + esc(getUserName(r.assigned_to)) + '</td>'
-          + '<td class="px-4 py-3.5 hidden md:table-cell text-slate-500">'
-          + fmtDate(r.assigned_date)
-          + '<span class="ml-2 text-xs ' + (overdue?'text-red-500 font-semibold':'text-slate-400') + '">(' + daysAssigned + 'd)</span></td>'
+          + '<td class="px-4 py-3.5 hidden md:table-cell text-slate-500">' + fmtDate(r.assigned_date)
+          + '<span class="ml-2 text-xs ' + (overdue?'text-red-500 font-semibold':'text-slate-400') + '">(' + days + 'd)</span></td>'
           + '<td class="px-4 py-3.5 hidden md:table-cell">' + condBadge(r.condition_given) + '</td>'
           + '<td class="px-4 py-3.5 text-right">'
           + '<button onclick="assetOpenModal(\'return\',\'' + esc(r.assignment_id) + '\')" class="text-xs font-bold px-3 py-1.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 rounded-xl transition-colors">'
@@ -488,8 +637,7 @@ window.WorkVoltPages['assets'] = function(container) {
     }
 
     if (returned.length) {
-      html += '<div>'
-        + '<h2 class="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">'
+      html += '<div><h2 class="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">'
         + '<span class="w-2 h-2 rounded-full bg-slate-400"></span>Return History (' + returned.length + ')</h2>'
         + '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden"><div class="overflow-x-auto">'
         + '<table class="w-full text-sm"><thead><tr class="border-b border-slate-100 bg-slate-50">'
@@ -499,7 +647,7 @@ window.WorkVoltPages['assets'] = function(container) {
         + '<th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide hidden md:table-cell">Returned</th>'
         + '<th class="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide hidden lg:table-cell">Condition Returned</th>'
         + '</tr></thead><tbody>';
-      returned.slice(0,30).forEach(function(r) {
+      returned.slice(0, 30).forEach(function(r) {
         html += '<tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">'
           + '<td class="px-4 py-3.5">' + assetCell(r.asset_id) + '</td>'
           + '<td class="px-4 py-3 text-slate-600">' + esc(getUserName(r.assigned_to)) + '</td>'
@@ -510,7 +658,6 @@ window.WorkVoltPages['assets'] = function(container) {
       });
       html += '</tbody></table></div></div></div>';
     }
-
     html += '</div>';
     return html;
   }
@@ -576,34 +723,28 @@ window.WorkVoltPages['assets'] = function(container) {
     } else {
       html += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">';
       state.consumables.forEach(function(r) {
-        var qty       = parseFloat(r.quantity)     || 0;
-        var reorder   = parseFloat(r.reorder_level)|| 0;
-        var isLow     = qty <= reorder;
-        var pct       = reorder > 0 ? Math.min(Math.round((qty / (reorder * 3)) * 100), 100) : 100;
-        var barColor  = isLow ? 'from-red-500 to-rose-500' : qty < reorder * 2 ? 'from-amber-400 to-orange-400' : 'from-emerald-500 to-teal-500';
+        var qty     = parseFloat(r.quantity)     || 0;
+        var reorder = parseFloat(r.reorder_level)|| 0;
+        var isLow   = qty <= reorder;
+        var pct     = reorder > 0 ? Math.min(Math.round((qty / (reorder * 3)) * 100), 100) : 100;
+        var barColor = isLow ? 'from-red-500 to-rose-500' : qty < reorder*2 ? 'from-amber-400 to-orange-400' : 'from-emerald-500 to-teal-500';
         html += '<div class="bg-white border ' + (isLow?'border-red-200':'border-slate-200') + ' rounded-2xl p-5 card-hover">'
-          + '<div class="flex items-start justify-between mb-3">'
-          + '<div>'
+          + '<div class="flex items-start justify-between mb-3"><div>'
           + '<p class="font-bold text-slate-900">' + esc(r.item_name) + '</p>'
           + '<p class="text-xs text-slate-400 mt-0.5">' + esc(r.item_id) + ' · ' + esc(r.category||'—') + '</p>'
-          + '</div>'
-          + (isLow ? '<span class="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-1 rounded-xl">LOW STOCK</span>' : '')
-          + '</div>'
+          + '</div>' + (isLow ? '<span class="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-1 rounded-xl">LOW STOCK</span>' : '') + '</div>'
           + '<div class="flex items-end justify-between mb-2">'
           + '<div><p class="text-3xl font-extrabold text-slate-900">' + qty + '</p>'
           + '<p class="text-xs text-slate-400">Reorder at ' + reorder + '</p></div>'
           + '<div class="text-right"><p class="text-xs text-slate-400">Unit cost</p><p class="font-bold text-slate-700">' + fmtMoney(r.unit_cost) + '</p></div>'
-          + '</div>'
-          + '<div class="h-2 bg-slate-100 rounded-full overflow-hidden mb-3">'
+          + '</div><div class="h-2 bg-slate-100 rounded-full overflow-hidden mb-3">'
           + '<div class="h-full bg-gradient-to-r ' + barColor + ' rounded-full transition-all" style="width:' + pct + '%"></div>'
-          + '</div>'
-          + '<div class="flex items-center justify-between">'
+          + '</div><div class="flex items-center justify-between">'
           + '<p class="text-xs text-slate-400">Supplier: ' + esc(r.supplier||'—') + '</p>'
           + '<div class="flex gap-1">'
           + '<button onclick="assetOpenModal(\'consumable\',\'' + esc(r.item_id) + '\')" class="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-pen text-xs"></i></button>'
           + '<button onclick="assetDeleteConsumable(\'' + esc(r.item_id) + '\')" class="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"><i class="fas fa-trash text-xs"></i></button>'
-          + '</div></div>'
-          + '</div>';
+          + '</div></div></div>';
       });
       html += '</div>';
     }
@@ -666,18 +807,17 @@ window.WorkVoltPages['assets'] = function(container) {
       html += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">';
       state.documents.forEach(function(r) {
         var icon = DOC_ICON[r.document_type] || 'fa-file-alt';
+        var a    = state.assets.find(function(a){ return a.asset_id === r.asset_id; });
         html += '<div class="bg-white border border-slate-200 rounded-2xl p-4 card-hover flex items-center gap-4">'
           + '<div class="w-10 h-10 bg-gradient-to-br from-slate-600 to-slate-800 rounded-xl flex items-center justify-center flex-shrink-0">'
           + '<i class="fas ' + icon + ' text-white text-sm"></i></div>'
           + '<div class="flex-1 min-w-0">'
           + '<p class="font-semibold text-slate-900 text-sm">' + esc(r.document_type||'Document') + '</p>'
-          + (function(){ var a = state.assets.find(function(a){ return a.asset_id === r.asset_id; });
-              return '<p class="text-xs text-slate-700 font-medium mt-0.5">' + esc(a ? a.asset_name : r.asset_id) + '</p>'
-                + '<p class="text-xs text-slate-400 font-mono">' + esc(r.asset_id) + '</p>'; })()
+          + '<p class="text-xs text-slate-700 font-medium mt-0.5">' + esc(a ? a.asset_name : r.asset_id) + '</p>'
+          + '<p class="text-xs text-slate-400 font-mono">' + esc(r.asset_id) + '</p>'
           + (r.notes ? '<p class="text-xs text-slate-500 mt-0.5 truncate">' + esc(r.notes) + '</p>' : '')
-          + '</div>'
-          + '<div class="flex items-center gap-1 flex-shrink-0">'
-          + (r.link ? '<a href="' + esc(r.link) + '" target="_blank" class="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Open"><i class="fas fa-external-link-alt text-xs"></i></a>' : '')
+          + '</div><div class="flex items-center gap-1 flex-shrink-0">'
+          + (r.link ? '<a href="' + esc(r.link) + '" target="_blank" class="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"><i class="fas fa-external-link-alt text-xs"></i></a>' : '')
           + '<button onclick="assetDeleteDoc(\'' + esc(r.doc_id) + '\')" class="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"><i class="fas fa-trash text-xs"></i></button>'
           + '</div></div>';
       });
@@ -690,38 +830,31 @@ window.WorkVoltPages['assets'] = function(container) {
   // ── MODAL BUILDER ──────────────────────────────────────────────
   function buildModal() {
     if (!state.modal) return '';
-    var m = state.modal;
+    var m     = state.modal;
     var inner = '';
 
     if (m.type === 'asset') {
-      var a = m.data || {};
+      var a      = m.data || {};
       var isEdit = !!a.asset_id;
       var catOpts = state.categories.map(function(c){
         return '<option value="' + esc(c.category) + '" ' + (a.category===c.category?'selected':'') + '>' + esc(c.category) + '</option>';
       }).join('');
       var typeOpts = state.types.filter(function(t){ return !a.category || t.category === a.category; })
         .map(function(t){ return '<option value="' + esc(t.type) + '" ' + (a.asset_type===t.type?'selected':'') + '>' + esc(t.type) + '</option>'; }).join('');
-      var lcOpts = ['Requested','Purchased','Received','Available','Assigned','Maintenance','Retired','Disposed']
-        .map(function(l){ return '<option value="' + l + '" ' + (a.lifecycle_stage===l?'selected':'') + '>' + l + '</option>'; }).join('');
       var statusOpts = ['Available','Assigned','Maintenance','Retired','Disposed']
         .map(function(s){ return '<option value="' + s + '" ' + (a.status===s?'selected':'') + '>' + s + '</option>'; }).join('');
       var condOpts = ['New','Good','Fair','Damaged']
         .map(function(c){ return '<option value="' + c + '" ' + (a.condition===c?'selected':'') + '>' + c + '</option>'; }).join('');
 
-      var userOpts = state.users.map(function(u) {
-        var uid  = u.user_id || u.id || '';
-        var name = u.name || u.email || uid;
-        return '<option value="' + esc(uid) + '" ' + (a.assigned_to === uid ? 'selected' : '') + '>' + esc(name) + '</option>';
-      }).join('');
-
       inner = modalHeader(isEdit ? 'Edit Asset' : 'Add Asset', 'fa-box-open')
         + '<div class="p-5 overflow-y-auto flex-1 space-y-4">'
-        + row2(field('asset_name','Asset Name',a.asset_name,'text','e.g. MacBook Pro 16"',true),
-          '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Serial Number' +
-          (a.category === 'Vehicles' ? ' <span class="text-slate-400 font-normal">(License Plate)</span>' : '') +
-          '</label><input id="f-serial_number" type="text" value="' + esc(a.serial_number||'') + '" placeholder="' +
-          (a.category === 'Vehicles' ? 'e.g. ABC-1234' : 'SN123456') + '" class="field"></div>'
-        )
+        + row2(
+            field('asset_name','Asset Name',a.asset_name,'text','e.g. MacBook Pro 16"',true),
+            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Serial Number'
+            + (a.category==='Vehicles' ? ' <span class="text-slate-400 font-normal">(License Plate)</span>' : '')
+            + '</label><input id="f-serial_number" type="text" value="' + esc(a.serial_number||'') + '" placeholder="'
+            + (a.category==='Vehicles' ? 'e.g. ABC-1234' : 'SN123456') + '" class="field"></div>'
+          )
         + row2(
             '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Category</label><select id="f-category" class="field"><option value="">— Select —</option>' + catOpts + '</select></div>',
             '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Asset Type</label><select id="f-asset_type" class="field"><option value="">— Select —</option>' + typeOpts + '</select></div>'
@@ -741,7 +874,7 @@ window.WorkVoltPages['assets'] = function(container) {
             '<div class="relative">'
             + '<label class="block text-xs font-semibold text-slate-600 mb-1.5">Assigned To</label>'
             + '<input id="f-assigned_to_name" type="text" autocomplete="off" placeholder="Search by name..." class="field"'
-            + ' value="' + esc((function(){ var u = state.users.find(function(u){ return (u.user_id||u.id||'') === a.assigned_to; }); return u ? (u.name||u.email||'') : ''; })()) + '">'
+            + ' value="' + esc((function(){ var u = state.users.find(function(u){ return (u.user_id||u.id||'') === a.assigned_to; }); return u ? (u.name||u.email||'') : (a.assigned_to||''); })()) + '">'
             + '<input type="hidden" id="f-assigned_to" value="' + esc(a.assigned_to||'') + '">'
             + '<div id="asset-user-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 z-[9999] bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto"></div>'
             + '</div>',
@@ -758,11 +891,6 @@ window.WorkVoltPages['assets'] = function(container) {
     }
 
     else if (m.type === 'assign') {
-      var assignUserOpts = state.users.map(function(u) {
-        var uid  = u.user_id || u.id || '';
-        var name = u.name || u.email || uid;
-        return '<option value="' + esc(uid) + '">' + esc(name) + '</option>';
-      }).join('');
       inner = modalHeader('Assign Asset','fa-user-tag')
         + '<div class="p-5 overflow-y-auto flex-1 space-y-4">'
         + '<div class="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700 font-medium">'
@@ -803,7 +931,7 @@ window.WorkVoltPages['assets'] = function(container) {
     }
 
     else if (m.type === 'maintenance') {
-      var r = m.data || {};
+      var r      = m.data || {};
       var isEdit = !!r.maintenance_id;
       var mntTypeOpts = ['Repair','Inspection','Cleaning','Upgrade','Service']
         .map(function(t){ return '<option value="'+t+'" '+(r.type===t?'selected':'')+'>'+t+'</option>'; }).join('');
@@ -812,52 +940,49 @@ window.WorkVoltPages['assets'] = function(container) {
       inner = modalHeader(isEdit?'Edit Maintenance':'Log Maintenance','fa-wrench')
         + '<div class="p-5 overflow-y-auto flex-1 space-y-4">'
         + assetComboField('Asset', r.asset_id, true)
-        + row2('<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Type</label><select id="f-type" class="field">'+mntTypeOpts+'</select></div>',
-               '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Status</label><select id="f-status" class="field">'+mntStatusOpts+'</select></div>')
-        + row2(field('date','Date',r.date||new Date().toISOString().split('T')[0],'date'),
-               field('cost','Cost',r.cost,'number','0.00'))
+        + row2(
+            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Type</label><select id="f-type" class="field">' + mntTypeOpts + '</select></div>',
+            '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Status</label><select id="f-status" class="field">' + mntStatusOpts + '</select></div>'
+          )
+        + row2(field('date','Date',r.date||new Date().toISOString().split('T')[0],'date'), field('cost','Cost',r.cost,'number','0.00'))
         + field('vendor','Vendor / Service Provider',r.vendor,'text')
         + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Notes</label>'
-        + '<textarea id="f-notes" rows="2" class="field resize-none">'+esc(r.notes||'')+'</textarea></div>'
+        + '<textarea id="f-notes" rows="2" class="field resize-none">' + esc(r.notes||'') + '</textarea></div>'
         + '</div>'
         + '<div class="p-5 border-t border-slate-100 flex gap-3 flex-shrink-0">'
         + '<button onclick="assetCloseModal()" class="btn-secondary flex-1">Cancel</button>'
         + '<button onclick="assetSaveMaintenance(\'' + esc(r.maintenance_id||'') + '\')" class="btn-primary flex-1">'
-        + (isEdit?'<i class="fas fa-save text-xs"></i>Save':'<i class="fas fa-plus text-xs"></i>Log')+'</button>'
+        + (isEdit?'<i class="fas fa-save text-xs"></i>Save':'<i class="fas fa-plus text-xs"></i>Log') + '</button>'
         + '</div>';
     }
 
     else if (m.type === 'consumable') {
-      var r = m.data || {};
+      var r      = m.data || {};
       var isEdit = !!r.item_id;
       inner = modalHeader(isEdit?'Edit Consumable':'Add Consumable','fa-cubes')
         + '<div class="p-5 overflow-y-auto flex-1 space-y-4">'
-        + row2(field('item_name','Item Name',r.item_name,'text','e.g. Ballpoint Pens',true),
-               field('category','Category',r.category,'text','e.g. Office Supplies'))
-        + row2(field('quantity','Quantity',r.quantity,'number','0'),
-               field('reorder_level','Reorder Level',r.reorder_level,'number','0'))
-        + row2(field('unit_cost','Unit Cost',r.unit_cost,'number','0.00'),
-               field('supplier','Supplier',r.supplier,'text'))
+        + row2(field('item_name','Item Name',r.item_name,'text','e.g. Ballpoint Pens',true), field('category','Category',r.category,'text','e.g. Office Supplies'))
+        + row2(field('quantity','Quantity',r.quantity,'number','0'), field('reorder_level','Reorder Level',r.reorder_level,'number','0'))
+        + row2(field('unit_cost','Unit Cost',r.unit_cost,'number','0.00'), field('supplier','Supplier',r.supplier,'text'))
         + field('notes','Notes',r.notes,'text')
         + '</div>'
         + '<div class="p-5 border-t border-slate-100 flex gap-3 flex-shrink-0">'
         + '<button onclick="assetCloseModal()" class="btn-secondary flex-1">Cancel</button>'
         + '<button onclick="assetSaveConsumable(\'' + esc(r.item_id||'') + '\')" class="btn-primary flex-1">'
-        + (isEdit?'<i class="fas fa-save text-xs"></i>Save':'<i class="fas fa-plus text-xs"></i>Add')+'</button>'
+        + (isEdit?'<i class="fas fa-save text-xs"></i>Save':'<i class="fas fa-plus text-xs"></i>Add') + '</button>'
         + '</div>';
     }
 
     else if (m.type === 'depreciation') {
-      var r = m.data || {};
+      var r          = m.data || {};
       var methodOpts = ['Straight Line','Declining Balance']
-        .map(function(m){ return '<option value="'+m+'" '+(r.method===m?'selected':'')+'>'+m+'</option>'; }).join('');
+        .map(function(mt){ return '<option value="'+mt+'" '+(r.method===mt?'selected':'')+'>'+mt+'</option>'; }).join('');
       inner = modalHeader('Add Depreciation Record','fa-chart-line-down')
         + '<div class="p-5 overflow-y-auto flex-1 space-y-4">'
         + assetComboField('Asset', r.asset_id, true)
         + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Method</label>'
-        + '<select id="f-method" class="field"><option value="">— Select —</option>'+methodOpts+'</select></div>'
-        + row2(field('purchase_price','Purchase Price',r.purchase_price,'number','0.00'),
-               field('useful_life_years','Useful Life (years)',r.useful_life_years,'number','3'))
+        + '<select id="f-method" class="field"><option value="">— Select —</option>' + methodOpts + '</select></div>'
+        + row2(field('purchase_price','Purchase Price',r.purchase_price,'number','0.00'), field('useful_life_years','Useful Life (years)',r.useful_life_years,'number','3'))
         + field('salvage_value','Salvage Value',r.salvage_value,'number','0.00')
         + '</div>'
         + '<div class="p-5 border-t border-slate-100 flex gap-3 flex-shrink-0">'
@@ -872,8 +997,7 @@ window.WorkVoltPages['assets'] = function(container) {
         + assetComboField('Asset', '', true)
         + '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Document Type</label>'
         + '<select id="f-document_type" class="field"><option value="">— Select —</option>'
-        + ['Invoice','Warranty','Manual','Photo','Contract','Other']
-          .map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('')
+        + ['Invoice','Warranty','Manual','Photo','Contract','Other'].map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('')
         + '</select></div>'
         + field('link','Link (Google Drive URL)','','url','https://drive.google.com/...')
         + field('notes','Notes','','text')
@@ -886,102 +1010,73 @@ window.WorkVoltPages['assets'] = function(container) {
 
     return '<div class="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-6 bg-black/50" onclick="assetCloseModal()">'
       + '<div class="bg-white w-full md:max-w-xl rounded-t-3xl md:rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col slide-up" onclick="event.stopPropagation()">'
-      + inner
-      + '</div></div>';
+      + inner + '</div></div>';
   }
 
   // ── Modal helpers ──────────────────────────────────────────────
   function modalHeader(title, icon) {
     return '<div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">'
-      + '<div class="flex items-center gap-3">'
-      + '<div class="w-8 h-8 bg-gradient-to-br from-slate-600 to-slate-800 rounded-xl flex items-center justify-center">'
+      + '<div class="flex items-center gap-3"><div class="w-8 h-8 bg-gradient-to-br from-slate-600 to-slate-800 rounded-xl flex items-center justify-center">'
       + '<i class="fas ' + icon + ' text-white text-xs"></i></div>'
       + '<h3 class="font-extrabold text-slate-900">' + title + '</h3></div>'
       + '<button onclick="assetCloseModal()" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 transition-colors">'
-      + '<i class="fas fa-times text-xs"></i></button>'
-      + '</div>';
+      + '<i class="fas fa-times text-xs"></i></button></div>';
   }
-
   function field(id, label, val, type, placeholder, required) {
     val = val || '';
-    return '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">' + label + (required ? ' <span class="text-red-500">*</span>' : '') + '</label>'
+    return '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">' + label
+      + (required ? ' <span class="text-red-500">*</span>' : '') + '</label>'
       + '<input id="f-' + id + '" type="' + (type||'text') + '" value="' + esc(val) + '" '
-      + (placeholder ? 'placeholder="' + esc(placeholder) + '"' : '') + ' class="field">'
-      + '</div>';
+      + (placeholder ? 'placeholder="' + esc(placeholder) + '"' : '') + ' class="field"></div>';
   }
-
-  function row2(a, b) {
-    return '<div class="grid grid-cols-2 gap-3">' + a + b + '</div>';
-  }
-
-  function gv(id) {
-    var el = document.getElementById('f-' + id);
-    return el ? el.value.trim() : '';
-  }
+  function row2(a, b) { return '<div class="grid grid-cols-2 gap-3">' + a + b + '</div>'; }
+  function gv(id) { var el = document.getElementById('f-' + id); return el ? el.value.trim() : ''; }
 
   // ── Actions ────────────────────────────────────────────────────
   window.assetOpenModal = function(type, id) {
     var data = null;
-    if (type === 'asset' && id) {
-      data = state.assets.find(function(a){ return a.asset_id === id; }) || null;
-    } else if (type === 'maintenance' && id) {
-      data = state.maintenance.find(function(r){ return r.maintenance_id === id; }) || null;
-    } else if (type === 'consumable' && id) {
-      data = state.consumables.find(function(r){ return r.item_id === id; }) || null;
-    } else if (type === 'return') {
-      state.modal = { type: 'return', asnId: id };
-      render();
-      return;
-    } else if (type === 'assign') {
-      state.modal = { type: 'assign', assetId: id };
-      render();
-      return;
-    }
+    if      (type === 'asset'       && id) { data = state.assets.find(function(a){ return a.asset_id === id; }) || null; }
+    else if (type === 'maintenance' && id) { data = state.maintenance.find(function(r){ return r.maintenance_id === id; }) || null; }
+    else if (type === 'consumable'  && id) { data = state.consumables.find(function(r){ return r.item_id === id; }) || null; }
+    else if (type === 'return')  { state.modal = { type: 'return',  asnId: id };   render(); return; }
+    else if (type === 'assign')  { state.modal = { type: 'assign',  assetId: id }; render(); return; }
     state.modal = { type: type, data: data };
     render();
   };
 
-  window.assetCloseModal = function() {
-    state.modal = null;
-    render();
-  };
+  window.assetCloseModal = function() { state.modal = null; render(); };
 
   window.assetSaveAsset = async function(existingId) {
-    var status       = gv('status') || 'Available';
-    var assignedTo   = gv('assigned_to');
-    // Auto-set to Assigned if a user is selected
+    var status     = gv('status') || 'Available';
+    var assignedTo = gv('assigned_to');
     if (assignedTo && status === 'Available') status = 'Assigned';
-    // Lifecycle stage mirrors status
-    var lcMap = {
-      'Available':'Available','Assigned':'Assigned','Maintenance':'Maintenance',
-      'Retired':'Retired','Disposed':'Disposed'
-    };
-    var params = {
+    var lcMap = { Available:'Available', Assigned:'Assigned', Maintenance:'Maintenance', Retired:'Retired', Disposed:'Disposed' };
+    var row = {
       asset_name:      gv('asset_name'),
-      category:        gv('category'),
-      asset_type:      gv('asset_type'),
-      brand:           gv('brand'),
-      model:           gv('model'),
-      serial_number:   gv('serial_number'),
-      purchase_date:   gv('purchase_date'),
-      purchase_price:  gv('purchase_price'),
-      supplier:        gv('supplier'),
-      location:        gv('location'),
+      category:        gv('category')        || null,
+      asset_type:      gv('asset_type')      || null,
+      brand:           gv('brand')           || null,
+      model:           gv('model')           || null,
+      serial_number:   gv('serial_number')   || null,
+      purchase_date:   gv('purchase_date')   || null,
+      purchase_price:  gv('purchase_price')  ? parseFloat(gv('purchase_price')) : null,
+      supplier:        gv('supplier')        || null,
+      location:        gv('location')        || null,
       status:          status,
-      condition:       gv('condition'),
-      warranty_expiry: gv('warranty_expiry'),
-      assigned_to:     assignedTo,
-      lifecycle_stage: lcMap[status] || status,
-      notes:           gv('notes'),
+      condition:       gv('condition')       || 'New',
+      warranty_expiry: gv('warranty_expiry') || null,
+      assigned_to:     assignedTo            || null,
+      lifecycle_stage: lcMap[status]         || status,
+      notes:           gv('notes')           || null,
     };
-    if (!params.asset_name) { toast('Asset name is required','error'); return; }
+    if (!row.asset_name) { toast('Asset name is required','error'); return; }
     try {
       if (existingId) {
-        params.asset_id = existingId;
-        await api('assets/update', params);
+        await db.update('assets', 'asset_id=eq.' + encodeURIComponent(existingId), row);
         toast('Asset updated','success');
       } else {
-        await api('assets/create', params);
+        row.asset_id = genAssetId();
+        await db.insert('assets', row);
         toast('Asset added','success');
       }
       state.modal = null;
@@ -990,16 +1085,24 @@ window.WorkVoltPages['assets'] = function(container) {
   };
 
   window.assetSaveAssign = async function(assetId) {
-    var params = {
-      asset_id:        assetId,
-      assigned_to:     gv('assigned_to'),
-      assigned_date:   gv('assigned_date'),
-      condition_given: gv('condition_given'),
-      notes:           gv('notes'),
-    };
-    if (!params.assigned_to) { toast('Please enter who to assign to','error'); return; }
+    var assignedTo = gv('assigned_to');
+    if (!assignedTo) { toast('Please select who to assign to','error'); return; }
+    var today = new Date().toISOString().split('T')[0];
     try {
-      await api('assets/assign', params);
+      // Update asset
+      await db.update('assets', 'asset_id=eq.' + encodeURIComponent(assetId), {
+        assigned_to: assignedTo, status: 'Assigned', lifecycle_stage: 'Assigned',
+        condition: gv('condition_given') || undefined,
+      });
+      // Create assignment record
+      await db.insert('asset_assignments', {
+        assignment_id:  genId('ASN'),
+        asset_id:       assetId,
+        assigned_to:    assignedTo,
+        assigned_date:  gv('assigned_date') || today,
+        condition_given:gv('condition_given') || null,
+        notes:          gv('notes') || null,
+      });
       toast('Asset assigned','success');
       state.modal = null;
       await loadAll();
@@ -1008,16 +1111,22 @@ window.WorkVoltPages['assets'] = function(container) {
   };
 
   window.assetSaveReturn = async function(asnId) {
-    var asn = state.assignments.find(function(a){ return a.assignment_id === asnId; });
-    var params = {
-      assignment_id:      asnId,
-      asset_id:           asn ? asn.asset_id : '',
-      return_date:        gv('return_date'),
-      condition_returned: gv('condition_returned'),
-      notes:              gv('notes'),
-    };
+    var asn   = state.assignments.find(function(a){ return a.assignment_id === asnId; });
+    var today = new Date().toISOString().split('T')[0];
     try {
-      await api('assets/return', params);
+      // Update assignment
+      await db.update('asset_assignments', 'assignment_id=eq.' + encodeURIComponent(asnId), {
+        return_date:        gv('return_date')        || today,
+        condition_returned: gv('condition_returned') || null,
+        notes:              gv('notes')              || null,
+      });
+      // Update asset
+      if (asn) {
+        await db.update('assets', 'asset_id=eq.' + encodeURIComponent(asn.asset_id), {
+          assigned_to: null, status: 'Available', lifecycle_stage: 'Available',
+          condition: gv('condition_returned') || undefined,
+        });
+      }
       toast('Asset returned','success');
       state.modal = null;
       await loadAll();
@@ -1028,31 +1137,42 @@ window.WorkVoltPages['assets'] = function(container) {
   window.assetRetire = async function(assetId) {
     if (!confirm('Retire asset ' + assetId + '? This will mark it as retired and unassign it.')) return;
     try {
-      await api('assets/retire', { asset_id: assetId });
+      await db.update('assets', 'asset_id=eq.' + encodeURIComponent(assetId), {
+        status: 'Retired', lifecycle_stage: 'Retired', assigned_to: null,
+      });
       toast('Asset retired','success');
       await loadAll();
     } catch(e) { toast(e.message,'error'); }
   };
 
   window.assetSaveMaintenance = async function(existingId) {
-    var params = {
-      asset_id: gv('asset_id'),
-      type:     gv('type'),
-      date:     gv('date'),
-      cost:     gv('cost'),
-      vendor:   gv('vendor'),
-      status:   gv('status'),
-      notes:    gv('notes'),
+    var assetId = gv('asset_id');
+    if (!assetId) { toast('Asset is required','error'); return; }
+    var row = {
+      asset_id: assetId,
+      type:     gv('type')   || null,
+      date:     gv('date')   || null,
+      cost:     gv('cost')   ? parseFloat(gv('cost')) : 0,
+      vendor:   gv('vendor') || null,
+      status:   gv('status') || 'Scheduled',
+      notes:    gv('notes')  || null,
     };
-    if (!params.asset_id) { toast('Asset ID is required','error'); return; }
     try {
       if (existingId) {
-        params.maintenance_id = existingId;
-        await api('assets/maintenance/update', params);
+        await db.update('asset_maintenance', 'maintenance_id=eq.' + encodeURIComponent(existingId), row);
         toast('Maintenance record updated','success');
       } else {
-        await api('assets/maintenance/create', params);
+        row.maintenance_id = genId('MNT');
+        await db.insert('asset_maintenance', row);
+        // Auto-update asset status if In Progress
+        if (row.status === 'In Progress') {
+          await db.update('assets', 'asset_id=eq.' + encodeURIComponent(assetId), { status:'Maintenance', lifecycle_stage:'Maintenance' });
+        }
         toast('Maintenance logged','success');
+      }
+      // If completed, set asset back to Available
+      if (row.status === 'Completed') {
+        await db.update('assets', 'asset_id=eq.' + encodeURIComponent(assetId), { status:'Available', lifecycle_stage:'Available' });
       }
       state.modal = null;
       await loadMaintenance();
@@ -1063,30 +1183,30 @@ window.WorkVoltPages['assets'] = function(container) {
   window.assetDeleteMaintenance = async function(id) {
     if (!confirm('Delete this maintenance record?')) return;
     try {
-      await api('assets/maintenance/delete', { maintenance_id: id });
+      await db.delete('asset_maintenance', 'maintenance_id=eq.' + encodeURIComponent(id));
       toast('Deleted','success');
       await loadMaintenance();
     } catch(e) { toast(e.message,'error'); }
   };
 
   window.assetSaveConsumable = async function(existingId) {
-    var params = {
+    var row = {
       item_name:     gv('item_name'),
-      category:      gv('category'),
-      quantity:      gv('quantity'),
-      reorder_level: gv('reorder_level'),
-      unit_cost:     gv('unit_cost'),
-      supplier:      gv('supplier'),
-      notes:         gv('notes'),
+      category:      gv('category')      || null,
+      quantity:      parseFloat(gv('quantity'))      || 0,
+      reorder_level: parseFloat(gv('reorder_level')) || 0,
+      unit_cost:     parseFloat(gv('unit_cost'))     || 0,
+      supplier:      gv('supplier') || null,
+      notes:         gv('notes')    || null,
     };
-    if (!params.item_name) { toast('Item name is required','error'); return; }
+    if (!row.item_name) { toast('Item name is required','error'); return; }
     try {
       if (existingId) {
-        params.item_id = existingId;
-        await api('assets/consumables/update', params);
+        await db.update('asset_consumables', 'item_id=eq.' + encodeURIComponent(existingId), row);
         toast('Updated','success');
       } else {
-        await api('assets/consumables/create', params);
+        row.item_id = genId('CNS');
+        await db.insert('asset_consumables', row);
         toast('Item added','success');
       }
       state.modal = null;
@@ -1097,23 +1217,26 @@ window.WorkVoltPages['assets'] = function(container) {
   window.assetDeleteConsumable = async function(id) {
     if (!confirm('Delete this consumable item?')) return;
     try {
-      await api('assets/consumables/delete', { item_id: id });
+      await db.delete('asset_consumables', 'item_id=eq.' + encodeURIComponent(id));
       toast('Deleted','success');
       await loadConsumables();
     } catch(e) { toast(e.message,'error'); }
   };
 
   window.assetSaveDepreciation = async function() {
-    var params = {
-      asset_id:          gv('asset_id'),
-      method:            gv('method'),
-      purchase_price:    gv('purchase_price'),
-      useful_life_years: gv('useful_life_years'),
-      salvage_value:     gv('salvage_value'),
+    var assetId = gv('asset_id');
+    var method  = gv('method');
+    if (!assetId || !method) { toast('Asset and method are required','error'); return; }
+    var row = {
+      asset_id:          assetId,
+      method:            method,
+      purchase_price:    parseFloat(gv('purchase_price'))    || 0,
+      useful_life_years: parseFloat(gv('useful_life_years')) || 3,
+      salvage_value:     parseFloat(gv('salvage_value'))     || 0,
+      last_calculated:   new Date().toISOString().split('T')[0],
     };
-    if (!params.asset_id || !params.method) { toast('Asset ID and method are required','error'); return; }
     try {
-      await api('assets/depreciation/upsert', params);
+      await db.upsert('asset_depreciation', row);
       toast('Saved','success');
       state.modal = null;
       await loadDepreciation();
@@ -1121,15 +1244,16 @@ window.WorkVoltPages['assets'] = function(container) {
   };
 
   window.assetSaveDocument = async function() {
-    var params = {
-      asset_id:      gv('asset_id'),
-      document_type: gv('document_type'),
-      link:          gv('link'),
-      notes:         gv('notes'),
-    };
-    if (!params.asset_id) { toast('Asset ID is required','error'); return; }
+    var assetId = gv('asset_id');
+    if (!assetId) { toast('Asset is required','error'); return; }
     try {
-      await api('assets/documents/create', params);
+      await db.insert('asset_documents', {
+        doc_id:        genId('DOC'),
+        asset_id:      assetId,
+        document_type: gv('document_type') || null,
+        link:          gv('link')          || null,
+        notes:         gv('notes')         || null,
+      });
       toast('Document added','success');
       state.modal = null;
       await loadDocuments();
@@ -1139,7 +1263,7 @@ window.WorkVoltPages['assets'] = function(container) {
   window.assetDeleteDoc = async function(id) {
     if (!confirm('Remove this document?')) return;
     try {
-      await api('assets/documents/delete', { doc_id: id });
+      await db.delete('asset_documents', 'doc_id=eq.' + encodeURIComponent(id));
       toast('Removed','success');
       await loadDocuments();
     } catch(e) { toast(e.message,'error'); }
@@ -1148,76 +1272,65 @@ window.WorkVoltPages['assets'] = function(container) {
   // ── Bind events ────────────────────────────────────────────────
   function bindEvents() {
     var s = document.getElementById('asset-search');
-    if (s) s.addEventListener('input', function(e) { state.search = e.target.value; render(); });
+    if (s) s.addEventListener('input', function(e){ state.search = e.target.value; render(); });
 
     var fc = document.getElementById('asset-filter-cat');
-    if (fc) fc.addEventListener('change', function(e) { state.filterCat = e.target.value; render(); });
+    if (fc) fc.addEventListener('change', function(e){ state.filterCat = e.target.value; render(); });
 
     var fs = document.getElementById('asset-filter-status');
-    if (fs) fs.addEventListener('change', function(e) { state.filterStatus = e.target.value; render(); });
+    if (fs) fs.addEventListener('change', function(e){ state.filterStatus = e.target.value; render(); });
 
-    // Category → filter types in asset modal
+    // Category → filter asset types
     var catSel = document.getElementById('f-category');
     if (catSel) {
       catSel.addEventListener('change', function(e) {
-        var sel = e.target.value;
+        var sel     = e.target.value;
         var typeSel = document.getElementById('f-asset_type');
         if (typeSel) {
-          var opts = '<option value="">— Select —</option>'
+          typeSel.innerHTML = '<option value="">— Select —</option>'
             + state.types.filter(function(t){ return !sel || t.category === sel; })
               .map(function(t){ return '<option value="'+esc(t.type)+'">'+esc(t.type)+'</option>'; }).join('');
-          typeSel.innerHTML = opts;
         }
       });
     }
 
-    // Asset searchable combobox (modals: maintenance, depreciation, document)
-    var assetSearchEl  = document.getElementById('f-asset_search');
-    var assetHiddenEl  = document.getElementById('f-asset_id');
-    var assetDropEl    = document.getElementById('asset-asset-dropdown');
+    // Asset searchable combobox
+    var assetSearchEl = document.getElementById('f-asset_search');
+    var assetHiddenEl = document.getElementById('f-asset_id');
+    var assetDropEl   = document.getElementById('asset-asset-dropdown');
     if (assetSearchEl && assetHiddenEl && assetDropEl) {
       function showAssetDrop(query) {
-        var trimmed = (query || '').trim().toLowerCase();
-        var list = state.assets.filter(function(a) {
+        var q    = (query||'').trim().toLowerCase();
+        var list = state.assets.filter(function(a){
           if (a.status === 'Disposed') return false;
-          return !trimmed
-            || (a.asset_name||'').toLowerCase().includes(trimmed)
-            || (a.asset_id||'').toLowerCase().includes(trimmed)
-            || (a.serial_number||'').toLowerCase().includes(trimmed);
+          return !q || (a.asset_name||'').toLowerCase().includes(q)
+            || (a.asset_id||'').toLowerCase().includes(q)
+            || (a.serial_number||'').toLowerCase().includes(q);
         }).slice(0, 30);
-        if (!list.length) {
-          assetDropEl.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 italic">No matching assets</div>';
-        } else {
-          assetDropEl.innerHTML = list.map(function(a) {
-            return '<button type="button" data-aid="' + esc(a.asset_id) + '" data-aname="' + esc(a.asset_name + ' (' + a.asset_id + ')') + '"'
-              + ' class="w-full text-left px-4 py-2.5 hover:bg-blue-50 hover:text-blue-700 transition-colors">'
-              + '<div class="font-semibold text-sm text-slate-800">' + esc(a.asset_name) + '</div>'
-              + '<div class="text-xs text-slate-400 font-mono">' + esc(a.asset_id) + (a.serial_number ? ' · SN: '+esc(a.serial_number) : '') + '</div>'
-              + '</button>';
-          }).join('');
-          assetDropEl.querySelectorAll('button').forEach(function(btn) {
-            btn.addEventListener('mousedown', function(ev) {
-              ev.preventDefault();
-              assetHiddenEl.value  = btn.dataset.aid;
-              assetSearchEl.value  = btn.dataset.aname;
-              assetDropEl.classList.add('hidden');
-            });
+        assetDropEl.innerHTML = list.length
+          ? list.map(function(a){
+              return '<button type="button" data-aid="'+esc(a.asset_id)+'" data-aname="'+esc(a.asset_name+' ('+a.asset_id+')')+'"'
+                + ' class="w-full text-left px-4 py-2.5 hover:bg-blue-50 hover:text-blue-700 transition-colors">'
+                + '<div class="font-semibold text-sm text-slate-800">'+esc(a.asset_name)+'</div>'
+                + '<div class="text-xs text-slate-400 font-mono">'+esc(a.asset_id)+(a.serial_number?' · SN: '+esc(a.serial_number):'')+' </div></button>';
+            }).join('')
+          : '<div class="px-4 py-3 text-sm text-slate-400 italic">No matching assets</div>';
+        assetDropEl.querySelectorAll('button').forEach(function(btn){
+          btn.addEventListener('mousedown', function(ev){
+            ev.preventDefault();
+            assetHiddenEl.value = btn.dataset.aid;
+            assetSearchEl.value = btn.dataset.aname;
+            assetDropEl.classList.add('hidden');
           });
-        }
+        });
         assetDropEl.classList.remove('hidden');
       }
-      assetSearchEl.addEventListener('focus', function() { showAssetDrop(this.value); });
-      assetSearchEl.addEventListener('input', function() {
-        if (!this.value) assetHiddenEl.value = '';
-        showAssetDrop(this.value);
-      });
-      assetSearchEl.addEventListener('blur', function() {
-        // If typed text looks like a raw asset ID (starts with AST-), accept it directly
-        setTimeout(function() {
+      assetSearchEl.addEventListener('focus', function(){ showAssetDrop(this.value); });
+      assetSearchEl.addEventListener('input', function(){ if (!this.value) assetHiddenEl.value=''; showAssetDrop(this.value); });
+      assetSearchEl.addEventListener('blur',  function(){
+        setTimeout(function(){
           assetDropEl.classList.add('hidden');
-          if (!assetHiddenEl.value && assetSearchEl.value.trim()) {
-            assetHiddenEl.value = assetSearchEl.value.trim();
-          }
+          if (!assetHiddenEl.value && assetSearchEl.value.trim()) assetHiddenEl.value = assetSearchEl.value.trim();
         }, 200);
       });
     }
@@ -1228,74 +1341,44 @@ window.WorkVoltPages['assets'] = function(container) {
     var dropEl   = document.getElementById('asset-user-dropdown');
     if (nameEl && hiddenEl && dropEl) {
       function showUserDrop(query) {
-        var trimmed = (query || '').trim().toLowerCase();
-        var list = state.users.filter(function(u) {
-          var uname = (u.name || u.email || '').toLowerCase();
-          return !trimmed || uname.includes(trimmed);
-        });
-        if (!list.length) {
-          dropEl.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 italic">'
-            + (state.users.length === 0 ? 'No users loaded — check permissions' : 'No matching users found')
-            + '</div>';
-        } else {
-          dropEl.innerHTML = list.map(function(u) {
-            var uid  = u.user_id || u.id || '';
-            var uname = u.name || u.email || uid;
-            var role  = u.role  || '';
-            return '<button type="button" data-uid="' + esc(uid) + '" data-name="' + esc(uname) + '"'
-              + ' class="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2.5 transition-colors">'
-              + '<div class="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center flex-shrink-0">'
-              + '<span class="text-[10px] font-bold text-white">' + esc((uname[0]||'U').toUpperCase()) + '</span></div>'
-              + '<div class="flex-1 min-w-0"><div class="font-medium truncate">' + esc(uname) + '</div>'
-              + (role ? '<div class="text-[10px] text-slate-400">' + esc(role) + '</div>' : '')
-              + '</div></button>';
-          }).join('');
-          dropEl.querySelectorAll('button').forEach(function(btn) {
-            btn.addEventListener('mousedown', function(ev) {
-              ev.preventDefault();
-              hiddenEl.value = btn.dataset.uid;
-              nameEl.value   = btn.dataset.name;
-              dropEl.classList.add('hidden');
-            });
+        var q    = (query||'').trim().toLowerCase();
+        var list = state.users.filter(function(u){ return !q || (u.name||u.email||'').toLowerCase().includes(q); });
+        dropEl.innerHTML = list.length
+          ? list.map(function(u){
+              var uid   = u.user_id || u.id || '';
+              var uname = u.name || u.email || uid;
+              return '<button type="button" data-uid="'+esc(uid)+'" data-name="'+esc(uname)+'"'
+                + ' class="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2.5 transition-colors">'
+                + '<div class="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center flex-shrink-0">'
+                + '<span class="text-[10px] font-bold text-white">'+esc((uname[0]||'U').toUpperCase())+'</span></div>'
+                + '<div class="flex-1 min-w-0"><div class="font-medium truncate">'+esc(uname)+'</div>'
+                + (u.role ? '<div class="text-[10px] text-slate-400">'+esc(u.role)+'</div>' : '')
+                + '</div></button>';
+            }).join('')
+          : '<div class="px-4 py-3 text-sm text-slate-400 italic">'
+            + (state.users.length === 0 ? 'No users loaded' : 'No matching users') + '</div>';
+        dropEl.querySelectorAll('button').forEach(function(btn){
+          btn.addEventListener('mousedown', function(ev){
+            ev.preventDefault();
+            hiddenEl.value = btn.dataset.uid;
+            nameEl.value   = btn.dataset.name;
+            dropEl.classList.add('hidden');
           });
-        }
+        });
         dropEl.classList.remove('hidden');
       }
-      nameEl.addEventListener('focus', function() { showUserDrop(this.value); });
-      nameEl.addEventListener('input', function() {
-        if (!this.value) hiddenEl.value = '';
-        showUserDrop(this.value);
-      });
-      nameEl.addEventListener('blur', function() {
-        setTimeout(function() {
+      nameEl.addEventListener('focus', function(){ showUserDrop(this.value); });
+      nameEl.addEventListener('input', function(){ if (!this.value) hiddenEl.value=''; showUserDrop(this.value); });
+      nameEl.addEventListener('blur',  function(){
+        setTimeout(function(){
           dropEl.classList.add('hidden');
-          // Auto-flip status to Assigned if a user was selected
           var statusSel = document.getElementById('f-status');
-          if (hiddenEl.value && statusSel && statusSel.value === 'Available') {
-            statusSel.value = 'Assigned';
-          }
-          // Auto-clear status back to Available if user was cleared
-          if (!hiddenEl.value && !nameEl.value && statusSel && statusSel.value === 'Assigned') {
-            statusSel.value = 'Available';
-          }
+          if (hiddenEl.value && statusSel && statusSel.value === 'Available') statusSel.value = 'Assigned';
+          if (!hiddenEl.value && !nameEl.value && statusSel && statusSel.value === 'Assigned') statusSel.value = 'Available';
         }, 200);
       });
-      // Show all users immediately when the field is rendered and users are loaded
-      if (state.users.length && nameEl === document.activeElement) {
-        showUserDrop('');
-      }
     }
   }
-
-  // ── Setup Sheets ───────────────────────────────────────────────
-  window.assetRunSetup = async function() {
-    try {
-      toast('Creating sheets...', 'info');
-      await api('module/install', { module: 'assets' });
-      toast('Sheets created!', 'success');
-      await loadAll();
-    } catch(e) { toast('Setup failed: ' + e.message, 'error'); }
-  };
 
   // ── Boot ───────────────────────────────────────────────────────
   loadAll();
