@@ -112,9 +112,6 @@ window.WorkVoltPages['payroll'] = function(container) {
     return prefix ? prefix + '-' + uuid : uuid;
   }
 
-  function provisionTables() {
-    return Promise.resolve();
-  }
   function toast(msg, type) {
     if (window.WorkVolt && window.WorkVolt.toast) window.WorkVolt.toast(msg, type||'info');
   }
@@ -394,7 +391,10 @@ window.WorkVoltPages['payroll'] = function(container) {
       (ok?'bg-green-50 text-green-700 border border-green-200':'bg-red-50 text-red-600 border border-red-200')+'">'+
       '<i class="fas '+(ok?'fa-check-circle':'fa-exclamation-circle')+'"></i><span>'+esc(msg)+'</span></div>' : '';
   }
-
+  
+  function provisionTables() {
+    return Promise.resolve();
+  }
   // ── Load data ─────────────────────────────────────────────────
   function loadData() {
     var el = document.getElementById('pr-content');
