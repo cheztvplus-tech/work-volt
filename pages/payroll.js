@@ -65,53 +65,25 @@ window.WorkVoltPages['payroll'] = function(container) {
     return Promise.reject(new Error('No API handler for: ' + path));
   }
 
-  // ========== CLIENT DETECTION (ADDED) ==========
+  // ========== CLIENT DETECTION (FIXED) ==========
   var client = null;
   
-  // Method 1: window.WorkVolt.db (preferred)
   if (window.WorkVolt && window.WorkVolt.db) {
-    var db = window.WorkVolt.db;
-    if (db._client) {
-      client = db._client;
-    } else if (typeof db.getAdapter === 'function') {
-      try {
-        var adapter = db.getAdapter();
-        if (adapter && adapter._client) {
-          client = adapter._client;
-        }
-      } catch(e) {}
-    }
+    client = window.WorkVolt.db._client || null;
   }
-  
-  // Method 2: window.WorkVoltDB (fallback)
   if (!client && window.WorkVoltDB) {
-    if (window.WorkVoltDB._client) {
-      client = window.WorkVoltDB._client;
-    } else if (typeof window.WorkVoltDB.getAdapter === 'function') {
-      try {
-        var subAdapter = window.WorkVoltDB.getAdapter();
-        if (subAdapter && subAdapter._client) {
-          client = subAdapter._client;
-        }
-      } catch(e) {}
-    }
+    client = window.WorkVoltDB._client || null;
   }
-  
-  // Method 3: Direct Supabase client
   if (!client && window.supabase) {
     client = window.supabase;
   }
   // ===============================================
 
   // ========== MIGRATION / SETUP FUNCTIONS ==========
-  // These were orphaned in the original file - now properly scoped inside the module
-  
   function runMigrationSQL(dropFirst) {
     var MIGRATION_SQL = [
-      "-- Enable UUID extension if not already enabled",
       "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";",
       "",
-      "-- Create payroll_runs table if it doesn't exist",
       "CREATE TABLE IF NOT EXISTS payroll_runs (",
       "    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),",
       "    employee_id TEXT NOT NULL,",
@@ -139,7 +111,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       "    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
       ");",
       "",
-      "-- Create payroll_employees table if it doesn't exist",
       "CREATE TABLE IF NOT EXISTS payroll_employees (",
       "    id TEXT PRIMARY KEY,",
       "    pay_type TEXT DEFAULT 'Hourly',",
@@ -150,7 +121,6 @@ window.WorkVoltPages['payroll'] = function(container) {
       "    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
       ");",
       "",
-      "-- Create payroll_audit table if it doesn't exist",
       "CREATE TABLE IF NOT EXISTS payroll_audit (",
       "    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),",
       "    run_id TEXT NOT NULL,",
@@ -162,20 +132,17 @@ window.WorkVoltPages['payroll'] = function(container) {
       "    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
       ");",
       "",
-      "-- Create indexes for better performance",
       "CREATE INDEX IF NOT EXISTS idx_payroll_runs_employee ON payroll_runs(employee_id);",
       "CREATE INDEX IF NOT EXISTS idx_payroll_runs_period ON payroll_runs(period_start, period_end);",
       "CREATE INDEX IF NOT EXISTS idx_payroll_runs_status ON payroll_runs(status);",
       "CREATE INDEX IF NOT EXISTS idx_payroll_audit_run ON payroll_audit(run_id);"
     ].join('\n');
 
-    var sqlToRun = MIGRATION_SQL;
-    
     if (!client || typeof client.rpc !== 'function') {
       return Promise.reject(new Error('No client'));
     }
 
-    return client.rpc('exec_sql', { query: sqlToRun })
+    return client.rpc('exec_sql', { query: MIGRATION_SQL })
       .then(function(res) {
         if (res.error) throw new Error(res.error.message || 'Migration failed');
         return { autoRan: true };
@@ -183,17 +150,14 @@ window.WorkVoltPages['payroll'] = function(container) {
   }
 
   function refreshSchemaCache(client) {
-    // Placeholder for schema cache refresh
     return Promise.resolve();
   }
 
   function showSQLBlock() {
-    // Placeholder - SQL block display handled in renderSetupBanner
   }
 
   // ── Setup banner ──────────────────────────────────────────────
   function renderSetupBanner() {
-    // Check if we need to show setup UI
     var statusEl = document.getElementById('pr-setup-status');
     var fixBtn = document.getElementById('pr-fix-btn');
     var sqlBtn = document.getElementById('pr-sql-btn');
@@ -213,7 +177,7 @@ window.WorkVoltPages['payroll'] = function(container) {
         success: '<i class="fas fa-check-circle mr-2"></i>',
         error:   '<i class="fas fa-exclamation-circle mr-2"></i>',
       };
-      statusEl.className = 'flex items-center p-3 rounded-xl border text-sm font-medium ' + (styles[type] || styles.error);
+      statusEl.className = 'flex items-center p-3 rounded-xl border text-sm font-medium ' + (styles[type] || styles.error]);
       statusEl.innerHTML = (icons[type] || '') + esc(msg);
       statusEl.classList.remove('hidden');
     }
@@ -256,14 +220,14 @@ window.WorkVoltPages['payroll'] = function(container) {
 
     if (copyBtn) {
       copyBtn.addEventListener('click', function() {
-        var MIGRATION_SQL = "-- SQL would be here"; // Simplified
+        var MIGRATION_SQL = "-- SQL would be here";
         navigator.clipboard.writeText(MIGRATION_SQL).then(function() {
           copyBtn.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
           setTimeout(function() { copyBtn.innerHTML = '<i class="fas fa-copy mr-1"></i>Copy'; }, 2000);
         }).catch(function() {
-          var pre = .getElementById('pr-sql-pre');
+          var pre = document.getElementById('pr-sql-pre');
           if (pre) {
-            var range = .createRange();
+            var range = document.createRange();
             range.selectNodeContents(pre);
             window.getSelection().removeAllRanges();
             window.getSelection().addRange(range);
@@ -2211,5 +2175,4 @@ window.WorkVoltPages['payroll'] = function(container) {
   var old = document.getElementById(MODAL_ID);
   if (old) old.innerHTML = '';
   render();
-};
 };
