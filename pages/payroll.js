@@ -77,7 +77,6 @@ window.WorkVoltPages['payroll'] = function(container) {
   if (!client && window.supabase) {
     client = window.supabase;
   }
-  // ===============================================
 
   // ========== MIGRATION / SETUP FUNCTIONS ==========
   function runMigrationSQL(dropFirst) {
