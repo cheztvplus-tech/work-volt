@@ -2,58 +2,10 @@ window.WorkVoltPages = window.WorkVoltPages || {};
 
 window.WorkVoltPages['assets'] = function(container) {
 
-  // ── Supabase client ────────────────────────────────────────────
-  // Reads credentials from localStorage (set by your Settings page)
-  var SUPA_URL = localStorage.getItem('wv_supabase_url') || '';
-  var SUPA_KEY = localStorage.getItem('wv_supabase_key') || '';
-
-  // Low-level Supabase REST helper
-  async function supa(method, table, opts) {
-    opts = opts || {};
-    if (!SUPA_URL || !SUPA_KEY) throw new Error('Supabase not configured — add URL & Key in Settings');
-
-    var url = SUPA_URL.replace(/\/$/, '') + '/rest/v1/' + table;
-    var params = [];
-    if (opts.select)  params.push('select=' + encodeURIComponent(opts.select));
-    if (opts.filter)  params.push(opts.filter);   // e.g. "status=eq.Available"
-    if (opts.order)   params.push('order=' + encodeURIComponent(opts.order));
-    if (opts.limit)   params.push('limit=' + opts.limit);
-    if (params.length) url += '?' + params.join('&');
-
-    var headers = {
-      'apikey':        SUPA_KEY,
-      'Authorization': 'Bearer ' + SUPA_KEY,
-      'Content-Type':  'application/json',
-      'Prefer':        'return=representation',
-    };
-
-    // For upsert we need a different Prefer header
-    if (opts.upsert) headers['Prefer'] = 'resolution=merge-duplicates,return=representation';
-
-    var body = (opts.body !== undefined) ? JSON.stringify(opts.body) : undefined;
-    var res  = await fetch(url, { method: method, headers: headers, body: body });
-
-    // 204 No Content is fine for DELETE/UPDATE with no return
-    if (res.status === 204) return [];
-
-    var text = await res.text();
-    if (!res.ok) {
-      var err;
-      try { err = JSON.parse(text); } catch(e) { err = { message: text }; }
-      throw new Error(err.message || err.error || ('Supabase error ' + res.status));
-    }
-    if (!text) return [];
-    return JSON.parse(text);
-  }
-
-  // Convenience wrappers
-  var db = {
-    select:  function(table, opts)       { return supa('GET',    table, opts); },
-    insert:  function(table, body)       { return supa('POST',   table, { body: body }); },
-    update:  function(table, filter, body){ return supa('PATCH', table, { filter: filter, body: body }); },
-    upsert:  function(table, body)       { return supa('POST',   table, { body: body, upsert: true }); },
-    delete:  function(table, filter)     { return supa('DELETE', table, { filter: filter }); },
-  };
+  // ── Database — routed through the WorkVoltDB adapter layer ────────
+  // All calls go through WorkVoltDB (db-adapter.js) so credentials
+  // are read from wv_db_config regardless of which provider is active.
+  var wdb = window.WorkVoltDB;
 
   // ── ID generators ──────────────────────────────────────────────
   function genAssetId() {
@@ -90,7 +42,6 @@ window.WorkVoltPages['assets'] = function(container) {
   };
 
   var toast = WorkVolt.toast;
-  var api   = WorkVolt.api;   // still used for users/list from GAS
 
   // ── Lifecycle / status config ──────────────────────────────────
   var STATUS_CFG = {
@@ -299,14 +250,14 @@ window.WorkVoltPages['assets'] = function(container) {
     render();
     try {
       var [assetsRes, catsRes, typesRes, usersRes] = await Promise.all([
-        db.select('assets', { order: 'created_at.desc' }),
-        db.select('asset_categories', { order: 'category_id.asc' }),
-        db.select('asset_types',      { order: 'type_id.asc' }),
-        api('users/list').catch(function(){ return {}; }),
+        wdb.list('assets',           {}, { order: 'created_at' }),
+        wdb.list('asset_categories', {}, { order: 'category_id', asc: true }),
+        wdb.list('asset_types',      {}, { order: 'type_id',     asc: true }),
+        wdb.users.list().catch(function(){ return []; }),
       ]);
 
       state.assets  = assetsRes || [];
-      state.users   = usersRes.users || usersRes.rows || [];
+      state.users   = usersRes  || [];
 
       state.categories = (catsRes && catsRes.length)
         ? catsRes
@@ -318,8 +269,8 @@ window.WorkVoltPages['assets'] = function(container) {
 
       // Load assignments + consumables for alerts & dashboard
       var [asnRes, conRes] = await Promise.all([
-        db.select('asset_assignments', { filter: 'return_date=is.null', order: 'created_at.desc' }),
-        db.select('asset_consumables', { order: 'item_name.asc' }),
+        wdb.list('asset_assignments', { return_date: null }, { order: 'created_at' }),
+        wdb.list('asset_consumables', {}, { order: 'item_name', asc: true }),
       ]);
       state.assignments = asnRes  || [];
       state.consumables = conRes  || [];
@@ -336,7 +287,7 @@ window.WorkVoltPages['assets'] = function(container) {
 
   async function loadAssignments() {
     try {
-      var rows = await db.select('asset_assignments', { order: 'created_at.desc' });
+      var rows = await wdb.list('asset_assignments', {}, { order: 'created_at' });
       state.assignments = rows || [];
       buildAlerts();
     } catch(e) { toast(e.message, 'error'); }
@@ -345,7 +296,7 @@ window.WorkVoltPages['assets'] = function(container) {
 
   async function loadMaintenance() {
     try {
-      var rows = await db.select('asset_maintenance', { order: 'date.desc' });
+      var rows = await wdb.list('asset_maintenance', {}, { order: 'date' });
       state.maintenance = rows || [];
       buildDashboardStats();
     } catch(e) { toast(e.message, 'error'); }
@@ -354,7 +305,7 @@ window.WorkVoltPages['assets'] = function(container) {
 
   async function loadConsumables() {
     try {
-      var rows = await db.select('asset_consumables', { order: 'item_name.asc' });
+      var rows = await wdb.list('asset_consumables', {}, { order: 'item_name', asc: true });
       state.consumables = rows || [];
       buildAlerts();
     } catch(e) { toast(e.message, 'error'); }
@@ -363,7 +314,7 @@ window.WorkVoltPages['assets'] = function(container) {
 
   async function loadDepreciation() {
     try {
-      var rows = await db.select('asset_depreciation', { order: 'asset_id.asc' });
+      var rows = await wdb.list('asset_depreciation', {}, { order: 'asset_id', asc: true });
       // Attach current_value computed client-side
       state.depreciation = (rows || []).map(function(r) {
         r.current_value = calcDepreciation(r);
@@ -375,7 +326,7 @@ window.WorkVoltPages['assets'] = function(container) {
 
   async function loadDocuments() {
     try {
-      var rows = await db.select('asset_documents', { order: 'created_at.desc' });
+      var rows = await wdb.list('asset_documents', {}, { order: 'created_at' });
       state.documents = rows || [];
     } catch(e) { toast(e.message, 'error'); }
     render();
@@ -1072,11 +1023,11 @@ window.WorkVoltPages['assets'] = function(container) {
     if (!row.asset_name) { toast('Asset name is required','error'); return; }
     try {
       if (existingId) {
-        await db.update('assets', 'asset_id=eq.' + encodeURIComponent(existingId), row);
+        await wdb.update('assets', existingId, row, 'asset_id');
         toast('Asset updated','success');
       } else {
         row.asset_id = genAssetId();
-        await db.insert('assets', row);
+        await wdb.create('assets', row);
         toast('Asset added','success');
       }
       state.modal = null;
@@ -1090,12 +1041,12 @@ window.WorkVoltPages['assets'] = function(container) {
     var today = new Date().toISOString().split('T')[0];
     try {
       // Update asset
-      await db.update('assets', 'asset_id=eq.' + encodeURIComponent(assetId), {
+      await wdb.update('assets', assetId, {
         assigned_to: assignedTo, status: 'Assigned', lifecycle_stage: 'Assigned',
         condition: gv('condition_given') || undefined,
-      });
+      }, 'asset_id');
       // Create assignment record
-      await db.insert('asset_assignments', {
+      await wdb.create('asset_assignments', {
         assignment_id:  genId('ASN'),
         asset_id:       assetId,
         assigned_to:    assignedTo,
@@ -1115,17 +1066,17 @@ window.WorkVoltPages['assets'] = function(container) {
     var today = new Date().toISOString().split('T')[0];
     try {
       // Update assignment
-      await db.update('asset_assignments', 'assignment_id=eq.' + encodeURIComponent(asnId), {
+      await wdb.update('asset_assignments', asnId, {
         return_date:        gv('return_date')        || today,
         condition_returned: gv('condition_returned') || null,
         notes:              gv('notes')              || null,
-      });
+      }, 'assignment_id');
       // Update asset
       if (asn) {
-        await db.update('assets', 'asset_id=eq.' + encodeURIComponent(asn.asset_id), {
+        await wdb.update('assets', asn.asset_id, {
           assigned_to: null, status: 'Available', lifecycle_stage: 'Available',
           condition: gv('condition_returned') || undefined,
-        });
+        }, 'asset_id');
       }
       toast('Asset returned','success');
       state.modal = null;
@@ -1137,9 +1088,9 @@ window.WorkVoltPages['assets'] = function(container) {
   window.assetRetire = async function(assetId) {
     if (!confirm('Retire asset ' + assetId + '? This will mark it as retired and unassign it.')) return;
     try {
-      await db.update('assets', 'asset_id=eq.' + encodeURIComponent(assetId), {
+      await wdb.update('assets', assetId, {
         status: 'Retired', lifecycle_stage: 'Retired', assigned_to: null,
-      });
+      }, 'asset_id');
       toast('Asset retired','success');
       await loadAll();
     } catch(e) { toast(e.message,'error'); }
@@ -1159,20 +1110,20 @@ window.WorkVoltPages['assets'] = function(container) {
     };
     try {
       if (existingId) {
-        await db.update('asset_maintenance', 'maintenance_id=eq.' + encodeURIComponent(existingId), row);
+        await wdb.update('asset_maintenance', existingId, row, 'maintenance_id');
         toast('Maintenance record updated','success');
       } else {
         row.maintenance_id = genId('MNT');
-        await db.insert('asset_maintenance', row);
+        await wdb.create('asset_maintenance', row);
         // Auto-update asset status if In Progress
         if (row.status === 'In Progress') {
-          await db.update('assets', 'asset_id=eq.' + encodeURIComponent(assetId), { status:'Maintenance', lifecycle_stage:'Maintenance' });
+          await wdb.update('assets', assetId, { status:'Maintenance', lifecycle_stage:'Maintenance' }, 'asset_id');
         }
         toast('Maintenance logged','success');
       }
       // If completed, set asset back to Available
       if (row.status === 'Completed') {
-        await db.update('assets', 'asset_id=eq.' + encodeURIComponent(assetId), { status:'Available', lifecycle_stage:'Available' });
+        await wdb.update('assets', assetId, { status:'Available', lifecycle_stage:'Available' }, 'asset_id');
       }
       state.modal = null;
       await loadMaintenance();
@@ -1183,7 +1134,7 @@ window.WorkVoltPages['assets'] = function(container) {
   window.assetDeleteMaintenance = async function(id) {
     if (!confirm('Delete this maintenance record?')) return;
     try {
-      await db.delete('asset_maintenance', 'maintenance_id=eq.' + encodeURIComponent(id));
+      await wdb.delete('asset_maintenance', id, 'maintenance_id');
       toast('Deleted','success');
       await loadMaintenance();
     } catch(e) { toast(e.message,'error'); }
@@ -1202,11 +1153,11 @@ window.WorkVoltPages['assets'] = function(container) {
     if (!row.item_name) { toast('Item name is required','error'); return; }
     try {
       if (existingId) {
-        await db.update('asset_consumables', 'item_id=eq.' + encodeURIComponent(existingId), row);
+        await wdb.update('asset_consumables', existingId, row, 'item_id');
         toast('Updated','success');
       } else {
         row.item_id = genId('CNS');
-        await db.insert('asset_consumables', row);
+        await wdb.create('asset_consumables', row);
         toast('Item added','success');
       }
       state.modal = null;
@@ -1217,7 +1168,7 @@ window.WorkVoltPages['assets'] = function(container) {
   window.assetDeleteConsumable = async function(id) {
     if (!confirm('Delete this consumable item?')) return;
     try {
-      await db.delete('asset_consumables', 'item_id=eq.' + encodeURIComponent(id));
+      await wdb.delete('asset_consumables', id, 'item_id');
       toast('Deleted','success');
       await loadConsumables();
     } catch(e) { toast(e.message,'error'); }
@@ -1236,7 +1187,13 @@ window.WorkVoltPages['assets'] = function(container) {
       last_calculated:   new Date().toISOString().split('T')[0],
     };
     try {
-      await db.upsert('asset_depreciation', row);
+      // Try update first; if nothing matched, create a new record
+      var existing = state.depreciation.find(function(r){ return r.asset_id === assetId; });
+      if (existing && existing.dep_id) {
+        await wdb.update('asset_depreciation', existing.dep_id, row, 'dep_id');
+      } else {
+        await wdb.create('asset_depreciation', row);
+      }
       toast('Saved','success');
       state.modal = null;
       await loadDepreciation();
@@ -1247,7 +1204,7 @@ window.WorkVoltPages['assets'] = function(container) {
     var assetId = gv('asset_id');
     if (!assetId) { toast('Asset is required','error'); return; }
     try {
-      await db.insert('asset_documents', {
+      await wdb.create('asset_documents', {
         doc_id:        genId('DOC'),
         asset_id:      assetId,
         document_type: gv('document_type') || null,
@@ -1263,7 +1220,7 @@ window.WorkVoltPages['assets'] = function(container) {
   window.assetDeleteDoc = async function(id) {
     if (!confirm('Remove this document?')) return;
     try {
-      await db.delete('asset_documents', 'doc_id=eq.' + encodeURIComponent(id));
+      await wdb.delete('asset_documents', id, 'doc_id');
       toast('Removed','success');
       await loadDocuments();
     } catch(e) { toast(e.message,'error'); }
