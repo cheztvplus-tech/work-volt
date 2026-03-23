@@ -111,6 +111,10 @@ window.WorkVoltPages['payroll'] = function(container) {
     });
     return prefix ? prefix + '-' + uuid : uuid;
   }
+
+  function provisionTables() {
+    return Promise.resolve();
+  }
   function toast(msg, type) {
     if (window.WorkVolt && window.WorkVolt.toast) window.WorkVolt.toast(msg, type||'info');
   }
