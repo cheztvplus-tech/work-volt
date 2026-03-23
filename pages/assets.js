@@ -34,6 +34,8 @@ window.WorkVoltPages['assets'] = function(container) {
     documents:    [],
     alerts:       [],
     dashboard:    {},
+    accounts:     [],          // populated if Financials module is installed
+    financialsInstalled: false,
     loading:      false,
     search:       '',
     filterStatus: '',
@@ -274,6 +276,16 @@ window.WorkVoltPages['assets'] = function(container) {
       ]);
       state.assignments = asnRes  || [];
       state.consumables = conRes  || [];
+
+      // Detect Financials module — silently load accounts if available
+      try {
+        var accRes = await wdb.list('accounts', {}, { order: 'account_name', asc: true });
+        state.accounts = (accRes || []).filter(function(a){ return a.is_active !== false; });
+        state.financialsInstalled = true;
+      } catch(e) {
+        state.accounts = [];
+        state.financialsInstalled = false;
+      }
 
       buildDashboardStats();
       buildAlerts();
@@ -819,7 +831,19 @@ window.WorkVoltPages['assets'] = function(container) {
           )
         + row2(
             '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">Condition</label><select id="f-condition" class="field">' + condOpts + '</select></div>',
-            ''
+            (function() {
+              if (!state.financialsInstalled || !state.accounts.length) return '';
+              var acctOpts = state.accounts.map(function(acc){
+                return '<option value="' + esc(acc.account_name) + '" '
+                  + (a.paid_from_account === acc.account_name ? 'selected' : '') + '>'
+                  + esc(acc.account_name) + ' (' + esc(acc.type) + ')</option>';
+              }).join('');
+              return '<div><label class="block text-xs font-semibold text-slate-600 mb-1.5">'
+                + '<i class="fas fa-university mr-1 text-emerald-500"></i>Paid From Account'
+                + '</label><select id="f-paid_from_account" class="field">'
+                + '<option value="">— None —</option>' + acctOpts + '</select>'
+                + '<p class="text-[10px] text-slate-400 mt-1">Financials module linked</p></div>';
+            })()
           )
         + row2(
             '<div class="relative">'
@@ -1002,23 +1026,25 @@ window.WorkVoltPages['assets'] = function(container) {
     var assignedTo = gv('assigned_to');
     if (assignedTo && status === 'Available') status = 'Assigned';
     var lcMap = { Available:'Available', Assigned:'Assigned', Maintenance:'Maintenance', Retired:'Retired', Disposed:'Disposed' };
+    var paidFromAccount = state.financialsInstalled ? gv('paid_from_account') : null;
     var row = {
-      asset_name:      gv('asset_name'),
-      category:        gv('category')        || null,
-      asset_type:      gv('asset_type')      || null,
-      brand:           gv('brand')           || null,
-      model:           gv('model')           || null,
-      serial_number:   gv('serial_number')   || null,
-      purchase_date:   gv('purchase_date')   || null,
-      purchase_price:  gv('purchase_price')  ? parseFloat(gv('purchase_price')) : null,
-      supplier:        gv('supplier')        || null,
-      location:        gv('location')        || null,
-      status:          status,
-      condition:       gv('condition')       || 'New',
-      warranty_expiry: gv('warranty_expiry') || null,
-      assigned_to:     assignedTo            || null,
-      lifecycle_stage: lcMap[status]         || status,
-      notes:           gv('notes')           || null,
+      asset_name:         gv('asset_name'),
+      category:           gv('category')        || null,
+      asset_type:         gv('asset_type')       || null,
+      brand:              gv('brand')            || null,
+      model:              gv('model')            || null,
+      serial_number:      gv('serial_number')    || null,
+      purchase_date:      gv('purchase_date')    || null,
+      purchase_price:     gv('purchase_price')   ? parseFloat(gv('purchase_price')) : null,
+      supplier:           gv('supplier')         || null,
+      location:           gv('location')         || null,
+      status:             status,
+      condition:          gv('condition')        || 'New',
+      warranty_expiry:    gv('warranty_expiry')  || null,
+      assigned_to:        assignedTo             || null,
+      lifecycle_stage:    lcMap[status]          || status,
+      notes:              gv('notes')            || null,
+      paid_from_account:  paidFromAccount        || null,
     };
     if (!row.asset_name) { toast('Asset name is required','error'); return; }
     try {
@@ -1028,7 +1054,29 @@ window.WorkVoltPages['assets'] = function(container) {
       } else {
         row.asset_id = genAssetId();
         await wdb.create('assets', row);
-        toast('Asset added','success');
+        // If Financials is installed and a purchase price exists, auto-log an expense
+        if (state.financialsInstalled && row.purchase_price && row.purchase_date) {
+          try {
+            await wdb.create('expenses', {
+              date:        row.purchase_date,
+              vendor:      row.supplier || row.brand || 'Asset Purchase',
+              category:    'Asset Purchase',
+              description: 'Asset purchase: ' + row.asset_name
+                + (row.serial_number ? ' (SN: ' + row.serial_number + ')' : '')
+                + ' [' + row.asset_id + ']',
+              amount:      row.purchase_price,
+              paid_from:   row.paid_from_account || null,
+              status:      row.paid_from_account ? 'Approved' : 'Pending',
+              notes:       'Auto-logged from Assets module',
+            });
+            toast('Asset added & expense logged to Financials', 'success');
+          } catch(expErr) {
+            // Don't fail the whole save if the expense write fails
+            toast('Asset added (expense log failed: ' + expErr.message + ')', 'warning');
+          }
+        } else {
+          toast('Asset added','success');
+        }
       }
       state.modal = null;
       await loadAll();
