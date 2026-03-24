@@ -594,15 +594,8 @@ async function apiCall(path, params = {}) {
   }
 }
   // ──────────────────────────────────────────────────────────────
-  //  GLOBAL API
+  //  GLOBAL API  — wired up inside 'load' so WorkVoltDB is ready
   // ──────────────────────────────────────────────────────────────
-  window.WorkVolt = {
-    db:       WorkVoltDB,
-    api:      apiCall,
-    user:     () => currentUser,
-    toast:    showToast,
-    navigate: showModule,
-  };
   window.WorkVoltPages = window.WorkVoltPages || {};
   window.renderNav     = renderNav;
 
@@ -610,6 +603,14 @@ async function apiCall(path, params = {}) {
   //  BOOT
   // ──────────────────────────────────────────────────────────────
   window.addEventListener('load', async () => {
+    // Wire WorkVolt global now — WorkVoltDB is guaranteed defined by here
+    window.WorkVolt = {
+      get db()  { return window.WorkVoltDB; },
+      api:      apiCall,
+      user:     () => currentUser,
+      toast:    showToast,
+      navigate: showModule,
+    };
     try {
       // 1. Init adapter from saved credentials
       const adapter = await initAdapter();
