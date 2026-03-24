@@ -358,7 +358,9 @@ showModule(lastModule, false);
   function showModule(name, push=true) {
     closeMobileSidebar();
     sessionStorage.setItem('lastModule', name);
-    if (push) history.pushState({ module: name }, '', '#'+name);
+    if (push && window.location.hash) {
+    history.pushState({ module: name }, '', '#' + name);
+  }
     document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.module===name));
     const main = document.getElementById('main-content');
     main.innerHTML = `<div class="flex items-center justify-center h-64"><i class="fas fa-circle-notch fa-spin text-3xl text-blue-500 opacity-60"></i></div>`;
