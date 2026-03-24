@@ -235,8 +235,11 @@
     applySidebarCollapse();
 
     const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
-    history.replaceState({ module: lastModule }, '', '#' + lastModule);
-    showModule(lastModule, false);
+// Only manipulate history if there's no hash already (avoids warning)
+if (!window.location.hash) {
+  history.replaceState({ module: lastModule }, '', '#' + lastModule);
+}
+showModule(lastModule, false);
     updateBackButton();
   }
 
