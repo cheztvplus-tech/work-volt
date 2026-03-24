@@ -150,7 +150,6 @@
   //  STATE
   // ──────────────────────────────────────────────────────────────
   let currentUser = null;
-  let _appReady = false; // guard against premature history manipulation
 
   const MODULE_ROLES = {
     dashboard: ['SuperAdmin','Admin','Manager','Employee','Contractor'],
@@ -238,7 +237,6 @@
     const lastModule = sessionStorage.getItem('lastModule') || 'dashboard';
     history.replaceState({ module: lastModule }, '', '#' + lastModule);
     showModule(lastModule, false);
-    _appReady = true; // only allow history push/popstate after initial load
     updateBackButton();
   }
 
@@ -357,7 +355,7 @@
   function showModule(name, push=true) {
     closeMobileSidebar();
     sessionStorage.setItem('lastModule', name);
-    if (push && _appReady) history.pushState({ module: name }, '', '#'+name);
+    if (push) history.pushState({ module: name }, '', '#'+name);
     document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.module===name));
     const main = document.getElementById('main-content');
     main.innerHTML = `<div class="flex items-center justify-center h-64"><i class="fas fa-circle-notch fa-spin text-3xl text-blue-500 opacity-60"></i></div>`;
@@ -428,7 +426,7 @@
   }
 }
 
-  window.addEventListener('popstate', e => { if (_appReady) showModule(e.state?.module||'dashboard', false); });
+  window.addEventListener('popstate', e => showModule(e.state?.module||'dashboard', false));
   function updateBackButton() { document.getElementById('app-back-btn').classList.toggle('hidden', history.length<=1); }
   function appGoBack() { history.back(); }
 
@@ -594,8 +592,15 @@ async function apiCall(path, params = {}) {
   }
 }
   // ──────────────────────────────────────────────────────────────
-  //  GLOBAL API  — wired up inside 'load' so WorkVoltDB is ready
+  //  GLOBAL API
   // ──────────────────────────────────────────────────────────────
+  window.WorkVolt = {
+    db:       WorkVoltDB,
+    api:      apiCall,
+    user:     () => currentUser,
+    toast:    showToast,
+    navigate: showModule,
+  };
   window.WorkVoltPages = window.WorkVoltPages || {};
   window.renderNav     = renderNav;
 
@@ -603,14 +608,6 @@ async function apiCall(path, params = {}) {
   //  BOOT
   // ──────────────────────────────────────────────────────────────
   window.addEventListener('load', async () => {
-    // Wire WorkVolt global now — WorkVoltDB is guaranteed defined by here
-    window.WorkVolt = {
-      get db()  { return window.WorkVoltDB; },
-      api:      apiCall,
-      user:     () => currentUser,
-      toast:    showToast,
-      navigate: showModule,
-    };
     try {
       // 1. Init adapter from saved credentials
       const adapter = await initAdapter();
