@@ -15,37 +15,47 @@ window.WorkVoltPages['shop'] = function(container) {
   let _sdb = null;
 
   async function getOrCreateSDB() {
-    if (_sdb) return _sdb;
+  if (_sdb) return _sdb;
 
-    // 1. Use the client already created by db-adapter.js (best case)
-    if (window._wvSupabaseClient) {
-      _sdb = window._wvSupabaseClient;
-      return _sdb;
-    }
-
-    // 2. Read credentials from localStorage
-    const cfg = JSON.parse(localStorage.getItem('wv_db_config') || '{}');
-    const creds = cfg.credentials;
-    if (!creds?.url || !creds?.anonKey) {
-      throw new Error('No Supabase credentials found. Please configure the database in Settings.');
-    }
-
-    // 3. Load the SDK if not already present
-    if (!window.supabase) {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-        s.onload = resolve;
-        s.onerror = () => reject(new Error('Failed to load Supabase SDK from CDN'));
-        document.head.appendChild(s);
-      });
-    }
-
-    // 4. Create and cache the client
-    _sdb = window.supabase.createClient(creds.url, creds.anonKey);
-    window._wvSupabaseClient = _sdb; // share with other modules
+  // 1. Use the client already created by db-adapter.js (best case)
+  if (window._wvSupabaseClient) {
+    _sdb = window._wvSupabaseClient;
     return _sdb;
   }
+
+  // 2. Read credentials from localStorage
+  const cfg = JSON.parse(localStorage.getItem('wv_db_config') || '{}');
+  const creds = cfg.credentials;
+  if (!creds?.url || !creds?.anonKey) {
+    throw new Error('No Supabase credentials found. Please configure the database in Settings.');
+  }
+
+  // 3. Load the SDK if not already present (with timeout)
+  if (!window.supabase) {
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Failed to load Supabase SDK: timeout after 10s. Check if CDN is blocked.'));
+      }, 10000);
+      
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+      s.onload = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      s.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error('Failed to load Supabase SDK from CDN'));
+      };
+      document.head.appendChild(s);
+    });
+  }
+
+  // 4. Create and cache the client
+  _sdb = window.supabase.createClient(creds.url, creds.anonKey);
+  window._wvSupabaseClient = _sdb; // share with other modules
+  return _sdb;
+}
 
   // Tables without created_at — skip ordering for these
   const NO_CREATED_AT = new Set(['shop_settings', 'shop_categories', 'shop_customers']);
@@ -1223,49 +1233,93 @@ window.WorkVoltPages['shop'] = function(container) {
     renderSettingsPanel();
   };
 
-
   // ── Boot ──────────────────────────────────────────────────────
-  (async () => {
-    // Show a loading indicator while we boot
-    container.innerHTML = `
-      <div class="flex items-center justify-center h-64" id="shop-boot-msg">
-        <div class="text-center">
-          <i class="fas fa-circle-notch fa-spin text-3xl text-blue-500 mb-3"></i>
-          <p class="text-sm text-slate-500">Connecting to database…</p>
-        </div>
-      </div>`;
+(async () => {
+  // Show a loading indicator while we boot
+  container.innerHTML = `
+    <div class="flex items-center justify-center h-64" id="shop-boot-msg">
+      <div class="text-center">
+        <i class="fas fa-circle-notch fa-spin text-3xl text-blue-500 mb-3"></i>
+        <p class="text-sm text-slate-500">Connecting to database…</p>
+        <p class="text-xs text-slate-400 mt-2" id="shop-boot-detail">Initializing…</p>
+      </div>
+    </div>`;
 
-    try {
-      // This will throw with a clear message if credentials are missing
-      // or the SDK fails to load
-      await getOrCreateSDB();
-    } catch(e) {
-      container.innerHTML = `
-        <div class="p-8 text-center">
-          <i class="fas fa-plug text-3xl mb-3 text-amber-400"></i>
-          <p class="font-semibold text-slate-700">Database not connected</p>
-          <p class="text-xs text-red-500 mt-2 font-mono bg-red-50 rounded p-2">${e.message}</p>
-          <p class="text-xs text-slate-400 mt-2">Configure Supabase credentials in your app settings, then reload.</p>
-        </div>`;
-      return;
+  const setDetail = (msg) => {
+    const el = document.getElementById('shop-boot-detail');
+    if (el) el.textContent = msg;
+  };
+
+  // Helper: timeout wrapper for promises
+  const withTimeout = (promise, ms, label) => {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+      )
+    ]);
+  };
+
+  try {
+    // Check if we have credentials first (fast fail)
+    const cfg = JSON.parse(localStorage.getItem('wv_db_config') || '{}');
+    if (!cfg.credentials?.url || !cfg.credentials?.anonKey) {
+      throw new Error('No Supabase credentials found. Please configure the database in Settings.');
     }
 
-    try {
-      await loadSettings();
-      renderShell();
-    } catch(e) {
-      console.error('[Shop boot]', e);
-      container.innerHTML = `
-        <div class="p-8 text-center">
-          <i class="fas fa-exclamation-circle text-3xl mb-3 text-red-400"></i>
-          <p class="font-semibold text-red-600">Failed to load shop</p>
-          <p class="text-xs text-slate-500 mt-2 font-mono bg-red-50 rounded p-2">${e.message}</p>
-          <p class="text-xs text-slate-400 mt-2">Make sure you have run <strong>shop_schema.sql</strong> in Supabase.</p>
-          <button onclick="window.WorkVolt.navigate('shop')" class="mt-4 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700">
+    setDetail('Loading Supabase SDK…');
+    
+    // Initialize Supabase with timeout
+    await withTimeout(getOrCreateSDB(), 15000, 'Database connection');
+    
+    setDetail('Loading settings…');
+    
+    // Load settings with timeout
+    await withTimeout(loadSettings(), 10000, 'Settings load');
+    
+    setDetail('Rendering…');
+    renderShell();
+    
+  } catch(e) {
+    console.error('[Shop boot]', e);
+    
+    // Determine user-friendly message
+    let title = 'Failed to load shop';
+    let message = e.message;
+    let isConfigError = false;
+    
+    if (e.message.includes('credentials') || e.message.includes('No Supabase')) {
+      title = 'Database not configured';
+      message = 'Please configure your Supabase credentials in Settings first.';
+      isConfigError = true;
+    } else if (e.message.includes('timed out')) {
+      title = 'Connection timed out';
+      message = 'The database is taking too long to respond. Check your internet connection and Supabase status.';
+    } else if (e.message.includes('Failed to load Supabase SDK')) {
+      title = 'Failed to load database SDK';
+      message = 'Could not load Supabase from CDN. Check if CDN is blocked by your network.';
+    } else if (e.message.includes('shop_settings') || e.message.includes('relation') || e.message.includes('does not exist')) {
+      title = 'Database schema missing';
+      message = 'The shop tables are not set up. Please run shop_schema.sql in your Supabase SQL Editor.';
+    }
+    
+    container.innerHTML = `
+      <div class="p-8 text-center">
+        <i class="fas fa-${isConfigError ? 'plug' : 'exclamation-circle'} text-3xl mb-3 ${isConfigError ? 'text-amber-400' : 'text-red-400'}"></i>
+        <p class="font-semibold text-slate-700">${title}</p>
+        <p class="text-xs text-slate-500 mt-2 font-mono bg-slate-50 rounded p-2 max-w-md mx-auto">${esc(message)}</p>
+        ${e.message.includes('timed out') || e.message.includes('Failed to load') ? `
+          <button onclick="window.WorkVolt?.navigate('shop')" class="mt-4 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700">
             <i class="fas fa-redo text-xs mr-1"></i>Retry
           </button>
-        </div>`;
-    }
-  })();
+        ` : ''}
+        ${isConfigError ? `
+          <button onclick="window.WorkVolt?.navigate('settings')" class="mt-3 px-4 py-2 bg-slate-600 text-white text-xs font-semibold rounded-lg hover:bg-slate-700">
+            <i class="fas fa-cog text-xs mr-1"></i>Open Settings
+          </button>
+        ` : ''}
+      </div>`;
+  }
+})();
 
 };
