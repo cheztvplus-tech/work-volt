@@ -649,6 +649,7 @@ window.WorkVoltPages['shop'] = function(container) {
   };
 
   // ── MODALS (product / category / discount forms) ──────────────
+  / ── MODALS (product / category / discount / banner forms) ──────────────
   function showModal(type, existing, editIdx) {
     if (type === 'product') {
       const p   = existing || {};
@@ -664,32 +665,32 @@ window.WorkVoltPages['shop'] = function(container) {
           <div id="prod-status"></div>
           <div class="space-y-3">
             <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Name *</label>
-              <input id="pf-name" type="text" class="field text-sm" placeholder="Product name" value="${esc(p.name||'')}"></div>
+              <input id="pf-name" name="product_name" type="text" class="field text-sm" placeholder="Product name" value="${esc(p.name||'')}"></div>
             <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Description</label>
-              <textarea id="pf-desc" class="field text-sm" rows="2" placeholder="Optional">${esc(p.description||'')}</textarea></div>
+              <textarea id="pf-desc" name="description" class="field text-sm" rows="2" placeholder="Optional">${esc(p.description||'')}</textarea></div>
             <div class="grid grid-cols-2 gap-3">
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Price *</label>
-                <input id="pf-price" type="number" step="0.01" class="field text-sm" placeholder="0.00" value="${p.price||''}"></div>
+                <input id="pf-price" name="price" type="number" step="0.01" class="field text-sm" placeholder="0.00" value="${p.price||''}"></div>
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Compare Price</label>
-                <input id="pf-cprice" type="number" step="0.01" class="field text-sm" placeholder="0.00" value="${p.compare_price||''}"></div>
+                <input id="pf-cprice" name="compare_price" type="number" step="0.01" class="field text-sm" placeholder="0.00" value="${p.compare_price||''}"></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Category</label>
-                <select id="pf-cat" class="field text-sm"><option value="">— None —</option>${catOpts}</select></div>
+                <select id="pf-cat" name="category_id" class="field text-sm"><option value="">— None —</option>${catOpts}</select></div>
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Stock</label>
-                <input id="pf-stock" type="number" class="field text-sm" placeholder="0" value="${p.stock||0}"></div>
+                <input id="pf-stock" name="stock" type="number" class="field text-sm" placeholder="0" value="${p.stock||0}"></div>
             </div>
             <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Image URL</label>
-              <input id="pf-img" type="url" class="field text-sm" placeholder="https://…" value="${esc(p.image_url||'')}"></div>
+              <input id="pf-img" name="image_url" type="url" class="field text-sm" placeholder="https://…" value="${esc(p.image_url||'')}"></div>
             <div class="grid grid-cols-2 gap-3">
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">SKU</label>
-                <input id="pf-sku" type="text" class="field text-sm" placeholder="Optional" value="${esc(p.sku||'')}"></div>
+                <input id="pf-sku" name="sku" type="text" class="field text-sm" placeholder="Optional" value="${esc(p.sku||'')}"></div>
               <div class="flex items-center gap-3 pt-5">
                 <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" id="pf-active" class="w-4 h-4 accent-blue-600" ${(p.active!==false)?'checked':''}> <span class="text-sm text-slate-700">Active</span>
+                  <input type="checkbox" id="pf-active" name="active" class="w-4 h-4 accent-blue-600" ${(p.active!==false)?'checked':''}> <span class="text-sm text-slate-700">Active</span>
                 </label>
                 <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" id="pf-featured" class="w-4 h-4 accent-amber-500" ${p.featured?'checked':''}> <span class="text-sm text-slate-700">Featured</span>
+                  <input type="checkbox" id="pf-featured" name="featured" class="w-4 h-4 accent-amber-500" ${p.featured?'checked':''}> <span class="text-sm text-slate-700">Featured</span>
                 </label>
               </div>
             </div>
@@ -732,9 +733,9 @@ window.WorkVoltPages['shop'] = function(container) {
           </div>
           <div class="space-y-3">
             <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Name *</label>
-              <input id="cf-name" type="text" class="field text-sm" placeholder="Category name"></div>
+              <input id="cf-name" name="category_name" type="text" class="field text-sm" placeholder="Category name"></div>
             <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Description</label>
-              <input id="cf-desc" type="text" class="field text-sm" placeholder="Optional"></div>
+              <input id="cf-desc" name="description" type="text" class="field text-sm" placeholder="Optional"></div>
           </div>
           <div class="flex gap-3 mt-4">
             <button onclick="shopCloseModal()" class="btn-secondary flex-1">Cancel</button>
@@ -761,21 +762,21 @@ window.WorkVoltPages['shop'] = function(container) {
           </div>
           <div class="space-y-3">
             <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Code *</label>
-              <input id="df-code" type="text" class="field text-sm font-mono" placeholder="SUMMER20"></div>
+              <input id="df-code" name="discount_code" type="text" class="field text-sm font-mono" placeholder="SUMMER20"></div>
             <div class="grid grid-cols-2 gap-3">
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Type</label>
-                <select id="df-type" class="field text-sm"><option value="percent">Percent (%)</option><option value="fixed">Fixed ($)</option></select></div>
+                <select id="df-type" name="discount_type" class="field text-sm"><option value="percent">Percent (%)</option><option value="fixed">Fixed ($)</option></select></div>
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Value *</label>
-                <input id="df-value" type="number" step="0.01" class="field text-sm" placeholder="20"></div>
+                <input id="df-value" name="discount_value" type="number" step="0.01" class="field text-sm" placeholder="20"></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Min Order</label>
-                <input id="df-min" type="number" step="0.01" class="field text-sm" placeholder="0.00"></div>
+                <input id="df-min" name="min_order" type="number" step="0.01" class="field text-sm" placeholder="0.00"></div>
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Max Uses</label>
-                <input id="df-max" type="number" class="field text-sm" placeholder="Unlimited"></div>
+                <input id="df-max" name="max_uses" type="number" class="field text-sm" placeholder="Unlimited"></div>
             </div>
             <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Expires</label>
-              <input id="df-exp" type="date" class="field text-sm"></div>
+              <input id="df-exp" name="expires_at" type="date" class="field text-sm"></div>
           </div>
           <div class="flex gap-3 mt-4">
             <button onclick="shopCloseModal()" class="btn-secondary flex-1">Cancel</button>
@@ -799,7 +800,9 @@ window.WorkVoltPages['shop'] = function(container) {
         loadDiscounts().then(() => renderDiscounts(document.getElementById('shop-content')));
       };
     }
-  }
+    
+    // THIS WAS THE PROBLEM - this code was outside the function!
+    // Now it's properly inside showModal()
     if (type === 'banner') {
       const b   = existing || {};
       const idx = editIdx !== undefined ? editIdx : -1;
@@ -814,41 +817,41 @@ window.WorkVoltPages['shop'] = function(container) {
           <div class="space-y-3">
             <div class="grid grid-cols-2 gap-3">
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Banner ID (unique, no spaces)</label>
-                <input id="bf-id" type="text" class="field text-sm font-mono" placeholder="summer_sale" value="${esc(b.id||'')}"></div>
+                <input id="bf-id" name="banner_id" type="text" class="field text-sm font-mono" placeholder="summer_sale" value="${esc(b.id||'')}"></div>
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Style</label>
-                <select id="bf-style" class="field text-sm">
+                <select id="bf-style" name="banner_style" class="field text-sm">
                   ${['hero','solid','strip'].map(s=>`<option value="${s}"${(b.style||'hero')===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
                 </select></div>
             </div>
             <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Title</label>
-              <input id="bf-title" type="text" class="field text-sm" placeholder="Summer Sale — 20% off everything" value="${esc(b.title||'')}"></div>
+              <input id="bf-title" name="banner_title" type="text" class="field text-sm" placeholder="Summer Sale — 20% off everything" value="${esc(b.title||'')}"></div>
             <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Eyebrow (small text above title)</label>
-              <input id="bf-eyebrow" type="text" class="field text-sm" placeholder="Limited time" value="${esc(b.eyebrow||'')}"></div>
+              <input id="bf-eyebrow" name="banner_eyebrow" type="text" class="field text-sm" placeholder="Limited time" value="${esc(b.eyebrow||'')}"></div>
             <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Subtitle</label>
-              <input id="bf-subtitle" type="text" class="field text-sm" placeholder="Free shipping on all orders this weekend" value="${esc(b.subtitle||'')}"></div>
+              <input id="bf-subtitle" name="banner_subtitle" type="text" class="field text-sm" placeholder="Free shipping on all orders this weekend" value="${esc(b.subtitle||'')}"></div>
             <div class="grid grid-cols-2 gap-3">
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">CTA Button Text</label>
-                <input id="bf-cta" type="text" class="field text-sm" placeholder="Shop Now" value="${esc(b.cta_text||'')}"></div>
+                <input id="bf-cta" name="cta_text" type="text" class="field text-sm" placeholder="Shop Now" value="${esc(b.cta_text||'')}"></div>
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">CTA Link</label>
-                <input id="bf-ctalink" type="url" class="field text-sm" placeholder="https://…" value="${esc(b.cta_link||'')}"></div>
+                <input id="bf-ctalink" name="cta_link" type="url" class="field text-sm" placeholder="https://…" value="${esc(b.cta_link||'')}"></div>
             </div>
             <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Background Image URL (hero style)</label>
-              <input id="bf-img" type="url" class="field text-sm" placeholder="https://…" value="${esc(b.image_url||'')}"></div>
+              <input id="bf-img" name="banner_image" type="url" class="field text-sm" placeholder="https://…" value="${esc(b.image_url||'')}"></div>
             <div class="grid grid-cols-2 gap-3">
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Background Colour / Gradient</label>
-                <input id="bf-bg" type="text" class="field text-sm font-mono" placeholder="#1e3a5f or linear-gradient(…)" value="${esc(b.bg_color||'')}"></div>
+                <input id="bf-bg" name="bg_color" type="text" class="field text-sm font-mono" placeholder="#1e3a5f or linear-gradient(…)" value="${esc(b.bg_color||'')}"></div>
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Text Colour</label>
-                <input id="bf-color" type="text" class="field text-sm font-mono" placeholder="#ffffff" value="${esc(b.text_color||'#ffffff')}"></div>
+                <input id="bf-color" name="text_color" type="text" class="field text-sm font-mono" placeholder="#ffffff" value="${esc(b.text_color||'#ffffff')}"></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Start Date (optional)</label>
-                <input id="bf-start" type="date" class="field text-sm" value="${esc(b.start_date||'')}"></div>
+                <input id="bf-start" name="start_date" type="date" class="field text-sm" value="${esc(b.start_date||'')}"></div>
               <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">End Date (optional)</label>
-                <input id="bf-end" type="date" class="field text-sm" value="${esc(b.end_date||'')}"></div>
+                <input id="bf-end" name="end_date" type="date" class="field text-sm" value="${esc(b.end_date||'')}"></div>
             </div>
             <div class="flex items-center gap-3">
               <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" id="bf-active" class="w-4 h-4 accent-blue-600" ${(b.active===true||b.active==='true')?'checked':''}>
+                <input type="checkbox" id="bf-active" name="banner_active" class="w-4 h-4 accent-blue-600" ${(b.active===true||b.active==='true')?'checked':''}>
                 <span class="text-sm text-slate-700">Active</span>
               </label>
             </div>
@@ -860,7 +863,7 @@ window.WorkVoltPages['shop'] = function(container) {
         </div>`);
 
       window.shopSaveBanner = async function(editIndex) {
-        const id = document.getElementById('bf-id')?.value.trim().replace(/\s+/g,'_');
+        const id = document.getElementById('bf-id')?.value.trim().replace(/\\s+/g,'_');
         if (!id) { toast('Banner ID is required','error'); return; }
         const banner = {
           id,
@@ -888,6 +891,7 @@ window.WorkVoltPages['shop'] = function(container) {
         renderSettingsPanel();
       };
     }
+  }  // <- showModal function ends here
 
   window.shopShowModal = showModal;
 
