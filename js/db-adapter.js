@@ -64,6 +64,9 @@ class SupabaseAdapter extends BaseAdapter {
     if (!url.includes('supabase.co')) throw new Error('Invalid Supabase URL. Should be: https://xxxx.supabase.co');
     await this._loadSDK();
     this._client = window.supabase.createClient(url, anonKey);
+    // Expose the live client globally so page modules (e.g. shop.js) can use
+    // the already-authenticated client without creating a duplicate connection.
+    window._wvSupabaseClient = this._client;
     // Verify connectivity — ping the auth settings endpoint (always public)
     try {
       const res = await fetch(url + '/auth/v1/settings', { headers: { apikey: anonKey } });
