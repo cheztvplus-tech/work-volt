@@ -648,8 +648,7 @@ window.WorkVoltPages['shop'] = function(container) {
     };
   };
 
-  // ── MODALS (product / category / discount forms) ──────────────
-  / ── MODALS (product / category / discount / banner forms) ──────────────
+  // ── MODALS (product / category / discount / banner forms) ──────────────
   function showModal(type, existing, editIdx) {
     if (type === 'product') {
       const p   = existing || {};
