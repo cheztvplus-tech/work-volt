@@ -164,16 +164,23 @@ window.WorkVoltPages['shop'] = function(container) {
     if (!c) return;
     c.innerHTML = `<div class="flex items-center justify-center h-40"><i class="fas fa-circle-notch fa-spin text-2xl text-blue-500"></i></div>`;
     try {
-      if (activeTab === 'dashboard') { await loadAll(); renderDashboard(c); }
-      if (activeTab === 'products')  { await loadProducts(); renderProducts(c); }
-      if (activeTab === 'orders')    { await loadOrders(); renderOrders(c); }
+      if (activeTab === 'dashboard') { await loadAll();       renderDashboard(c); }
+      if (activeTab === 'products')  { await loadProducts();  renderProducts(c);  }
+      if (activeTab === 'orders')    { await loadOrders();    renderOrders(c);    }
       if (activeTab === 'customers') { await loadCustomers(); renderCustomers(c); }
       if (activeTab === 'discounts') { await loadDiscounts(); renderDiscounts(c); }
-      if (activeTab === 'pos')       { await loadProducts(); renderPOS(c); }
-      if (activeTab === 'settings')  { await loadSettings(); renderSettings(c); }
+      if (activeTab === 'pos')       { await loadProducts();  renderPOS(c);       }
+      if (activeTab === 'settings')  { await loadSettings();  renderSettings(c);  }
     } catch(e) {
-      c.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-exclamation-circle text-2xl mb-2"></i><p>${e.message}</p>
-        <p class="text-xs text-slate-400 mt-2">Make sure you've run shop_schema.sql in Supabase</p></div>`;
+      console.error('[Shop] renderTab error:', e);
+      c.innerHTML = `
+        <div class="p-8 text-center text-red-500">
+          <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
+          <p class="font-semibold">${e.message}</p>
+          <p class="text-xs text-slate-400 mt-2">Check the browser console for details</p>
+          <p class="text-xs text-slate-400 mt-1">Make sure you have run shop_schema.sql in Supabase</p>
+          <button onclick="shopTab('${activeTab}')" class="mt-4 px-4 py-2 bg-blue-600 text-white text-xs rounded-lg font-semibold hover:bg-blue-700">Retry</button>
+        </div>`;
     }
   }
 
@@ -1186,35 +1193,46 @@ window.WorkVoltPages['shop'] = function(container) {
 
 
   // ── Boot ──────────────────────────────────────────────────────
-  // Wait for WorkVoltDB (db-adapter.js) to be ready — it's always
-  // loaded before page modules, so this usually resolves instantly.
-  async function waitForAdapter(retries = 15) {
-    for (let i = 0; i < retries; i++) {
-      if (window.WorkVoltDB) {
-        // Quick smoke-test: confirm the adapter is initialised
-        try { window.WorkVoltDB.list('shop_settings', {}, {}); return true; } catch(e) { /* not ready */ }
-      }
-      await new Promise(r => setTimeout(r, 200));
-    }
-    return false;
-  }
-
-  waitForAdapter().then(async ready => {
-    if (!ready) {
-      container.innerHTML = `<div class="p-8 text-center text-slate-500">
-        <i class="fas fa-exclamation-circle text-3xl mb-3 text-amber-400"></i>
-        <p class="font-semibold">Database not connected</p>
-        <p class="text-xs mt-1">Make sure db-adapter.js is loaded and a Supabase connection is configured</p>
-      </div>`;
-      return;
-    }
-    loadSettings().then(renderShell).catch(e => {
-      container.innerHTML = `<div class="p-8 text-center text-red-500">
+  function showError(msg) {
+    container.innerHTML = `
+      <div class="p-8 text-center text-red-500">
         <i class="fas fa-exclamation-circle text-3xl mb-3"></i>
         <p class="font-semibold">Failed to load shop</p>
-        <p class="text-xs mt-2 text-slate-400">${e.message}</p>
-        <p class="text-xs text-slate-400 mt-1">Make sure you've run shop_schema.sql in Supabase</p>
+        <p class="text-xs mt-2 text-slate-400">${msg}</p>
+        <p class="text-xs text-slate-400 mt-1">Make sure you have run shop_schema.sql in Supabase</p>
+        <button onclick="window.WorkVolt.navigate('shop')" class="mt-4 px-4 py-2 bg-blue-600 text-white text-xs rounded-lg font-semibold hover:bg-blue-700">Retry</button>
       </div>`;
-    });
-  });
+  }
+
+  (async () => {
+    // 1. Wait for WorkVoltDB global to exist (db-adapter.js must be loaded)
+    for (let i = 0; i < 20; i++) {
+      if (window.WorkVoltDB) break;
+      await new Promise(r => setTimeout(r, 150));
+    }
+    if (!window.WorkVoltDB) {
+      container.innerHTML = `
+        <div class="p-8 text-center text-slate-500">
+          <i class="fas fa-exclamation-circle text-3xl mb-3 text-amber-400"></i>
+          <p class="font-semibold">Database not connected</p>
+          <p class="text-xs mt-1">Make sure db-adapter.js is loaded and Supabase is configured</p>
+        </div>`;
+      return;
+    }
+
+    // 2. Actually try loading settings — surface any real DB error
+    try {
+      await loadSettings();
+    } catch(e) {
+      showError(e.message);
+      return;
+    }
+
+    // 3. Render the shell (which calls switchTab → renderTab → loads data)
+    try {
+      renderShell();
+    } catch(e) {
+      showError(e.message);
+    }
+  })();
 };
