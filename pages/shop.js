@@ -1,5 +1,5 @@
 // ================================================================
-//  WORK VOLT — shop.js  v2.0  (Supabase)
+//  WORK VOLT — shop.js  v2.1  (Supabase — fixed)
 //  Premium E-Commerce + POS Admin Module
 //
 //  ⚠️  Requires shop_schema.sql to be run in Supabase first
@@ -9,21 +9,49 @@ window.WorkVoltPages = window.WorkVoltPages || {};
 
 window.WorkVoltPages['shop'] = function(container) {
 
-  // ── DB helper ──────────────────────────────────────────────────
-  // Gets the live Supabase client from the already-initialised
-  // db-adapter — no second SDK load, no duplicate credentials.
-  function getSDB() {
-    // db-adapter.js exposes the active adapter via window._adapter (set below)
-    // or we can reach it through the internal getAdapter() if exposed.
-    // We expose it at boot time via window._wvSupabaseClient.
-    return window._wvSupabaseClient || null;
+  // ── Supabase client ────────────────────────────────────────────
+  // Self-contained: works whether db-adapter has already loaded the
+  // SDK or not. Tries the shared client first, then builds its own.
+  let _sdb = null;
+
+  async function getOrCreateSDB() {
+    if (_sdb) return _sdb;
+
+    // 1. Use the client already created by db-adapter.js (best case)
+    if (window._wvSupabaseClient) {
+      _sdb = window._wvSupabaseClient;
+      return _sdb;
+    }
+
+    // 2. Read credentials from localStorage
+    const cfg = JSON.parse(localStorage.getItem('wv_db_config') || '{}');
+    const creds = cfg.credentials;
+    if (!creds?.url || !creds?.anonKey) {
+      throw new Error('No Supabase credentials found. Please configure the database in Settings.');
+    }
+
+    // 3. Load the SDK if not already present
+    if (!window.supabase) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('Failed to load Supabase SDK from CDN'));
+        document.head.appendChild(s);
+      });
+    }
+
+    // 4. Create and cache the client
+    _sdb = window.supabase.createClient(creds.url, creds.anonKey);
+    window._wvSupabaseClient = _sdb; // share with other modules
+    return _sdb;
   }
 
+  // Tables without created_at — skip ordering for these
   const NO_CREATED_AT = new Set(['shop_settings', 'shop_categories', 'shop_customers']);
 
   async function shopDB(table, action, data, filters) {
-    const sdb = getSDB();
-    if (!sdb) throw new Error('Supabase client not ready — is db-adapter.js loaded and connected?');
+    const sdb = await getOrCreateSDB();
     if (action === 'list') {
       let q = sdb.from(table).select('*');
       if (filters) Object.entries(filters).forEach(([k,v]) => { if (v !== undefined && v !== null) q = q.eq(k,v); });
@@ -177,13 +205,13 @@ window.WorkVoltPages['shop'] = function(container) {
       if (activeTab === 'pos')       { await loadProducts();  renderPOS(c);       }
       if (activeTab === 'settings')  { await loadSettings();  renderSettings(c);  }
     } catch(e) {
-      console.error('[Shop]', e);
+      console.error('[Shop renderTab]', e);
       c.innerHTML = `
         <div class="p-8 text-center">
           <i class="fas fa-exclamation-circle text-2xl mb-2 text-red-400"></i>
           <p class="font-semibold text-red-600">${e.message}</p>
-          <p class="text-xs text-slate-400 mt-2">Check the browser console for details. Make sure shop_schema.sql has been run in Supabase.</p>
-          <button onclick="shopTab('${activeTab}')" class="mt-3 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700">Retry</button>
+          <p class="text-xs text-slate-400 mt-2">Check the browser console. Make sure shop_schema.sql has been run in Supabase.</p>
+          <button onclick="shopTab('${activeTab}')" class="mt-3 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg">Retry</button>
         </div>`;
     }
   }
@@ -1198,18 +1226,26 @@ window.WorkVoltPages['shop'] = function(container) {
 
   // ── Boot ──────────────────────────────────────────────────────
   (async () => {
-    // Wait up to 3s for db-adapter to expose the Supabase client
-    for (let i = 0; i < 30; i++) {
-      if (window._wvSupabaseClient) break;
-      await new Promise(r => setTimeout(r, 100));
-    }
+    // Show a loading indicator while we boot
+    container.innerHTML = `
+      <div class="flex items-center justify-center h-64" id="shop-boot-msg">
+        <div class="text-center">
+          <i class="fas fa-circle-notch fa-spin text-3xl text-blue-500 mb-3"></i>
+          <p class="text-sm text-slate-500">Connecting to database…</p>
+        </div>
+      </div>`;
 
-    if (!window._wvSupabaseClient) {
+    try {
+      // This will throw with a clear message if credentials are missing
+      // or the SDK fails to load
+      await getOrCreateSDB();
+    } catch(e) {
       container.innerHTML = `
         <div class="p-8 text-center">
           <i class="fas fa-plug text-3xl mb-3 text-amber-400"></i>
-          <p class="font-semibold text-slate-700">Supabase not connected</p>
-          <p class="text-xs text-slate-400 mt-1">Make sure db-adapter.js is loaded and Supabase credentials are configured in Settings.</p>
+          <p class="font-semibold text-slate-700">Database not connected</p>
+          <p class="text-xs text-red-500 mt-2 font-mono bg-red-50 rounded p-2">${e.message}</p>
+          <p class="text-xs text-slate-400 mt-2">Configure Supabase credentials in your app settings, then reload.</p>
         </div>`;
       return;
     }
@@ -1218,14 +1254,18 @@ window.WorkVoltPages['shop'] = function(container) {
       await loadSettings();
       renderShell();
     } catch(e) {
+      console.error('[Shop boot]', e);
       container.innerHTML = `
         <div class="p-8 text-center">
           <i class="fas fa-exclamation-circle text-3xl mb-3 text-red-400"></i>
           <p class="font-semibold text-red-600">Failed to load shop</p>
-          <p class="text-xs text-slate-500 mt-2 font-mono">${e.message}</p>
-          <p class="text-xs text-slate-400 mt-2">Have you run <strong>shop_schema.sql</strong> in Supabase?</p>
-          <button onclick="window.WorkVolt.navigate('shop')" class="mt-4 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700">Retry</button>
+          <p class="text-xs text-slate-500 mt-2 font-mono bg-red-50 rounded p-2">${e.message}</p>
+          <p class="text-xs text-slate-400 mt-2">Make sure you have run <strong>shop_schema.sql</strong> in Supabase.</p>
+          <button onclick="window.WorkVolt.navigate('shop')" class="mt-4 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700">
+            <i class="fas fa-redo text-xs mr-1"></i>Retry
+          </button>
         </div>`;
     }
   })();
+
 };
