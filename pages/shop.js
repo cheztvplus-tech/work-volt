@@ -22,13 +22,19 @@ window.WorkVoltPages['shop'] = function(container) {
   }
 
   // Generic shop DB helper
+  // Tables without created_at — skip ordering for these
+  const NO_CREATED_AT = new Set(['shop_settings', 'shop_categories', 'shop_customers']);
+
   async function shopDB(table, action, data, filters) {
     const sdb = getSDB();
     if (!sdb) throw new Error('Supabase not connected');
     if (action === 'list') {
       let q = sdb.from(table).select('*');
       if (filters) Object.entries(filters).forEach(([k,v]) => { if (v) q = q.eq(k,v); });
-      const { data: rows, error } = await q.order('created_at', { ascending: false });
+      if (!NO_CREATED_AT.has(table)) {
+        q = q.order('created_at', { ascending: false });
+      }
+      const { data: rows, error } = await q;
       if (error) throw new Error(error.message);
       return rows || [];
     }
@@ -1210,6 +1216,13 @@ window.WorkVoltPages['shop'] = function(container) {
       </div>`;
       return;
     }
-    loadSettings().then(renderShell);
+    loadSettings().then(renderShell).catch(e => {
+      container.innerHTML = `<div class="p-8 text-center text-red-500">
+        <i class="fas fa-exclamation-circle text-3xl mb-3"></i>
+        <p class="font-semibold">Failed to load shop</p>
+        <p class="text-xs mt-2 text-slate-400">${e.message}</p>
+        <p class="text-xs text-slate-400 mt-1">Make sure you've run shop_schema.sql in Supabase</p>
+      </div>`;
+    });
   });
 };
