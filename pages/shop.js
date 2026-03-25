@@ -10,54 +10,43 @@ window.WorkVoltPages = window.WorkVoltPages || {};
 window.WorkVoltPages['shop'] = function(container) {
 
   // ── State ──────────────────────────────────────────────────────
-  // sdb is created lazily so the Supabase SDK has time to load
-  let _sdb = null;
-  function getSDB() {
-    if (_sdb) return _sdb;
-    if (!window.supabase) return null;
-    const cfg = JSON.parse(localStorage.getItem('wv_db_config')||'{}');
-    if (!cfg.credentials) return null;
-    _sdb = window.supabase.createClient(cfg.credentials.url, cfg.credentials.anonKey);
-    return _sdb;
-  }
+  // shopDB routes through WorkVoltDB (db-adapter.js) so it works
+  // with whatever adapter is already initialised — no second client.
 
-  // Generic shop DB helper
   // Tables without created_at — skip ordering for these
   const NO_CREATED_AT = new Set(['shop_settings', 'shop_categories', 'shop_customers']);
 
   async function shopDB(table, action, data, filters) {
-    const sdb = getSDB();
-    if (!sdb) throw new Error('Supabase not connected');
+    if (!window.WorkVoltDB) throw new Error('WorkVoltDB not available — make sure db-adapter.js is loaded');
+
     if (action === 'list') {
-      let q = sdb.from(table).select('*');
-      if (filters) Object.entries(filters).forEach(([k,v]) => { if (v) q = q.eq(k,v); });
-      if (!NO_CREATED_AT.has(table)) {
-        q = q.order('created_at', { ascending: false });
-      }
-      const { data: rows, error } = await q;
-      if (error) throw new Error(error.message);
-      return rows || [];
+      const opts = NO_CREATED_AT.has(table) ? {} : { order: 'created_at', asc: false };
+      return window.WorkVoltDB.list(table, filters || {}, opts);
     }
     if (action === 'create') {
-      const { data: row, error } = await sdb.from(table).insert(data).select().single();
-      if (error) throw new Error(error.message);
-      return row;
+      return window.WorkVoltDB.create(table, data);
     }
     if (action === 'update') {
       const { id, ...patch } = data;
-      const { data: row, error } = await sdb.from(table).update(patch).eq('id', id).select().single();
-      if (error) throw new Error(error.message);
-      return row;
+      return window.WorkVoltDB.update(table, id, patch);
     }
     if (action === 'delete') {
-      const { error } = await sdb.from(table).delete().eq('id', data.id);
-      if (error) throw new Error(error.message);
-      return true;
+      return window.WorkVoltDB.delete(table, data.id);
     }
     if (action === 'upsert') {
-      const { error } = await sdb.from(table).upsert(data);
-      if (error) throw new Error(error.message);
-      return true;
+      // Supabase upsert via the adapter's raw list+update or create
+      // Try update first; if the row doesn't exist, create it.
+      try {
+        const rows = await window.WorkVoltDB.list(table, { key: data.key }, {});
+        if (rows && rows.length > 0) {
+          return window.WorkVoltDB.update(table, rows[0].id, { value: data.value, updated_at: data.updated_at });
+        } else {
+          return window.WorkVoltDB.create(table, data);
+        }
+      } catch(e) {
+        // Fallback: attempt create
+        return window.WorkVoltDB.create(table, data);
+      }
     }
   }
 
@@ -1197,22 +1186,25 @@ window.WorkVoltPages['shop'] = function(container) {
 
 
   // ── Boot ──────────────────────────────────────────────────────
-  // Poll briefly for Supabase SDK (it is injected async by db-adapter)
-  async function waitForSDB(retries = 10) {
+  // Wait for WorkVoltDB (db-adapter.js) to be ready — it's always
+  // loaded before page modules, so this usually resolves instantly.
+  async function waitForAdapter(retries = 15) {
     for (let i = 0; i < retries; i++) {
-      const db = getSDB();
-      if (db) return db;
-      await new Promise(r => setTimeout(r, 300));
+      if (window.WorkVoltDB) {
+        // Quick smoke-test: confirm the adapter is initialised
+        try { window.WorkVoltDB.list('shop_settings', {}, {}); return true; } catch(e) { /* not ready */ }
+      }
+      await new Promise(r => setTimeout(r, 200));
     }
-    return null;
+    return false;
   }
 
-  waitForSDB().then(async resolved => {
-    if (!resolved) {
+  waitForAdapter().then(async ready => {
+    if (!ready) {
       container.innerHTML = `<div class="p-8 text-center text-slate-500">
         <i class="fas fa-exclamation-circle text-3xl mb-3 text-amber-400"></i>
-        <p class="font-semibold">Supabase not connected</p>
-        <p class="text-xs mt-1">This module requires the Supabase adapter to be active</p>
+        <p class="font-semibold">Database not connected</p>
+        <p class="text-xs mt-1">Make sure db-adapter.js is loaded and a Supabase connection is configured</p>
       </div>`;
       return;
     }
