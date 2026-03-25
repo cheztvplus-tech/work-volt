@@ -10,18 +10,20 @@ window.WorkVoltPages = window.WorkVoltPages || {};
 window.WorkVoltPages['shop'] = function(container) {
 
   // ── State ──────────────────────────────────────────────────────
-  const sdb = window.supabase
-    ? (() => {
-        // Use the already-initialised Supabase client from db-adapter
-        const cfg = JSON.parse(localStorage.getItem('wv_db_config')||'{}');
-        return cfg.credentials
-          ? window.supabase.createClient(cfg.credentials.url, cfg.credentials.anonKey)
-          : null;
-      })()
-    : null;
+  // sdb is created lazily so the Supabase SDK has time to load
+  let _sdb = null;
+  function getSDB() {
+    if (_sdb) return _sdb;
+    if (!window.supabase) return null;
+    const cfg = JSON.parse(localStorage.getItem('wv_db_config')||'{}');
+    if (!cfg.credentials) return null;
+    _sdb = window.supabase.createClient(cfg.credentials.url, cfg.credentials.anonKey);
+    return _sdb;
+  }
 
   // Generic shop DB helper
   async function shopDB(table, action, data, filters) {
+    const sdb = getSDB();
     if (!sdb) throw new Error('Supabase not connected');
     if (action === 'list') {
       let q = sdb.from(table).select('*');
@@ -603,7 +605,7 @@ window.WorkVoltPages['shop'] = function(container) {
   };
 
   // ── MODALS (product / category / discount forms) ──────────────
-  function showModal(type, existing) {
+  function showModal(type, existing, editIdx) {
     if (type === 'product') {
       const p   = existing || {};
       const isEdit = !!p.id;
@@ -754,61 +756,460 @@ window.WorkVoltPages['shop'] = function(container) {
       };
     }
   }
+    if (type === 'banner') {
+      const b   = existing || {};
+      const idx = editIdx !== undefined ? editIdx : -1;
+      const isEdit = idx >= 0;
+
+      openModal(`
+        <div class="p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-slate-900">${isEdit?'Edit Banner':'New Banner'}</h3>
+            <button onclick="shopCloseModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400"><i class="fas fa-times text-sm"></i></button>
+          </div>
+          <div class="space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Banner ID (unique, no spaces)</label>
+                <input id="bf-id" type="text" class="field text-sm font-mono" placeholder="summer_sale" value="${esc(b.id||'')}"></div>
+              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Style</label>
+                <select id="bf-style" class="field text-sm">
+                  ${['hero','solid','strip'].map(s=>`<option value="${s}"${(b.style||'hero')===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
+                </select></div>
+            </div>
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Title</label>
+              <input id="bf-title" type="text" class="field text-sm" placeholder="Summer Sale — 20% off everything" value="${esc(b.title||'')}"></div>
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Eyebrow (small text above title)</label>
+              <input id="bf-eyebrow" type="text" class="field text-sm" placeholder="Limited time" value="${esc(b.eyebrow||'')}"></div>
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Subtitle</label>
+              <input id="bf-subtitle" type="text" class="field text-sm" placeholder="Free shipping on all orders this weekend" value="${esc(b.subtitle||'')}"></div>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">CTA Button Text</label>
+                <input id="bf-cta" type="text" class="field text-sm" placeholder="Shop Now" value="${esc(b.cta_text||'')}"></div>
+              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">CTA Link</label>
+                <input id="bf-ctalink" type="url" class="field text-sm" placeholder="https://…" value="${esc(b.cta_link||'')}"></div>
+            </div>
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Background Image URL (hero style)</label>
+              <input id="bf-img" type="url" class="field text-sm" placeholder="https://…" value="${esc(b.image_url||'')}"></div>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Background Colour / Gradient</label>
+                <input id="bf-bg" type="text" class="field text-sm font-mono" placeholder="#1e3a5f or linear-gradient(…)" value="${esc(b.bg_color||'')}"></div>
+              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Text Colour</label>
+                <input id="bf-color" type="text" class="field text-sm font-mono" placeholder="#ffffff" value="${esc(b.text_color||'#ffffff')}"></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Start Date (optional)</label>
+                <input id="bf-start" type="date" class="field text-sm" value="${esc(b.start_date||'')}"></div>
+              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">End Date (optional)</label>
+                <input id="bf-end" type="date" class="field text-sm" value="${esc(b.end_date||'')}"></div>
+            </div>
+            <div class="flex items-center gap-3">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="bf-active" class="w-4 h-4 accent-blue-600" ${(b.active===true||b.active==='true')?'checked':''}>
+                <span class="text-sm text-slate-700">Active</span>
+              </label>
+            </div>
+          </div>
+          <div class="flex gap-3 mt-4">
+            <button onclick="shopCloseModal()" class="btn-secondary flex-1">Cancel</button>
+            <button onclick="shopSaveBanner(${idx})" class="btn-primary flex-1"><i class="fas fa-save text-xs mr-1"></i>${isEdit?'Save':'Create'}</button>
+          </div>
+        </div>`);
+
+      window.shopSaveBanner = async function(editIndex) {
+        const id = document.getElementById('bf-id')?.value.trim().replace(/\s+/g,'_');
+        if (!id) { toast('Banner ID is required','error'); return; }
+        const banner = {
+          id,
+          style:      document.getElementById('bf-style')?.value    || 'hero',
+          title:      document.getElementById('bf-title')?.value    || '',
+          eyebrow:    document.getElementById('bf-eyebrow')?.value  || '',
+          subtitle:   document.getElementById('bf-subtitle')?.value || '',
+          cta_text:   document.getElementById('bf-cta')?.value      || '',
+          cta_link:   document.getElementById('bf-ctalink')?.value  || '',
+          image_url:  document.getElementById('bf-img')?.value      || '',
+          bg_color:   document.getElementById('bf-bg')?.value       || '',
+          text_color: document.getElementById('bf-color')?.value    || '#ffffff',
+          start_date: document.getElementById('bf-start')?.value    || null,
+          end_date:   document.getElementById('bf-end')?.value      || null,
+          active:     document.getElementById('bf-active')?.checked,
+        };
+        let banners = [];
+        try { banners = JSON.parse(settings.banners||'[]'); } catch(e){}
+        if (editIndex >= 0) banners[editIndex] = banner;
+        else banners.push(banner);
+        await shopDB('shop_settings','upsert',{ key:'banners', value: JSON.stringify(banners), updated_at: new Date().toISOString() });
+        await loadSettings();
+        toast(editIndex >= 0 ? 'Banner updated' : 'Banner created','success');
+        closeModal();
+        renderSettingsPanel();
+      };
+    }
 
   window.shopShowModal = showModal;
 
   // ── SETTINGS ─────────────────────────────────────────────────
+  let settingsSubTab = 'store';
+
   function renderSettings(el) {
+    const sfUrl = settings.storefront_url || '';
+    const tabs = [
+      { id:'store',      label:'Store',      icon:'fa-store' },
+      { id:'storefront', label:'Storefront', icon:'fa-globe' },
+      { id:'appearance', label:'Appearance', icon:'fa-palette' },
+      { id:'shipping',   label:'Shipping',   icon:'fa-truck' },
+      { id:'payments',   label:'Payments',   icon:'fa-credit-card' },
+    ];
+
     el.innerHTML = `
-      <div class="max-w-2xl space-y-6">
-        <div class="bg-white rounded-2xl border border-slate-200 p-5">
-          <h3 class="font-bold text-slate-900 mb-4">Store Settings</h3>
-          <div id="settings-status"></div>
-          <div class="space-y-3">
-            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Store Name</label>
-              <input id="ss-name" type="text" class="field text-sm" placeholder="My Store" value="${esc(settings.store_name||'')}"></div>
-            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Tagline</label>
-              <input id="ss-tagline" type="text" class="field text-sm" placeholder="Great products for everyone" value="${esc(settings.store_tagline||'')}"></div>
-            <div class="grid grid-cols-2 gap-3">
-              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Currency</label>
-                <select id="ss-currency" class="field text-sm">
-                  ${['USD','CAD','EUR','GBP','AUD'].map(c => `<option value="${c}"${settings.currency===c?' selected':''}>${c}</option>`).join('')}
-                </select></div>
-              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Tax Rate (%)</label>
-                <input id="ss-tax" type="number" step="0.01" class="field text-sm" placeholder="0" value="${esc(settings.tax_rate||'')}"></div>
-            </div>
-          </div>
-          <button onclick="shopSaveSettings()" class="btn-primary w-full mt-4 text-sm">
-            <i class="fas fa-save text-xs mr-1"></i>Save Settings
-          </button>
+      <div class="max-w-3xl space-y-4">
+        <!-- Sub-tab bar -->
+        <div class="flex gap-1 bg-slate-100 p-1 rounded-xl">
+          ${tabs.map(t => `
+            <button onclick="shopSettingsTab('${t.id}')" id="stab-s-${t.id}"
+              class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all flex-1 justify-center
+                ${settingsSubTab===t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">
+              <i class="fas ${t.icon}"></i><span class="hidden sm:inline">${t.label}</span>
+            </button>`).join('')}
         </div>
+
+        <div id="settings-status"></div>
+        <div id="settings-panel"></div>
       </div>`;
 
-    window.shopSaveSettings = async () => {
-      const pairs = [
-        ['store_name',   document.getElementById('ss-name')?.value||''],
-        ['store_tagline',document.getElementById('ss-tagline')?.value||''],
-        ['currency',     document.getElementById('ss-currency')?.value||'USD'],
-        ['tax_rate',     document.getElementById('ss-tax')?.value||'0'],
-      ];
-      for (const [key,value] of pairs) {
-        await shopDB('shop_settings','upsert',{ key, value, updated_at: new Date().toISOString() });
-      }
-      const s = document.getElementById('settings-status');
-      if (s) s.innerHTML='<div class="flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700 mb-3"><i class="fas fa-check-circle"></i>Settings saved!</div>';
-      await loadSettings();
-      toast('Settings saved','success');
+    window.shopSettingsTab = id => {
+      settingsSubTab = id;
+      tabs.forEach(t => {
+        const b = document.getElementById('stab-s-' + t.id);
+        if (b) b.className = 'flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all flex-1 justify-center '
+          + (t.id === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700');
+      });
+      renderSettingsPanel();
     };
+
+    renderSettingsPanel();
   }
 
-  // ── Boot ──────────────────────────────────────────────────────
-  if (!sdb) {
-    container.innerHTML = `<div class="p-8 text-center text-slate-500">
-      <i class="fas fa-exclamation-circle text-3xl mb-3 text-amber-400"></i>
-      <p class="font-semibold">Supabase not connected</p>
-      <p class="text-xs mt-1">This module requires the Supabase adapter to be active</p>
-    </div>`;
-    return;
+  function renderSettingsPanel() {
+    const panel = document.getElementById('settings-panel');
+    if (!panel) return;
+
+    if (settingsSubTab === 'store') {
+      panel.innerHTML = `
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+          <h3 class="font-bold text-slate-900">Store Identity</h3>
+          <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Store Name</label>
+            <input id="ss-name" type="text" class="field text-sm" placeholder="My Store" value="${esc(settings.store_name||'')}"></div>
+          <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Tagline</label>
+            <input id="ss-tagline" type="text" class="field text-sm" placeholder="Great products, fast shipping" value="${esc(settings.store_tagline||'')}"></div>
+          <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Logo URL</label>
+            <input id="ss-logo" type="url" class="field text-sm" placeholder="https://…/logo.png" value="${esc(settings.logo_url||'')}"></div>
+          <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Footer Text</label>
+            <input id="ss-footer" type="text" class="field text-sm" placeholder="© 2025 My Store" value="${esc(settings.footer_text||'')}"></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Currency</label>
+              <select id="ss-currency" class="field text-sm">
+                ${['USD','CAD','EUR','GBP','AUD'].map(c => `<option value="${c}"${settings.currency===c?' selected':''}>${c}</option>`).join('')}
+              </select></div>
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Tax Rate (%)</label>
+              <input id="ss-tax" type="number" step="0.01" class="field text-sm" placeholder="0" value="${esc(settings.tax_rate||'')}"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Tax Label (e.g. HST, GST, VAT)</label>
+              <input id="ss-taxlabel" type="text" class="field text-sm" placeholder="Tax" value="${esc(settings.tax_label||'')}"></div>
+            <div class="flex items-center gap-3 pt-5">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="ss-taxinc" class="w-4 h-4 accent-blue-600" ${settings.tax_included==='true'?'checked':''}>
+                <span class="text-sm text-slate-700">Tax included in price</span>
+              </label>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="ss-maintenance" class="w-4 h-4 accent-red-500" ${settings.maintenance_mode==='true'?'checked':''}>
+              <span class="text-sm font-semibold text-red-600">Maintenance Mode (store offline)</span>
+            </label>
+          </div>
+          <button onclick="shopSaveSettings('store')" class="btn-primary w-full mt-2 text-sm">
+            <i class="fas fa-save text-xs mr-1"></i>Save Store Settings
+          </button>
+        </div>`;
+    }
+
+    if (settingsSubTab === 'storefront') {
+      const sfUrl = settings.storefront_url || '';
+      panel.innerHTML = `
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 class="font-bold text-slate-900">Storefront URL</h3>
+              <p class="text-xs text-slate-500 mt-0.5">The public URL where your customers shop. Stored in your database — works regardless of filename.</p>
+            </div>
+            ${sfUrl ? `<a href="${esc(sfUrl)}" target="_blank" class="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5 flex-shrink-0"><i class="fas fa-external-link-alt text-xs"></i>Open Store</a>` : ''}
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Storefront URL</label>
+            <input id="ss-sfurl" type="url" class="field text-sm" placeholder="https://yourname.github.io/yourrepo/storefront.html"
+              value="${esc(sfUrl)}">
+            <p class="text-[11px] text-slate-400 mt-1">Paste the full URL to your storefront file here. Saving it enables the Open Store button above.</p>
+          </div>
+          <button onclick="shopSaveSettings('storefront')" class="btn-primary w-full text-sm">
+            <i class="fas fa-save text-xs mr-1"></i>Save Storefront URL
+          </button>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 mt-4">
+          <h3 class="font-bold text-slate-900">Layout Order</h3>
+          <p class="text-xs text-slate-500">Drag sections in the storefront or set the order manually. Enter section IDs comma-separated.</p>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Section order (comma-separated IDs)</label>
+            <input id="ss-layout" type="text" class="field text-sm font-mono"
+              placeholder="hero,featured,trending,all_products"
+              value="${esc(settings.layout_order ? JSON.parse(settings.layout_order||'[]').join(',') : 'hero,featured,trending,all_products')}">
+            <p class="text-[11px] text-slate-400 mt-1">Built-in IDs: <code>hero</code> · <code>featured</code> · <code>trending</code> · <code>all_products</code>. Add <code>banner_YOURID</code> to insert a banner at that position.</p>
+          </div>
+          <button onclick="shopSaveSettings('layout')" class="btn-primary w-full text-sm">
+            <i class="fas fa-save text-xs mr-1"></i>Save Layout
+          </button>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 mt-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="font-bold text-slate-900">Banners</h3>
+              <p class="text-xs text-slate-500 mt-0.5">Promotional banners shown between layout sections.</p>
+            </div>
+            <button onclick="shopShowModal('banner')" class="btn-secondary text-xs px-3 py-1.5"><i class="fas fa-plus text-xs mr-1"></i>Add Banner</button>
+          </div>
+          ${renderBannerList()}
+        </div>`;
+    }
+
+    if (settingsSubTab === 'appearance') {
+      panel.innerHTML = `
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+          <h3 class="font-bold text-slate-900">Theme Colours</h3>
+          <p class="text-xs text-slate-500">These override the default CSS variables in storefront.html in real time.</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Primary Colour</label>
+              <div class="flex gap-2"><input type="color" id="ss-primary" class="w-10 h-9 rounded border border-slate-200 cursor-pointer p-0.5" value="${settings.primary_color||'#2563eb'}">
+              <input type="text" id="ss-primary-t" class="field text-sm flex-1 font-mono" value="${esc(settings.primary_color||'#2563eb')}" oninput="document.getElementById('ss-primary').value=this.value"></div></div>
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Accent Colour</label>
+              <div class="flex gap-2"><input type="color" id="ss-accent" class="w-10 h-9 rounded border border-slate-200 cursor-pointer p-0.5" value="${settings.accent_color||'#f59e0b'}">
+              <input type="text" id="ss-accent-t" class="field text-sm flex-1 font-mono" value="${esc(settings.accent_color||'#f59e0b')}" oninput="document.getElementById('ss-accent').value=this.value"></div></div>
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Background</label>
+              <div class="flex gap-2"><input type="color" id="ss-bg" class="w-10 h-9 rounded border border-slate-200 cursor-pointer p-0.5" value="${settings.background_color||'#f8fafc'}">
+              <input type="text" id="ss-bg-t" class="field text-sm flex-1 font-mono" value="${esc(settings.background_color||'#f8fafc')}" oninput="document.getElementById('ss-bg').value=this.value"></div></div>
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Text Colour</label>
+              <div class="flex gap-2"><input type="color" id="ss-text" class="w-10 h-9 rounded border border-slate-200 cursor-pointer p-0.5" value="${settings.text_color||'#0f172a'}">
+              <input type="text" id="ss-text-t" class="field text-sm flex-1 font-mono" value="${esc(settings.text_color||'#0f172a')}" oninput="document.getElementById('ss-text').value=this.value"></div></div>
+          </div>
+          <button onclick="shopSaveSettings('appearance')" class="btn-primary w-full mt-2 text-sm">
+            <i class="fas fa-save text-xs mr-1"></i>Save Appearance
+          </button>
+        </div>`;
+
+      // Sync colour picker ↔ text input
+      ['primary','accent','bg','text'].forEach(k => {
+        const picker = document.getElementById('ss-'+k);
+        const txt    = document.getElementById('ss-'+k+'-t');
+        if (picker && txt) picker.addEventListener('input', () => { txt.value = picker.value; });
+      });
+    }
+
+    if (settingsSubTab === 'shipping') {
+      panel.innerHTML = `
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+          <h3 class="font-bold text-slate-900">Shipping</h3>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="ss-shipenabled" class="w-4 h-4 accent-blue-600" ${settings.shipping_enabled==='true'?'checked':''}>
+              <span class="text-sm text-slate-700 font-semibold">Enable shipping charges</span>
+            </label>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Flat Shipping Rate</label>
+              <input id="ss-shiprate" type="number" step="0.01" class="field text-sm" placeholder="9.99" value="${esc(settings.shipping_rate||'')}"></div>
+            <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Free Shipping Minimum</label>
+              <input id="ss-freemin" type="number" step="0.01" class="field text-sm" placeholder="75.00" value="${esc(settings.free_shipping_min||'')}"></div>
+          </div>
+          <button onclick="shopSaveSettings('shipping')" class="btn-primary w-full mt-2 text-sm">
+            <i class="fas fa-save text-xs mr-1"></i>Save Shipping
+          </button>
+        </div>`;
+    }
+
+    if (settingsSubTab === 'payments') {
+      panel.innerHTML = `
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+          <h3 class="font-bold text-slate-900">Payment Methods</h3>
+          <p class="text-xs text-slate-500">Enable the methods you accept. Customers will only see enabled options at checkout.</p>
+
+          <div class="space-y-3">
+            <div class="p-3 border border-slate-200 rounded-xl space-y-2">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="ss-paypal" class="w-4 h-4 accent-blue-600" ${settings.paypal_enabled==='true'?'checked':''}>
+                <span class="text-sm font-semibold">🅿 PayPal</span>
+              </label>
+              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">PayPal Client ID (optional — for redirect flow)</label>
+                <input id="ss-paypalid" type="text" class="field text-sm" placeholder="AYour-PayPal-Client-ID" value="${esc(settings.paypal_client_id||'')}"></div>
+            </div>
+
+            <div class="p-3 border border-slate-200 rounded-xl">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="ss-stripe" class="w-4 h-4 accent-blue-600" ${settings.stripe_enabled==='true'?'checked':''}>
+                <span class="text-sm font-semibold">💳 Credit / Debit Card (Stripe)</span>
+              </label>
+            </div>
+
+            <div class="p-3 border border-slate-200 rounded-xl space-y-2">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="ss-interac" class="w-4 h-4 accent-blue-600" ${settings.interac_enabled==='true'?'checked':''}>
+                <span class="text-sm font-semibold">🏦 Interac e-Transfer</span>
+              </label>
+              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Interac Destination Email</label>
+                <input id="ss-interacemail" type="email" class="field text-sm" placeholder="payments@yourstore.com" value="${esc(settings.interac_email||'')}"></div>
+              <div><label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Instructions shown to customer (optional)</label>
+                <textarea id="ss-interacmsg" class="field text-sm" rows="2" placeholder="Send to payments@yourstore.com with your order number">${esc(settings.interac_message||'')}</textarea></div>
+            </div>
+
+            <div class="p-3 border border-slate-200 rounded-xl">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="ss-cash" class="w-4 h-4 accent-blue-600" ${settings.cash_enabled==='true'?'checked':''}>
+                <span class="text-sm font-semibold">💵 Cash on Pickup</span>
+              </label>
+            </div>
+          </div>
+
+          <button onclick="shopSaveSettings('payments')" class="btn-primary w-full text-sm">
+            <i class="fas fa-save text-xs mr-1"></i>Save Payment Settings
+          </button>
+        </div>`;
+    }
   }
-  loadSettings().then(renderShell);
+
+  function renderBannerList() {
+    let banners = [];
+    try { banners = JSON.parse(settings.banners||'[]'); } catch(e){}
+    if (!banners.length) return '<p class="text-xs text-slate-400 py-2">No banners yet. Add one above and place its ID in the layout order.</p>';
+    return '<div class="space-y-2">' + banners.map((b,i) => `
+      <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold text-slate-900 truncate">${esc(b.title||'(no title)')}</p>
+          <p class="text-xs text-slate-400">ID: <code class="font-mono">${esc(b.id)}</code> · Style: ${esc(b.style||'hero')} · ${b.active==='true'||b.active===true?'<span class="text-green-600">Active</span>':'<span class="text-slate-400">Inactive</span>'}</p>
+        </div>
+        <button onclick="shopEditBanner(${i})" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 text-xs"><i class="fas fa-pencil"></i></button>
+        <button onclick="shopDeleteBanner(${i})" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 text-xs"><i class="fas fa-trash"></i></button>
+      </div>`).join('') + '</div>';
+  }
+
+  window.shopSaveSettings = async (section) => {
+    let pairs = [];
+
+    if (section === 'store') {
+      pairs = [
+        ['store_name',      document.getElementById('ss-name')?.value||''],
+        ['store_tagline',   document.getElementById('ss-tagline')?.value||''],
+        ['logo_url',        document.getElementById('ss-logo')?.value||''],
+        ['footer_text',     document.getElementById('ss-footer')?.value||''],
+        ['currency',        document.getElementById('ss-currency')?.value||'USD'],
+        ['tax_rate',        document.getElementById('ss-tax')?.value||'0'],
+        ['tax_label',       document.getElementById('ss-taxlabel')?.value||''],
+        ['tax_included',    document.getElementById('ss-taxinc')?.checked ? 'true' : 'false'],
+        ['maintenance_mode',document.getElementById('ss-maintenance')?.checked ? 'true' : 'false'],
+      ];
+    }
+    if (section === 'storefront') {
+      const rawLayout = document.getElementById('ss-layout')?.value||'hero,featured,trending,all_products';
+      const layoutArr = rawLayout.split(',').map(s=>s.trim()).filter(Boolean);
+      pairs = [
+        ['storefront_url', document.getElementById('ss-sfurl')?.value||''],
+        ['layout_order',   JSON.stringify(layoutArr)],
+      ];
+    }
+    if (section === 'layout') {
+      const rawLayout = document.getElementById('ss-layout')?.value||'hero,featured,trending,all_products';
+      const layoutArr = rawLayout.split(',').map(s=>s.trim()).filter(Boolean);
+      pairs = [['layout_order', JSON.stringify(layoutArr)]];
+    }
+    if (section === 'appearance') {
+      pairs = [
+        ['primary_color',    document.getElementById('ss-primary-t')?.value || document.getElementById('ss-primary')?.value || ''],
+        ['accent_color',     document.getElementById('ss-accent-t')?.value  || document.getElementById('ss-accent')?.value  || ''],
+        ['background_color', document.getElementById('ss-bg-t')?.value      || document.getElementById('ss-bg')?.value      || ''],
+        ['text_color',       document.getElementById('ss-text-t')?.value    || document.getElementById('ss-text')?.value    || ''],
+      ];
+    }
+    if (section === 'shipping') {
+      pairs = [
+        ['shipping_enabled',  document.getElementById('ss-shipenabled')?.checked ? 'true' : 'false'],
+        ['shipping_rate',     document.getElementById('ss-shiprate')?.value||'0'],
+        ['free_shipping_min', document.getElementById('ss-freemin')?.value||'0'],
+      ];
+    }
+    if (section === 'payments') {
+      pairs = [
+        ['paypal_enabled',   document.getElementById('ss-paypal')?.checked    ? 'true' : 'false'],
+        ['paypal_client_id', document.getElementById('ss-paypalid')?.value    || ''],
+        ['stripe_enabled',   document.getElementById('ss-stripe')?.checked    ? 'true' : 'false'],
+        ['interac_enabled',  document.getElementById('ss-interac')?.checked   ? 'true' : 'false'],
+        ['interac_email',    document.getElementById('ss-interacemail')?.value || ''],
+        ['interac_message',  document.getElementById('ss-interacmsg')?.value  || ''],
+        ['cash_enabled',     document.getElementById('ss-cash')?.checked      ? 'true' : 'false'],
+      ];
+    }
+
+    for (const [key,value] of pairs) {
+      await shopDB('shop_settings','upsert',{ key, value, updated_at: new Date().toISOString() });
+    }
+    await loadSettings();
+    const s = document.getElementById('settings-status');
+    if (s) {
+      s.innerHTML='<div class="flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700 mb-3"><i class="fas fa-check-circle"></i>Settings saved! The storefront will pick up changes within 60 seconds.</div>';
+      setTimeout(()=>{ if(s) s.innerHTML=''; }, 5000);
+    }
+    toast('Settings saved','success');
+    // Re-render to reflect new values
+    renderSettingsPanel();
+  };
+
+  window.shopEditBanner = idx => {
+    let banners = [];
+    try { banners = JSON.parse(settings.banners||'[]'); } catch(e){}
+    showModal('banner', banners[idx], idx);
+  };
+
+  window.shopDeleteBanner = async idx => {
+    if (!confirm('Delete this banner?')) return;
+    let banners = [];
+    try { banners = JSON.parse(settings.banners||'[]'); } catch(e){}
+    banners.splice(idx,1);
+    await shopDB('shop_settings','upsert',{ key:'banners', value: JSON.stringify(banners), updated_at: new Date().toISOString() });
+    await loadSettings();
+    toast('Banner deleted','info');
+    renderSettingsPanel();
+  };
+
+
+  // ── Boot ──────────────────────────────────────────────────────
+  // Poll briefly for Supabase SDK (it is injected async by db-adapter)
+  async function waitForSDB(retries = 10) {
+    for (let i = 0; i < retries; i++) {
+      const db = getSDB();
+      if (db) return db;
+      await new Promise(r => setTimeout(r, 300));
+    }
+    return null;
+  }
+
+  waitForSDB().then(async resolved => {
+    if (!resolved) {
+      container.innerHTML = `<div class="p-8 text-center text-slate-500">
+        <i class="fas fa-exclamation-circle text-3xl mb-3 text-amber-400"></i>
+        <p class="font-semibold">Supabase not connected</p>
+        <p class="text-xs mt-1">This module requires the Supabase adapter to be active</p>
+      </div>`;
+      return;
+    }
+    loadSettings().then(renderShell);
+  });
 };
