@@ -949,41 +949,54 @@ window.WorkVoltPages['crm'] = function(container) {
           if(!confirm('Mark as Accepted? This will move the deal to Won.')) return;
 
           // Step 1 — mark quote accepted
+          // Step 2 — move deal to Won
+          // These are the core CRM actions and must always succeed.
           db.update('crm_quotes', id, { status: 'Accepted' }, 'id')
             .then(function(){
-              // Step 2 — move deal to Won
               if(q && q.deal_id) return db.pipeline.updateDeal(q.deal_id, { stage: 'Won' });
             })
             .then(function(){
-              // Step 3 — auto-create invoice in Financials
-              var today = new Date().toISOString().split('T')[0];
-              var due   = new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0];
-              var sub   = parseFloat(q.subtotal || q.total || 0);
-              var taxPct = parseFloat(q.tax_pct || 0);
-              var taxAmt = parseFloat((sub * taxPct / 100).toFixed(2));
-              var total  = parseFloat(q.total || (sub + taxAmt) || 0);
-              // Encode CRM origin in notes so Financials can display the badge
-              var crmTag = '[CRM] Deal: ' + esc(q.deal_name || '') +
-                           ' | Quote: ' + esc(id) +
-                           (q.deal_id ? ' | deal_id:' + q.deal_id : '');
-              var invoiceData = {
-                customer:       q.contact_name || q.company || q.deal_name || 'CRM Client',
-                customer_email: '',
-                issue_date:     today,
-                due_date:       due,
-                status:         'Sent',
-                subtotal:       sub,
-                tax_rate:       taxPct,
-                tax_amount:     taxAmt,
-                total:          total,
-                balance_due:    total,
-                notes:          crmTag,
-              };
-              return db.create('invoices', invoiceData);
-            })
-            .then(function(){
-              toast('Quote accepted — deal Won & invoice created in Financials!','success');
+              toast('Quote accepted — deal moved to Won!','success');
               loadAll();
+
+              // Step 3 — auto-create invoice in Financials (best-effort, isolated)
+              // Runs in its own chain so any failure here NEVER affects the CRM outcome above.
+              try {
+                var today  = new Date().toISOString().split('T')[0];
+                var due    = new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0];
+                var sub    = parseFloat(q.subtotal || q.total || 0);
+                var taxPct = parseFloat(q.tax_pct || 0);
+                var taxAmt = parseFloat((sub * taxPct / 100).toFixed(2));
+                var total  = parseFloat(q.total || (sub + taxAmt) || 0);
+                // Structured tag stored in notes — lets Financials show a CRM badge
+                // without requiring a schema change or a dependency on the CRM module.
+                var crmTag = '[CRM] Deal: ' + esc(q.deal_name || '') +
+                             ' | Quote: '  + esc(id) +
+                             (q.deal_id ? ' | deal_id:' + q.deal_id : '');
+                var invoiceData = {
+                  customer:       q.contact_name || q.company || q.deal_name || 'CRM Client',
+                  customer_email: '',
+                  issue_date:     today,
+                  due_date:       due,
+                  status:         'Sent',
+                  subtotal:       sub,
+                  tax_rate:       taxPct,
+                  tax_amount:     taxAmt,
+                  total:          total,
+                  balance_due:    total,
+                  notes:          crmTag,
+                };
+                db.create('invoices', invoiceData)
+                  .then(function(){
+                    toast('Invoice created in Financials','success');
+                  })
+                  .catch(function(err){
+                    // Financials module may not be installed — log quietly, don't alarm the user.
+                    console.warn('[CRM] Invoice auto-create skipped (Financials not available):', err && err.message);
+                  });
+              } catch(e) {
+                console.warn('[CRM] Invoice auto-create error:', e);
+              }
             })
             .catch(function(err){toast(err.message,'error');});
           return;
