@@ -145,10 +145,10 @@ window.WorkVoltPages['projects'] = function(container) {
 
   // projects
   async function apiProjectsList() {
-    var rows = await db.projects.list();
+    var rows = await db.list('projects');
     // Augment each project with live task stats if Tasks module is present
     if (tasksInstalled()) {
-      var allTasks = await db.tasks.list().catch(function(){return [];});
+      var allTasks = await db.list("tasks").catch(function(){return [];});
       rows = rows.map(function(p) {
         var pt = allTasks.filter(function(t){return t.project===p.id||t.project_id===p.id;});
         var done = pt.filter(function(t){return t.status==='Done';}).length;
@@ -165,7 +165,7 @@ window.WorkVoltPages['projects'] = function(container) {
   }
 
   async function apiProjectGet(pid) {
-    return db.projects.get(pid);
+    return db.get('projects', pid);
   }
 
   async function apiProjectCreate(params) {
@@ -186,7 +186,7 @@ window.WorkVoltPages['projects'] = function(container) {
       created_at:  new Date().toISOString(),
       updated_at:  new Date().toISOString(),
     };
-    return db.projects.create(row);
+    return db.create('projects', row);
   }
 
   async function apiProjectUpdate(pid, params) {
@@ -203,11 +203,11 @@ window.WorkVoltPages['projects'] = function(container) {
       color:       params.color       || '#3b82f6',
       updated_at:  new Date().toISOString(),
     };
-    return db.projects.update(pid, patch);
+    return db.update('projects', pid, patch);
   }
 
   async function apiProjectDelete(pid) {
-    return db.projects.delete(pid);
+    return db.delete('projects', pid);
   }
 
   // members
@@ -266,7 +266,7 @@ window.WorkVoltPages['projects'] = function(container) {
   // tasks (only used if Tasks module installed)
   async function apiTasksList(pid) {
     // tasks table uses 'project' column (from tasks.js) — try both column names
-    var rows = await db.tasks.list().catch(function(){return [];});
+    var rows = await db.list("tasks").catch(function(){return [];});
     return rows.filter(function(t){
       return String(t.project)===String(pid) || String(t.project_id)===String(pid);
     });
@@ -290,7 +290,7 @@ window.WorkVoltPages['projects'] = function(container) {
       created_by:      myId                   || null,
       created_at:      new Date().toISOString(),
     };
-    return db.tasks.create(row);
+    return db.create("tasks", row);
   }
 
   async function apiTaskUpdate(taskId, params) {
@@ -306,11 +306,11 @@ window.WorkVoltPages['projects'] = function(container) {
       linked_task_id:  params.linked_task_id  || null,
       updated_at:      new Date().toISOString(),
     };
-    return db.tasks.update(taskId, patch);
+    return db.update("tasks", taskId, patch);
   }
 
   async function apiTaskDelete(taskId) {
-    return db.tasks.delete(taskId);
+    return db.delete("tasks", taskId);
   }
 
   // ── Modal ────────────────────────────────────────────────────────
@@ -411,7 +411,7 @@ window.WorkVoltPages['projects'] = function(container) {
     try {
       var [rows, userRows] = await Promise.all([
         apiProjectsList(),
-        db.users.list().catch(function(){return [];}),
+        db.list("users").catch(function(){return [];}),
       ]);
       projectsCache = rows;
       usersCache    = userRows;
@@ -539,7 +539,7 @@ window.WorkVoltPages['projects'] = function(container) {
     try {
       var [proj, userRows, memberRows, activityRows] = await Promise.all([
         apiProjectGet(pid),
-        db.users.list().catch(function(){return [];}),
+        db.list("users").catch(function(){return [];}),
         apiMembersList(pid).catch(function(){return [];}),
         apiActivityList(pid, 30).catch(function(){return [];}),
       ]);
@@ -1090,7 +1090,7 @@ window.WorkVoltPages['projects'] = function(container) {
 
   async function quickUpdateTask(id, status) {
     try {
-      await db.tasks.update(id,{status:status});
+      await db.update("tasks", id, {status:status});
       if(tasksCache[id]) tasksCache[id].status=status;
       statsCache=computeStats(Object.values(tasksCache));
       refreshCenter();
