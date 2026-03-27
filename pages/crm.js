@@ -1008,15 +1008,27 @@ window.WorkVoltPages['crm'] = function(container) {
   function submitForm(){
     var form=container.querySelector('#crm-modal-form');
     if(!form) return;
-    var data={};
-    form.querySelectorAll('input[name],select[name],textarea[name]').forEach(function(el){data[el.name]=el.value;});
-    data.created_by = myId || null;
-    // Strip any empty-string values on UUID-typed fields so Postgres
-    // receives NULL rather than "" (which throws "invalid uuid syntax").
-    ['created_by','contact_id','deal_id','lead_id','submitted_by',
-     'reviewed_by','sent_by','converted_by','updated_by'].forEach(function(f){
-      if (data[f] === '' || data[f] === undefined) data[f] = null;
-    });
+
+    // Collect ALL form values into a raw bag
+    var raw={};
+    form.querySelectorAll('input[name],select[name],textarea[name]').forEach(function(el){ raw[el.name]=el.value; });
+
+    // Helper: pick only the listed keys from raw, coercing empty strings on
+    // uuid-typed fields to null so Postgres never receives "" for a UUID column.
+    var UUID_FIELDS = ['created_by','contact_id','deal_id','lead_id','submitted_by',
+                       'reviewed_by','sent_by','converted_by','updated_by','owner'];
+    function pick(keys){
+      var obj={};
+      keys.forEach(function(k){
+        var v = raw[k];
+        if(v===undefined) return;            // field not in form — skip entirely
+        if(UUID_FIELDS.indexOf(k)>-1 && (v===''||v===null)) { obj[k]=null; return; }
+        obj[k]=v;
+      });
+      obj.created_by = myId || null;         // always stamp who created
+      return obj;
+    }
+
     var t=S.modal;
     var sb=container.querySelector('#crm-modal-submit');
     if(sb){sb.disabled=true;sb.textContent='Saving…';}
@@ -1025,54 +1037,67 @@ window.WorkVoltPages['crm'] = function(container) {
 
     // ── Contacts ──
     if(t==='add-contact'){
-      p = db.crm.createContact(data);
+      p = db.crm.createContact(pick([
+        'name','email','phone','company','job_title','status','source','notes'
+      ]));
     }
     if(t==='edit-contact'){
-      data.id = undefined; // don't overwrite PK
-      p = db.crm.updateContact(S.editRec.id, data);
+      p = db.crm.updateContact(S.editRec.id, pick([
+        'name','email','phone','company','job_title','status','source','notes'
+      ]));
     }
 
     // ── Leads ──
     if(t==='add-lead'){
-      if(data.contact_id==='') delete data.contact_id;
-      p = db.create('crm_leads', data);
+      p = db.create('crm_leads', pick([
+        'name','email','phone','company','job_title',
+        'stage','lead_score','source','deal_value','notes','contact_id'
+      ]));
     }
 
     // ── Deals ──
     if(t==='add-deal'){
-      p = db.pipeline.createDeal(data);
+      p = db.pipeline.createDeal(pick([
+        'deal_name','contact_name','contact_id','company',
+        'stage','value','probability','expected_close','description'
+      ]));
     }
 
     // ── Activities ──
     if(t==='add-activity'){
-      p = db.create('crm_activities', data);
+      p = db.create('crm_activities', pick([
+        'type','subject','body','outcome','scheduled_at','contact_id','deal_id','lead_id'
+      ]));
     }
 
     // ── Quotes ──
     if(t==='add-quote'){
-      var sub    = parseFloat(data.subtotal)     || 0;
-      var disc   = parseFloat(data.discount_pct) || 0;
-      var tax    = parseFloat(data.tax_pct)      || 0;
-      data.total = calcQuoteTotal(sub, disc, tax);
-
+      var sub    = parseFloat(raw.subtotal)     || 0;
+      var disc   = parseFloat(raw.discount_pct) || 0;
+      var tax    = parseFloat(raw.tax_pct)      || 0;
+      var qdata  = pick([
+        'deal_id','deal_name','contact_id','contact_name','company',
+        'subtotal','discount_pct','discount_reason','tax_pct','currency',
+        'line_items','valid_until','notes'
+      ]);
+      qdata.total = calcQuoteTotal(sub, disc, tax);
       if(S.editRec && S.editRec.id) {
-        // Revise: bump version, reset to Draft
-        data.version = (parseInt(S.editRec.version || 1) + 1);
-        data.status  = 'Draft';
-        data.id      = genQuoteId(); // new ID for revised quote
+        qdata.version = (parseInt(S.editRec.version || 1) + 1);
+        qdata.status  = 'Draft';
+        qdata.id      = genQuoteId();
       } else {
-        data.id      = genQuoteId();
-        data.version = 1;
-        data.status  = 'Draft';
+        qdata.id      = genQuoteId();
+        qdata.version = 1;
+        qdata.status  = 'Draft';
       }
-      p = db.create('crm_quotes', data);
+      p = db.create('crm_quotes', qdata);
     }
 
     // ── Approve / Reject ──
     if(t==='approve-quote'){
       p = db.update('crm_quotes', S.quoteDetail.id, {
         status: 'Approved',
-        review_note: data.review_note,
+        review_note: raw.review_note || null,
         reviewed_by: myId || null,
         reviewed_at: new Date().toISOString(),
       }, 'id');
@@ -1080,7 +1105,7 @@ window.WorkVoltPages['crm'] = function(container) {
     if(t==='reject-quote'){
       p = db.update('crm_quotes', S.quoteDetail.id, {
         status: 'Rejected',
-        review_note: data.review_note,
+        review_note: raw.review_note || null,
         reviewed_by: myId || null,
         reviewed_at: new Date().toISOString(),
       }, 'id');
