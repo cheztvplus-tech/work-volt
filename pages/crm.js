@@ -563,7 +563,7 @@ window.WorkVoltPages['crm'] = function(container) {
         '</select></div>'+
         fld('Value ($)','value','','number')+fld('Probability (%)','probability','','number')+
         fld('Expected Close','expected_close','','date')+
-        '<div class="col-span-2"><label class="crm-label">Description</label><textarea name="description" rows="2" class="crm-input resize-none"></textarea></div>'+
+        '<div class="col-span-2"><label class="crm-label">Notes</label><textarea name="notes" rows="2" class="crm-input resize-none"></textarea></div>'+
       '</div>';
     }
 
@@ -1059,7 +1059,7 @@ window.WorkVoltPages['crm'] = function(container) {
     if(t==='add-deal'){
       p = db.pipeline.createDeal(pick([
         'deal_name','contact_name','contact_id','company',
-        'stage','value','probability','expected_close','description'
+        'stage','value','probability','expected_close','notes'
       ]));
     }
 
