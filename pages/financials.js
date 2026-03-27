@@ -1187,10 +1187,11 @@ function quickAction(icon, label, tab, color) {
 function renderInvoices(c) {
   const f = state.filter.invoices;
   let rows = state.invoices;
-  if (f.status) rows = rows.filter(r => r.status === f.status);
+  if (f.status === '__crm__') rows = rows.filter(r => (r.notes||'').startsWith('[CRM]'));
+  else if (f.status) rows = rows.filter(r => r.status === f.status);
   if (f.search) {
     const q = f.search.toLowerCase();
-    rows = rows.filter(r => (r.customer||'').toLowerCase().includes(q) || (r.invoice_number||'').toLowerCase().includes(q));
+    rows = rows.filter(r => (r.customer||'').toLowerCase().includes(q) || (r.invoice_number||'').toLowerCase().includes(q) || (r.notes||'').toLowerCase().includes(q));
   }
 
   c.innerHTML = `
@@ -1205,6 +1206,7 @@ function renderInvoices(c) {
       <select onchange="FinPage._filterInv({status:this.value})" class="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
         <option value="">All Statuses</option>
         ${['Draft','Sent','Paid','Partial','Overdue'].map(s => `<option value="${s}" ${f.status===s?'selected':''}>${s}</option>`).join('')}
+        <option value="__crm__" ${f.status==='__crm__'?'selected':''}>CRM Deals</option>
       </select>
     </div>
 
@@ -1223,7 +1225,14 @@ function renderInvoices(c) {
         <tbody>
           ${rows.length ? rows.map(inv => `
             <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors" data-id="${inv.id}">
-              <td class="px-4 py-3 font-semibold text-slate-800">${inv.invoice_number || '—'}</td>
+              <td class="px-4 py-3">
+                <p class="font-semibold text-slate-800">${inv.invoice_number || '—'}</p>
+                ${(inv.notes||'').startsWith('[CRM]') ? (() => {
+                    const dealMatch = (inv.notes||'').match(/Deal: ([^|]+)/);
+                    const dealName  = dealMatch ? dealMatch[1].trim() : 'CRM Deal';
+                    return `<span class="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-xs font-semibold bg-pink-100 text-pink-700"><i class="fas fa-address-book" style="font-size:9px"></i> CRM · ${dealName}</span>`;
+                  })() : ''}
+              </td>
               <td class="px-4 py-3 text-slate-600">${inv.customer || '—'}</td>
               <td class="px-4 py-3 text-slate-500 hidden md:table-cell">${fmt.date(inv.issue_date)}</td>
               <td class="px-4 py-3 text-slate-500 hidden md:table-cell">${fmt.date(inv.due_date)}</td>
