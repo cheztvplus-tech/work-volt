@@ -1878,7 +1878,7 @@ function renderReports(c) {
       </div>
     </div>
 
-// Bill Summary
+<!-- Bill Summary -->
 <div class="bg-white rounded-xl border border-slate-200 p-6">
   <h3 class="font-extrabold text-slate-800 text-base mb-4 flex items-center gap-2">
     <span class="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center">
