@@ -105,7 +105,14 @@ window.WorkVoltPages['crm'] = function(container) {
       S.contacts   = res[0] || [];
       S.leads      = res[1] || [];
       S.deals      = res[2] || [];
-      S.stages     = (res[3] && res[3].length) ? res[3] : defaultStages();
+      var rawStages = (res[3] && res[3].length) ? res[3] : defaultStages();
+      // Deduplicate by name — prevents double columns if DB returns stages already merged with defaults
+      var seenStageNames = {};
+      S.stages = rawStages.filter(function(st) {
+        if (seenStageNames[st.name]) return false;
+        seenStageNames[st.name] = true;
+        return true;
+      });
       S.activities = res[4] || [];
       S.quotes     = res[5] || [];
 
