@@ -1102,9 +1102,16 @@ window.WorkVoltPages['crm'] = function(container) {
 
     // ── Activities ──
     if(t==='add-activity'){
-      p = db.create('crm_activities', pick([
+      var actData = pick([
         'type','subject','body','outcome','scheduled_at','contact_id','deal_id','lead_id'
-      ]));
+      ]);
+      // Coerce optional fields — empty strings break timestamptz and uuid columns in Postgres
+      if(!actData.scheduled_at) actData.scheduled_at = null;
+      if(!actData.contact_id)   actData.contact_id   = null;
+      if(!actData.deal_id)      actData.deal_id       = null;
+      if(!actData.lead_id)      actData.lead_id       = null;
+      if(!actData.outcome)      actData.outcome       = null;
+      p = db.create('crm_activities', actData);
     }
 
     // ── Quotes ──
