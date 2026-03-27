@@ -1117,6 +1117,10 @@ window.WorkVoltPages['crm'] = function(container) {
         'subtotal','discount_pct','discount_reason','tax_pct','currency',
         'line_items','valid_until','notes'
       ]);
+      // Coerce numeric fields — empty strings cause "invalid input syntax for type numeric" in Postgres
+      qdata.subtotal     = sub;
+      qdata.discount_pct = disc;
+      qdata.tax_pct      = tax;
       qdata.total = calcQuoteTotal(sub, disc, tax);
       if(S.editRec && S.editRec.id) {
         qdata.version = (parseInt(S.editRec.version || 1) + 1);
