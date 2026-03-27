@@ -10,7 +10,7 @@ window.WorkVoltPages = window.WorkVoltPages || {};
 
 window.WorkVoltPages['crm'] = function(container) {
 
-  var myId = (function() { try { return window.WorkVolt.user().user_id || ''; } catch(e) { return ''; } })();
+  var myId = (function() { try { return window.WorkVolt.user().user_id || null; } catch(e) { return null; } })();
   var db   = window.WorkVoltDB;
 
   function toast(msg, type) {
@@ -781,7 +781,7 @@ window.WorkVoltPages['crm'] = function(container) {
           name: lead.name, email: lead.email, phone: lead.phone,
           company: lead.company, job_title: lead.job_title,
           status: 'Lead', source: lead.source, notes: lead.notes,
-          lead_score: lead.lead_score, created_by: myId,
+          lead_score: lead.lead_score, created_by: myId || null,
         }).then(function(contact){
           // 2. Create deal
           return db.pipeline.createDeal({
@@ -789,12 +789,12 @@ window.WorkVoltPages['crm'] = function(container) {
             contact_id: contact.id, contact_name: lead.name,
             company: lead.company, stage: 'Qualified',
             value: lead.deal_value || 0, probability: 30,
-            created_by: myId,
+            created_by: myId || null,
           }).then(function(){
             // 3. Mark lead as converted
             return db.update('crm_leads', lead.id, {
               converted: true,
-              converted_by: myId,
+              converted_by: myId || null,
               converted_at: new Date().toISOString(),
               contact_id: contact.id,
             });
@@ -852,7 +852,7 @@ window.WorkVoltPages['crm'] = function(container) {
         var stg=S.stages.find(function(s){return s.name===toStage;});
         if(stg) deal.probability=stg.probability;
         var dId=S.dragId; S.dragId=null; S.dragFromStage=null; render();
-        db.pipeline.updateDeal(dId, { stage: toStage, updated_by: myId })
+        db.pipeline.updateDeal(dId, { stage: toStage, updated_by: myId || null })
           .catch(function(err){toast('Stage update failed: '+err.message,'error');});
       });
     });
@@ -887,7 +887,7 @@ window.WorkVoltPages['crm'] = function(container) {
           var newStatus = needsApproval ? 'Pending Approval' : 'Approved';
           db.update('crm_quotes', id, {
             status: newStatus,
-            submitted_by: myId,
+            submitted_by: myId || null,
             submitted_at: new Date().toISOString(),
           }, 'id').then(function(){
             toast(needsApproval ? 'Submitted — awaiting manager approval' : 'Auto-approved!','success');
@@ -901,7 +901,7 @@ window.WorkVoltPages['crm'] = function(container) {
           if(!confirm('Mark as sent to client?')) return;
           db.update('crm_quotes', id, {
             status: 'Sent to Client',
-            sent_by: myId,
+            sent_by: myId || null,
             sent_at: new Date().toISOString(),
           }, 'id').then(function(){
             toast('Sent — deal stage updated','success'); loadAll();
@@ -1010,7 +1010,13 @@ window.WorkVoltPages['crm'] = function(container) {
     if(!form) return;
     var data={};
     form.querySelectorAll('input[name],select[name],textarea[name]').forEach(function(el){data[el.name]=el.value;});
-    data.created_by=myId;
+    data.created_by = myId || null;
+    // Strip any empty-string values on UUID-typed fields so Postgres
+    // receives NULL rather than "" (which throws "invalid uuid syntax").
+    ['created_by','contact_id','deal_id','lead_id','submitted_by',
+     'reviewed_by','sent_by','converted_by','updated_by'].forEach(function(f){
+      if (data[f] === '' || data[f] === undefined) data[f] = null;
+    });
     var t=S.modal;
     var sb=container.querySelector('#crm-modal-submit');
     if(sb){sb.disabled=true;sb.textContent='Saving…';}
@@ -1067,7 +1073,7 @@ window.WorkVoltPages['crm'] = function(container) {
       p = db.update('crm_quotes', S.quoteDetail.id, {
         status: 'Approved',
         review_note: data.review_note,
-        reviewed_by: myId,
+        reviewed_by: myId || null,
         reviewed_at: new Date().toISOString(),
       }, 'id');
     }
@@ -1075,7 +1081,7 @@ window.WorkVoltPages['crm'] = function(container) {
       p = db.update('crm_quotes', S.quoteDetail.id, {
         status: 'Rejected',
         review_note: data.review_note,
-        reviewed_by: myId,
+        reviewed_by: myId || null,
         reviewed_at: new Date().toISOString(),
       }, 'id');
     }
