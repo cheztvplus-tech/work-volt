@@ -127,9 +127,9 @@ window.WorkVoltPages['crm'] = function(container) {
 
   function defaultStages(){
     return [
-      {id:'s1',name:'New',order:'1',color:'#94a3b8',probability:'10'},
+      {id:'s1',name:'Lead',order:'1',color:'#94a3b8',probability:'10'},
       {id:'s2',name:'Qualified',order:'2',color:'#3b82f6',probability:'30'},
-      {id:'s3',name:'Proposal Sent',order:'3',color:'#f59e0b',probability:'50'},
+      {id:'s3',name:'Proposal',order:'3',color:'#f59e0b',probability:'50'},
       {id:'s4',name:'Negotiation',order:'4',color:'#f97316',probability:'70'},
       {id:'s5',name:'Won',order:'5',color:'#10b981',probability:'100'},
       {id:'s6',name:'Lost',order:'6',color:'#ef4444',probability:'0'},
@@ -661,6 +661,36 @@ window.WorkVoltPages['crm'] = function(container) {
         (q.notes?'<div class="bg-blue-50 rounded-lg p-3 text-xs text-blue-700"><i class="fas fa-info-circle mr-1"></i>'+esc(q.notes)+'</div>':'')+
         (q.review_note?'<div class="bg-'+(q.status==='Rejected'?'red':'emerald')+'-50 rounded-lg p-3 text-xs"><strong>'+(q.status==='Rejected'?'Rejection':'Approval')+' note:</strong> '+esc(q.review_note)+'</div>':'')+
         '<div class="flex flex-wrap gap-2 pt-2">'+quoteActionBtns(q)+'</div>'+
+      '</div>';
+    }
+
+
+    if(t==='view-deal'){
+      showForm=false;
+      var d=S.dealDetail||{};
+      title=esc(d.deal_name||'Deal');
+      var dActs=S.activities.filter(function(a){return a.deal_id===d.id;});
+      var dQuotes=S.quotes.filter(function(q){return q.deal_id===d.id;});
+      var stg=S.stages.find(function(s){return s.name===d.stage;})||{};
+      body='<div class="space-y-4 text-sm">'+
+        '<div class="grid grid-cols-2 gap-3">'+
+          (d.stage?'<div><span class="text-slate-400 text-xs block">Stage</span><p><span class="px-2 py-0.5 rounded-full text-xs font-medium '+(PILL[d.stage]||'bg-slate-100 text-slate-600')+'">'+esc(d.stage)+'</span></p></div>':'')+
+          (d.value?'<div><span class="text-slate-400 text-xs block">Value</span><p class="text-lg font-bold text-emerald-600">'+fmt$(d.value)+'</p></div>':'')+
+          (d.contact_name?'<div><span class="text-slate-400 text-xs block">Contact</span><p class="font-medium">'+esc(d.contact_name)+'</p></div>':'')+
+          (d.company?'<div><span class="text-slate-400 text-xs block">Company</span><p class="font-medium">'+esc(d.company)+'</p></div>':'')+
+          (d.probability!==undefined?'<div><span class="text-slate-400 text-xs block">Probability</span><p class="font-medium">'+esc(d.probability)+'%</p></div>':'')+
+          (d.expected_close?'<div><span class="text-slate-400 text-xs block">Expected Close</span><p class="font-medium">'+esc(d.expected_close)+'</p></div>':'')+
+        '</div>'+
+        (d.notes?'<div class="bg-slate-50 rounded-lg p-3 text-slate-600">'+esc(d.notes)+'</div>':'')+
+        (dQuotes.length?'<div><p class="text-xs font-semibold text-slate-500 uppercase mb-2">Quotes ('+dQuotes.length+')</p>'+
+          dQuotes.map(function(q){return '<div class="flex items-center justify-between py-2 border-b border-slate-100">'+
+            '<span class="font-mono text-xs text-slate-600">'+esc(q.id)+'</span>'+
+            '<div class="flex items-center gap-2"><span class="px-2 py-0.5 rounded-full text-xs font-medium '+(QSTATUS_CLS[q.status]||'bg-slate-100 text-slate-600')+'">'+esc(q.status)+'</span>'+
+            '<span class="font-bold text-sm">'+fmt$(q.total)+'</span></div></div>';}).join('')+'</div>':'')+
+        (dActs.length?'<div><p class="text-xs font-semibold text-slate-500 uppercase mb-2">Activities ('+dActs.length+')</p>'+
+          '<div class="space-y-2 max-h-40 overflow-y-auto">'+
+          dActs.map(function(a){return '<div class="flex gap-2 text-xs"><span class="text-slate-400 w-14 flex-shrink-0">'+fmtDate(a.created_at)+'</span><span class="font-medium text-slate-500">'+esc(a.type)+'</span><span class="text-slate-600">'+esc(a.subject||'')+'</span></div>';}).join('')+
+          '</div></div>':'')+
       '</div>';
     }
 
