@@ -85,6 +85,21 @@ window.WorkVoltPages['tasks'] = function(container) {
   function isOverdue(t) {
     return t.due_date && t.status !== 'Done' && t.status !== 'Cancelled' && new Date(t.due_date) < new Date();
   }
+  function projectColor(pid) {
+    // Pull color from projectsCache if available, fall back to a deterministic hue
+    var p = projectsCache.find(function(p){ return p.id === pid; });
+    return (p && p.color) ? p.color : '#6366f1';
+  }
+  function projectBadge(pid) {
+    if (!pid) return '';
+    var name = projectName(pid) || pid;
+    var col  = projectColor(pid);
+    // Lighten the hex color for the bg tint
+    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border" ' +
+      'style="background:' + col + '18;color:' + col + ';border-color:' + col + '33">' +
+      '<i class="fas fa-folder text-[8px]"></i>' + esc(name) +
+    '</span>';
+  }
 
   // ── Modal ──────────────────────────────────────────────────────
   function showModal(html, width) {
@@ -267,6 +282,7 @@ window.WorkVoltPages['tasks'] = function(container) {
               '<div class="min-w-0">' +
                 '<p class="text-sm font-semibold text-slate-900 truncate max-w-xs">' + esc(t.title) + '</p>' +
                 (t.tags ? '<p class="text-xs text-slate-400 truncate">' + esc(t.tags) + '</p>' : '') +
+                (t.project ? '<div class="mt-0.5">' + projectBadge(t.project) + '</div>' : '') +
               '</div>' +
             '</div>' +
           '</td>' +
@@ -284,36 +300,166 @@ window.WorkVoltPages['tasks'] = function(container) {
       '</tbody></table></div>';
   }
 
-  // ── KANBAN VIEW ────────────────────────────────────────────────
+  // ── KANBAN VIEW (drag-and-drop) ────────────────────────────────
   function renderKanban(el, tasks) {
-    el.innerHTML = '<div class="flex gap-4 overflow-x-auto pb-4">' +
+    el.innerHTML =
+      '<div class="flex gap-4 overflow-x-auto pb-4 select-none">' +
       STATUSES.map(function(status) {
-        var kc = KANBAN_COLORS[status] || { dot:'bg-slate-400', head:'bg-slate-50', border:'border-slate-200' };
-        var cols = tasks.filter(function(t){ return t.status===status; });
-        return '<div class="flex-shrink-0 w-72">' +
-          '<div class="rounded-2xl border '+kc.border+' overflow-hidden">' +
-          '<div class="'+kc.head+' px-4 py-3 flex items-center gap-2 border-b '+kc.border+'">' +
-            '<div class="w-2 h-2 rounded-full '+kc.dot+'"></div>' +
-            '<span class="text-xs font-bold text-slate-700 flex-1">'+esc(status)+'</span>' +
-            '<span class="text-xs text-slate-400 font-semibold">'+cols.length+'</span>' +
-          '</div>' +
-          '<div class="p-2 space-y-2 min-h-[120px] bg-white">' +
-            cols.map(function(t){
-              return '<div class="bg-white border border-slate-200 rounded-xl p-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all" onclick="tasksOpenDetail(\''+t.id+'\')">' +
-                '<p class="text-sm font-semibold text-slate-800 leading-tight mb-2">'+esc(t.title)+'</p>' +
-                '<div class="flex items-center gap-2 justify-between">' +
-                  priorityBadge(t.priority) +
-                  (t.due_date ? '<span class="text-[10px] '+(isOverdue(t)?'text-red-500':'text-slate-400')+'">'+fmtDate(t.due_date)+'</span>' : '') +
-                  userAvatar(t.assignee, 'w-5 h-5 text-[9px]') +
-                '</div>' +
-              '</div>';
-            }).join('') +
-            '<button onclick="tasksOpenNew(\''+status+'\')" class="w-full mt-1 py-2 text-xs text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors flex items-center justify-center gap-1">' +
-              '<i class="fas fa-plus text-[10px]"></i>Add task' +
-            '</button>' +
-          '</div></div></div>';
+        var kc   = KANBAN_COLORS[status] || { dot:'bg-slate-400', head:'bg-slate-50', border:'border-slate-200' };
+        var cols = tasks.filter(function(t){ return t.status === status; });
+        return (
+          '<div class="flex-shrink-0 w-72">' +
+            '<div class="rounded-2xl border ' + kc.border + ' overflow-hidden flex flex-col" style="max-height:calc(100vh - 220px)">' +
+              '<div class="' + kc.head + ' px-4 py-3 flex items-center gap-2 border-b ' + kc.border + ' flex-shrink-0">' +
+                '<div class="w-2 h-2 rounded-full ' + kc.dot + '"></div>' +
+                '<span class="text-xs font-bold text-slate-700 flex-1">' + esc(status) + '</span>' +
+                '<span class="text-xs text-slate-400 font-semibold kanban-count" data-col="' + esc(status) + '">' + cols.length + '</span>' +
+              '</div>' +
+              '<div class="p-2 space-y-2 bg-white overflow-y-auto flex-1 kanban-col" ' +
+                   'data-status="' + esc(status) + '" ' +
+                   'style="min-height:80px">' +
+                cols.map(function(t) { return kanbanCard(t); }).join('') +
+                '<div class="kanban-drop-placeholder hidden h-16 rounded-xl border-2 border-dashed border-blue-300 bg-blue-50 opacity-60"></div>' +
+              '</div>' +
+              '<div class="p-2 border-t border-slate-100 flex-shrink-0">' +
+                '<button onclick="tasksOpenNew(\'' + esc(status) + '\')" ' +
+                  'class="w-full py-2 text-xs text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors flex items-center justify-center gap-1">' +
+                  '<i class="fas fa-plus text-[10px]"></i>Add task' +
+                '</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>'
+        );
       }).join('') +
       '</div>';
+
+    wireKanbanDrag(el);
+  }
+
+  function kanbanCard(t) {
+    var over = isOverdue(t);
+    return (
+      '<div class="kanban-card bg-white border ' + (over ? 'border-red-200' : 'border-slate-200') + ' rounded-xl p-3 ' +
+           'cursor-grab active:cursor-grabbing hover:border-blue-300 hover:shadow-sm transition-all" ' +
+           'draggable="true" data-task-id="' + esc(t.id) + '" data-status="' + esc(t.status) + '">' +
+
+        // Title
+        '<p class="text-sm font-semibold ' + (over ? 'text-red-700' : 'text-slate-800') + ' leading-tight mb-1.5">' + esc(t.title) + '</p>' +
+
+        // Project badge (if assigned)
+        (t.project ? '<div class="mb-1.5">' + projectBadge(t.project) + '</div>' : '') +
+
+        // Bottom row: priority | due | avatar
+        '<div class="flex items-center gap-1.5 flex-wrap">' +
+          priorityBadge(t.priority) +
+          (t.due_date
+            ? '<span class="text-[10px] ' + (over ? 'text-red-500 font-bold' : 'text-slate-400') + '">' +
+              (over ? '<i class="fas fa-exclamation-circle text-[9px] mr-0.5"></i>' : '') +
+              fmtDate(t.due_date) + '</span>'
+            : '') +
+          '<span class="ml-auto">' + userAvatar(t.assignee, 'w-5 h-5 text-[9px]') + '</span>' +
+        '</div>' +
+
+        // Click overlay (invisible, sits on top for opening detail)
+        '<div class="absolute inset-0 rounded-xl" onclick="tasksOpenDetail(\'' + esc(t.id) + '\')" style="position:absolute;inset:0"></div>' +
+      '</div>'
+    );
+    // Note: the card needs position:relative for the click overlay — set inline below
+  }
+
+  function wireKanbanDrag(el) {
+    // We need position:relative on each card for the click overlay
+    el.querySelectorAll('.kanban-card').forEach(function(card) {
+      card.style.position = 'relative';
+    });
+
+    var draggedId     = null;
+    var draggedEl     = null;
+    var sourceStatus  = null;
+
+    // ── drag start ──
+    el.addEventListener('dragstart', function(e) {
+      var card = e.target.closest('.kanban-card');
+      if (!card) return;
+      draggedId    = card.dataset.taskId;
+      draggedEl    = card;
+      sourceStatus = card.dataset.status;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggedId);
+      setTimeout(function() { card.style.opacity = '0.4'; }, 0);
+    });
+
+    // ── drag end ──
+    el.addEventListener('dragend', function(e) {
+      var card = e.target.closest('.kanban-card');
+      if (card) card.style.opacity = '1';
+      el.querySelectorAll('.kanban-drop-placeholder').forEach(function(p) { p.classList.add('hidden'); });
+      el.querySelectorAll('.kanban-col').forEach(function(col) { col.classList.remove('bg-blue-50/30'); });
+      draggedId = draggedEl = sourceStatus = null;
+    });
+
+    // ── drag over column ──
+    el.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      var col = e.target.closest('.kanban-col');
+      if (!col) return;
+      // Show placeholder in this column, hide in others
+      el.querySelectorAll('.kanban-drop-placeholder').forEach(function(p) { p.classList.add('hidden'); });
+      var placeholder = col.querySelector('.kanban-drop-placeholder');
+      if (placeholder) placeholder.classList.remove('hidden');
+      el.querySelectorAll('.kanban-col').forEach(function(c) { c.classList.remove('bg-blue-50/30'); });
+      col.classList.add('bg-blue-50/30');
+    });
+
+    el.addEventListener('dragleave', function(e) {
+      var col = e.target.closest('.kanban-col');
+      if (col && !col.contains(e.relatedTarget)) {
+        col.classList.remove('bg-blue-50/30');
+        var placeholder = col.querySelector('.kanban-drop-placeholder');
+        if (placeholder) placeholder.classList.add('hidden');
+      }
+    });
+
+    // ── drop ──
+    el.addEventListener('drop', function(e) {
+      e.preventDefault();
+      var col = e.target.closest('.kanban-col');
+      if (!col || !draggedId) return;
+      var newStatus = col.dataset.status;
+      if (newStatus === sourceStatus) return; // no-op if same column
+
+      // Optimistic UI update
+      var task = tasksCache[draggedId];
+      if (!task) return;
+      task.status = newStatus;
+
+      // Move the card DOM node into this column (before placeholder)
+      var placeholder = col.querySelector('.kanban-drop-placeholder');
+      if (draggedEl) {
+        draggedEl.dataset.status = newStatus;
+        col.insertBefore(draggedEl, placeholder);
+        draggedEl.style.opacity = '1';
+      }
+
+      // Update count badges
+      el.querySelectorAll('.kanban-col').forEach(function(c) {
+        var st  = c.dataset.status;
+        var cnt = c.querySelectorAll('.kanban-card').length;
+        var badge = el.querySelector('.kanban-count[data-col="' + st + '"]');
+        if (badge) badge.textContent = cnt;
+      });
+
+      // Persist to DB
+      db.tasks.update(draggedId, { status: newStatus })
+        .then(function() { toast('Moved to ' + newStatus, 'success'); })
+        .catch(function(err) {
+          toast('Failed to update: ' + err.message, 'error');
+          // Revert
+          task.status = sourceStatus;
+          rerender();
+        });
+    });
   }
 
   // ── CALENDAR VIEW ──────────────────────────────────────────────
@@ -385,7 +531,7 @@ window.WorkVoltPages['tasks'] = function(container) {
         '</div>' +
       '</div>' +
       '<div class="px-6 py-5 space-y-4">' +
-        '<div class="flex flex-wrap gap-2">' + statusBadge(t.status) + priorityBadge(t.priority) + '</div>' +
+        '<div class="flex flex-wrap gap-2">' + statusBadge(t.status) + priorityBadge(t.priority) + (t.project ? projectBadge(t.project) : '') + '</div>' +
         (t.description ? '<p class="text-sm text-slate-600 leading-relaxed">'+esc(t.description)+'</p>' : '') +
         '<div class="grid grid-cols-2 gap-3 text-sm">' +
           '<div><p class="text-xs font-semibold text-slate-500 mb-0.5">Assignee</p><div class="flex items-center gap-2">'+userAvatar(t.assignee)+' <span class="text-slate-800">'+esc(userName(t.assignee))+'</span></div></div>' +
