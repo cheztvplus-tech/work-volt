@@ -83,7 +83,9 @@ window.WorkVoltPages['timesheets'] = function(container) {
     var s = parseTimeStr(normalizeTime(start)), e = parseTimeStr(normalizeTime(end));
     if (s === null || e === null) return 0;
     var diff = (e - s) / 60;
-    if (diff <= 0) diff += 24;
+    // Only add 24h for genuine overnight shifts (end is strictly before start).
+    // diff === 0 means same time — not overnight, just 0 hours.
+    if (diff < 0) diff += 24;
     diff -= (parseFloat(breakMins) || 0) / 60;
     return Math.max(0, Math.round(diff * 100) / 100);
   }
@@ -738,8 +740,10 @@ window.WorkVoltPages['timesheets'] = function(container) {
     var r = entry || {};
     var today = isEdit ? (fmtDateInput(r.date)||todayStr()) : (prefillDate||todayStr());
     var uid = r.user_id || myUserId();
-    var startVal = normalizeTime(r.start_time) || '09:00';
-    var endVal   = normalizeTime(r.end_time)   || '17:00';
+    // For timer-sourced entries start/end are exact — don't substitute defaults.
+    var isFromTimer = r._timer_hours != null;
+    var startVal = normalizeTime(r.start_time) || (isFromTimer ? '' : '09:00');
+    var endVal   = normalizeTime(r.end_time)   || (isFromTimer ? '' : '17:00');
 
     var userSelectHtml = isAdmin()
       ? '<div><label class="ts-label">Employee</label>' +
@@ -806,8 +810,11 @@ window.WorkVoltPages['timesheets'] = function(container) {
 
     showModal(html, '640px');
 
-    // Restore timer-elapsed hours if present
-    if (r._timer_hours != null) {
+    // Restore timer-elapsed hours if present.
+    // Set the hidden field AND the display BEFORE wiring up recalcHours so
+    // the initial recalcHours() call below doesn't clobber the timer value.
+    var hasTimerHours = r._timer_hours != null;
+    if (hasTimerHours) {
       var tf = document.getElementById('tf-timer-hours');
       if (tf) tf.value = String(r._timer_hours);
       var tv = document.getElementById('tf-hours-val');
@@ -815,17 +822,30 @@ window.WorkVoltPages['timesheets'] = function(container) {
     }
 
     function recalcHours() {
+      // If this entry came from the timer, the hidden field holds the authoritative
+      // elapsed hours — only override it if the user manually changes the time inputs.
+      var timerEl = document.getElementById('tf-timer-hours');
+      var timerVal = timerEl ? parseFloat(timerEl.value) : NaN;
       var s = document.getElementById('tf-start').value;
       var e = document.getElementById('tf-end').value;
       var b = document.getElementById('tf-break').value;
-      var h = calcHours(s, e, b);
+      var h;
+      if (!isNaN(timerVal) && timerVal >= 0 && s === startVal && e === endVal) {
+        // Time inputs haven't been changed yet — keep the precise timer value.
+        h = timerVal;
+      } else {
+        // User edited the times manually — clear timer override and recalculate.
+        if (timerEl) timerEl.value = '';
+        h = calcHours(s, e, b);
+      }
       var el = document.getElementById('tf-hours-val');
       if (el) el.textContent = fmtHours(h);
     }
     document.getElementById('tf-start').addEventListener('change', recalcHours);
     document.getElementById('tf-end').addEventListener('change', recalcHours);
     document.getElementById('tf-break').addEventListener('input', recalcHours);
-    recalcHours();
+    // Only auto-run recalc on open when there is no timer value to preserve.
+    if (!hasTimerHours) recalcHours();
 
     document.getElementById('tf-billable').addEventListener('change', function() {
       var rr = document.getElementById('tf-rate-row');
