@@ -1090,7 +1090,7 @@ window.WorkVoltPages['projects'] = function(container) {
 
   async function quickUpdateTask(id, status) {
     try {
-      await db.tasks.update(id, {status:status});
+      await db.tasks.update(id,{status:status});
       if(tasksCache[id]) tasksCache[id].status=status;
       statsCache=computeStats(Object.values(tasksCache));
       refreshCenter();
