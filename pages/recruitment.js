@@ -1,6 +1,10 @@
 // ================================================================
 //  WORK VOLT — pages/recruitment.js
-//  Recruitment Pipeline Frontend Module
+//  Recruitment Pipeline — Supabase edition
+//
+//  All data access goes through window.WorkVoltDB (db-adapter.js).
+//  The internal api() shim is replaced by direct db.* calls so no
+//  GAS Web App or custom backend is needed.
 // ================================================================
 
 window.WorkVoltPages = window.WorkVoltPages || {};
@@ -18,8 +22,22 @@ window.WorkVoltPages['recruitment'] = function(container) {
     return;
   }
 
+  const db = window.WorkVoltDB;
+  if (!db) {
+    container.innerHTML = `
+      <div class="flex flex-col items-center justify-center h-64 gap-3 text-red-400">
+        <i class="fas fa-exclamation-circle text-4xl"></i>
+        <p class="font-semibold">Database not initialised</p>
+      </div>`;
+    return;
+  }
+
+  // ── Supabase client (for advanced queries / views) ─────────────
+  // WorkVoltDB exposes the raw Supabase client after init.
+  const supabase = window._wvSupabaseClient;
+
   // ── State ───────────────────────────────────────────────────────
-  let activeTab        = 'pipeline';   // pipeline | jobs | templates | metrics
+  let activeTab        = 'pipeline';
   let jobs             = [];
   let selectedJobId    = null;
   let candidates       = [];
@@ -27,19 +45,15 @@ window.WorkVoltPages['recruitment'] = function(container) {
   let templates        = [];
   let dashData         = null;
   let sourceData       = null;
-  let pipelineMetrics  = null;
 
-  // Detail / panel state
   let detailCandidate  = null;
   let detailNotes      = [];
   let detailScorecards = [];
   let detailJob        = null;
 
-  // Modal state
-  let modalMode        = null; // 'addCandidate' | 'addJob' | 'editJob' | 'editCandidate' | 'scorecard' | 'template' | 'moveStage' | 'composeEmail'
-  let modalData        = {};
+  let modalMode = null;
+  let modalData = {};
 
-  // Filters
   let filterStage  = '';
   let filterSearch = '';
   let filterSource = '';
@@ -47,38 +61,596 @@ window.WorkVoltPages['recruitment'] = function(container) {
   const STAGES = ['Applied','Screened','Qualified','Interview','Final Interview','Offer','Hired','Rejected'];
 
   const STAGE_COLORS = {
-    Applied:         'bg-slate-100 text-slate-600',
-    Screened:        'bg-blue-100 text-blue-700',
-    Qualified:       'bg-indigo-100 text-indigo-700',
-    Interview:       'bg-violet-100 text-violet-700',
+    Applied:          'bg-slate-100 text-slate-600',
+    Screened:         'bg-blue-100 text-blue-700',
+    Qualified:        'bg-indigo-100 text-indigo-700',
+    Interview:        'bg-violet-100 text-violet-700',
     'Final Interview':'bg-purple-100 text-purple-700',
-    Offer:           'bg-amber-100 text-amber-700',
-    Hired:           'bg-emerald-100 text-emerald-700',
-    Rejected:        'bg-red-100 text-red-600',
+    Offer:            'bg-amber-100 text-amber-700',
+    Hired:            'bg-emerald-100 text-emerald-700',
+    Rejected:         'bg-red-100 text-red-600',
   };
 
   const STAGE_DOTS = {
-    Applied:         'bg-slate-400',
-    Screened:        'bg-blue-500',
-    Qualified:       'bg-indigo-500',
-    Interview:       'bg-violet-500',
+    Applied:          'bg-slate-400',
+    Screened:         'bg-blue-500',
+    Qualified:        'bg-indigo-500',
+    Interview:        'bg-violet-500',
     'Final Interview':'bg-purple-500',
-    Offer:           'bg-amber-500',
-    Hired:           'bg-emerald-500',
-    Rejected:        'bg-red-500',
+    Offer:            'bg-amber-500',
+    Hired:            'bg-emerald-500',
+    Rejected:         'bg-red-500',
   };
 
   const SOURCES = ['Direct','LinkedIn','Indeed','Referral','Company Website','Recruiter','Other'];
 
-  // ── API helper ─────────────────────────────────────────────────
-  async function api(path, params = {}) {
-    return window.WorkVolt.api('recruitment/' + path, params);
-  }
-
   const toast = (msg, type = 'info') => window.WorkVolt.toast(msg, type);
 
+  // ── UUID helper (browser-native) ───────────────────────────────
+  const newUUID = () => crypto.randomUUID();
+
   // ================================================================
-  //  LOAD DATA
+  //  DATA ACCESS LAYER
+  //  All Supabase calls are isolated here so the render/bind
+  //  functions stay identical to the original GAS version.
+  // ================================================================
+
+  // ── Jobs ────────────────────────────────────────────────────────
+  async function loadJobs() {
+    try {
+      const { data, error } = await supabase
+        .from('recruitment_jobs')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw new Error(error.message);
+      jobs = data || [];
+    } catch(e) { toast('Failed to load jobs: ' + e.message, 'error'); }
+  }
+
+  async function getJob(jobId) {
+    const { data, error } = await supabase
+      .from('recruitment_jobs')
+      .select('*')
+      .eq('job_id', jobId)
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async function createJob(params) {
+    const row = {
+      job_id:       newUUID(),
+      title:        params.title,
+      department:   params.department  || null,
+      location:     params.location    || null,
+      type:         params.type        || 'Full-time',
+      status:       params.status      || 'Open',
+      salary_min:   params.salary_min  ? parseFloat(params.salary_min)  : null,
+      salary_max:   params.salary_max  ? parseFloat(params.salary_max)  : null,
+      positions:    params.positions   ? parseInt(params.positions)     : 1,
+      description:  params.description || null,
+      requirements: params.requirements|| null,
+      created_by:   params.created_by  || null,
+    };
+    const { data, error } = await supabase
+      .from('recruitment_jobs')
+      .insert(row)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async function updateJob(params) {
+    const { job_id, ...rest } = params;
+    const patch = {
+      title:        rest.title,
+      department:   rest.department   || null,
+      location:     rest.location     || null,
+      type:         rest.type         || 'Full-time',
+      status:       rest.status       || 'Open',
+      salary_min:   rest.salary_min   ? parseFloat(rest.salary_min)   : null,
+      salary_max:   rest.salary_max   ? parseFloat(rest.salary_max)   : null,
+      positions:    rest.positions    ? parseInt(rest.positions)       : 1,
+      description:  rest.description  || null,
+      requirements: rest.requirements || null,
+    };
+    const { error } = await supabase
+      .from('recruitment_jobs')
+      .update(patch)
+      .eq('job_id', job_id);
+    if (error) throw new Error(error.message);
+  }
+
+  async function closeJob(jobId) {
+    const { error } = await supabase
+      .from('recruitment_jobs')
+      .update({ status: 'Closed' })
+      .eq('job_id', jobId);
+    if (error) throw new Error(error.message);
+  }
+
+  // ── Candidates ──────────────────────────────────────────────────
+  async function loadCandidates() {
+    if (!selectedJobId) { candidates = []; return; }
+    try {
+      let query = supabase
+        .from('recruitment_candidates')
+        .select('*')
+        .eq('job_id', selectedJobId)
+        .order('created_at', { ascending: true });
+
+      if (filterStage)  query = query.eq('stage',  filterStage);
+      if (filterSource) query = query.eq('source', filterSource);
+
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+
+      let rows = data || [];
+
+      // Client-side text search (name + email + source)
+      if (filterSearch) {
+        const q = filterSearch.toLowerCase();
+        rows = rows.filter(c =>
+          (c.name + ' ' + (c.email||'') + ' ' + (c.source||''))
+            .toLowerCase().includes(q)
+        );
+      }
+
+      candidates = rows;
+    } catch(e) { toast('Failed to load candidates: ' + e.message, 'error'); }
+  }
+
+  async function getCandidate(candidateId) {
+    const { data, error } = await supabase
+      .from('recruitment_candidates')
+      .select('*')
+      .eq('candidate_id', candidateId)
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async function createCandidate(params) {
+    const row = {
+      candidate_id:     newUUID(),
+      job_id:           params.job_id           || null,
+      name:             params.name,
+      email:            params.email            || null,
+      phone:            params.phone            || null,
+      source:           params.source           || 'Direct',
+      stage:            'Applied',
+      status:           'Active',
+      resume_url:       params.resume_url       || null,
+      linkedin_url:     params.linkedin_url     || null,
+      knockout_answers: params.knockout_answers
+                          ? JSON.parse(params.knockout_answers)
+                          : null,
+      stage_changed_at: new Date().toISOString(),
+    };
+
+    // Auto-disqualify based on knockout answers
+    if (Array.isArray(row.knockout_answers)) {
+      const disq = row.knockout_answers.some(ka =>
+        ka.answer && ka.answer === ka.disqualify_if
+      );
+      if (disq) row.status = 'Disqualified';
+    }
+
+    const { data, error } = await supabase
+      .from('recruitment_candidates')
+      .insert(row)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async function updateCandidate(params) {
+    const { candidate_id, ...rest } = params;
+    const patch = {
+      name:         rest.name         || null,
+      email:        rest.email        || null,
+      phone:        rest.phone        || null,
+      source:       rest.source       || 'Direct',
+      resume_url:   rest.resume_url   || null,
+      linkedin_url: rest.linkedin_url || null,
+    };
+    const { error } = await supabase
+      .from('recruitment_candidates')
+      .update(patch)
+      .eq('candidate_id', candidate_id);
+    if (error) throw new Error(error.message);
+  }
+
+  async function moveStage(params) {
+    const { candidate_id, stage, reason, moved_by, mover_name } = params;
+
+    // Read current stage for history
+    const current = await getCandidate(candidate_id);
+
+    // Update candidate
+    const { error } = await supabase
+      .from('recruitment_candidates')
+      .update({ stage, stage_changed_at: new Date().toISOString() })
+      .eq('candidate_id', candidate_id);
+    if (error) throw new Error(error.message);
+
+    // Insert history row
+    await supabase.from('recruitment_stage_history').insert({
+      history_id:   newUUID(),
+      candidate_id,
+      job_id:       current.job_id || null,
+      from_stage:   current.stage,
+      to_stage:     stage,
+      moved_by:     moved_by   || null,
+      mover_name:   mover_name || null,
+      reason:       reason     || null,
+      moved_at:     new Date().toISOString(),
+    });
+
+    // Look up a matching email template to suggest
+    const { data: tmpl } = await supabase
+      .from('recruitment_email_templates')
+      .select('name, template_id')
+      .eq('trigger_stage', stage)
+      .eq('is_active', true)
+      .limit(1)
+      .single();
+
+    return { email_template: tmpl || null };
+  }
+
+  // ── Complete hire — creates user account ────────────────────────
+  async function completeHire(params) {
+    const { candidate_id, role, active, password, reason, moved_by, mover_name } = params;
+
+    const candidate = await getCandidate(candidate_id);
+
+    // 1. Move stage to Hired
+    await moveStage({
+      candidate_id,
+      stage:      'Hired',
+      reason:     reason     || 'Hired',
+      moved_by:   moved_by   || '',
+      mover_name: mover_name || '',
+    });
+
+    // 2. Create the user account in the users table
+    //    Password hashing is handled by Supabase Auth — we create
+    //    the auth user first, then upsert the profile row.
+    let newUserId = null;
+    let userAccount = null;
+
+    try {
+      // Create Supabase Auth account
+      const { data: authData, error: authErr } =
+        await supabase.auth.admin
+          ? supabase.auth.admin.createUser({
+              email:             candidate.email,
+              password,
+              email_confirm:     true,
+            })
+          // Fallback: signUp (works when admin API is unavailable in browser)
+          : await supabase.auth.signUp({
+              email:    candidate.email,
+              password,
+            });
+
+      if (authErr) throw new Error(authErr.message);
+
+      const authUser = authData?.user;
+      newUserId = authUser?.id || newUUID();
+
+      // 3. Insert profile row into public.users
+      const profileRow = {
+        id:         newUserId,
+        name:       candidate.name,
+        email:      candidate.email,
+        role:       role   || 'Employee',
+        active:     active === 'true' || active === true,
+        created_at: new Date().toISOString(),
+      };
+
+      const { data: profile, error: profErr } = await supabase
+        .from('users')
+        .insert(profileRow)
+        .select()
+        .single();
+
+      if (profErr) {
+        // Profile row might already exist if auth user was pre-existing
+        console.warn('recruitment: users insert warning:', profErr.message);
+      }
+
+      userAccount = profile || profileRow;
+
+      // 4. Link hired user back to the candidate row
+      await supabase
+        .from('recruitment_candidates')
+        .update({ user_id_created: newUserId })
+        .eq('candidate_id', candidate_id);
+
+    } catch(e) {
+      // If user creation fails we still want the stage move to persist
+      console.error('recruitment: completeHire user creation failed:', e.message);
+      throw e;
+    }
+
+    return { user_account: userAccount };
+  }
+
+  // ── Notes ───────────────────────────────────────────────────────
+  async function listNotes(candidateId) {
+    const { data, error } = await supabase
+      .from('recruitment_notes')
+      .select('*')
+      .eq('candidate_id', candidateId)
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  async function addNote(params) {
+    const row = {
+      note_id:      newUUID(),
+      candidate_id: params.candidate_id,
+      job_id:       params.job_id   || null,
+      author_id:    params.author_id || null,
+      author_name:  params.author_name || null,
+      content:      params.content,
+    };
+    const { error } = await supabase
+      .from('recruitment_notes')
+      .insert(row);
+    if (error) throw new Error(error.message);
+  }
+
+  async function deleteNote(noteId) {
+    const { error } = await supabase
+      .from('recruitment_notes')
+      .delete()
+      .eq('note_id', noteId);
+    if (error) throw new Error(error.message);
+  }
+
+  // ── Scorecards ──────────────────────────────────────────────────
+  async function listScorecards(candidateId) {
+    const { data, error } = await supabase
+      .from('recruitment_scorecards')
+      .select('*')
+      .eq('candidate_id', candidateId)
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  async function submitScorecard(params) {
+    const row = {
+      scorecard_id:        newUUID(),
+      candidate_id:        params.candidate_id,
+      job_id:              params.job_id       || null,
+      reviewer_id:         params.reviewer_id  || null,
+      reviewer_name:       params.reviewer_name|| null,
+      stage:               params.stage        || null,
+      score_skills:        parseFloat(params.score_skills)        || 3,
+      score_culture:       parseFloat(params.score_culture)       || 3,
+      score_communication: parseFloat(params.score_communication) || 3,
+      score_experience:    parseFloat(params.score_experience)    || 3,
+      recommendation:      params.recommendation || null,
+      notes:               params.notes         || null,
+    };
+    const { error } = await supabase
+      .from('recruitment_scorecards')
+      .insert(row);
+    if (error) throw new Error(error.message);
+  }
+
+  async function deleteScorecard(scorecardId) {
+    const { error } = await supabase
+      .from('recruitment_scorecards')
+      .delete()
+      .eq('scorecard_id', scorecardId);
+    if (error) throw new Error(error.message);
+  }
+
+  // ── Email Templates ─────────────────────────────────────────────
+  async function loadTemplates() {
+    try {
+      const { data, error } = await supabase
+        .from('recruitment_email_templates')
+        .select('*')
+        .order('name', { ascending: true });
+      if (error) throw new Error(error.message);
+      templates = data || [];
+    } catch(e) { toast('Failed to load templates: ' + e.message, 'error'); }
+  }
+
+  async function saveTemplate(params) {
+    const isEdit = !!params.template_id;
+    const row = {
+      name:          params.name,
+      trigger_stage: params.trigger_stage || null,
+      subject:       params.subject,
+      body:          params.body,
+      is_active:     params.is_active === 'true' || params.is_active === true,
+    };
+    if (isEdit) {
+      const { error } = await supabase
+        .from('recruitment_email_templates')
+        .update(row)
+        .eq('template_id', params.template_id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabase
+        .from('recruitment_email_templates')
+        .insert({ template_id: newUUID(), ...row });
+      if (error) throw new Error(error.message);
+    }
+  }
+
+  async function deleteTemplate(templateId) {
+    const { error } = await supabase
+      .from('recruitment_email_templates')
+      .delete()
+      .eq('template_id', templateId);
+    if (error) throw new Error(error.message);
+  }
+
+  // Template preview — resolves merge tags
+  function resolveTemplate(tmpl, candidate, job) {
+    const replace = str => (str || '')
+      .replace(/{{candidate\.name}}/g,       candidate.name        || '')
+      .replace(/{{candidate\.email}}/g,      candidate.email       || '')
+      .replace(/{{candidate\.stage}}/g,      candidate.stage       || '')
+      .replace(/{{job\.title}}/g,            job.title             || '')
+      .replace(/{{job\.department}}/g,       job.department        || '')
+      .replace(/{{job\.location}}/g,         job.location          || '')
+      .replace(/{{job\.type}}/g,             job.type              || '');
+    return { subject: replace(tmpl.subject), body: replace(tmpl.body) };
+  }
+
+  // ── Dashboard / Metrics ─────────────────────────────────────────
+  async function loadDashboard() {
+    try {
+      // Job summary
+      const { data: jobRows } = await supabase
+        .from('recruitment_jobs')
+        .select('status');
+
+      const open_jobs   = (jobRows || []).filter(j => j.status === 'Open').length;
+      const closed_jobs = (jobRows || []).filter(j => j.status === 'Closed').length;
+
+      // Candidate summary
+      const { data: candRows } = await supabase
+        .from('recruitment_candidates')
+        .select('stage, status, source, created_at, stage_changed_at');
+
+      const allCands    = candRows || [];
+      const active      = allCands.filter(c => c.status !== 'Disqualified' && c.stage !== 'Hired' && c.stage !== 'Rejected');
+      const total       = allCands.length;
+
+      // Hired this month
+      const now        = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const hired_this_month = allCands.filter(c =>
+        c.stage === 'Hired' && c.stage_changed_at >= monthStart
+      ).length;
+
+      // Avg time to hire (days from created_at to stage_changed_at for Hired)
+      const hiredRows = allCands.filter(c => c.stage === 'Hired' && c.stage_changed_at && c.created_at);
+      const avg_time_to_hire = hiredRows.length
+        ? Math.round(
+            hiredRows.reduce((sum, c) => {
+              const diff = (new Date(c.stage_changed_at) - new Date(c.created_at)) / 86400000;
+              return sum + diff;
+            }, 0) / hiredRows.length
+          )
+        : null;
+
+      // Offer acceptance rate
+      const offers = allCands.filter(c => ['Offer','Hired'].includes(c.stage)).length;
+      const hired  = allCands.filter(c => c.stage === 'Hired').length;
+      const offer_acceptance = offers ? Math.round(hired / offers * 100) + '%' : 'N/A';
+
+      // Stage counts (across all jobs for metrics tab)
+      const stage_counts = {};
+      STAGES.forEach(s => { stage_counts[s] = 0; });
+      allCands.forEach(c => { if (stage_counts[c.stage] !== undefined) stage_counts[c.stage]++; });
+
+      // Funnel conversion
+      const funnel = [];
+      for (let i = 0; i < STAGES.length - 2; i++) {
+        const from = STAGES[i];
+        const to   = STAGES[i + 1];
+        if (from === 'Rejected') continue;
+        const fromCount = stage_counts[from];
+        const toCount   = stage_counts[to];
+        funnel.push({
+          from,
+          to,
+          conversion: fromCount ? Math.round(toCount / fromCount * 100) + '%' : 'N/A',
+        });
+      }
+
+      // Source quality
+      const sourceMap = {};
+      allCands.forEach(c => {
+        const src = c.source || 'Direct';
+        if (!sourceMap[src]) sourceMap[src] = { source: src, total: 0, hired: 0 };
+        sourceMap[src].total++;
+        if (c.stage === 'Hired') sourceMap[src].hired++;
+      });
+      const sources = Object.values(sourceMap).map(s => ({
+        ...s,
+        quality_rate: s.total ? Math.round(s.hired / s.total * 100) + '%' : '0%',
+      })).sort((a,b) => b.total - a.total);
+
+      // Stale candidates (idle in a non-terminal stage for 48+ hours)
+      const staleThreshold = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+      const staleRows = allCands.filter(c =>
+        !['Hired','Rejected'].includes(c.stage) &&
+        c.stage_changed_at < staleThreshold
+      );
+
+      // We need candidate_id + name for stale list — fetch them separately
+      // only when there are stale items to avoid an unnecessary query.
+      let stale_candidates = [];
+      if (staleRows.length) {
+        const { data: staleFull } = await supabase
+          .from('recruitment_candidates')
+          .select('candidate_id, name, stage, stage_changed_at')
+          .lt('stage_changed_at', staleThreshold)
+          .not('stage', 'in', '("Hired","Rejected")');
+        stale_candidates = (staleFull || []).map(c => ({
+          ...c,
+          idle_hours: Math.floor(
+            (Date.now() - new Date(c.stage_changed_at).getTime()) / 3600000
+          ),
+        }));
+      }
+
+      dashData = {
+        summary: {
+          open_jobs,
+          closed_jobs,
+          active_candidates: active.length,
+          total_candidates:  total,
+          hired_this_month,
+          avg_time_to_hire,
+          offer_acceptance,
+        },
+        stage_counts,
+        funnel,
+      };
+      sourceData     = { sources };
+      staleList      = stale_candidates;
+
+    } catch(e) { console.warn('Dashboard load error:', e.message); }
+  }
+
+  // ── Open candidate detail ───────────────────────────────────────
+  async function openCandidateDetail(candidateId) {
+    try {
+      const [candidate, notes, scorecards] = await Promise.all([
+        getCandidate(candidateId),
+        listNotes(candidateId),
+        listScorecards(candidateId),
+      ]);
+      detailCandidate  = candidate;
+      detailNotes      = notes;
+      detailScorecards = scorecards;
+
+      if (detailCandidate?.job_id) {
+        detailJob = await getJob(detailCandidate.job_id);
+      }
+
+      renderDetailPanel();
+    } catch(e) { toast('Could not load candidate: ' + e.message, 'error'); }
+  }
+
+  // ================================================================
+  //  LOAD ALL (boot)
   // ================================================================
   async function loadAll() {
     renderShell();
@@ -90,69 +662,8 @@ window.WorkVoltPages['recruitment'] = function(container) {
     render();
   }
 
-  async function loadJobs() {
-    try {
-      const res = await api('jobs/list');
-      jobs = res.rows || [];
-    } catch(e) { toast('Failed to load jobs: ' + e.message, 'error'); }
-  }
-
-  async function loadCandidates() {
-    if (!selectedJobId) { candidates = []; return; }
-    try {
-      const res = await api('candidates/list', {
-        job_id: selectedJobId,
-        stage:  filterStage,
-        search: filterSearch,
-        source: filterSource
-      });
-      candidates = res.rows || [];
-    } catch(e) { toast('Failed to load candidates: ' + e.message, 'error'); }
-  }
-
-  async function loadDashboard() {
-    try {
-      const [dash, src, metrics] = await Promise.all([
-        api('dashboard'),
-        api('metrics/sources'),
-        api('metrics/pipeline', { job_id: selectedJobId || '' })
-      ]);
-      dashData       = dash;
-      sourceData     = src;
-      pipelineMetrics = metrics;
-      staleList = metrics.stale_candidates || [];
-    } catch(e) { console.warn('Dashboard load error:', e.message); }
-  }
-
-  async function loadTemplates() {
-    try {
-      const res = await api('templates/list');
-      templates = res.rows || [];
-    } catch(e) { toast('Failed to load templates: ' + e.message, 'error'); }
-  }
-
-  async function openCandidateDetail(candidateId) {
-    try {
-      const [candRes, notesRes, scRes] = await Promise.all([
-        api('candidates/get', { candidate_id: candidateId }),
-        api('notes/list',     { candidate_id: candidateId }),
-        api('scorecards/list',{ candidate_id: candidateId })
-      ]);
-      detailCandidate  = candRes.candidate;
-      detailNotes      = notesRes.rows || [];
-      detailScorecards = scRes.rows    || [];
-
-      if (detailCandidate?.job_id) {
-        const jRes = await api('jobs/get', { job_id: detailCandidate.job_id });
-        detailJob = jRes.job || null;
-      }
-
-      renderDetailPanel();
-    } catch(e) { toast('Could not load candidate: ' + e.message, 'error'); }
-  }
-
   // ================================================================
-  //  MAIN RENDER
+  //  MAIN RENDER  (unchanged from original)
   // ================================================================
   function renderShell() {
     container.innerHTML = `
@@ -225,17 +736,14 @@ window.WorkVoltPages['recruitment'] = function(container) {
   // ================================================================
   function renderPipeline(body) {
     const job = jobs.find(j => j.job_id === selectedJobId);
-    const stageCounts = {};
-    STAGES.forEach(s => { stageCounts[s] = 0; });
-    candidates.forEach(c => { if (stageCounts[c.stage] !== undefined) stageCounts[c.stage]++; });
 
-    // Group candidates by stage
     const byStage = {};
     STAGES.forEach(s => { byStage[s] = []; });
     let filtered = candidates;
     if (filterStage)  filtered = filtered.filter(c => c.stage === filterStage);
     if (filterSearch) filtered = filtered.filter(c =>
-      (c.name + ' ' + c.email + ' ' + (c.source||'')).toLowerCase().includes(filterSearch.toLowerCase())
+      (c.name + ' ' + (c.email||'') + ' ' + (c.source||''))
+        .toLowerCase().includes(filterSearch.toLowerCase())
     );
     if (filterSource) filtered = filtered.filter(c => c.source === filterSource);
     filtered.forEach(c => { if (byStage[c.stage]) byStage[c.stage].push(c); });
@@ -248,7 +756,6 @@ window.WorkVoltPages['recruitment'] = function(container) {
         <!-- Job selector + filters row -->
         <div class="bg-white border-b border-slate-100 px-6 py-3 flex items-center gap-3 flex-wrap">
 
-          <!-- Job selector (closed jobs hidden) -->
           <div class="flex items-center gap-2 flex-shrink-0">
             <i class="fas fa-briefcase text-slate-400 text-sm"></i>
             <select id="job-selector" class="field text-sm" style="max-width:220px">
@@ -260,7 +767,6 @@ window.WorkVoltPages['recruitment'] = function(container) {
             </select>
           </div>
 
-          <!-- Selected job title displayed prominently -->
           ${job ? `
           <div class="flex items-center gap-2 min-w-0">
             <span class="text-slate-300">|</span>
@@ -271,7 +777,6 @@ window.WorkVoltPages['recruitment'] = function(container) {
             ${job.status && job.status !== 'Open' ? `<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex-shrink-0">${esc(job.status)}</span>` : ''}
           </div>` : ''}
 
-          <!-- Search -->
           <div class="relative">
             <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
             <input id="cand-search" type="text" value="${esc(filterSearch)}"
@@ -279,13 +784,11 @@ window.WorkVoltPages['recruitment'] = function(container) {
               class="field pl-8 text-sm" style="width:200px">
           </div>
 
-          <!-- Stage filter -->
           <select id="stage-filter" class="field text-sm" style="width:150px">
             <option value="">All stages</option>
             ${STAGES.map(s => `<option value="${s}" ${filterStage === s ? 'selected':''}>${s}</option>`).join('')}
           </select>
 
-          <!-- Source filter -->
           <select id="source-filter" class="field text-sm" style="width:140px">
             <option value="">All sources</option>
             ${SOURCES.map(s => `<option value="${s}" ${filterSource === s ? 'selected':''}>${s}</option>`).join('')}
@@ -302,10 +805,8 @@ window.WorkVoltPages['recruitment'] = function(container) {
           <div class="mx-6 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 flex items-center gap-2 text-sm text-amber-700">
             <i class="fas fa-clock text-amber-500"></i>
             <span><strong>${staleList.length}</strong> candidate${staleList.length !== 1 ? 's' : ''} idle for 48+ hours</span>
-            <button onclick="document.getElementById('stage-filter').value=''; window._recFilterStale && window._recFilterStale()" class="ml-auto text-amber-600 font-semibold hover:underline text-xs">View all</button>
           </div>` : ''}
 
-        <!-- No job selected -->
         ${!selectedJobId ? `
           <div class="flex flex-col items-center justify-center flex-1 gap-3 text-slate-400">
             <i class="fas fa-briefcase text-4xl opacity-30"></i>
@@ -320,55 +821,51 @@ window.WorkVoltPages['recruitment'] = function(container) {
           <div class="flex gap-3 h-full" style="min-width: ${STAGES.length * 220}px">
             ${STAGES.map(stage => {
               const stageCands = byStage[stage] || [];
-              const dot = STAGE_DOTS[stage] || 'bg-slate-400';
+              const dot   = STAGE_DOTS[stage]   || 'bg-slate-400';
               const badge = STAGE_COLORS[stage] || 'bg-slate-100 text-slate-600';
               return `
                 <div class="flex flex-col rounded-2xl bg-slate-50 border border-slate-200 flex-shrink-0" style="width:210px">
-                  <!-- Column header -->
                   <div class="px-3 py-2.5 border-b border-slate-200 flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full flex-shrink-0 ${dot}"></span>
                     <span class="text-xs font-bold text-slate-700 truncate flex-1">${stage}</span>
                     <span class="text-xs font-bold px-2 py-0.5 rounded-full ${badge}">${stageCands.length}</span>
                   </div>
-
-                  <!-- Cards scroll area -->
                   <div class="flex-1 overflow-y-auto thin-scroll p-2 space-y-2">
-                    ${stageCands.length === 0 ? `
-                      <div class="text-center py-8 text-slate-300 text-xs">No candidates</div>
-                    ` : stageCands.map(c => {
-                      const initials = (c.name || '?').split(' ').map(w => w[0]).join('').substring(0,2).toUpperCase();
-                      const avatarColors = ['bg-blue-100 text-blue-600','bg-violet-100 text-violet-600','bg-emerald-100 text-emerald-600','bg-amber-100 text-amber-600','bg-rose-100 text-rose-600'];
-                      const av = avatarColors[(c.candidate_id || '').charCodeAt(5) % avatarColors.length] || avatarColors[0];
-                      const stale = staleIds.has(c.candidate_id);
-                      const score = c.score_total ? parseFloat(c.score_total).toFixed(1) : null;
-                      const isDisq = c.status === 'Disqualified';
-                      return `
-                        <div data-candidate-id="${c.candidate_id}"
-                          class="cand-card bg-white rounded-xl border ${stale ? 'border-amber-300' : 'border-slate-200'} p-3 cursor-pointer hover:shadow-md hover:border-blue-300 transition-all ${isDisq ? 'opacity-60' : ''}">
-                          <div class="flex items-start gap-2 mb-2">
-                            <div class="w-8 h-8 rounded-lg ${av} flex items-center justify-center text-xs font-bold flex-shrink-0">${initials}</div>
-                            <div class="flex-1 min-w-0">
-                              <p class="text-xs font-bold text-slate-800 truncate">${esc(c.name)}</p>
-                              <p class="text-[10px] text-slate-400 truncate">${esc(c.email)}</p>
-                            </div>
-                          </div>
-                          <div class="flex items-center gap-1 flex-wrap">
-                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">${esc(c.source || 'Direct')}</span>
-                            ${score ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-semibold">★ ${score}</span>` : ''}
-                            ${stale ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-600"><i class="fas fa-clock text-[8px]"></i> Idle</span>` : ''}
-                            ${isDisq ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-500">Disqualified</span>` : ''}
-                          </div>
-                          ${parseInt(c.notes_count) > 0 ? `
-                            <div class="mt-1.5 text-[10px] text-slate-400"><i class="fas fa-comment-dots mr-1"></i>${c.notes_count} note${c.notes_count != 1 ? 's' : ''}</div>
-                          ` : ''}
-                        </div>`;
-                    }).join('')}
+                    ${stageCands.length === 0
+                      ? `<div class="text-center py-8 text-slate-300 text-xs">No candidates</div>`
+                      : stageCands.map(c => {
+                          const initials = (c.name || '?').split(' ').map(w => w[0]).join('').substring(0,2).toUpperCase();
+                          const avatarColors = ['bg-blue-100 text-blue-600','bg-violet-100 text-violet-600','bg-emerald-100 text-emerald-600','bg-amber-100 text-amber-600','bg-rose-100 text-rose-600'];
+                          const av    = avatarColors[(c.candidate_id || '').charCodeAt(5) % avatarColors.length] || avatarColors[0];
+                          const stale = staleIds.has(c.candidate_id);
+                          const score = c.score_total ? parseFloat(c.score_total).toFixed(1) : null;
+                          const isDisq = c.status === 'Disqualified';
+                          return `
+                            <div data-candidate-id="${c.candidate_id}"
+                              class="cand-card bg-white rounded-xl border ${stale ? 'border-amber-300' : 'border-slate-200'} p-3 cursor-pointer hover:shadow-md hover:border-blue-300 transition-all ${isDisq ? 'opacity-60' : ''}">
+                              <div class="flex items-start gap-2 mb-2">
+                                <div class="w-8 h-8 rounded-lg ${av} flex items-center justify-center text-xs font-bold flex-shrink-0">${initials}</div>
+                                <div class="flex-1 min-w-0">
+                                  <p class="text-xs font-bold text-slate-800 truncate">${esc(c.name)}</p>
+                                  <p class="text-[10px] text-slate-400 truncate">${esc(c.email || '')}</p>
+                                </div>
+                              </div>
+                              <div class="flex items-center gap-1 flex-wrap">
+                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">${esc(c.source || 'Direct')}</span>
+                                ${score ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-semibold">★ ${score}</span>` : ''}
+                                ${stale ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-600"><i class="fas fa-clock text-[8px]"></i> Idle</span>` : ''}
+                                ${isDisq ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-500">Disqualified</span>` : ''}
+                              </div>
+                              ${parseInt(c.notes_count) > 0 ? `
+                                <div class="mt-1.5 text-[10px] text-slate-400"><i class="fas fa-comment-dots mr-1"></i>${c.notes_count} note${c.notes_count != 1 ? 's' : ''}</div>
+                              ` : ''}
+                            </div>`;
+                        }).join('')}
                   </div>
                 </div>`;
             }).join('')}
           </div>
         </div>`}
-
       </div>`;
 
     // Events
@@ -398,10 +895,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
     document.getElementById('btn-add-job-empty')?.addEventListener('click', () => openModal('addJob'));
 
     body.querySelectorAll('.cand-card').forEach(card => {
-      card.addEventListener('click', () => {
-        const cid = card.dataset.candidateId;
-        openDetailPanel(cid);
-      });
+      card.addEventListener('click', () => openDetailPanel(card.dataset.candidateId));
     });
   }
 
@@ -413,9 +907,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
       <div class="p-6">
         <div class="flex items-center justify-between mb-4">
           <h2 class="font-extrabold text-slate-800 text-base">All Job Postings</h2>
-          <div class="flex gap-2">
-            <button id="btn-add-job-tab" class="btn-primary text-sm"><i class="fas fa-plus"></i> New Job</button>
-          </div>
+          <button id="btn-add-job-tab" class="btn-primary text-sm"><i class="fas fa-plus"></i> New Job</button>
         </div>
 
         ${jobs.length === 0 ? `
@@ -465,7 +957,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
         </div>`}
       </div>`;
 
-    body.querySelector('#btn-add-job-tab')?.addEventListener('click', () => openModal('addJob'));
+    body.querySelector('#btn-add-job-tab')?.addEventListener('click',  () => openModal('addJob'));
     body.querySelector('#btn-add-job-zero')?.addEventListener('click', () => openModal('addJob'));
 
     body.querySelectorAll('[data-view-job]').forEach(btn => {
@@ -487,7 +979,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
       btn.addEventListener('click', async () => {
         if (!confirm('Close this job posting?')) return;
         try {
-          await api('jobs/close', { job_id: btn.dataset.closeJob });
+          await closeJob(btn.dataset.closeJob);
           toast('Job closed', 'success');
           await loadJobs();
           render();
@@ -533,7 +1025,6 @@ window.WorkVoltPages['recruitment'] = function(container) {
             const stageBadge = t.trigger_stage
               ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${STAGE_COLORS[t.trigger_stage] || 'bg-slate-100 text-slate-500'}">${t.trigger_stage}</span>`
               : `<span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">No stage trigger</span>`;
-            const active = String(t.is_active) === 'true';
             return `
               <div class="bg-white rounded-2xl border border-slate-200 p-4">
                 <div class="flex items-start justify-between gap-3">
@@ -541,7 +1032,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
                     <div class="flex items-center gap-2 mb-1">
                       <p class="font-bold text-slate-800 text-sm">${esc(t.name)}</p>
                       ${stageBadge}
-                      ${!active ? `<span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Inactive</span>` : ''}
+                      ${!t.is_active ? `<span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Inactive</span>` : ''}
                     </div>
                     <p class="text-xs font-semibold text-slate-500">Subject: ${esc(t.subject)}</p>
                     <p class="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">${esc(t.body).substring(0, 140)}…</p>
@@ -569,7 +1060,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
       btn.addEventListener('click', async () => {
         if (!confirm('Delete this template?')) return;
         try {
-          await api('templates/delete', { template_id: btn.dataset.delTmpl });
+          await deleteTemplate(btn.dataset.delTmpl);
           toast('Template deleted', 'success');
           await loadTemplates();
           renderTemplatesTab(body);
@@ -582,8 +1073,8 @@ window.WorkVoltPages['recruitment'] = function(container) {
   //  METRICS TAB
   // ================================================================
   function renderMetricsTab(body) {
-    const s = dashData?.summary || {};
-    const stageCounts = dashData?.stage_counts || {};
+    const s           = dashData?.summary     || {};
+    const stageCounts = dashData?.stage_counts|| {};
     const funnel      = dashData?.funnel      || [];
     const sources     = sourceData?.sources   || [];
 
@@ -602,18 +1093,15 @@ window.WorkVoltPages['recruitment'] = function(container) {
     body.innerHTML = `
       <div class="p-6 space-y-6">
 
-        <!-- KPI row -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          ${statCard('fa-briefcase','Open Jobs', s.open_jobs ?? 0, `${s.closed_jobs ?? 0} closed`, 'bg-blue-500')}
-          ${statCard('fa-users','Active Candidates', s.active_candidates ?? 0, `${s.total_candidates ?? 0} total`, 'bg-violet-500')}
-          ${statCard('fa-calendar-check','Hired This Month', s.hired_this_month ?? 0, 'Offer acceptance: ' + (s.offer_acceptance ?? 'N/A'), 'bg-emerald-500')}
-          ${statCard('fa-stopwatch','Avg. Time to Hire', s.avg_time_to_hire ? s.avg_time_to_hire + ' days' : 'N/A', 'From applied to hired', 'bg-amber-500')}
+          ${statCard('fa-briefcase',      'Open Jobs',           s.open_jobs ?? 0,            `${s.closed_jobs ?? 0} closed`,                  'bg-blue-500')}
+          ${statCard('fa-users',          'Active Candidates',   s.active_candidates ?? 0,    `${s.total_candidates ?? 0} total`,              'bg-violet-500')}
+          ${statCard('fa-calendar-check', 'Hired This Month',    s.hired_this_month ?? 0,     'Offer acceptance: ' + (s.offer_acceptance ?? 'N/A'), 'bg-emerald-500')}
+          ${statCard('fa-stopwatch',      'Avg. Time to Hire',   s.avg_time_to_hire ? s.avg_time_to_hire + ' days' : 'N/A', 'From applied to hired', 'bg-amber-500')}
         </div>
 
-        <!-- Stage funnel + counts -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-          <!-- Stage breakdown -->
           <div class="bg-white rounded-2xl border border-slate-200 p-5">
             <h3 class="font-extrabold text-slate-800 text-sm mb-4">Pipeline Breakdown</h3>
             <div class="space-y-2">
@@ -621,8 +1109,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
                 const count = stageCounts[stage] || 0;
                 const max   = Math.max(...Object.values(stageCounts), 1);
                 const pct   = Math.round((count / max) * 100);
-                const badge = STAGE_COLORS[stage] || 'bg-slate-100 text-slate-600';
-                const dot   = STAGE_DOTS[stage]   || 'bg-slate-400';
+                const dot   = STAGE_DOTS[stage] || 'bg-slate-400';
                 return `
                   <div class="flex items-center gap-3">
                     <span class="w-2 h-2 rounded-full flex-shrink-0 ${dot}"></span>
@@ -636,7 +1123,6 @@ window.WorkVoltPages['recruitment'] = function(container) {
             </div>
           </div>
 
-          <!-- Conversion funnel -->
           <div class="bg-white rounded-2xl border border-slate-200 p-5">
             <h3 class="font-extrabold text-slate-800 text-sm mb-4">Stage Conversion Rates</h3>
             ${funnel.length === 0 ? `<p class="text-xs text-slate-400">Not enough data yet.</p>` : `
@@ -649,10 +1135,8 @@ window.WorkVoltPages['recruitment'] = function(container) {
                 </div>`).join('')}
             </div>`}
           </div>
-
         </div>
 
-        <!-- Source quality -->
         <div class="bg-white rounded-2xl border border-slate-200 p-5">
           <h3 class="font-extrabold text-slate-800 text-sm mb-4">Source Quality</h3>
           ${sources.length === 0 ? `<p class="text-xs text-slate-400">No data yet.</p>` : `
@@ -679,7 +1163,6 @@ window.WorkVoltPages['recruitment'] = function(container) {
           </div>`}
         </div>
 
-        <!-- Stale candidates -->
         ${staleList.length ? `
           <div class="bg-white rounded-2xl border border-amber-200 p-5">
             <h3 class="font-extrabold text-amber-700 text-sm mb-4 flex items-center gap-2">
@@ -728,9 +1211,9 @@ window.WorkVoltPages['recruitment'] = function(container) {
     if (!panel || !detailCandidate) return;
     const c   = detailCandidate;
     const job = detailJob || {};
-    const initials = (c.name || '?').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
-    const avgScore = c.score_total ? parseFloat(c.score_total).toFixed(1) : null;
-    const stageBadge = STAGE_COLORS[c.stage] || 'bg-slate-100 text-slate-600';
+    const initials  = (c.name || '?').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+    const avgScore  = c.score_total ? parseFloat(c.score_total).toFixed(1) : null;
+    const stageBadge= STAGE_COLORS[c.stage] || 'bg-slate-100 text-slate-600';
 
     panel.innerHTML = `
       <div class="flex-shrink-0 border-b border-slate-100 bg-white px-5 py-4">
@@ -742,12 +1225,11 @@ window.WorkVoltPages['recruitment'] = function(container) {
           </button>
         </div>
 
-        <!-- Identity -->
         <div class="flex items-start gap-3">
           <div class="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-extrabold text-lg flex-shrink-0">${initials}</div>
           <div class="flex-1 min-w-0">
             <p class="font-extrabold text-slate-900">${esc(c.name)}</p>
-            <p class="text-xs text-slate-400">${esc(c.email)}</p>
+            <p class="text-xs text-slate-400">${esc(c.email || '')}</p>
             ${c.phone ? `<p class="text-xs text-slate-400">${esc(c.phone)}</p>` : ''}
             <div class="flex items-center gap-2 mt-1.5 flex-wrap">
               <span class="text-xs font-bold px-2 py-0.5 rounded-full ${stageBadge}">${c.stage}</span>
@@ -758,7 +1240,6 @@ window.WorkVoltPages['recruitment'] = function(container) {
           </div>
         </div>
 
-        <!-- Job reference -->
         ${job.title ? `
           <div class="mt-3 text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2">
             <i class="fas fa-briefcase text-slate-300 mr-1.5"></i>
@@ -766,22 +1247,19 @@ window.WorkVoltPages['recruitment'] = function(container) {
             ${job.department ? ` · ${esc(job.department)}` : ''}
           </div>` : ''}
 
-        <!-- Quick links -->
         <div class="flex gap-2 mt-3 flex-wrap">
-          ${c.resume_url ? `<a href="${esc(c.resume_url)}" target="_blank" class="btn-secondary text-xs"><i class="fas fa-file-pdf"></i> Resume</a>` : ''}
+          ${c.resume_url   ? `<a href="${esc(c.resume_url)}"   target="_blank" class="btn-secondary text-xs"><i class="fas fa-file-pdf"></i> Resume</a>`   : ''}
           ${c.linkedin_url ? `<a href="${esc(c.linkedin_url)}" target="_blank" class="btn-secondary text-xs"><i class="fab fa-linkedin"></i> LinkedIn</a>` : ''}
         </div>
 
-        <!-- Action buttons -->
         <div class="flex gap-2 mt-3 flex-wrap">
           <button id="dp-move-stage" class="btn-primary text-xs flex-1"><i class="fas fa-arrow-right"></i> Move Stage</button>
-          <button id="dp-compose" class="btn-secondary text-xs"><i class="fas fa-envelope"></i> Email</button>
-          <button id="dp-scorecard" class="btn-secondary text-xs"><i class="fas fa-star"></i> Score</button>
-          <button id="dp-edit-cand" class="btn-secondary text-xs"><i class="fas fa-pencil-alt"></i></button>
+          <button id="dp-compose"    class="btn-secondary text-xs"><i class="fas fa-envelope"></i> Email</button>
+          <button id="dp-scorecard"  class="btn-secondary text-xs"><i class="fas fa-star"></i> Score</button>
+          <button id="dp-edit-cand"  class="btn-secondary text-xs"><i class="fas fa-pencil-alt"></i></button>
         </div>
       </div>
 
-      <!-- Detail tabs -->
       <div class="flex gap-0 border-b border-slate-100 bg-white flex-shrink-0">
         ${['Notes','Scorecard'].map((t,i) => `
           <button data-detail-tab="${t.toLowerCase()}"
@@ -790,20 +1268,18 @@ window.WorkVoltPages['recruitment'] = function(container) {
           </button>`).join('')}
       </div>
 
-      <!-- Tab content -->
       <div class="flex-1 overflow-y-auto thin-scroll" id="dp-tab-content">
         ${renderDetailNotes()}
       </div>
     `;
 
-    // Detail tab switching
     panel.querySelectorAll('.detail-tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         panel.querySelectorAll('.detail-tab-btn').forEach(b => {
-          b.classList.toggle('border-blue-500', b === btn);
-          b.classList.toggle('text-blue-600',   b === btn);
-          b.classList.toggle('border-transparent', b !== btn);
-          b.classList.toggle('text-slate-400',  b !== btn);
+          b.classList.toggle('border-blue-500',     b === btn);
+          b.classList.toggle('text-blue-600',       b === btn);
+          b.classList.toggle('border-transparent',  b !== btn);
+          b.classList.toggle('text-slate-400',      b !== btn);
         });
         const tc = document.getElementById('dp-tab-content');
         if (btn.dataset.detailTab === 'notes')     tc.innerHTML = renderDetailNotes();
@@ -813,29 +1289,25 @@ window.WorkVoltPages['recruitment'] = function(container) {
     });
 
     panel.querySelector('#dp-move-stage')?.addEventListener('click', () => openModal('moveStage', { candidate: c, job }));
-    panel.querySelector('#dp-compose')?.addEventListener('click', () => openModal('composeEmail', { candidate: c, job }));
-    panel.querySelector('#dp-scorecard')?.addEventListener('click', () => openModal('scorecard', { candidate: c }));
-    panel.querySelector('#dp-edit-cand')?.addEventListener('click', () => openModal('editCandidate', c));
+    panel.querySelector('#dp-compose')?.addEventListener('click',    () => openModal('composeEmail', { candidate: c, job }));
+    panel.querySelector('#dp-scorecard')?.addEventListener('click',  () => openModal('scorecard', { candidate: c }));
+    panel.querySelector('#dp-edit-cand')?.addEventListener('click',  () => openModal('editCandidate', c));
 
     bindDetailTabEvents();
   }
 
   function renderDetailNotes() {
-    const notes = detailNotes;
     return `
       <div class="p-4 space-y-3">
-        <!-- Add note -->
         <div class="bg-slate-50 rounded-xl p-3">
-          <textarea id="dp-note-input" rows="2"
-            placeholder="Add a note…"
-            class="field text-sm resize-none bg-white"></textarea>
+          <textarea id="dp-note-input" rows="2" placeholder="Add a note…" class="field text-sm resize-none bg-white"></textarea>
           <div class="flex justify-end mt-2">
             <button id="dp-note-submit" class="btn-primary text-xs"><i class="fas fa-plus"></i> Add Note</button>
           </div>
         </div>
-
-        ${notes.length === 0 ? `<p class="text-xs text-slate-400 text-center py-4">No notes yet</p>` :
-          notes.map(n => `
+        ${detailNotes.length === 0
+          ? `<p class="text-xs text-slate-400 text-center py-4">No notes yet</p>`
+          : detailNotes.map(n => `
             <div class="bg-white rounded-xl border border-slate-100 p-3" data-note-id="${n.note_id}">
               <div class="flex items-center justify-between mb-1">
                 <span class="text-xs font-bold text-slate-700">${esc(n.author_name || 'Unknown')}</span>
@@ -903,62 +1375,56 @@ window.WorkVoltPages['recruitment'] = function(container) {
     const panel = document.getElementById('rec-detail-panel');
     if (!panel) return;
 
-    // Add note
     panel.querySelector('#dp-note-submit')?.addEventListener('click', async () => {
-      const input = panel.querySelector('#dp-note-input');
+      const input   = panel.querySelector('#dp-note-input');
       const content = (input?.value || '').trim();
       if (!content) return;
       try {
-        await api('notes/add', {
+        await addNote({
           candidate_id: detailCandidate.candidate_id,
           job_id:       detailCandidate.job_id,
-          author_id:    user.user_id || '',
+          author_id:    user.user_id || user.id || '',
           author_name:  user.name || user.email || 'Unknown',
-          content
+          content,
         });
         input.value = '';
         toast('Note added', 'success');
-        const nRes = await api('notes/list', { candidate_id: detailCandidate.candidate_id });
-        detailNotes = nRes.rows || [];
+        detailNotes = await listNotes(detailCandidate.candidate_id);
         document.getElementById('dp-tab-content').innerHTML = renderDetailNotes();
         bindDetailTabEvents();
       } catch(e) { toast(e.message, 'error'); }
     });
 
-    // Delete note
     panel.querySelectorAll('[data-del-note]').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!confirm('Delete this note?')) return;
         try {
-          await api('notes/delete', { note_id: btn.dataset.delNote });
+          await deleteNote(btn.dataset.delNote);
           toast('Note deleted', 'success');
-          const nRes = await api('notes/list', { candidate_id: detailCandidate.candidate_id });
-          detailNotes = nRes.rows || [];
+          detailNotes = await listNotes(detailCandidate.candidate_id);
           document.getElementById('dp-tab-content').innerHTML = renderDetailNotes();
           bindDetailTabEvents();
         } catch(e) { toast(e.message, 'error'); }
       });
     });
 
-    // Delete scorecard
     panel.querySelectorAll('[data-del-sc]').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!confirm('Delete this scorecard?')) return;
         try {
-          await api('scorecards/delete', { scorecard_id: btn.dataset.delSc });
+          await deleteScorecard(btn.dataset.delSc);
           toast('Scorecard deleted', 'success');
-          const scRes = await api('scorecards/list', { candidate_id: detailCandidate.candidate_id });
-          detailScorecards = scRes.rows || [];
-          // refresh candidate scores
-          const cRes = await api('candidates/get', { candidate_id: detailCandidate.candidate_id });
-          detailCandidate = cRes.candidate;
+          detailScorecards = await listScorecards(detailCandidate.candidate_id);
+          detailCandidate  = await getCandidate(detailCandidate.candidate_id);
           document.getElementById('dp-tab-content').innerHTML = renderDetailScorecards();
           bindDetailTabEvents();
         } catch(e) { toast(e.message, 'error'); }
       });
     });
 
-    panel.querySelector('#dp-sc-add')?.addEventListener('click', () => openModal('scorecard', { candidate: detailCandidate }));
+    panel.querySelector('#dp-sc-add')?.addEventListener('click', () =>
+      openModal('scorecard', { candidate: detailCandidate })
+    );
   }
 
   // ================================================================
@@ -996,11 +1462,10 @@ window.WorkVoltPages['recruitment'] = function(container) {
         </button>
       </div>`;
 
-    const field = (id, label, type='text', value='', placeholder='', opts='') => `
+    const field    = (id, label, type='text', value='', placeholder='', opts='') => `
       <div>
         <label class="block text-xs font-bold text-slate-600 mb-1">${label}</label>
-        <input id="${id}" type="${type}" value="${esc(value)}" placeholder="${placeholder}"
-          class="field text-sm" ${opts}>
+        <input id="${id}" type="${type}" value="${esc(value)}" placeholder="${placeholder}" class="field text-sm" ${opts}>
       </div>`;
 
     const textarea = (id, label, value='', rows=3) => `
@@ -1009,7 +1474,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
         <textarea id="${id}" rows="${rows}" class="field text-sm resize-none">${esc(value)}</textarea>
       </div>`;
 
-    const select = (id, label, options, value='') => `
+    const select   = (id, label, options, value='') => `
       <div>
         <label class="block text-xs font-bold text-slate-600 mb-1">${label}</label>
         <select id="${id}" class="field text-sm">
@@ -1027,22 +1492,22 @@ window.WorkVoltPages['recruitment'] = function(container) {
       return `
         ${hdr(isEdit ? 'Edit Job' : 'New Job Posting', 'fa-briefcase')}
         <div class="p-6 space-y-4">
-          ${field('m-title',   'Job Title *',   'text',   j.title       || '', 'e.g. Senior Developer')}
+          ${field('m-title','Job Title *','text', j.title||'','e.g. Senior Developer')}
           <div class="grid grid-cols-2 gap-3">
-            ${field('m-dept',  'Department',    'text',   j.department  || '', 'Engineering')}
-            ${field('m-loc',   'Location',      'text',   j.location    || '', 'Remote / City')}
+            ${field('m-dept','Department','text', j.department||'','Engineering')}
+            ${field('m-loc','Location','text',    j.location||'','Remote / City')}
           </div>
           <div class="grid grid-cols-2 gap-3">
-            ${select('m-type', 'Job Type', ['Full-time','Part-time','Contract','Internship','Freelance'], j.type || 'Full-time')}
-            ${select('m-status','Status', ['Open','On Hold','Closed'], j.status || 'Open')}
+            ${select('m-type','Job Type',['Full-time','Part-time','Contract','Internship','Freelance'], j.type||'Full-time')}
+            ${select('m-status','Status',['Open','On Hold','Closed'], j.status||'Open')}
           </div>
           <div class="grid grid-cols-2 gap-3">
-            ${field('m-salmin','Salary Min',    'number', j.salary_min  || '', '0')}
-            ${field('m-salmax','Salary Max',    'number', j.salary_max  || '', '0')}
+            ${field('m-salmin','Salary Min','number', j.salary_min||'','0')}
+            ${field('m-salmax','Salary Max','number', j.salary_max||'','0')}
           </div>
-          ${field('m-positions','Open Positions','number', j.positions || 1, '1')}
-          ${textarea('m-desc', 'Job Description', j.description || '', 4)}
-          ${textarea('m-req',  'Requirements',    j.requirements || '', 3)}
+          ${field('m-positions','Open Positions','number', j.positions||1,'1')}
+          ${textarea('m-desc','Job Description', j.description||'',4)}
+          ${textarea('m-req','Requirements',     j.requirements||'',3)}
           <div class="flex gap-3 pt-2">
             <button id="modal-cancel" class="btn-secondary flex-1">Cancel</button>
             <button id="modal-submit" class="btn-primary flex-1">${isEdit ? 'Save Changes' : 'Create Job'}</button>
@@ -1052,14 +1517,14 @@ window.WorkVoltPages['recruitment'] = function(container) {
 
     if (mode === 'addCandidate') {
       return `
-        ${hdr('Add Candidate', 'fa-user-plus')}
+        ${hdr('Add Candidate','fa-user-plus')}
         <div class="p-6 space-y-4">
-          ${field('m-name',  'Full Name *',  'text',  '', 'Jane Smith')}
-          ${field('m-email', 'Email',        'email', '', 'jane@example.com')}
-          ${field('m-phone', 'Phone',        'tel',   '', '+1 555 000 0000')}
-          ${select('m-source','Source', SOURCES, 'Direct')}
-          ${field('m-resume',   'Resume URL',   'url', '', 'https://')}
-          ${field('m-linkedin', 'LinkedIn URL', 'url', '', 'https://linkedin.com/in/')}
+          ${field('m-name','Full Name *','text','','Jane Smith')}
+          ${field('m-email','Email','email','','jane@example.com')}
+          ${field('m-phone','Phone','tel','','+1 555 000 0000')}
+          ${select('m-source','Source',SOURCES,'Direct')}
+          ${field('m-resume','Resume URL','url','','https://')}
+          ${field('m-linkedin','LinkedIn URL','url','','https://linkedin.com/in/')}
           <div>
             <label class="block text-xs font-bold text-slate-600 mb-1">Knockout Questions (optional)</label>
             <div class="bg-slate-50 rounded-xl p-3 space-y-2 text-xs text-slate-500">
@@ -1078,14 +1543,14 @@ window.WorkVoltPages['recruitment'] = function(container) {
     if (mode === 'editCandidate') {
       const c = data || {};
       return `
-        ${hdr('Edit Candidate', 'fa-user-edit')}
+        ${hdr('Edit Candidate','fa-user-edit')}
         <div class="p-6 space-y-4">
-          ${field('m-name',     'Full Name *',  'text',  c.name     || '', 'Jane Smith')}
-          ${field('m-email',    'Email',        'email', c.email    || '')}
-          ${field('m-phone',    'Phone',        'tel',   c.phone    || '')}
-          ${select('m-source',  'Source', SOURCES, c.source || 'Direct')}
-          ${field('m-resume',   'Resume URL',   'url',   c.resume_url   || '')}
-          ${field('m-linkedin', 'LinkedIn URL', 'url',   c.linkedin_url || '')}
+          ${field('m-name',    'Full Name *','text',  c.name||'')}
+          ${field('m-email',   'Email','email',        c.email||'')}
+          ${field('m-phone',   'Phone','tel',           c.phone||'')}
+          ${select('m-source', 'Source',SOURCES,        c.source||'Direct')}
+          ${field('m-resume',  'Resume URL','url',      c.resume_url||'')}
+          ${field('m-linkedin','LinkedIn URL','url',    c.linkedin_url||'')}
           <div class="flex gap-3 pt-2">
             <button id="modal-cancel" class="btn-secondary flex-1">Cancel</button>
             <button id="modal-submit" class="btn-primary flex-1">Save Changes</button>
@@ -1094,10 +1559,9 @@ window.WorkVoltPages['recruitment'] = function(container) {
     }
 
     if (mode === 'moveStage') {
-      const c = (data.candidate || {});
-      const currentIdx = STAGES.indexOf(c.stage);
+      const c = data.candidate || {};
       return `
-        ${hdr('Move Stage', 'fa-arrow-right')}
+        ${hdr('Move Stage','fa-arrow-right')}
         <div class="p-6 space-y-4">
           <div class="bg-slate-50 rounded-xl p-3 text-sm">
             <p class="font-bold text-slate-800">${esc(c.name)}</p>
@@ -1106,8 +1570,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
           <div>
             <label class="block text-xs font-bold text-slate-600 mb-2">Move to Stage</label>
             <div class="grid grid-cols-2 gap-2">
-              ${STAGES.map((s, idx) => {
-                const badge = STAGE_COLORS[s] || 'bg-slate-100 text-slate-600';
+              ${STAGES.map(s => {
                 const isCurrent = s === c.stage;
                 return `
                   <button data-stage-pick="${s}"
@@ -1119,7 +1582,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
               }).join('')}
             </div>
           </div>
-          ${textarea('m-reason', 'Reason / Notes (optional)', '', 2)}
+          ${textarea('m-reason','Reason / Notes (optional)','',2)}
           <div class="flex gap-3 pt-2">
             <button id="modal-cancel" class="btn-secondary flex-1">Cancel</button>
             <button id="modal-submit" class="btn-primary flex-1" disabled>Move Candidate</button>
@@ -1128,7 +1591,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
     }
 
     if (mode === 'scorecard') {
-      const c = (data.candidate || {});
+      const c = data.candidate || {};
       const slider = (id, label) => `
         <div>
           <div class="flex items-center justify-between mb-1">
@@ -1140,7 +1603,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
             oninput="document.getElementById('${id}-val').textContent = this.value">
         </div>`;
       return `
-        ${hdr('Submit Scorecard', 'fa-star')}
+        ${hdr('Submit Scorecard','fa-star')}
         <div class="p-6 space-y-4">
           <div class="bg-slate-50 rounded-xl p-3 text-sm">
             <p class="font-bold text-slate-800">${esc(c.name || '')}</p>
@@ -1150,13 +1613,13 @@ window.WorkVoltPages['recruitment'] = function(container) {
           ${slider('sc-culture', 'Culture Fit (1–5)')}
           ${slider('sc-comm',    'Communication (1–5)')}
           ${slider('sc-exp',     'Experience Relevance (1–5)')}
-          ${select('sc-rec', 'Recommendation', [
-            { value: '', label: 'No recommendation' },
-            { value: 'hire',   label: '✅ Recommend Hire' },
-            { value: 'hold',   label: '⏸ Hold' },
-            { value: 'reject', label: '❌ Recommend Reject' }
-          ], '')}
-          ${textarea('sc-notes', 'Additional Notes', '', 2)}
+          ${select('sc-rec','Recommendation',[
+            {value:'',      label:'No recommendation'},
+            {value:'hire',  label:'✅ Recommend Hire'},
+            {value:'hold',  label:'⏸ Hold'},
+            {value:'reject',label:'❌ Recommend Reject'},
+          ],'')}
+          ${textarea('sc-notes','Additional Notes','',2)}
           <div class="flex gap-3 pt-2">
             <button id="modal-cancel" class="btn-secondary flex-1">Cancel</button>
             <button id="modal-submit" class="btn-primary flex-1">Submit Scorecard</button>
@@ -1168,40 +1631,36 @@ window.WorkVoltPages['recruitment'] = function(container) {
       const c   = data.candidate || {};
       const job = data.job       || {};
       return `
-        ${hdr('Compose Email', 'fa-envelope')}
+        ${hdr('Compose Email','fa-envelope')}
         <div class="p-6 space-y-4">
           <div class="bg-slate-50 rounded-xl p-3 flex items-center gap-3 text-sm">
             <i class="fas fa-user text-slate-400"></i>
             <div>
               <p class="font-bold text-slate-700">${esc(c.name)}</p>
-              <p class="text-xs text-slate-400">${esc(c.email)}</p>
+              <p class="text-xs text-slate-400">${esc(c.email || '')}</p>
             </div>
           </div>
-
           <div>
             <label class="block text-xs font-bold text-slate-600 mb-1">Load Template</label>
             <select id="m-tmpl-pick" class="field text-sm">
               <option value="">— Select a template —</option>
-              ${templates.map(t => `<option value="${t.template_id}">${esc(t.name)} ${t.trigger_stage ? '('+t.trigger_stage+')' : ''}</option>`).join('')}
+              ${templates.map(t => `<option value="${t.template_id}">${esc(t.name)}${t.trigger_stage ? ' ('+t.trigger_stage+')' : ''}</option>`).join('')}
             </select>
           </div>
-
           <div class="border-t border-slate-100 pt-3 space-y-3">
             <div>
               <label class="block text-xs font-bold text-slate-600 mb-1">To</label>
-              <input id="m-to" type="email" value="${esc(c.email)}" class="field text-sm" readonly>
+              <input id="m-to" type="email" value="${esc(c.email || '')}" class="field text-sm" readonly>
             </div>
-            ${field('m-subject', 'Subject *', 'text', '', 'Email subject…')}
-            ${textarea('m-body', 'Body *', '', 8)}
+            ${field('m-subject','Subject *','text','','Email subject…')}
+            ${textarea('m-body','Body *','',8)}
           </div>
-
           <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
             <i class="fas fa-info-circle mr-1"></i> Copy the composed email to send via your email client.
           </div>
-
           <div class="flex gap-3 pt-2">
-            <button id="modal-cancel" class="btn-secondary flex-1">Cancel</button>
-            <button id="modal-copy-email" class="btn-primary flex-1"><i class="fas fa-copy"></i> Copy Email</button>
+            <button id="modal-cancel"      class="btn-secondary flex-1">Cancel</button>
+            <button id="modal-copy-email"  class="btn-primary flex-1"><i class="fas fa-copy"></i> Copy Email</button>
           </div>
         </div>`;
     }
@@ -1210,18 +1669,18 @@ window.WorkVoltPages['recruitment'] = function(container) {
       const t = data || {};
       const isEdit = !!t.template_id;
       return `
-        ${hdr(isEdit ? 'Edit Template' : 'New Template', 'fa-envelope-open-text')}
+        ${hdr(isEdit ? 'Edit Template' : 'New Template','fa-envelope-open-text')}
         <div class="p-6 space-y-4">
-          ${field('m-tname', 'Template Name *', 'text', t.name || '', 'e.g. Interview Invite')}
-          ${select('m-tstage', 'Stage Trigger (optional)', [
-            { value: '', label: '— No trigger —' },
-            ...STAGES.map(s => ({ value: s, label: s }))
-          ], t.trigger_stage || '')}
-          ${field('m-tsubject', 'Subject Line *', 'text', t.subject || '', 'Email subject…')}
-          ${textarea('m-tbody', 'Body * (use {{candidate.name}}, {{job.title}}, etc.)', t.body || '', 10)}
+          ${field('m-tname','Template Name *','text', t.name||'','e.g. Interview Invite')}
+          ${select('m-tstage','Stage Trigger (optional)',[
+            {value:'',label:'— No trigger —'},
+            ...STAGES.map(s => ({value:s,label:s}))
+          ], t.trigger_stage||'')}
+          ${field('m-tsubject','Subject Line *','text', t.subject||'','Email subject…')}
+          ${textarea('m-tbody','Body * (use {{candidate.name}}, {{job.title}}, etc.)', t.body||'',10)}
           <div>
             <label class="flex items-center gap-2 cursor-pointer">
-              <input id="m-tactive" type="checkbox" class="w-4 h-4 accent-blue-600" ${String(t.is_active) !== 'false' ? 'checked' : ''}>
+              <input id="m-tactive" type="checkbox" class="w-4 h-4 accent-blue-600" ${t.is_active !== false ? 'checked' : ''}>
               <span class="text-sm font-semibold text-slate-700">Active</span>
             </label>
           </div>
@@ -1235,10 +1694,10 @@ window.WorkVoltPages['recruitment'] = function(container) {
     return `<div class="p-6 text-slate-400 text-sm">Unknown modal: ${mode}</div>`;
   }
 
-  // ── App Access modal — shown after choosing "Hired" ──────────────
+  // ── App Access modal ─────────────────────────────────────────────
   function buildAppAccessHTML(data) {
-    const c = data.candidate || {};
-    const initials = (c.name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+    const c        = data.candidate || {};
+    const initials = (c.name || '?').split(' ').map(w => w[0]).join('').substring(0,2).toUpperCase();
     return `
       <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
         <h3 class="font-extrabold text-slate-900 flex items-center gap-2">
@@ -1249,8 +1708,6 @@ window.WorkVoltPages['recruitment'] = function(container) {
         </button>
       </div>
       <div class="p-6 space-y-5">
-
-        <!-- Candidate summary -->
         <div class="flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
           <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-extrabold flex-shrink-0">${initials}</div>
           <div>
@@ -1262,13 +1719,11 @@ window.WorkVoltPages['recruitment'] = function(container) {
           </span>
         </div>
 
-        <!-- Question -->
         <div class="text-center space-y-1">
           <p class="font-extrabold text-slate-800 text-base">Will this employee need app access?</p>
           <p class="text-xs text-slate-400">Choose whether this employee will have access to log into the app.</p>
         </div>
 
-        <!-- Choice buttons -->
         <div class="grid grid-cols-2 gap-3">
           <button id="app-access-no"
             class="flex flex-col items-center gap-2 px-4 py-5 rounded-2xl border-2 border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all text-slate-600">
@@ -1285,23 +1740,17 @@ window.WorkVoltPages['recruitment'] = function(container) {
         </div>
 
         <div id="app-access-status" class="hidden text-sm text-center py-2"></div>
-
         <button id="modal-cancel" class="btn-secondary w-full text-sm">Cancel</button>
-      </div>
-    `;
+      </div>`;
   }
 
-  // ================================================================
-  //  APP ACCESS MODAL LOGIC
-  // ================================================================
   function bindAppAccessEvents(data) {
-    const box = document.getElementById('rec-modal-box');
+    const box    = document.getElementById('rec-modal-box');
     if (!box) return;
-
     const c      = data.candidate || {};
     const reason = data.reason    || '';
 
-    box.querySelector('#modal-close')?.addEventListener('click', closeModal);
+    box.querySelector('#modal-close')?.addEventListener('click',  closeModal);
     box.querySelector('#modal-cancel')?.addEventListener('click', closeModal);
     document.getElementById('rec-modal-overlay').onclick = e => {
       if (e.target === document.getElementById('rec-modal-overlay')) closeModal();
@@ -1315,39 +1764,31 @@ window.WorkVoltPages['recruitment'] = function(container) {
     };
 
     const disableBtns = () => {
-      ['#app-access-no', '#app-access-yes', '#modal-cancel'].forEach(sel => {
+      ['#app-access-no','#app-access-yes','#modal-cancel'].forEach(sel => {
         const b = box.querySelector(sel);
         if (b) b.disabled = true;
       });
     };
 
-    // Shared: call complete-hire (always creates the user in USERS sheet)
     async function doCompleteHire(role, active) {
-      const tempPass = 'WV-' + Math.random().toString(36).slice(2, 8).toUpperCase()
-                     + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-
-      const res = await api('candidates/complete-hire', {
+      const tempPass = 'WV-' + Math.random().toString(36).slice(2,8).toUpperCase()
+                     + '-' + Math.random().toString(36).slice(2,8).toUpperCase();
+      return completeHire({
         candidate_id: c.candidate_id,
         role,
         active,
-        password:     tempPass,
+        password:   tempPass,
         reason,
-        moved_by:     user.user_id || '',
-        mover_name:   user.name    || user.email || 'System'
+        moved_by:   user.user_id || user.id || '',
+        mover_name: user.name || user.email || 'System',
       });
-
-      if (res.error) throw new Error(res.error);
-      return res;
     }
 
-    // ── NO: create user as Contractor with active = false ──────────
     box.querySelector('#app-access-no')?.addEventListener('click', async () => {
       try {
         disableBtns();
         setStatus('<i class="fas fa-circle-notch fa-spin mr-1"></i>Processing…', true);
-
-        const res = await doCompleteHire('Contractor', 'false');
-
+        await doCompleteHire('Contractor', false);
         toast(`${c.name || 'Candidate'} hired — added as Contractor with access disabled`, 'success');
         closeModal();
         closeDetailPanel();
@@ -1357,15 +1798,12 @@ window.WorkVoltPages['recruitment'] = function(container) {
       } catch(e) { setStatus(e.message, false); }
     });
 
-    // ── YES: create user with active = true, then open Edit User form
     box.querySelector('#app-access-yes')?.addEventListener('click', async () => {
       try {
         disableBtns();
         setStatus('<i class="fas fa-circle-notch fa-spin mr-1"></i>Processing…', true);
-
-        const res = await doCompleteHire('Employee', 'true');
-        const newUserId = res.user_account?.user_id || null;
-
+        const res = await doCompleteHire('Employee', true);
+        const newUserId = res.user_account?.id || null;
         toast(`${c.name || 'Candidate'} hired — opening user profile…`, 'success');
         closeModal();
         closeDetailPanel();
@@ -1373,55 +1811,43 @@ window.WorkVoltPages['recruitment'] = function(container) {
         await loadDashboard();
         render();
 
-        // Navigate to Settings → User Management → open Edit User form for the new user.
-        // loadUsers() inside settingsTab is async with no callback, so we can't know
-        // exactly when usersCache is ready. Instead we poll: call usersOpenEdit() every
-        // 300ms and stop as soon as #user-modal-backdrop loses its 'hidden' class.
+        // Navigate to Settings → User Management
         setTimeout(() => {
           if (window.WorkVolt?.navigate) window.WorkVolt.navigate('settings');
-
           setTimeout(() => {
             if (typeof window.settingsTab === 'function') window.settingsTab('users');
-
             if (newUserId) {
               let attempts = 0;
               const tryOpen = () => {
                 attempts++;
-                if (typeof window.usersOpenEdit === 'function') {
-                  window.usersOpenEdit(newUserId);
-                }
+                if (typeof window.usersOpenEdit === 'function') window.usersOpenEdit(newUserId);
                 const backdrop = document.getElementById('user-modal-backdrop');
                 if (backdrop && !backdrop.classList.contains('hidden')) {
-                  // Modal opened successfully
-                  window.WorkVolt?.toast(
-                    'User created with access enabled. Complete the profile details here.',
-                    'info'
-                  );
+                  window.WorkVolt?.toast('User created with access enabled. Complete the profile details here.', 'info');
                 } else if (attempts < 25) {
-                  setTimeout(tryOpen, 300); // loadUsers still running, retry in 300ms
+                  setTimeout(tryOpen, 300);
                 }
               };
-              setTimeout(tryOpen, 600); // give loadUsers a head start
+              setTimeout(tryOpen, 600);
             }
           }, 400);
         }, 600);
-
       } catch(e) { setStatus(e.message, false); }
     });
   }
+
+  // ── Modal event binding ──────────────────────────────────────────
   function bindModalEvents(mode, data) {
     const box = document.getElementById('rec-modal-box');
     if (!box) return;
 
     box.querySelector('#modal-close')?.addEventListener('click',  closeModal);
     box.querySelector('#modal-cancel')?.addEventListener('click', closeModal);
-
-    // Close on overlay click
     document.getElementById('rec-modal-overlay').onclick = e => {
       if (e.target === document.getElementById('rec-modal-overlay')) closeModal();
     };
 
-    // ── Stage pick for moveStage ──
+    // ── Move stage ─────────────────────────────────────────────────
     if (mode === 'moveStage') {
       let pickedStage = null;
       box.querySelectorAll('.stage-pick-btn').forEach(btn => {
@@ -1441,7 +1867,6 @@ window.WorkVoltPages['recruitment'] = function(container) {
         if (!pickedStage) return;
         const reason = box.querySelector('#m-reason')?.value?.trim() || '';
 
-        // ── Intercept "Hired" → show app-access prompt first ──
         if (pickedStage === 'Hired') {
           closeModal();
           openModal('appAccess', { candidate: data.candidate, job: data.job, reason });
@@ -1449,20 +1874,17 @@ window.WorkVoltPages['recruitment'] = function(container) {
         }
 
         try {
-          const res = await api('candidates/move-stage', {
+          const res = await moveStage({
             candidate_id: data.candidate.candidate_id,
             stage:        pickedStage,
             reason,
-            moved_by:    user.user_id || '',
-            mover_name:  user.name    || user.email || 'Unknown'
+            moved_by:     user.user_id || user.id || '',
+            mover_name:   user.name || user.email || 'Unknown',
           });
           toast(`Moved to ${pickedStage}`, 'success');
-
-          // Show email template suggestion if returned
           if (res.email_template) {
             toast(`📧 Tip: Email template "${res.email_template.name}" is available for this stage`, 'info', 5000);
           }
-
           closeModal();
           closeDetailPanel();
           await loadCandidates();
@@ -1472,13 +1894,11 @@ window.WorkVoltPages['recruitment'] = function(container) {
       });
     }
 
-    // ── Knockout rows for addCandidate ──
+    // ── Knockout rows ──────────────────────────────────────────────
     if (mode === 'addCandidate') {
-      let koRows = [];
       const koContainer = box.querySelector('#knockout-rows');
       box.querySelector('#add-ko-row')?.addEventListener('click', () => {
-        const idx = koRows.length;
-        koRows.push({ question: '', disqualify_if: 'no' });
+        const idx = koContainer.children.length;
         const row = document.createElement('div');
         row.className = 'flex gap-2 items-center';
         row.innerHTML = `
@@ -1493,26 +1913,25 @@ window.WorkVoltPages['recruitment'] = function(container) {
       });
     }
 
-    // ── Scorecard submit ──
+    // ── Scorecard submit ───────────────────────────────────────────
     if (mode === 'scorecard') {
       box.querySelector('#modal-submit')?.addEventListener('click', async () => {
         try {
-          await api('scorecards/submit', {
+          await submitScorecard({
             candidate_id:        data.candidate.candidate_id,
             job_id:              data.candidate.job_id || '',
-            reviewer_id:         user.user_id || '',
+            reviewer_id:         user.user_id || user.id || '',
             reviewer_name:       user.name || user.email || 'Unknown',
             stage:               data.candidate.stage,
-            score_skills:        box.querySelector('#sc-skills')?.value || 3,
+            score_skills:        box.querySelector('#sc-skills')?.value  || 3,
             score_culture:       box.querySelector('#sc-culture')?.value || 3,
-            score_communication: box.querySelector('#sc-comm')?.value || 3,
-            score_experience:    box.querySelector('#sc-exp')?.value || 3,
-            recommendation:      box.querySelector('#sc-rec')?.value || '',
-            notes:               box.querySelector('#sc-notes')?.value?.trim() || ''
+            score_communication: box.querySelector('#sc-comm')?.value    || 3,
+            score_experience:    box.querySelector('#sc-exp')?.value     || 3,
+            recommendation:      box.querySelector('#sc-rec')?.value     || '',
+            notes:               box.querySelector('#sc-notes')?.value?.trim() || '',
           });
           toast('Scorecard submitted', 'success');
           closeModal();
-          // Refresh detail panel if open
           if (detailCandidate?.candidate_id === data.candidate.candidate_id) {
             await openCandidateDetail(data.candidate.candidate_id);
           }
@@ -1520,7 +1939,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
       });
     }
 
-    // ── Add / Edit Job ──
+    // ── Add / Edit Job ─────────────────────────────────────────────
     if (mode === 'addJob' || mode === 'editJob') {
       box.querySelector('#modal-submit')?.addEventListener('click', async () => {
         const title = box.querySelector('#m-title')?.value?.trim();
@@ -1536,15 +1955,15 @@ window.WorkVoltPages['recruitment'] = function(container) {
           positions:    box.querySelector('#m-positions')?.value,
           description:  box.querySelector('#m-desc')?.value?.trim(),
           requirements: box.querySelector('#m-req')?.value?.trim(),
-          created_by:   user.user_id || user.name || ''
+          created_by:   user.user_id || user.id || user.name || '',
         };
         try {
           if (mode === 'editJob') {
-            await api('jobs/update', { ...params, job_id: data.job_id });
+            await updateJob({ ...params, job_id: data.job_id });
             toast('Job updated', 'success');
           } else {
-            const res = await api('jobs/create', params);
-            selectedJobId = res.job_id;
+            const created = await createJob(params);
+            selectedJobId = created.job_id;
             toast('Job created', 'success');
           }
           closeModal();
@@ -1558,15 +1977,14 @@ window.WorkVoltPages['recruitment'] = function(container) {
       });
     }
 
-    // ── Add Candidate ──
+    // ── Add Candidate ──────────────────────────────────────────────
     if (mode === 'addCandidate') {
       box.querySelector('#modal-submit')?.addEventListener('click', async () => {
         const name = box.querySelector('#m-name')?.value?.trim();
         if (!name) { toast('Name is required', 'error'); return; }
 
-        // Collect knockout answers
-        const koQs   = box.querySelectorAll('[data-ko-q]');
-        const koDQs  = box.querySelectorAll('[data-ko-dq]');
+        const koQs  = box.querySelectorAll('[data-ko-q]');
+        const koDQs = box.querySelectorAll('[data-ko-dq]');
         const answers = [];
         koQs.forEach((q, i) => {
           if (q.value.trim()) {
@@ -1575,7 +1993,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
         });
 
         try {
-          await api('candidates/create', {
+          await createCandidate({
             name,
             job_id:           selectedJobId,
             email:            box.querySelector('#m-email')?.value?.trim(),
@@ -1583,7 +2001,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
             source:           box.querySelector('#m-source')?.value,
             resume_url:       box.querySelector('#m-resume')?.value?.trim(),
             linkedin_url:     box.querySelector('#m-linkedin')?.value?.trim(),
-            knockout_answers: answers.length ? JSON.stringify(answers) : ''
+            knockout_answers: answers.length ? JSON.stringify(answers) : '',
           });
           toast('Candidate added', 'success');
           closeModal();
@@ -1593,18 +2011,18 @@ window.WorkVoltPages['recruitment'] = function(container) {
       });
     }
 
-    // ── Edit Candidate ──
+    // ── Edit Candidate ─────────────────────────────────────────────
     if (mode === 'editCandidate') {
       box.querySelector('#modal-submit')?.addEventListener('click', async () => {
         try {
-          await api('candidates/update', {
+          await updateCandidate({
             candidate_id: data.candidate_id,
             name:         box.querySelector('#m-name')?.value?.trim(),
             email:        box.querySelector('#m-email')?.value?.trim(),
             phone:        box.querySelector('#m-phone')?.value?.trim(),
             source:       box.querySelector('#m-source')?.value,
             resume_url:   box.querySelector('#m-resume')?.value?.trim(),
-            linkedin_url: box.querySelector('#m-linkedin')?.value?.trim()
+            linkedin_url: box.querySelector('#m-linkedin')?.value?.trim(),
           });
           toast('Candidate updated', 'success');
           closeModal();
@@ -1617,7 +2035,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
       });
     }
 
-    // ── Template save ──
+    // ── Template save ──────────────────────────────────────────────
     if (mode === 'template') {
       box.querySelector('#modal-submit')?.addEventListener('click', async () => {
         const name    = box.querySelector('#m-tname')?.value?.trim();
@@ -1625,24 +2043,24 @@ window.WorkVoltPages['recruitment'] = function(container) {
         const body_   = box.querySelector('#m-tbody')?.value?.trim();
         if (!name || !subject || !body_) { toast('Name, subject, and body are required', 'error'); return; }
         try {
-          await api('templates/save', {
+          await saveTemplate({
             template_id:   data.template_id || '',
             name,
             trigger_stage: box.querySelector('#m-tstage')?.value,
             subject,
             body:          body_,
-            is_active:     box.querySelector('#m-tactive')?.checked ? 'true' : 'false'
+            is_active:     box.querySelector('#m-tactive')?.checked,
           });
           toast('Template saved', 'success');
           closeModal();
           await loadTemplates();
-          const body = document.getElementById('rec-body');
-          if (body) renderTemplatesTab(body);
+          const b = document.getElementById('rec-body');
+          if (b) renderTemplatesTab(b);
         } catch(e) { toast(e.message, 'error'); }
       });
     }
 
-    // ── Compose email ──
+    // ── Compose email ──────────────────────────────────────────────
     if (mode === 'composeEmail') {
       if (!templates.length) {
         loadTemplates().then(() => {
@@ -1658,11 +2076,11 @@ window.WorkVoltPages['recruitment'] = function(container) {
         const tid = e.target.value;
         if (!tid) return;
         try {
-          const res = await api('templates/preview', {
-            template_id:  tid,
-            candidate_id: data.candidate.candidate_id
-          });
-          const preview = res.preview || {};
+          const tmpl = templates.find(t => t.template_id === tid);
+          if (!tmpl) return;
+          const cand = data.candidate;
+          const job  = data.job || (cand.job_id ? await getJob(cand.job_id) : {});
+          const preview = resolveTemplate(tmpl, cand, job);
           if (preview.subject) box.querySelector('#m-subject').value = preview.subject;
           if (preview.body)    box.querySelector('#m-body').value    = preview.body;
         } catch(err) { toast('Could not load template preview', 'error'); }
@@ -1683,16 +2101,16 @@ window.WorkVoltPages['recruitment'] = function(container) {
   }
 
   // ================================================================
-  //  GLOBAL BIND EVENTS
+  //  TAB + HEADER EVENTS
   // ================================================================
   function bindTabEvents() {
     document.getElementById('rec-tabs')?.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         activeTab = btn.dataset.tab;
         document.querySelectorAll('.tab-btn').forEach(b => {
-          b.classList.toggle('bg-blue-600', b === btn);
-          b.classList.toggle('text-white',  b === btn);
-          b.classList.toggle('text-slate-500', b !== btn);
+          b.classList.toggle('bg-blue-600',        b === btn);
+          b.classList.toggle('text-white',         b === btn);
+          b.classList.toggle('text-slate-500',     b !== btn);
           b.classList.toggle('hover:bg-slate-100', b !== btn);
         });
         const body = document.getElementById('rec-body');
@@ -1724,8 +2142,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
   function fmtDate(iso) {
     if (!iso) return '—';
     try {
-      const d = new Date(iso);
-      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      return new Date(iso).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
     } catch(e) { return '—'; }
   }
 
@@ -1735,8 +2152,6 @@ window.WorkVoltPages['recruitment'] = function(container) {
     return '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 });
   }
 
-  // ================================================================
-  //  BOOT
-  // ================================================================
+  // ── Boot ─────────────────────────────────────────────────────────
   loadAll();
 };
