@@ -1,29 +1,35 @@
-// pages/contracts.js — Work Volt Contract Hub (Full v2)
-(function() {
+// pages/contracts.js — Work Volt Contract Hub v3
+// Changes from v2:
+//   • All API calls now use WorkVoltDB directly (no server-side api() wrapper needed)
+//   • Cloud storage: Google Drive, OneDrive, Dropbox, Supabase Storage pickers
+//   • "Cloud Storage Setup" guide modal — per-provider step-by-step instructions
+//   • Document preview panel (Google Drive iframe, PDF viewer, generic link)
+//   • Recommended-approach banner shown when no provider is configured
+(function () {
 'use strict';
 
 // ── Helpers ───────────────────────────────────────────────────
-const api  = (path, p) => window.WorkVolt.api('contracts/' + path, p);
-const toast = (m,t)    => window.WorkVolt.toast(m, t || 'info');
+const db    = window.WorkVoltDB;
+const toast = (m, t) => window.WorkVolt?.toast ? window.WorkVolt.toast(m, t||'info') : console.log(t, m);
 const esc   = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const fmt   = v => v ? new Date(v).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—';
-const fmtCurrency = (v,c='USD') => v ? new Intl.NumberFormat('en-US',{style:'currency',currency:c,minimumFractionDigits:0}).format(v) : '—';
-const daysUntil = d => d ? Math.ceil((new Date(d) - new Date()) / 864e5) : null;
+const fmtCurrency = (v, c='USD') => v ? new Intl.NumberFormat('en-US',{style:'currency',currency:c,minimumFractionDigits:0}).format(v) : '—';
+const daysUntil   = d => d ? Math.ceil((new Date(d) - new Date()) / 864e5) : null;
+const uuid = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 
+// ── Constants ─────────────────────────────────────────────────
 const STATUS_CONFIG = {
-  'Draft':        { bg:'bg-slate-100',   text:'text-slate-600',  dot:'bg-slate-400' },
-  'Under Review': { bg:'bg-amber-50',    text:'text-amber-700',  dot:'bg-amber-400' },
-  'Negotiation':  { bg:'bg-orange-50',   text:'text-orange-700', dot:'bg-orange-400' },
-  'Approval':     { bg:'bg-violet-50',   text:'text-violet-700', dot:'bg-violet-500' },
-  'Signed':       { bg:'bg-blue-50',     text:'text-blue-700',   dot:'bg-blue-500' },
-  'Active':       { bg:'bg-emerald-50',  text:'text-emerald-700',dot:'bg-emerald-500' },
-  'Expired':      { bg:'bg-red-50',      text:'text-red-600',    dot:'bg-red-400' },
-  'Terminated':   { bg:'bg-rose-100',    text:'text-rose-700',   dot:'bg-rose-500' },
-  'Archived':     { bg:'bg-gray-100',    text:'text-gray-500',   dot:'bg-gray-400' },
+  'Draft':        { bg:'bg-slate-100',  text:'text-slate-600',  dot:'bg-slate-400' },
+  'Under Review': { bg:'bg-amber-50',   text:'text-amber-700',  dot:'bg-amber-400' },
+  'Negotiation':  { bg:'bg-orange-50',  text:'text-orange-700', dot:'bg-orange-400' },
+  'Approval':     { bg:'bg-violet-50',  text:'text-violet-700', dot:'bg-violet-500' },
+  'Signed':       { bg:'bg-blue-50',    text:'text-blue-700',   dot:'bg-blue-500' },
+  'Active':       { bg:'bg-emerald-50', text:'text-emerald-700',dot:'bg-emerald-500' },
+  'Expired':      { bg:'bg-red-50',     text:'text-red-600',    dot:'bg-red-400' },
+  'Terminated':   { bg:'bg-rose-100',   text:'text-rose-700',   dot:'bg-rose-500' },
+  'Archived':     { bg:'bg-gray-100',   text:'text-gray-500',   dot:'bg-gray-400' },
 };
-
-const LIFECYCLE = ['Draft','Under Review','Negotiation','Approval','Signed','Active','Expired','Terminated','Archived'];
-
+const LIFECYCLE      = ['Draft','Under Review','Negotiation','Approval','Signed','Active','Expired','Terminated','Archived'];
 const CLAUSE_TYPES   = ['Payment Terms','Termination','Liability','Confidentiality','SLA','Renewal','Warranty','Indemnification','Force Majeure','Other'];
 const DOC_TYPES      = ['Draft','Final Contract','Amendment','Annex','Termination Letter','NDA','Addendum'];
 const RENEWAL_TYPES  = ['Auto Renewal','Manual Renewal','Negotiation','Termination'];
@@ -34,16 +40,99 @@ const PARTY_TYPES    = ['Company','Individual','Government','NGO','Partnership']
 const DEPARTMENTS    = ['Legal','HR','Finance','Sales','IT','Operations','Marketing','Procurement','Executive'];
 const LINKED_MODULES = ['None','hr','finance','assets','projects','crm'];
 
+// ── Cloud storage provider config ─────────────────────────────
+// Users set these keys via the "Cloud Storage Setup" modal.
+// Values are persisted in localStorage so they survive page reloads.
+const CS_KEY = 'wv_cloud_storage_cfg';
+function getCsConfig()          { try { return JSON.parse(localStorage.getItem(CS_KEY)||'{}'); } catch(e){ return {}; } }
+function saveCsConfig(cfg)      { localStorage.setItem(CS_KEY, JSON.stringify(cfg)); }
+
+const PROVIDER_META = {
+  google_drive: {
+    label: 'Google Drive',
+    icon:  'fab fa-google-drive',
+    color: 'text-green-600',
+    bg:    'bg-green-50',
+    border:'border-green-200',
+    recommended_for: 'Google Workspace users',
+    steps: [
+      'Go to <a href="https://console.cloud.google.com" target="_blank" class="text-blue-600 underline">console.cloud.google.com</a> and create (or select) a project.',
+      'Enable the <strong>Google Picker API</strong> and <strong>Google Drive API</strong> for that project.',
+      'Go to <strong>APIs &amp; Services → Credentials</strong> → Create OAuth 2.0 Client ID (Web application).',
+      'Add your app domain to <strong>Authorised JavaScript origins</strong> (e.g. <code>http://localhost</code> for local dev).',
+      'Copy the <strong>Client ID</strong> (ends in <code>.apps.googleusercontent.com</code>) and paste it below.',
+      'Optionally create an <strong>API Key</strong> (restrict it to Google Picker API) for broader access.',
+      'Save and click <strong>Test Connection</strong> — a Google sign-in popup should appear.',
+    ],
+    fields: [
+      { key:'google_client_id', label:'OAuth Client ID', placeholder:'xxxx.apps.googleusercontent.com', type:'text' },
+      { key:'google_api_key',   label:'API Key (optional)', placeholder:'AIzaSy…', type:'text' },
+    ],
+  },
+  onedrive: {
+    label: 'OneDrive / SharePoint',
+    icon:  'fab fa-microsoft',
+    color: 'text-blue-600',
+    bg:    'bg-blue-50',
+    border:'border-blue-200',
+    recommended_for: 'Microsoft 365 / SharePoint users',
+    steps: [
+      'Go to <a href="https://portal.azure.com" target="_blank" class="text-blue-600 underline">portal.azure.com</a> → <strong>Azure Active Directory → App registrations → New registration</strong>.',
+      'Set the Redirect URI to your app URL (Web platform).',
+      'Under <strong>API Permissions</strong> add <strong>Microsoft Graph → Files.ReadWrite</strong> (Delegated).',
+      'Copy the <strong>Application (client) ID</strong> shown on the app overview page.',
+      'Paste it below and save.',
+      'The OneDrive SDK is loaded automatically — no npm install needed.',
+    ],
+    fields: [
+      { key:'onedrive_client_id', label:'Azure App (Client) ID', placeholder:'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', type:'text' },
+    ],
+  },
+  dropbox: {
+    label: 'Dropbox',
+    icon:  'fab fa-dropbox',
+    color: 'text-blue-500',
+    bg:    'bg-sky-50',
+    border:'border-sky-200',
+    recommended_for: 'Teams already using Dropbox',
+    steps: [
+      'Go to <a href="https://www.dropbox.com/developers/apps" target="_blank" class="text-blue-600 underline">dropbox.com/developers/apps</a> → Create app.',
+      'Choose <strong>Scoped access → Full Dropbox</strong> (or App folder).',
+      'Under <strong>Permissions</strong> enable <code>files.content.read</code>.',
+      'Copy the <strong>App key</strong> from the Settings tab.',
+      'Paste it below — the Chooser widget loads from Dropbox\'s CDN, no install needed.',
+    ],
+    fields: [
+      { key:'dropbox_app_key', label:'Dropbox App Key', placeholder:'abc123xyz…', type:'text' },
+    ],
+  },
+  supabase: {
+    label: 'Supabase Storage',
+    icon:  'fas fa-database',
+    color: 'text-teal-600',
+    bg:    'bg-teal-50',
+    border:'border-teal-200',
+    recommended_for: 'Recommended — already built into your Supabase project',
+    steps: [
+      'In your Supabase dashboard go to <strong>Storage → Create bucket</strong>.',
+      'Name it <code>contracts</code> and set it to <strong>Private</strong>.',
+      'Run the storage RLS policies from the provided SQL script (the commented-out block at the bottom).',
+      'That\'s it — no extra credentials needed. The existing Supabase connection is reused automatically.',
+    ],
+    fields: [], // no extra fields — uses existing Supabase client
+  },
+};
+
 // ── State ─────────────────────────────────────────────────────
 let state = {
-  view: 'dashboard',  // dashboard | list | detail | parties | approvals | renewals | versions
-  contracts: [], types: [], parties: [], documents: [], clauses: [],
+  view: 'dashboard',
+  contracts: [], parties: [], documents: [], clauses: [],
   milestones: [], renewals: [], financials: [], approvals: [], versions: [],
-  dashboard: null, alerts: null,
   selectedId: null,
-  loading: false,
   filter: { status:'', category:'', search:'' },
-  listTab: 'all',  // all | active | expiring | draft
+  listTab: 'all',
+  detailTab: 'overview',
+  previewDoc: null,   // document object being previewed
 };
 
 let container;
@@ -52,47 +141,57 @@ let container;
 async function init(el) {
   container = el;
   render();
-  await loadDashboard();
-  await loadContracts();
-  await loadAlerts();
+  await Promise.all([loadContracts(), loadParties()]);
   render();
 }
 
-async function loadDashboard() {
-  try { state.dashboard = await api('dashboard'); } catch(e) {}
-}
+// ── Data loaders (direct Supabase via WorkVoltDB) ─────────────
 async function loadContracts() {
-  try {
-    const d = await api('list');
-    state.contracts = d.rows || [];
-  } catch(e) { state.contracts = []; }
-}
-async function loadAlerts() {
-  try { state.alerts = await api('alerts'); } catch(e) {}
+  try { state.contracts = await db.list('contracts', {}, { order:'created_at' }); } catch(e) { state.contracts = []; }
 }
 async function loadParties() {
-  try { const d = await api('parties/list'); state.parties = d.rows || []; } catch(e) {}
+  try { state.parties = await db.list('contract_parties', {}, { order:'name', asc:true }); } catch(e) { state.parties = []; }
 }
 async function loadDocuments(cid) {
-  try { const d = await api('documents/list',{contract_id:cid}); state.documents = d.rows || []; } catch(e) {}
+  try { state.documents  = await db.list('contract_documents',  { contract_id:cid }, { order:'created_at' }); } catch(e) { state.documents = []; }
 }
 async function loadClauses(cid) {
-  try { const d = await api('clauses/list',{contract_id:cid}); state.clauses = d.rows || []; } catch(e) {}
+  try { state.clauses    = await db.list('contract_clauses',    { contract_id:cid }, { order:'created_at' }); } catch(e) { state.clauses = []; }
 }
 async function loadMilestones(cid) {
-  try { const d = await api('milestones/list',{contract_id:cid}); state.milestones = d.rows || []; } catch(e) {}
+  try { state.milestones = await db.list('contract_milestones', { contract_id:cid }, { order:'date', asc:true }); } catch(e) { state.milestones = []; }
 }
 async function loadRenewals(cid) {
-  try { const d = await api(cid ? 'renewals/list' : 'renewals/upcoming', cid ? {contract_id:cid} : {}); state.renewals = d.rows || []; } catch(e) {}
+  const f = cid ? { contract_id:cid } : {};
+  try { state.renewals   = await db.list('contract_renewals',   f, { order:'renewal_date', asc:true }); } catch(e) { state.renewals = []; }
 }
 async function loadFinancials(cid) {
-  try { const d = await api('financials/list',{contract_id:cid}); state.financials = d.rows || []; } catch(e) {}
+  try { state.financials = await db.list('contract_financials', { contract_id:cid }, { order:'due_date', asc:true }); } catch(e) { state.financials = []; }
 }
 async function loadApprovals(cid) {
-  try { const d = await api('approvals/list', cid ? {contract_id:cid} : {}); state.approvals = d.rows || []; } catch(e) {}
+  const f = cid ? { contract_id:cid } : {};
+  try { state.approvals  = await db.list('contract_approvals',  f, { order:'created_at' }); } catch(e) { state.approvals = []; }
 }
 async function loadVersions(cid) {
-  try { const d = await api('versions/list',{contract_id:cid}); state.versions = d.rows || []; } catch(e) {}
+  try { state.versions   = await db.list('contract_versions',   { contract_id:cid }, { order:'created_at' }); } catch(e) { state.versions = []; }
+}
+
+// ── Computed dashboard stats (from loaded contracts) ──────────
+function computeDashboard() {
+  const cs = state.contracts;
+  const now = new Date();
+  const in90 = new Date(); in90.setDate(in90.getDate()+90);
+  const active = cs.filter(c=>c.status==='Active');
+  return {
+    total:              cs.length,
+    active:             active.length,
+    draft:              cs.filter(c=>c.status==='Draft').length,
+    expiring_90:        active.filter(c=>c.end_date&&new Date(c.end_date)<=in90&&new Date(c.end_date)>=now).length,
+    total_active_value: active.reduce((s,c)=>s+(parseFloat(c.value)||0),0),
+    by_status:          cs.reduce((m,c)=>{ m[c.status]=(m[c.status]||0)+1; return m; },{}),
+    by_type:            cs.reduce((m,c)=>{ if(c.category){ m[c.category]=(m[c.category]||0)+1; } return m; },{}),
+    expiring_list:      active.filter(c=>c.end_date&&new Date(c.end_date)<=in90&&new Date(c.end_date)>=now),
+  };
 }
 
 // ── Master render ─────────────────────────────────────────────
@@ -103,22 +202,24 @@ function render() {
       .ch-tab  { cursor:pointer; padding:.45rem 1rem; border-radius:8px; font-size:.8rem; font-weight:600; color:#64748b; transition:.15s; }
       .ch-tab:hover { background:#f1f5f9; color:#1e293b; }
       .ch-tab.active { background:#2563eb; color:#fff; }
-      .ch-view-tab { cursor:pointer; padding:.5rem .875rem; border-bottom:2px solid transparent; font-size:.8rem; font-weight:600; color:#64748b; transition:.15s; }
+      .ch-view-tab { cursor:pointer; padding:.5rem .875rem; border-bottom:2px solid transparent; font-size:.8rem; font-weight:600; color:#64748b; transition:.15s; white-space:nowrap; }
       .ch-view-tab.active { border-bottom-color:#2563eb; color:#2563eb; }
       .ch-view-tab:hover:not(.active) { color:#1e293b; }
       .ch-card { background:#fff; border:1.5px solid #e2e8f0; border-radius:14px; }
       .ch-stat-card { background:#fff; border:1.5px solid #e2e8f0; border-radius:14px; padding:1.25rem 1.5rem; }
       .ch-badge { display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .7rem; border-radius:999px; font-size:.72rem; font-weight:700; }
       .ch-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem; border-radius:9px; font-size:.8rem; font-weight:600; cursor:pointer; border:none; transition:.15s; }
-      .ch-btn-primary { background:#2563eb; color:#fff; }
-      .ch-btn-primary:hover { background:#1d4ed8; }
+      .ch-btn-primary   { background:#2563eb; color:#fff; }
+      .ch-btn-primary:hover   { background:#1d4ed8; }
       .ch-btn-secondary { background:#f1f5f9; color:#475569; }
       .ch-btn-secondary:hover { background:#e2e8f0; }
-      .ch-btn-danger { background:#fef2f2; color:#dc2626; }
-      .ch-btn-danger:hover { background:#fee2e2; }
-      .ch-btn-success { background:#f0fdf4; color:#16a34a; }
-      .ch-btn-success:hover { background:#dcfce7; }
-      .ch-input { width:100%; padding:.55rem .8rem; border:1.5px solid #e2e8f0; border-radius:9px; font-size:.8rem; outline:none; font-family:inherit; transition:.15s; }
+      .ch-btn-danger    { background:#fef2f2; color:#dc2626; }
+      .ch-btn-danger:hover    { background:#fee2e2; }
+      .ch-btn-success   { background:#f0fdf4; color:#16a34a; }
+      .ch-btn-success:hover   { background:#dcfce7; }
+      .ch-btn-ghost     { background:transparent; color:#64748b; border:1.5px solid #e2e8f0; }
+      .ch-btn-ghost:hover     { background:#f8fafc; }
+      .ch-input { width:100%; padding:.55rem .8rem; border:1.5px solid #e2e8f0; border-radius:9px; font-size:.8rem; outline:none; font-family:inherit; transition:.15s; background:#fff; }
       .ch-input:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.12); }
       .ch-label { display:block; font-size:.72rem; font-weight:700; color:#475569; margin-bottom:.3rem; text-transform:uppercase; letter-spacing:.05em; }
       .ch-table { width:100%; border-collapse:collapse; }
@@ -130,16 +231,21 @@ function render() {
       .ch-lifecycle-step:last-child::after { display:none; }
       .ch-lifecycle-dot { width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.6rem; z-index:1; }
       .ch-section-header { display:flex; align-items:center; justify-content:space-between; padding:.875rem 1.25rem; border-bottom:1.5px solid #f1f5f9; }
-      .alert-pill { display:inline-flex; align-items:center; gap:.35rem; padding:.3rem .75rem; border-radius:999px; font-size:.72rem; font-weight:700; }
+      .ch-provider-card { border:2px solid #e2e8f0; border-radius:12px; padding:1rem; cursor:pointer; transition:.15s; }
+      .ch-provider-card:hover { border-color:#3b82f6; background:#fafbff; }
+      .ch-provider-card.active { border-color:#2563eb; background:#eff6ff; }
+      .ch-step-num { width:22px; height:22px; border-radius:50%; background:#2563eb; color:#fff; font-size:.65rem; font-weight:800; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+      code { background:#f1f5f9; padding:.1rem .35rem; border-radius:4px; font-size:.75rem; font-family:monospace; }
     </style>
     <div class="ch-page p-6 max-w-[1400px] mx-auto">
       ${renderHeader()}
       ${state.view === 'dashboard' ? renderDashboard() :
-        state.view === 'list'      ? renderList() :
-        state.view === 'detail'    ? renderDetail() :
-        state.view === 'parties'   ? renderParties() :
+        state.view === 'list'      ? renderList()      :
+        state.view === 'detail'    ? renderDetail()    :
+        state.view === 'parties'   ? renderParties()   :
         state.view === 'approvals' ? renderApprovalsView() :
-        state.view === 'renewals'  ? renderRenewalsView() :
+        state.view === 'renewals'  ? renderRenewalsView()  :
+        state.view === 'cloud'     ? renderCloudSetup() :
         renderDashboard()}
     </div>`;
   bindEvents();
@@ -148,13 +254,15 @@ function render() {
 // ── Header ────────────────────────────────────────────────────
 function renderHeader() {
   const views = [
-    {id:'dashboard', icon:'fa-th-large',       label:'Overview'},
-    {id:'list',      icon:'fa-file-signature',  label:'Contracts'},
-    {id:'parties',   icon:'fa-building',        label:'Parties'},
-    {id:'approvals', icon:'fa-check-double',    label:'Approvals'},
-    {id:'renewals',  icon:'fa-redo',            label:'Renewals'},
+    {id:'dashboard', icon:'fa-th-large',      label:'Overview'},
+    {id:'list',      icon:'fa-file-signature', label:'Contracts'},
+    {id:'parties',   icon:'fa-building',       label:'Parties'},
+    {id:'approvals', icon:'fa-check-double',   label:'Approvals'},
+    {id:'renewals',  icon:'fa-redo',           label:'Renewals'},
+    {id:'cloud',     icon:'fa-cloud',          label:'Cloud Storage'},
   ];
-  const alertCount = ((state.alerts?.expiring||[]).length + (state.alerts?.renewals||[]).length + (state.alerts?.approvals||[]).length);
+  const cfg = getCsConfig();
+  const anyConnected = Object.keys(PROVIDER_META).some(k=>cfg[k+'_enabled']);
   return `
     <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
       <div class="flex items-center gap-3">
@@ -165,144 +273,81 @@ function renderHeader() {
           <h1 class="text-xl font-extrabold text-slate-900 leading-none">Contract Hub</h1>
           <p class="text-xs text-slate-500 mt-0.5 font-medium">Full lifecycle contract management</p>
         </div>
-        ${alertCount > 0 ? `<span class="alert-pill bg-red-50 text-red-600 border border-red-200"><i class="fas fa-exclamation-circle text-[10px]"></i>${alertCount} Alert${alertCount>1?'s':''}</span>` : ''}
+        ${anyConnected ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-700"><i class="fas fa-cloud text-[9px]"></i>Cloud Storage Active</span>` : `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-700 cursor-pointer" data-nav="cloud"><i class="fas fa-exclamation-circle text-[9px]"></i>Set up Cloud Storage</span>`}
       </div>
       <div class="flex items-center gap-2 flex-wrap">
-        <div class="flex gap-1 bg-slate-100 p-1 rounded-xl">
+        <div class="flex gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
           ${views.map(v=>`<button class="ch-tab ${state.view===v.id?'active':''}" data-nav="${v.id}"><i class="fas ${v.icon} mr-1.5"></i>${v.label}</button>`).join('')}
         </div>
-        <button class="ch-btn ch-btn-primary" id="ch-new-contract">
-          <i class="fas fa-plus"></i>New Contract
-        </button>
+        <button class="ch-btn ch-btn-primary" id="ch-new-contract"><i class="fas fa-plus"></i>New Contract</button>
       </div>
     </div>`;
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────
 function renderDashboard() {
-  const d  = state.dashboard || {};
-  const al = state.alerts || {};
-  const contracts = state.contracts;
-
+  const d  = computeDashboard();
+  const cs = state.contracts;
+  const recent = [...cs].sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,6);
+  const totalForPct = Object.values(d.by_status).reduce((s,v)=>s+v,0)||1;
   const kpis = [
-    { label:'Total Contracts',    value: d.total||0,           icon:'fa-file-signature', color:'text-blue-600',    bg:'bg-blue-50' },
-    { label:'Active',             value: d.active||0,          icon:'fa-check-circle',   color:'text-emerald-600', bg:'bg-emerald-50' },
-    { label:'Expiring (90d)',     value: d.expiring_90||0,     icon:'fa-clock',          color:'text-amber-600',   bg:'bg-amber-50' },
-    { label:'Pending Approvals',  value: d.pending_approvals||0,icon:'fa-hourglass-half',color:'text-violet-600',  bg:'bg-violet-50' },
-    { label:'Active Value',       value: fmtCurrency(d.total_active_value||0), icon:'fa-dollar-sign', color:'text-teal-600', bg:'bg-teal-50' },
-    { label:'Draft',              value: d.draft||0,           icon:'fa-edit',           color:'text-slate-600',   bg:'bg-slate-100' },
+    {label:'Total',          value:d.total,                          icon:'fa-file-signature',color:'text-blue-600',   bg:'bg-blue-50'},
+    {label:'Active',         value:d.active,                         icon:'fa-check-circle',  color:'text-emerald-600',bg:'bg-emerald-50'},
+    {label:'Expiring (90d)', value:d.expiring_90,                    icon:'fa-clock',         color:'text-amber-600',  bg:'bg-amber-50'},
+    {label:'Active Value',   value:fmtCurrency(d.total_active_value),icon:'fa-dollar-sign',   color:'text-teal-600',   bg:'bg-teal-50'},
+    {label:'Drafts',         value:d.draft,                          icon:'fa-edit',          color:'text-slate-600',  bg:'bg-slate-100'},
+    {label:'Pending Approvals',value:state.approvals.filter(a=>a.status==='Pending').length,icon:'fa-hourglass-half',color:'text-violet-600',bg:'bg-violet-50'},
   ];
-
-  // By status mini chart
-  const byStatus = d.by_status || {};
-  const totalForPct = Object.values(byStatus).reduce((s,v)=>s+v,0) || 1;
-
-  // By category
-  const byCat = d.by_type || {};
-
-  // Recent contracts
-  const recent = [...contracts].sort((a,b) => new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,6);
-
-  // Alerts section
-  const expiring  = al.expiring  || [];
-  const renewalAl = al.renewals  || [];
-  const appAl     = al.approvals || [];
-
   return `
-    <!-- KPI Grid -->
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-      ${kpis.map(k=>`
-        <div class="ch-stat-card flex flex-col gap-2">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-slate-500 leading-tight">${k.label}</span>
-            <div class="w-7 h-7 ${k.bg} rounded-lg flex items-center justify-center">
-              <i class="fas ${k.icon} ${k.color} text-xs"></i>
-            </div>
-          </div>
-          <p class="text-2xl font-extrabold text-slate-900">${k.value}</p>
-        </div>`).join('')}
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
-      <!-- Status breakdown -->
-      <div class="ch-card overflow-hidden">
-        <div class="ch-section-header">
-          <h3 class="text-sm font-bold text-slate-800"><i class="fas fa-chart-pie mr-2 text-blue-500"></i>By Status</h3>
+      ${kpis.map(k=>`<div class="ch-stat-card flex flex-col gap-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-slate-500 leading-tight">${k.label}</span>
+          <div class="w-7 h-7 ${k.bg} rounded-lg flex items-center justify-center"><i class="fas ${k.icon} ${k.color} text-xs"></i></div>
         </div>
+        <p class="text-2xl font-extrabold text-slate-900">${k.value}</p>
+      </div>`).join('')}
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+      <div class="ch-card overflow-hidden">
+        <div class="ch-section-header"><h3 class="text-sm font-bold text-slate-800"><i class="fas fa-chart-pie mr-2 text-blue-500"></i>By Status</h3></div>
         <div class="p-4 space-y-2.5">
           ${LIFECYCLE.map(s=>{
-            const count = byStatus[s]||0;
-            const pct   = Math.round((count/totalForPct)*100);
-            const cfg   = STATUS_CONFIG[s]||{};
-            return count > 0 ? `
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-semibold text-slate-600">${s}</span>
-                <span class="text-xs font-bold text-slate-800">${count}</span>
-              </div>
-              <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div class="h-full rounded-full ${cfg.dot||'bg-blue-400'}" style="width:${pct}%"></div>
-              </div>
-            </div>` : '';
+            const count=d.by_status[s]||0; if(!count) return '';
+            const pct=Math.round((count/totalForPct)*100); const cfg=STATUS_CONFIG[s]||{};
+            return `<div><div class="flex items-center justify-between mb-1"><span class="text-xs font-semibold text-slate-600">${s}</span><span class="text-xs font-bold text-slate-800">${count}</span></div><div class="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full rounded-full ${cfg.dot||'bg-blue-400'}" style="width:${pct}%"></div></div></div>`;
           }).join('')}
-          ${Object.values(byStatus).every(v=>!v) ? '<p class="text-xs text-slate-400 text-center py-4">No data yet</p>' : ''}
+          ${!cs.length?'<p class="text-xs text-slate-400 text-center py-4">No data yet</p>':''}
         </div>
       </div>
-
-      <!-- By category -->
       <div class="ch-card overflow-hidden">
-        <div class="ch-section-header">
-          <h3 class="text-sm font-bold text-slate-800"><i class="fas fa-tags mr-2 text-indigo-500"></i>By Category</h3>
-        </div>
+        <div class="ch-section-header"><h3 class="text-sm font-bold text-slate-800"><i class="fas fa-tags mr-2 text-indigo-500"></i>By Category</h3></div>
         <div class="p-4 space-y-2">
-          ${Object.keys(byCat).length ? Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,v])=>`
+          ${Object.keys(d.by_type).length ? Object.entries(d.by_type).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,v])=>`
             <div class="flex items-center justify-between">
               <span class="text-xs text-slate-600 font-medium">${k}</span>
               <span class="text-xs font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">${v}</span>
             </div>`).join('') : '<p class="text-xs text-slate-400 text-center py-6">No contracts yet</p>'}
         </div>
       </div>
-
-      <!-- Alerts -->
       <div class="ch-card overflow-hidden">
-        <div class="ch-section-header">
-          <h3 class="text-sm font-bold text-slate-800"><i class="fas fa-bell mr-2 text-amber-500"></i>Alerts</h3>
-        </div>
+        <div class="ch-section-header"><h3 class="text-sm font-bold text-slate-800"><i class="fas fa-bell mr-2 text-amber-500"></i>Expiring Soon</h3></div>
         <div class="p-4 space-y-2 max-h-64 overflow-y-auto">
-          ${expiring.map(c=>`
-            <div class="flex items-start gap-2.5 p-2.5 bg-red-50 rounded-lg border border-red-100">
+          ${d.expiring_list.map(c=>{
+            const days=daysUntil(c.end_date);
+            return `<div class="flex items-start gap-2.5 p-2.5 bg-red-50 rounded-lg border border-red-100">
               <i class="fas fa-clock text-red-500 text-xs mt-0.5"></i>
-              <div>
-                <p class="text-xs font-bold text-red-700">${esc(c.title)}</p>
-                <p class="text-[11px] text-red-500">Expires ${fmt(c.end_date)}</p>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-red-700 truncate">${esc(c.title)}</p>
+                <p class="text-[11px] text-red-500">Expires ${fmt(c.end_date)} · ${days<=0?'Overdue':`${days}d left`}</p>
               </div>
-            </div>`).join('')}
-          ${renewalAl.map(r=>`
-            <div class="flex items-start gap-2.5 p-2.5 bg-amber-50 rounded-lg border border-amber-100">
-              <i class="fas fa-redo text-amber-500 text-xs mt-0.5"></i>
-              <div>
-                <p class="text-xs font-bold text-amber-700">Renewal due ${fmt(r.renewal_date)}</p>
-                <p class="text-[11px] text-amber-500">${r.type}</p>
-              </div>
-            </div>`).join('')}
-          ${appAl.map(a=>`
-            <div class="flex items-start gap-2.5 p-2.5 bg-violet-50 rounded-lg border border-violet-100">
-              <i class="fas fa-hourglass-half text-violet-500 text-xs mt-0.5"></i>
-              <div>
-                <p class="text-xs font-bold text-violet-700">Approval pending</p>
-                <p class="text-[11px] text-violet-500">${esc(a.approver)} · ${esc(a.role)}</p>
-              </div>
-            </div>`).join('')}
-          ${!expiring.length && !renewalAl.length && !appAl.length ? `
-            <div class="text-center py-6">
-              <i class="fas fa-check-circle text-2xl text-emerald-300 mb-2"></i>
-              <p class="text-xs text-slate-400 font-medium">No active alerts</p>
-            </div>` : ''}
+              <button class="ch-btn ch-btn-secondary py-0.5 px-2 text-[10px]" data-detail="${c.id}">View</button>
+            </div>`;
+          }).join('')}
+          ${!d.expiring_list.length?`<div class="text-center py-6"><i class="fas fa-check-circle text-2xl text-emerald-300 mb-2"></i><p class="text-xs text-slate-400 font-medium">No contracts expiring soon</p></div>`:''}
         </div>
       </div>
     </div>
-
-    <!-- Recent Contracts -->
     <div class="ch-card overflow-hidden">
       <div class="ch-section-header">
         <h3 class="text-sm font-bold text-slate-800"><i class="fas fa-history mr-2 text-slate-500"></i>Recent Contracts</h3>
@@ -310,66 +355,57 @@ function renderDashboard() {
       </div>
       <div class="overflow-x-auto">
         <table class="ch-table">
-          <thead><tr>
-            <th>Title</th><th>Category</th><th>Party</th><th>Value</th><th>End Date</th><th>Status</th><th></th>
-          </tr></thead>
+          <thead><tr><th>Title</th><th>Category</th><th>Value</th><th>End Date</th><th>Status</th><th></th></tr></thead>
           <tbody>
             ${recent.length ? recent.map(c=>{
-              const cfg = STATUS_CONFIG[c.status]||{};
-              const d   = daysUntil(c.end_date);
+              const cfg=STATUS_CONFIG[c.status]||{};
+              const dv=daysUntil(c.end_date);
               return `<tr>
                 <td><span class="font-semibold text-slate-800 cursor-pointer hover:text-blue-600" data-detail="${c.id}">${esc(c.title)}</span></td>
-                <td><span class="text-slate-500">${esc(c.category||'—')}</span></td>
-                <td class="text-slate-500">${esc(c.party_id||'—')}</td>
-                <td class="font-semibold">${fmtCurrency(c.value, c.currency)}</td>
-                <td>${c.end_date ? `<span class="${d!==null&&d<=30?'text-red-600 font-bold':''}">${fmt(c.end_date)}</span>` : '—'}</td>
+                <td>${c.category?`<span class="text-xs font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">${esc(c.category)}</span>`:'—'}</td>
+                <td class="font-semibold">${fmtCurrency(c.value,c.currency)}</td>
+                <td>${c.end_date?`<span class="${dv!==null&&dv<=30?'text-red-600 font-bold':''}">${fmt(c.end_date)}</span>`:'—'}</td>
                 <td><span class="ch-badge ${cfg.bg||''} ${cfg.text||''}"><span class="w-1.5 h-1.5 rounded-full ${cfg.dot||'bg-slate-400'}"></span>${c.status||'—'}</span></td>
                 <td><button class="ch-btn ch-btn-secondary py-1 text-xs" data-detail="${c.id}">Open</button></td>
               </tr>`;
-            }).join('') : `<tr><td colspan="7" class="text-center py-10 text-slate-400 text-sm">No contracts yet — create your first one</td></tr>`}
+            }).join('') : `<tr><td colspan="6" class="text-center py-10 text-slate-400 text-sm">No contracts yet — create your first one</td></tr>`}
           </tbody>
         </table>
       </div>
     </div>`;
 }
 
-// ── CONTRACTS LIST ────────────────────────────────────────────
+// ── LIST VIEW ─────────────────────────────────────────────────
 function renderList() {
   const tabs = [
-    {id:'all',      label:'All'},
-    {id:'active',   label:'Active'},
-    {id:'expiring', label:'Expiring Soon'},
-    {id:'draft',    label:'Drafts'},
-    {id:'approval', label:'In Approval'},
+    {id:'all',label:'All'},{id:'active',label:'Active'},{id:'expiring',label:'Expiring Soon'},
+    {id:'draft',label:'Drafts'},{id:'approval',label:'In Approval'},
   ];
-
   let rows = state.contracts;
-  if (state.listTab === 'active')   rows = rows.filter(r=>r.status==='Active');
-  if (state.listTab === 'draft')    rows = rows.filter(r=>r.status==='Draft');
-  if (state.listTab === 'approval') rows = rows.filter(r=>r.status==='Approval');
-  if (state.listTab === 'expiring') {
-    const in90 = new Date(); in90.setDate(in90.getDate()+90);
-    rows = rows.filter(r=>r.status==='Active'&&r.end_date&&new Date(r.end_date)<=in90&&new Date(r.end_date)>=new Date());
+  if (state.listTab==='active')   rows=rows.filter(r=>r.status==='Active');
+  if (state.listTab==='draft')    rows=rows.filter(r=>r.status==='Draft');
+  if (state.listTab==='approval') rows=rows.filter(r=>r.status==='Approval');
+  if (state.listTab==='expiring') {
+    const in90=new Date(); in90.setDate(in90.getDate()+90);
+    rows=rows.filter(r=>r.status==='Active'&&r.end_date&&new Date(r.end_date)<=in90&&new Date(r.end_date)>=new Date());
   }
-  if (state.filter.status)   rows = rows.filter(r=>r.status===state.filter.status);
-  if (state.filter.category) rows = rows.filter(r=>r.category===state.filter.category);
+  if (state.filter.status)   rows=rows.filter(r=>r.status===state.filter.status);
+  if (state.filter.category) rows=rows.filter(r=>r.category===state.filter.category);
   if (state.filter.search) {
-    const q = state.filter.search.toLowerCase();
-    rows = rows.filter(r=>(r.title||'').toLowerCase().includes(q)||(r.party_id||'').toLowerCase().includes(q)||(r.owner||'').toLowerCase().includes(q));
+    const q=state.filter.search.toLowerCase();
+    rows=rows.filter(r=>(r.title||'').toLowerCase().includes(q)||(r.party_id||'').toLowerCase().includes(q)||(r.owner||'').toLowerCase().includes(q));
   }
-
+  const count = id => {
+    if(id==='active')   return state.contracts.filter(r=>r.status==='Active').length;
+    if(id==='draft')    return state.contracts.filter(r=>r.status==='Draft').length;
+    if(id==='approval') return state.contracts.filter(r=>r.status==='Approval').length;
+    if(id==='expiring') { const in90=new Date();in90.setDate(in90.getDate()+90); return state.contracts.filter(r=>r.status==='Active'&&r.end_date&&new Date(r.end_date)<=in90&&new Date(r.end_date)>=new Date()).length; }
+    return null;
+  };
   return `
-    <!-- Tabs + Filters -->
     <div class="ch-card overflow-hidden mb-4">
-      <div class="flex items-center gap-0 border-b border-slate-100 px-4 overflow-x-auto">
-        ${tabs.map(t=>`<button class="ch-view-tab ${state.listTab===t.id?'active':''} whitespace-nowrap" data-list-tab="${t.id}">${t.label}
-          ${t.id!=='all'?`<span class="ml-1.5 bg-slate-100 text-slate-500 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-            ${t.id==='active'?state.contracts.filter(r=>r.status==='Active').length:
-              t.id==='draft'?state.contracts.filter(r=>r.status==='Draft').length:
-              t.id==='approval'?state.contracts.filter(r=>r.status==='Approval').length:
-              (() => { const in90=new Date();in90.setDate(in90.getDate()+90);return state.contracts.filter(r=>r.status==='Active'&&r.end_date&&new Date(r.end_date)<=in90&&new Date(r.end_date)>=new Date()).length; })()
-            }</span>`:''}
-        </button>`).join('')}
+      <div class="flex items-center border-b border-slate-100 px-4 overflow-x-auto">
+        ${tabs.map(t=>`<button class="ch-view-tab ${state.listTab===t.id?'active':''}" data-list-tab="${t.id}">${t.label}${count(t.id)!==null?`<span class="ml-1.5 bg-slate-100 text-slate-500 text-[10px] font-bold px-1.5 py-0.5 rounded-full">${count(t.id)}</span>`:''}</button>`).join('')}
       </div>
       <div class="p-4 flex flex-wrap gap-3">
         <div class="relative flex-1 min-w-[200px]">
@@ -386,8 +422,6 @@ function renderList() {
         </select>
       </div>
     </div>
-
-    <!-- Table -->
     <div class="ch-card overflow-hidden">
       <div class="ch-section-header">
         <h3 class="text-sm font-bold text-slate-800">${rows.length} contract${rows.length!==1?'s':''}</h3>
@@ -395,38 +429,27 @@ function renderList() {
       </div>
       <div class="overflow-x-auto">
         <table class="ch-table">
-          <thead><tr>
-            <th>Title</th><th>Category</th><th>Owner</th><th>Department</th>
-            <th>Value</th><th>Start</th><th>End</th><th>Status</th><th>Actions</th>
-          </tr></thead>
+          <thead><tr><th>Title</th><th>Category</th><th>Owner</th><th>Value</th><th>Start</th><th>End</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             ${rows.length ? rows.map(c=>{
-              const cfg = STATUS_CONFIG[c.status]||{};
-              const d   = daysUntil(c.end_date);
-              const expWarn = d!==null && d<=30 && c.status==='Active';
+              const cfg=STATUS_CONFIG[c.status]||{};
+              const dv=daysUntil(c.end_date);
+              const warn=dv!==null&&dv<=30&&c.status==='Active';
               return `<tr>
-                <td>
-                  <div class="flex items-center gap-2">
-                    ${expWarn?'<i class="fas fa-exclamation-circle text-red-400 text-xs" title="Expiring soon"></i>':''}
-                    <span class="font-semibold text-slate-800 cursor-pointer hover:text-blue-600 transition-colors" data-detail="${c.id}">${esc(c.title)}</span>
-                  </div>
-                </td>
+                <td><div class="flex items-center gap-2">${warn?'<i class="fas fa-exclamation-circle text-red-400 text-xs"></i>':''}<span class="font-semibold text-slate-800 cursor-pointer hover:text-blue-600" data-detail="${c.id}">${esc(c.title)}</span></div></td>
                 <td>${c.category?`<span class="text-xs font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">${esc(c.category)}</span>`:'—'}</td>
                 <td class="text-slate-500 text-xs">${esc(c.owner||'—')}</td>
-                <td class="text-slate-500 text-xs">${esc(c.department||'—')}</td>
-                <td class="font-semibold text-sm">${fmtCurrency(c.value, c.currency)}</td>
+                <td class="font-semibold text-sm">${fmtCurrency(c.value,c.currency)}</td>
                 <td class="text-xs text-slate-500">${fmt(c.start_date)}</td>
-                <td class="text-xs ${expWarn?'text-red-600 font-bold':''}">${fmt(c.end_date)}</td>
+                <td class="text-xs ${warn?'text-red-600 font-bold':''}">${fmt(c.end_date)}</td>
                 <td><span class="ch-badge ${cfg.bg||''} ${cfg.text||''}"><span class="w-1.5 h-1.5 rounded-full ${cfg.dot||'bg-slate-400'}"></span>${c.status||'—'}</span></td>
-                <td>
-                  <div class="flex gap-1">
-                    <button class="ch-btn ch-btn-secondary py-1 text-xs" data-detail="${c.id}"><i class="fas fa-eye"></i></button>
-                    <button class="ch-btn ch-btn-secondary py-1 text-xs" data-edit="${c.id}"><i class="fas fa-pen"></i></button>
-                    <button class="ch-btn ch-btn-danger py-1 text-xs" data-delete="${c.id}"><i class="fas fa-trash"></i></button>
-                  </div>
-                </td>
+                <td><div class="flex gap-1">
+                  <button class="ch-btn ch-btn-secondary py-1 text-xs" data-detail="${c.id}"><i class="fas fa-eye"></i></button>
+                  <button class="ch-btn ch-btn-secondary py-1 text-xs" data-edit="${c.id}"><i class="fas fa-pen"></i></button>
+                  <button class="ch-btn ch-btn-danger py-1 text-xs" data-delete="${c.id}"><i class="fas fa-trash"></i></button>
+                </div></td>
               </tr>`;
-            }).join('') : `<tr><td colspan="9" class="text-center py-12 text-slate-400 text-sm"><i class="fas fa-file-signature text-3xl mb-3 block opacity-30"></i>No contracts found</td></tr>`}
+            }).join('') : `<tr><td colspan="8" class="text-center py-12 text-slate-400 text-sm"><i class="fas fa-file-signature text-3xl mb-3 block opacity-30"></i>No contracts found</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -437,25 +460,19 @@ function renderList() {
 function renderDetail() {
   const c = state.contracts.find(x=>x.id===state.selectedId);
   if (!c) return `<div class="text-center py-20"><p class="text-slate-400">Contract not found.</p></div>`;
-
-  const cfg = STATUS_CONFIG[c.status]||{};
+  const cfg    = STATUS_CONFIG[c.status]||{};
   const curIdx = LIFECYCLE.indexOf(c.status);
-
-  const detailTabs = [
-    {id:'overview',    label:'Overview',    icon:'fa-info-circle'},
-    {id:'documents',   label:'Documents',   icon:'fa-folder-open'},
-    {id:'clauses',     label:'Clauses',     icon:'fa-gavel'},
-    {id:'milestones',  label:'Milestones',  icon:'fa-flag'},
-    {id:'financials',  label:'Financials',  icon:'fa-dollar-sign'},
-    {id:'approvals',   label:'Approvals',   icon:'fa-check-double'},
-    {id:'renewals',    label:'Renewals',    icon:'fa-redo'},
-    {id:'versions',    label:'Versions',    icon:'fa-code-branch'},
+  const tabs   = [
+    {id:'overview',   label:'Overview',   icon:'fa-info-circle'},
+    {id:'documents',  label:'Documents',  icon:'fa-folder-open'},
+    {id:'clauses',    label:'Clauses',    icon:'fa-gavel'},
+    {id:'milestones', label:'Milestones', icon:'fa-flag'},
+    {id:'financials', label:'Financials', icon:'fa-dollar-sign'},
+    {id:'approvals',  label:'Approvals',  icon:'fa-check-double'},
+    {id:'renewals',   label:'Renewals',   icon:'fa-redo'},
+    {id:'versions',   label:'Versions',   icon:'fa-code-branch'},
   ];
-
-  const detailTab = state.detailTab || 'overview';
-
   return `
-    <!-- Back + Title -->
     <div class="flex items-start justify-between mb-5 flex-wrap gap-3">
       <div class="flex items-center gap-3">
         <button class="ch-btn ch-btn-secondary py-1.5" data-nav="list"><i class="fas fa-arrow-left"></i>Back</button>
@@ -467,17 +484,13 @@ function renderDetail() {
       </div>
       <div class="flex gap-2">
         <button class="ch-btn ch-btn-secondary" data-edit="${c.id}"><i class="fas fa-pen"></i>Edit</button>
-        ${curIdx < LIFECYCLE.length-1 ? `<button class="ch-btn ch-btn-primary" data-advance="${c.id}"><i class="fas fa-arrow-right"></i>Advance to ${LIFECYCLE[curIdx+1]||''}</button>` : ''}
+        ${curIdx < LIFECYCLE.length-1 ? `<button class="ch-btn ch-btn-primary" data-advance="${c.id}"><i class="fas fa-arrow-right"></i>Advance to ${LIFECYCLE[curIdx+1]}</button>` : ''}
       </div>
     </div>
-
-    <!-- Lifecycle bar -->
     <div class="ch-card p-4 mb-5 overflow-x-auto">
       <div class="flex min-w-[700px]">
         ${LIFECYCLE.map((s,i)=>{
-          const done    = i < curIdx;
-          const current = i === curIdx;
-          const cfg2    = STATUS_CONFIG[s]||{};
+          const done=i<curIdx; const current=i===curIdx; const cfg2=STATUS_CONFIG[s]||{};
           return `<div class="ch-lifecycle-step">
             <div class="ch-lifecycle-dot ${done?'bg-emerald-500':current?cfg2.dot||'bg-blue-500':'border-2 border-slate-200 bg-white'}">
               ${done?'<i class="fas fa-check text-white text-[8px]"></i>':current?'<div class="w-2 h-2 bg-white rounded-full"></div>':''}
@@ -487,21 +500,19 @@ function renderDetail() {
         }).join('')}
       </div>
     </div>
-
-    <!-- Detail tabs -->
     <div class="ch-card overflow-hidden">
       <div class="flex border-b border-slate-100 overflow-x-auto">
-        ${detailTabs.map(t=>`<button class="ch-view-tab ${detailTab===t.id?'active':''} whitespace-nowrap" data-detail-tab="${t.id}"><i class="fas ${t.icon} mr-1.5"></i>${t.label}</button>`).join('')}
+        ${tabs.map(t=>`<button class="ch-view-tab ${state.detailTab===t.id?'active':''}" data-detail-tab="${t.id}"><i class="fas ${t.icon} mr-1.5"></i>${t.label}</button>`).join('')}
       </div>
       <div class="p-5">
-        ${detailTab === 'overview'   ? renderOverviewTab(c) :
-          detailTab === 'documents'  ? renderDocumentsTab(c) :
-          detailTab === 'clauses'    ? renderClausesTab(c) :
-          detailTab === 'milestones' ? renderMilestonesTab(c) :
-          detailTab === 'financials' ? renderFinancialsTab(c) :
-          detailTab === 'approvals'  ? renderDetailApprovalsTab(c) :
-          detailTab === 'renewals'   ? renderDetailRenewalsTab(c) :
-          detailTab === 'versions'   ? renderVersionsTab(c) : ''}
+        ${state.detailTab==='overview'   ? renderOverviewTab(c)         :
+          state.detailTab==='documents'  ? renderDocumentsTab(c)        :
+          state.detailTab==='clauses'    ? renderClausesTab(c)          :
+          state.detailTab==='milestones' ? renderMilestonesTab(c)       :
+          state.detailTab==='financials' ? renderFinancialsTab(c)       :
+          state.detailTab==='approvals'  ? renderDetailApprovalsTab(c)  :
+          state.detailTab==='renewals'   ? renderDetailRenewalsTab(c)   :
+          state.detailTab==='versions'   ? renderVersionsTab(c)         : ''}
       </div>
     </div>`;
 }
@@ -509,72 +520,130 @@ function renderDetail() {
 function renderOverviewTab(c) {
   const party = state.parties.find(p=>p.id===c.party_id);
   const fields = [
-    ['Title',        c.title],
-    ['Category',     c.category],
-    ['Type',         c.type_id],
-    ['Status',       c.status],
-    ['Owner',        c.owner],
-    ['Department',   c.department],
-    ['Party',        party ? `${party.name} (${party.type})` : c.party_id],
-    ['Start Date',   fmt(c.start_date)],
-    ['End Date',     fmt(c.end_date)],
-    ['Contract Value',fmtCurrency(c.value, c.currency)],
-    ['Currency',     c.currency],
-    ['Renewal Type', c.renewal_type],
-    ['Renewal Date', fmt(c.renewal_date)],
-    ['Notice Period',c.notice_period_days ? c.notice_period_days+' days' : '—'],
-    ['Linked Module',c.linked_module],
-    ['Linked Record',c.linked_record_id],
-    ['Notes',        c.notes],
-    ['Created',      fmt(c.created_at)],
-    ['Updated',      fmt(c.updated_at)],
+    ['Title',c.title],['Category',c.category],['Status',c.status],
+    ['Owner',c.owner],['Department',c.department],
+    ['Party',party?`${party.name} (${party.type})`:c.party_id],
+    ['Start Date',fmt(c.start_date)],['End Date',fmt(c.end_date)],
+    ['Contract Value',fmtCurrency(c.value,c.currency)],['Currency',c.currency],
+    ['Renewal Type',c.renewal_type],['Renewal Date',fmt(c.renewal_date)],
+    ['Notice Period',c.notice_period_days?c.notice_period_days+' days':''],
+    ['Linked Module',c.linked_module],['Linked Record',c.linked_record_id],
+    ['Notes',c.notes],['Created',fmt(c.created_at)],['Updated',fmt(c.updated_at)],
   ];
-  return `
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4">
-      ${fields.filter(([,v])=>v&&v!=='—').map(([l,v])=>`
-        <div class="border-b border-slate-50 pb-3">
-          <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">${l}</p>
-          <p class="text-sm font-semibold text-slate-800">${esc(v)}</p>
-        </div>`).join('')}
-    </div>`;
+  return `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4">
+    ${fields.filter(([,v])=>v&&v!=='—').map(([l,v])=>`
+      <div class="border-b border-slate-50 pb-3">
+        <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">${l}</p>
+        <p class="text-sm font-semibold text-slate-800">${esc(v)}</p>
+      </div>`).join('')}
+  </div>`;
 }
 
+// ── DOCUMENTS TAB (with cloud storage pickers) ────────────────
 function renderDocumentsTab(c) {
   const docs = state.documents;
+  const cfg  = getCsConfig();
+  const anyEnabled = Object.keys(PROVIDER_META).some(k=>cfg[k+'_enabled']);
+
+  // If no provider is set up yet → show recommendation banner
+  const recommendBanner = !anyEnabled ? `
+    <div class="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+      <i class="fas fa-lightbulb text-amber-500 mt-0.5 text-sm"></i>
+      <div class="flex-1">
+        <p class="text-sm font-bold text-amber-800 mb-0.5">💡 Recommended: Connect a Cloud Storage provider</p>
+        <p class="text-xs text-amber-700 mb-2">Store actual contract files on Google Drive, OneDrive, Dropbox, or Supabase Storage — and link them here for one-click access and inline previews. For most teams, <strong>Supabase Storage</strong> is the easiest since it reuses your existing database connection with zero extra setup.</p>
+        <button class="ch-btn ch-btn-secondary py-1 text-xs" data-nav="cloud"><i class="fas fa-cloud mr-1.5"></i>Set Up Cloud Storage</button>
+      </div>
+    </div>` : '';
+
+  // Provider picker buttons — only show enabled ones + always show URL paste
+  const pickerButtons = `
+    <div class="flex flex-wrap gap-2 mb-3">
+      ${cfg.google_drive_enabled ? `<button class="ch-btn ch-btn-secondary text-xs py-1.5" id="pick-gdrive"><i class="fab fa-google-drive text-green-600 mr-1"></i>Google Drive</button>` : ''}
+      ${cfg.onedrive_enabled     ? `<button class="ch-btn ch-btn-secondary text-xs py-1.5" id="pick-onedrive"><i class="fab fa-microsoft text-blue-600 mr-1"></i>OneDrive</button>` : ''}
+      ${cfg.dropbox_enabled      ? `<button class="ch-btn ch-btn-secondary text-xs py-1.5" id="pick-dropbox"><i class="fab fa-dropbox text-sky-500 mr-1"></i>Dropbox</button>` : ''}
+      ${cfg.supabase_enabled     ? `<button class="ch-btn ch-btn-secondary text-xs py-1.5" id="pick-upload"><i class="fas fa-upload text-teal-600 mr-1"></i>Upload File</button><input type="file" id="doc-file-input" class="hidden" accept=".pdf,.doc,.docx,.xlsx,.png,.jpg">` : ''}
+    </div>`;
+
   return `
+    ${recommendBanner}
     <div class="flex justify-between items-center mb-4">
       <h4 class="text-sm font-bold text-slate-700"><i class="fas fa-folder-open mr-2 text-amber-500"></i>${docs.length} Documents</h4>
       <button class="ch-btn ch-btn-primary" id="add-doc"><i class="fas fa-plus"></i>Add Document</button>
     </div>
-    <div id="doc-form" class="hidden ch-card p-4 mb-4 bg-slate-50 border-dashed">
+
+    <div id="doc-form" class="hidden ch-card p-4 mb-4 bg-slate-50">
+      ${pickerButtons}
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <div><label class="ch-label">Type</label><select class="ch-input" id="doc-type">${DOC_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
         <div><label class="ch-label">Title</label><input class="ch-input" id="doc-title" placeholder="Document title"></div>
-        <div><label class="ch-label">File URL</label><input class="ch-input" id="doc-url" placeholder="https://..."></div>
+        <div class="md:col-span-2"><label class="ch-label">File URL <span class="normal-case font-normal">(or use a picker above)</span></label><input class="ch-input" id="doc-url" placeholder="https://drive.google.com/… or any link"></div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
         <div><label class="ch-label">Version</label><input class="ch-input" id="doc-version" placeholder="1.0"></div>
+        <input type="hidden" id="doc-provider">
+        <input type="hidden" id="doc-file-id">
       </div>
       <div class="flex gap-2">
-        <button class="ch-btn ch-btn-primary" id="save-doc"><i class="fas fa-save"></i>Save</button>
+        <button class="ch-btn ch-btn-primary" id="save-doc"><i class="fas fa-save"></i>Save Document</button>
         <button class="ch-btn ch-btn-secondary" id="cancel-doc">Cancel</button>
       </div>
     </div>
+
+    <!-- Preview panel -->
+    ${state.previewDoc ? renderDocPreview(state.previewDoc) : ''}
+
     ${docs.length ? `<div class="space-y-2">
-      ${docs.map(d=>`<div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
-            <i class="fas fa-file-alt text-blue-500 text-xs"></i>
+      ${docs.map(d=>{
+        const providerIcon = {
+          google_drive:'fab fa-google-drive text-green-600',
+          onedrive:'fab fa-microsoft text-blue-600',
+          dropbox:'fab fa-dropbox text-sky-500',
+          supabase:'fas fa-database text-teal-600',
+        }[d.storage_provider] || 'fas fa-link text-slate-400';
+        return `<div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center">
+              <i class="${providerIcon} text-sm"></i>
+            </div>
+            <div>
+              <p class="text-sm font-bold text-slate-800">${esc(d.title||d.doc_type||'Untitled')}</p>
+              <p class="text-xs text-slate-400">${esc(d.doc_type||'')} · v${esc(d.version||'1.0')} · ${fmt(d.created_at)}</p>
+            </div>
           </div>
-          <div>
-            <p class="text-sm font-bold text-slate-800">${esc(d.title||d.doc_type)}</p>
-            <p class="text-xs text-slate-400">${esc(d.doc_type)} · v${esc(d.version||'1.0')} · ${fmt(d.created_at)}</p>
+          <div class="flex gap-2">
+            ${d.file_url ? `
+              <button class="ch-btn ch-btn-secondary py-1 text-xs" data-preview-doc='${JSON.stringify({id:d.id,title:d.title||d.doc_type,file_url:d.file_url,storage_provider:d.storage_provider,storage_file_id:d.storage_file_id}).replace(/'/g,"&#39;")}'>
+                <i class="fas fa-eye"></i>Preview
+              </button>
+              <a href="${esc(d.file_url)}" target="_blank" class="ch-btn ch-btn-secondary py-1 text-xs"><i class="fas fa-external-link-alt"></i>Open</a>` : ''}
+            <button class="ch-btn ch-btn-danger py-1 text-xs" data-del-doc="${d.id}"><i class="fas fa-trash"></i></button>
           </div>
-        </div>
-        <div class="flex gap-2">
-          ${d.file_url?`<a href="${esc(d.file_url)}" target="_blank" class="ch-btn ch-btn-secondary py-1 text-xs"><i class="fas fa-external-link-alt"></i>Open</a>`:''}
-          <button class="ch-btn ch-btn-danger py-1 text-xs" data-del-doc="${d.id}"><i class="fas fa-trash"></i></button>
-        </div>
-      </div>`).join('')}
+        </div>`;
+      }).join('')}
     </div>` : `<div class="text-center py-10 text-slate-400 text-sm"><i class="fas fa-folder-open text-2xl mb-2 block opacity-30"></i>No documents yet</div>`}`;
+}
+
+function renderDocPreview(doc) {
+  let previewHtml = '';
+  if (doc.storage_provider === 'google_drive' && doc.storage_file_id) {
+    previewHtml = `<iframe src="https://drive.google.com/file/d/${esc(doc.storage_file_id)}/preview" class="w-full" style="height:500px;border:none;border-radius:8px;" allowfullscreen></iframe>`;
+  } else if (doc.storage_provider === 'onedrive' && doc.file_url) {
+    const embedUrl = doc.file_url.replace('view.aspx','preview.aspx');
+    previewHtml = `<iframe src="${esc(embedUrl)}" class="w-full" style="height:500px;border:none;border-radius:8px;"></iframe>`;
+  } else if (doc.file_url && (doc.file_url.endsWith('.pdf') || doc.storage_provider === 'supabase')) {
+    previewHtml = `<iframe src="${esc(doc.file_url)}" class="w-full" style="height:500px;border:none;border-radius:8px;"></iframe>`;
+  } else {
+    previewHtml = `<div class="text-center py-10"><i class="fas fa-file-alt text-3xl text-slate-300 mb-3"></i><p class="text-sm text-slate-500 mb-3">Inline preview not available for this file type.</p><a href="${esc(doc.file_url||'#')}" target="_blank" class="ch-btn ch-btn-primary"><i class="fas fa-external-link-alt"></i>Open in new tab</a></div>`;
+  }
+  return `
+    <div class="ch-card overflow-hidden mb-4">
+      <div class="ch-section-header">
+        <h4 class="text-sm font-bold text-slate-800"><i class="fas fa-eye mr-2 text-blue-500"></i>${esc(doc.title||'Preview')}</h4>
+        <button class="ch-btn ch-btn-secondary py-1 text-xs" id="close-preview"><i class="fas fa-times"></i>Close</button>
+      </div>
+      <div class="p-3">${previewHtml}</div>
+    </div>`;
 }
 
 function renderClausesTab(c) {
@@ -584,7 +653,7 @@ function renderClausesTab(c) {
       <h4 class="text-sm font-bold text-slate-700"><i class="fas fa-gavel mr-2 text-violet-500"></i>${clauses.length} Clauses</h4>
       <button class="ch-btn ch-btn-primary" id="add-clause"><i class="fas fa-plus"></i>Add Clause</button>
     </div>
-    <div id="clause-form" class="hidden ch-card p-4 mb-4 bg-slate-50 border-dashed">
+    <div id="clause-form" class="hidden ch-card p-4 mb-4 bg-slate-50">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
         <div><label class="ch-label">Type</label><select class="ch-input" id="clause-type">${CLAUSE_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
         <div><label class="ch-label">Title</label><input class="ch-input" id="clause-title" placeholder="Clause title"></div>
@@ -611,15 +680,14 @@ function renderClausesTab(c) {
     </div>` : `<div class="text-center py-10 text-slate-400 text-sm"><i class="fas fa-gavel text-2xl mb-2 block opacity-30"></i>No clauses yet</div>`}`;
 }
 
-function renderMilestonesTab(c) {
+function renderMilestonesTab() {
   const milestones = state.milestones;
-  const STATUS_M = ['Pending','In Progress','Completed','Overdue'];
   return `
     <div class="flex justify-between items-center mb-4">
       <h4 class="text-sm font-bold text-slate-700"><i class="fas fa-flag mr-2 text-teal-500"></i>${milestones.length} Milestones</h4>
       <button class="ch-btn ch-btn-primary" id="add-milestone"><i class="fas fa-plus"></i>Add Milestone</button>
     </div>
-    <div id="milestone-form" class="hidden ch-card p-4 mb-4 bg-slate-50 border-dashed">
+    <div id="milestone-form" class="hidden ch-card p-4 mb-4 bg-slate-50">
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <div><label class="ch-label">Event</label><input class="ch-input" id="ms-event" placeholder="e.g. Renewal Reminder"></div>
         <div><label class="ch-label">Date</label><input type="date" class="ch-input" id="ms-date"></div>
@@ -633,11 +701,11 @@ function renderMilestonesTab(c) {
     </div>
     ${milestones.length ? `<div class="space-y-2">
       ${milestones.map(m=>{
-        const d = daysUntil(m.date);
+        const dv=daysUntil(m.date);
         return `<div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
           <div class="flex items-center gap-3">
-            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${m.status==='Completed'?'bg-emerald-100 text-emerald-600':d!==null&&d<0?'bg-red-100 text-red-600':'bg-blue-50 text-blue-600'}">
-              <i class="fas ${m.status==='Completed'?'fa-check':d!==null&&d<0?'fa-exclamation':'fa-flag'}"></i>
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${m.status==='Completed'?'bg-emerald-100 text-emerald-600':dv!==null&&dv<0?'bg-red-100 text-red-600':'bg-blue-50 text-blue-600'}">
+              <i class="fas ${m.status==='Completed'?'fa-check':dv!==null&&dv<0?'fa-exclamation':'fa-flag'}"></i>
             </div>
             <div>
               <p class="text-sm font-bold text-slate-800">${esc(m.event)}</p>
@@ -645,7 +713,7 @@ function renderMilestonesTab(c) {
             </div>
           </div>
           <div class="flex items-center gap-2">
-            ${d!==null?`<span class="text-xs font-semibold ${d<0?'text-red-600':d<=7?'text-amber-600':'text-slate-500'}">${d<0?`${Math.abs(d)}d overdue`:d===0?'Today':`In ${d}d`}</span>`:''}
+            ${dv!==null?`<span class="text-xs font-semibold ${dv<0?'text-red-600':dv<=7?'text-amber-600':'text-slate-500'}">${dv<0?Math.abs(dv)+'d overdue':dv===0?'Today':'In '+dv+'d'}</span>`:''}
             <button class="ch-btn ch-btn-success py-0.5 px-2 text-xs" data-complete-ms="${m.id}"><i class="fas fa-check"></i></button>
             <button class="ch-btn ch-btn-danger py-0.5 px-2 text-xs" data-del-ms="${m.id}"><i class="fas fa-trash"></i></button>
           </div>
@@ -661,11 +729,11 @@ function renderFinancialsTab(c) {
     <div class="flex justify-between items-center mb-4">
       <div>
         <h4 class="text-sm font-bold text-slate-700"><i class="fas fa-dollar-sign mr-2 text-emerald-500"></i>${fin.length} Payment Terms</h4>
-        ${fin.length?`<p class="text-xs text-slate-500 mt-0.5">Total: <strong>${fmtCurrency(total, c.currency)}</strong></p>`:''}
+        ${fin.length?`<p class="text-xs text-slate-500 mt-0.5">Total: <strong>${fmtCurrency(total,c.currency)}</strong></p>`:''}
       </div>
       <button class="ch-btn ch-btn-primary" id="add-financial"><i class="fas fa-plus"></i>Add Payment Term</button>
     </div>
-    <div id="financial-form" class="hidden ch-card p-4 mb-4 bg-slate-50 border-dashed">
+    <div id="financial-form" class="hidden ch-card p-4 mb-4 bg-slate-50">
       <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
         <div><label class="ch-label">Payment Type</label><input class="ch-input" id="fin-type" placeholder="e.g. Service Fee"></div>
         <div><label class="ch-label">Amount</label><input type="number" class="ch-input" id="fin-amount" placeholder="0"></div>
@@ -683,7 +751,7 @@ function renderFinancialsTab(c) {
       <tbody>
         ${fin.map(f=>`<tr>
           <td class="font-semibold">${esc(f.payment_type)}</td>
-          <td>${fmtCurrency(f.amount, f.currency||c.currency)}</td>
+          <td>${fmtCurrency(f.amount,f.currency||c.currency)}</td>
           <td>${esc(f.frequency)}</td>
           <td>${fmt(f.due_date)}</td>
           <td>${f.status?`<span class="ch-badge ${f.status==='Paid'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}">${esc(f.status)}</span>`:'—'}</td>
@@ -693,14 +761,14 @@ function renderFinancialsTab(c) {
     </table>` : `<div class="text-center py-10 text-slate-400 text-sm"><i class="fas fa-dollar-sign text-2xl mb-2 block opacity-30"></i>No payment terms yet</div>`}`;
 }
 
-function renderDetailApprovalsTab(c) {
+function renderDetailApprovalsTab() {
   const apps = state.approvals;
   return `
     <div class="flex justify-between items-center mb-4">
       <h4 class="text-sm font-bold text-slate-700"><i class="fas fa-check-double mr-2 text-violet-500"></i>${apps.length} Approvals</h4>
       <button class="ch-btn ch-btn-primary" id="add-approval"><i class="fas fa-plus"></i>Request Approval</button>
     </div>
-    <div id="approval-form" class="hidden ch-card p-4 mb-4 bg-slate-50 border-dashed">
+    <div id="approval-form" class="hidden ch-card p-4 mb-4 bg-slate-50">
       <div class="grid grid-cols-2 gap-3 mb-3">
         <div><label class="ch-label">Approver Name</label><input class="ch-input" id="app-approver" placeholder="Full name"></div>
         <div><label class="ch-label">Role</label><input class="ch-input" id="app-role" placeholder="e.g. Legal, Finance"></div>
@@ -712,12 +780,11 @@ function renderDetailApprovalsTab(c) {
     </div>
     ${apps.length ? `<div class="space-y-2">
       ${apps.map(a=>{
-        const cfg2 = {Pending:{bg:'bg-amber-50',text:'text-amber-700',icon:'fa-hourglass-half'},Approved:{bg:'bg-emerald-50',text:'text-emerald-700',icon:'fa-check-circle'},Rejected:{bg:'bg-red-50',text:'text-red-600',icon:'fa-times-circle'}}[a.status]||{bg:'bg-slate-50',text:'text-slate-700',icon:'fa-circle'};
+        const aMap={Pending:{bg:'bg-amber-50',text:'text-amber-700',icon:'fa-hourglass-half'},Approved:{bg:'bg-emerald-50',text:'text-emerald-700',icon:'fa-check-circle'},Rejected:{bg:'bg-red-50',text:'text-red-600',icon:'fa-times-circle'}};
+        const ac=aMap[a.status]||{bg:'bg-slate-50',text:'text-slate-700',icon:'fa-circle'};
         return `<div class="flex items-start justify-between p-3.5 rounded-xl border border-slate-100 bg-slate-50">
           <div class="flex items-start gap-3">
-            <div class="w-8 h-8 ${cfg2.bg} rounded-full flex items-center justify-center">
-              <i class="fas ${cfg2.icon} ${cfg2.text} text-sm"></i>
-            </div>
+            <div class="w-8 h-8 ${ac.bg} rounded-full flex items-center justify-center"><i class="fas ${ac.icon} ${ac.text} text-sm"></i></div>
             <div>
               <p class="text-sm font-bold text-slate-800">${esc(a.approver)}</p>
               <p class="text-xs text-slate-400">${esc(a.role||'—')} ${a.approved_at?`· ${fmt(a.approved_at)}`:''}</p>
@@ -725,7 +792,7 @@ function renderDetailApprovalsTab(c) {
             </div>
           </div>
           <div class="flex items-center gap-2">
-            <span class="ch-badge ${cfg2.bg} ${cfg2.text}">${a.status}</span>
+            <span class="ch-badge ${ac.bg} ${ac.text}">${a.status}</span>
             ${a.status==='Pending'?`
               <button class="ch-btn ch-btn-success py-0.5 px-2 text-xs" data-approve-app="${a.id}"><i class="fas fa-check"></i>Approve</button>
               <button class="ch-btn ch-btn-danger py-0.5 px-2 text-xs" data-reject-app="${a.id}"><i class="fas fa-times"></i>Reject</button>`:''}
@@ -743,7 +810,7 @@ function renderDetailRenewalsTab(c) {
       <h4 class="text-sm font-bold text-slate-700"><i class="fas fa-redo mr-2 text-teal-500"></i>${renewals.length} Renewals</h4>
       <button class="ch-btn ch-btn-primary" id="add-renewal"><i class="fas fa-plus"></i>Add Renewal</button>
     </div>
-    <div id="renewal-form" class="hidden ch-card p-4 mb-4 bg-slate-50 border-dashed">
+    <div id="renewal-form" class="hidden ch-card p-4 mb-4 bg-slate-50">
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <div><label class="ch-label">Renewal Date</label><input type="date" class="ch-input" id="ren-date"></div>
         <div><label class="ch-label">Type</label><select class="ch-input" id="ren-type">${RENEWAL_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
@@ -756,7 +823,7 @@ function renderDetailRenewalsTab(c) {
       </div>
     </div>
     ${renewals.length ? `<table class="ch-table">
-      <thead><tr><th>Renewal Date</th><th>Type</th><th>New Value</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+      <thead><tr><th>Date</th><th>Type</th><th>New Value</th><th>Status</th><th>Notes</th><th></th></tr></thead>
       <tbody>
         ${renewals.map(r=>`<tr>
           <td>${fmt(r.renewal_date)}</td>
@@ -764,30 +831,34 @@ function renderDetailRenewalsTab(c) {
           <td>${r.new_value?fmtCurrency(r.new_value,c.currency):'—'}</td>
           <td><span class="ch-badge ${r.status==='Completed'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}">${esc(r.status)}</span></td>
           <td class="text-xs text-slate-400">${esc(r.notes||'—')}</td>
-          <td>
+          <td><div class="flex gap-1">
             ${r.status==='Pending'?`<button class="ch-btn ch-btn-success py-0.5 px-2 text-xs" data-complete-ren="${r.id}"><i class="fas fa-check"></i>Done</button>`:''}
-            <button class="ch-btn ch-btn-danger py-0.5 px-2 text-xs ml-1" data-del-ren="${r.id}"><i class="fas fa-trash"></i></button>
-          </td>
+            <button class="ch-btn ch-btn-danger py-0.5 px-2 text-xs" data-del-ren="${r.id}"><i class="fas fa-trash"></i></button>
+          </div></td>
         </tr>`).join('')}
       </tbody>
     </table>` : `<div class="text-center py-10 text-slate-400 text-sm"><i class="fas fa-redo text-2xl mb-2 block opacity-30"></i>No renewals yet</div>`}`;
 }
 
-function renderVersionsTab(c) {
+function renderVersionsTab() {
   const vers = state.versions;
+  const cfg  = getCsConfig();
+  const anyEnabled = Object.keys(PROVIDER_META).some(k=>cfg[k+'_enabled']);
   return `
     <div class="flex justify-between items-center mb-4">
       <h4 class="text-sm font-bold text-slate-700"><i class="fas fa-code-branch mr-2 text-blue-500"></i>${vers.length} Versions</h4>
       <button class="ch-btn ch-btn-primary" id="add-version"><i class="fas fa-plus"></i>Add Version</button>
     </div>
-    <div id="version-form" class="hidden ch-card p-4 mb-4 bg-slate-50 border-dashed">
+    <div id="version-form" class="hidden ch-card p-4 mb-4 bg-slate-50">
+      ${anyEnabled&&cfg.supabase_enabled?`<div class="flex gap-2 mb-3"><button class="ch-btn ch-btn-secondary text-xs py-1.5" id="ver-upload"><i class="fas fa-upload text-teal-600 mr-1"></i>Upload File</button><input type="file" id="ver-file-input" class="hidden"></div>`:''}
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <div><label class="ch-label">Version No.</label><input class="ch-input" id="ver-num" placeholder="e.g. 1.1"></div>
         <div><label class="ch-label">Title</label><input class="ch-input" id="ver-title" placeholder="Version title"></div>
         <div><label class="ch-label">Changed By</label><input class="ch-input" id="ver-by" placeholder="Name"></div>
-        <div><label class="ch-label">File URL</label><input class="ch-input" id="ver-url" placeholder="https://..."></div>
+        <div><label class="ch-label">File URL</label><input class="ch-input" id="ver-url" placeholder="https://…"></div>
+        <input type="hidden" id="ver-provider">
       </div>
-      <div class="mb-3"><label class="ch-label">Change Summary</label><textarea class="ch-input h-16 resize-none" id="ver-summary" placeholder="What changed in this version…"></textarea></div>
+      <div class="mb-3"><label class="ch-label">Change Summary</label><textarea class="ch-input h-16 resize-none" id="ver-summary" placeholder="What changed…"></textarea></div>
       <div class="flex gap-2">
         <button class="ch-btn ch-btn-primary" id="save-version"><i class="fas fa-save"></i>Save</button>
         <button class="ch-btn ch-btn-secondary" id="cancel-version">Cancel</button>
@@ -795,9 +866,7 @@ function renderVersionsTab(c) {
     </div>
     ${vers.length ? `<div class="space-y-2">
       ${vers.map((v,i)=>`<div class="flex items-start gap-3 p-3.5 rounded-xl border border-slate-100 bg-slate-50">
-        <div class="w-8 h-8 ${i===0?'bg-blue-100 text-blue-700':'bg-slate-100 text-slate-500'} rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
-          v${esc(v.version||'?')}
-        </div>
+        <div class="w-8 h-8 ${i===0?'bg-blue-100 text-blue-700':'bg-slate-100 text-slate-500'} rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">v${esc(v.version||'?')}</div>
         <div class="flex-1">
           <div class="flex items-center gap-2 mb-0.5">
             <p class="text-sm font-bold text-slate-800">${esc(v.title||'Untitled')}</p>
@@ -826,7 +895,7 @@ function renderParties() {
           <div><label class="ch-label">Name</label><input class="ch-input" id="party-name" placeholder="Company/Person name"></div>
           <div><label class="ch-label">Type</label><select class="ch-input" id="party-type">${PARTY_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
           <div><label class="ch-label">Email</label><input class="ch-input" id="party-email" type="email" placeholder="email@example.com"></div>
-          <div><label class="ch-label">Phone</label><input class="ch-input" id="party-phone" placeholder="+1 ..."></div>
+          <div><label class="ch-label">Phone</label><input class="ch-input" id="party-phone" placeholder="+1 …"></div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
           <div><label class="ch-label">Contact Person</label><input class="ch-input" id="party-contact" placeholder="Primary contact"></div>
@@ -859,7 +928,7 @@ function renderParties() {
 
 // ── APPROVALS VIEW ────────────────────────────────────────────
 function renderApprovalsView() {
-  const apps = state.approvals;
+  const apps     = state.approvals;
   const pending  = apps.filter(a=>a.status==='Pending');
   const approved = apps.filter(a=>a.status==='Approved');
   const rejected = apps.filter(a=>a.status==='Rejected');
@@ -869,35 +938,31 @@ function renderApprovalsView() {
          ['Approved',approved,'bg-emerald-50 border-emerald-200','text-emerald-700','fa-check-circle'],
          ['Rejected',rejected,'bg-red-50 border-red-200','text-red-700','fa-times-circle']].map(([label,rows,bg,tc,icon])=>`
         <div class="ch-card border ${bg} p-4">
-          <div class="flex items-center gap-2 mb-1">
-            <i class="fas ${icon} ${tc}"></i>
-            <span class="text-sm font-bold ${tc}">${label}</span>
-          </div>
+          <div class="flex items-center gap-2 mb-1"><i class="fas ${icon} ${tc}"></i><span class="text-sm font-bold ${tc}">${label}</span></div>
           <p class="text-3xl font-extrabold ${tc}">${rows.length}</p>
         </div>`).join('')}
     </div>
     <div class="ch-card overflow-hidden">
       <div class="ch-section-header"><h3 class="text-sm font-bold text-slate-800">All Approvals</h3></div>
       <table class="ch-table">
-        <thead><tr><th>Contract</th><th>Approver</th><th>Role</th><th>Status</th><th>Date</th><th>Comments</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Contract</th><th>Approver</th><th>Role</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
         <tbody>
           ${apps.length ? apps.map(a=>{
-            const contract = state.contracts.find(c=>c.id===a.contract_id);
-            const cfg2 = {Pending:{bg:'bg-amber-50',text:'text-amber-700'},Approved:{bg:'bg-emerald-50',text:'text-emerald-700'},Rejected:{bg:'bg-red-50',text:'text-red-600'}}[a.status]||{};
+            const contract=state.contracts.find(c=>c.id===a.contract_id);
+            const aMap={Pending:{bg:'bg-amber-50',text:'text-amber-700'},Approved:{bg:'bg-emerald-50',text:'text-emerald-700'},Rejected:{bg:'bg-red-50',text:'text-red-600'}};
+            const ac=aMap[a.status]||{};
             return `<tr>
               <td><span class="font-semibold text-slate-800 text-xs">${esc(contract?.title||a.contract_id)}</span></td>
               <td class="font-semibold text-sm">${esc(a.approver)}</td>
               <td class="text-xs text-slate-500">${esc(a.role||'—')}</td>
-              <td><span class="ch-badge ${cfg2.bg||''} ${cfg2.text||''}">${a.status}</span></td>
+              <td><span class="ch-badge ${ac.bg||''} ${ac.text||''}">${a.status}</span></td>
               <td class="text-xs text-slate-400">${a.approved_at?fmt(a.approved_at):'—'}</td>
-              <td class="text-xs text-slate-500 max-w-[120px] truncate">${esc(a.comments||'—')}</td>
-              <td>
-                ${a.status==='Pending'?`
-                  <button class="ch-btn ch-btn-success py-0.5 px-2 text-xs" data-approve-app="${a.id}"><i class="fas fa-check"></i></button>
-                  <button class="ch-btn ch-btn-danger py-0.5 px-2 text-xs ml-1" data-reject-app="${a.id}"><i class="fas fa-times"></i></button>`:'—'}
+              <td>${a.status==='Pending'?`
+                <button class="ch-btn ch-btn-success py-0.5 px-2 text-xs" data-approve-app="${a.id}"><i class="fas fa-check"></i></button>
+                <button class="ch-btn ch-btn-danger py-0.5 px-2 text-xs ml-1" data-reject-app="${a.id}"><i class="fas fa-times"></i></button>`:'—'}
               </td>
             </tr>`;
-          }).join('') : `<tr><td colspan="7" class="text-center py-10 text-slate-400 text-sm">No approvals yet</td></tr>`}
+          }).join('') : `<tr><td colspan="6" class="text-center py-10 text-slate-400 text-sm">No approvals yet</td></tr>`}
         </tbody>
       </table>
     </div>`;
@@ -908,22 +973,20 @@ function renderRenewalsView() {
   const renewals = state.renewals;
   return `
     <div class="ch-card overflow-hidden">
-      <div class="ch-section-header">
-        <h3 class="text-sm font-bold text-slate-800"><i class="fas fa-redo mr-2 text-teal-500"></i>Upcoming Renewals</h3>
-      </div>
+      <div class="ch-section-header"><h3 class="text-sm font-bold text-slate-800"><i class="fas fa-redo mr-2 text-teal-500"></i>Upcoming Renewals</h3></div>
       <table class="ch-table">
         <thead><tr><th>Contract</th><th>Renewal Date</th><th>Type</th><th>New Value</th><th>Status</th><th>Days Left</th></tr></thead>
         <tbody>
           ${renewals.length ? renewals.map(r=>{
-            const contract = state.contracts.find(c=>c.id===r.contract_id);
-            const d = daysUntil(r.renewal_date);
+            const contract=state.contracts.find(c=>c.id===r.contract_id);
+            const dv=daysUntil(r.renewal_date);
             return `<tr>
               <td><span class="font-semibold text-slate-800 cursor-pointer hover:text-blue-600" data-detail="${r.contract_id}">${esc(contract?.title||r.contract_id)}</span></td>
               <td>${fmt(r.renewal_date)}</td>
               <td>${esc(r.type)}</td>
               <td>${r.new_value?fmtCurrency(r.new_value):'—'}</td>
               <td><span class="ch-badge ${r.status==='Completed'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}">${esc(r.status)}</span></td>
-              <td><span class="text-sm font-bold ${d!==null&&d<=7?'text-red-600':d!==null&&d<=30?'text-amber-600':'text-slate-600'}">${d!==null?(d<0?`${Math.abs(d)}d overdue`:d===0?'Today':`${d}d`):'—'}</span></td>
+              <td><span class="text-sm font-bold ${dv!==null&&dv<=7?'text-red-600':dv!==null&&dv<=30?'text-amber-600':'text-slate-600'}">${dv!==null?(dv<0?Math.abs(dv)+'d overdue':dv===0?'Today':dv+'d'):'—'}</span></td>
             </tr>`;
           }).join('') : `<tr><td colspan="6" class="text-center py-10 text-slate-400 text-sm">No upcoming renewals</td></tr>`}
         </tbody>
@@ -931,9 +994,130 @@ function renderRenewalsView() {
     </div>`;
 }
 
+// ── CLOUD STORAGE SETUP VIEW ──────────────────────────────────
+function renderCloudSetup() {
+  const cfg = getCsConfig();
+  const selProvider = state.cloudProvider || 'supabase'; // default to recommended
+  const meta = PROVIDER_META[selProvider];
+
+  const providerCards = Object.entries(PROVIDER_META).map(([key, m]) => {
+    const isEnabled = cfg[key+'_enabled'];
+    const isSelected = selProvider === key;
+    return `<div class="ch-provider-card ${isSelected?'active':''}" data-select-provider="${key}">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <i class="${m.icon} ${m.color} text-lg"></i>
+          <span class="text-sm font-bold text-slate-800">${m.label}</span>
+        </div>
+        ${isEnabled ? '<span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><i class="fas fa-check-circle"></i>Connected</span>' : ''}
+        ${key==='supabase'?'<span class="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">⭐ Recommended</span>':''}
+      </div>
+      <p class="text-xs text-slate-500">${m.recommended_for}</p>
+    </div>`;
+  }).join('');
+
+  // Setup steps for the selected provider
+  const steps = meta.steps.map((s, i) => `
+    <div class="flex items-start gap-3">
+      <span class="ch-step-num">${i+1}</span>
+      <p class="text-sm text-slate-700 leading-relaxed">${s}</p>
+    </div>`).join('');
+
+  // Credential fields
+  const fields = meta.fields.map(f => `
+    <div>
+      <label class="ch-label">${f.label}</label>
+      <input type="${f.type}" class="ch-input" id="cs-field-${f.key}" value="${esc(cfg[f.key]||'')}" placeholder="${esc(f.placeholder)}">
+    </div>`).join('');
+
+  const isCurrentlyEnabled = cfg[selProvider+'_enabled'];
+
+  return `
+    <div class="mb-6">
+      <h2 class="text-lg font-extrabold text-slate-900 mb-1">Cloud Storage Setup</h2>
+      <p class="text-sm text-slate-500">Connect a cloud storage provider to attach and preview real contract files directly inside the Contract Hub. Files stay in your chosen service — Work Volt only stores the link and provider metadata.</p>
+    </div>
+
+    <!-- Recommended approach banner -->
+    <div class="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl mb-6 flex items-start gap-3">
+      <i class="fas fa-star text-blue-500 mt-0.5"></i>
+      <div>
+        <p class="text-sm font-bold text-blue-900 mb-1">⭐ Our recommendation for most teams: Supabase Storage</p>
+        <p class="text-xs text-blue-700">Since you already have Supabase connected as your database, Supabase Storage reuses the same project and connection — no extra accounts, no OAuth setup, just create a bucket and go. Choose Google Drive or OneDrive only if your team already stores files there.</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Provider selector -->
+      <div class="space-y-3">
+        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Choose Provider</h3>
+        ${providerCards}
+      </div>
+
+      <!-- Setup guide + credential form -->
+      <div class="lg:col-span-2 ch-card overflow-hidden">
+        <div class="ch-section-header">
+          <div class="flex items-center gap-2">
+            <i class="${meta.icon} ${meta.color} text-lg"></i>
+            <h3 class="text-sm font-bold text-slate-800">${meta.label} Setup Guide</h3>
+          </div>
+          ${isCurrentlyEnabled ? `<span class="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200"><i class="fas fa-check-circle"></i>Connected</span>` : `<span class="text-xs text-slate-400">Not configured</span>`}
+        </div>
+        <div class="p-5">
+          <!-- Steps -->
+          <div class="space-y-3 mb-6">
+            <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Setup Steps</h4>
+            ${steps}
+          </div>
+
+          ${meta.fields.length ? `
+          <!-- Credentials form -->
+          <div class="border-t border-slate-100 pt-5 mb-5">
+            <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Your Credentials</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              ${fields}
+            </div>
+          </div>` : `
+          <!-- Supabase: no extra credentials needed -->
+          <div class="border-t border-slate-100 pt-5 mb-5">
+            <div class="p-3 bg-teal-50 border border-teal-200 rounded-lg">
+              <p class="text-xs font-bold text-teal-800 mb-1"><i class="fas fa-info-circle mr-1"></i>No extra credentials needed</p>
+              <p class="text-xs text-teal-700">Supabase Storage reuses the database connection you already set up. Just make sure you've created the <code>contracts</code> bucket in your Supabase dashboard (Storage → New bucket → name: <code>contracts</code>, Private).</p>
+            </div>
+          </div>`}
+
+          <!-- Enable / Disable toggle -->
+          <div class="flex items-center gap-3">
+            <button class="ch-btn ch-btn-primary" id="cs-save">
+              <i class="fas fa-${isCurrentlyEnabled?'check':'plug'}"></i>
+              ${isCurrentlyEnabled ? 'Update & Keep Connected' : `Connect ${meta.label}`}
+            </button>
+            ${isCurrentlyEnabled ? `<button class="ch-btn ch-btn-danger" id="cs-disconnect"><i class="fas fa-unlink"></i>Disconnect</button>` : ''}
+            <span class="text-xs text-slate-400" id="cs-status-msg"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- All providers status summary -->
+    <div class="ch-card overflow-hidden mt-6">
+      <div class="ch-section-header"><h3 class="text-sm font-bold text-slate-800">Connection Status</h3></div>
+      <div class="grid grid-cols-2 md:grid-cols-4 divide-x divide-slate-100">
+        ${Object.entries(PROVIDER_META).map(([key,m])=>{
+          const enabled = cfg[key+'_enabled'];
+          return `<div class="p-4 text-center">
+            <i class="${m.icon} ${enabled?m.color:'text-slate-300'} text-xl mb-2 block"></i>
+            <p class="text-xs font-bold ${enabled?'text-slate-800':'text-slate-400'}">${m.label}</p>
+            <p class="text-[10px] font-semibold mt-1 ${enabled?'text-emerald-600':'text-slate-300'}">${enabled?'● Connected':'○ Not set up'}</p>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
 // ── CONTRACT FORM MODAL ───────────────────────────────────────
 function openContractForm(existing) {
-  const c   = existing || {};
+  const c = existing || {};
   const isEdit = !!c.id;
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 z-50 flex items-start justify-center p-4 pt-10';
@@ -942,9 +1126,7 @@ function openContractForm(existing) {
     <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-y-auto">
       <div class="sticky top-0 bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
         <h3 class="text-base font-extrabold text-slate-900">${isEdit?'Edit':'New'} Contract</h3>
-        <button id="close-modal" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors text-slate-400">
-          <i class="fas fa-times"></i>
-        </button>
+        <button id="close-modal" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400"><i class="fas fa-times"></i></button>
       </div>
       <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="md:col-span-2"><label class="ch-label">Contract Title *</label><input class="ch-input" id="f-title" value="${esc(c.title||'')}" placeholder="e.g. IT Support Agreement 2026"></div>
@@ -955,10 +1137,10 @@ function openContractForm(existing) {
         <div><label class="ch-label">Department</label><select class="ch-input" id="f-dept"><option value="">Select…</option>${DEPARTMENTS.map(d=>`<option ${c.department===d?'selected':''}>${d}</option>`).join('')}</select></div>
         <div><label class="ch-label">Contract Value</label><input type="number" class="ch-input" id="f-value" value="${esc(c.value||'')}" placeholder="0"></div>
         <div><label class="ch-label">Currency</label><select class="ch-input" id="f-currency">${CURRENCIES.map(cu=>`<option ${c.currency===cu?'selected':''}>${cu}</option>`).join('')}</select></div>
-        <div><label class="ch-label">Start Date</label><input type="date" class="ch-input" id="f-start" value="${c.start_date?c.start_date.slice(0,10):''}"></div>
-        <div><label class="ch-label">End Date</label><input type="date" class="ch-input" id="f-end" value="${c.end_date?c.end_date.slice(0,10):''}"></div>
+        <div><label class="ch-label">Start Date</label><input type="date" class="ch-input" id="f-start" value="${c.start_date?String(c.start_date).slice(0,10):''}"></div>
+        <div><label class="ch-label">End Date</label><input type="date" class="ch-input" id="f-end" value="${c.end_date?String(c.end_date).slice(0,10):''}"></div>
         <div><label class="ch-label">Renewal Type</label><select class="ch-input" id="f-renewal-type"><option value="">None</option>${RENEWAL_TYPES.map(r=>`<option ${c.renewal_type===r?'selected':''}>${r}</option>`).join('')}</select></div>
-        <div><label class="ch-label">Renewal Date</label><input type="date" class="ch-input" id="f-renewal-date" value="${c.renewal_date?c.renewal_date.slice(0,10):''}"></div>
+        <div><label class="ch-label">Renewal Date</label><input type="date" class="ch-input" id="f-renewal-date" value="${c.renewal_date?String(c.renewal_date).slice(0,10):''}"></div>
         <div><label class="ch-label">Notice Period (days)</label><input type="number" class="ch-input" id="f-notice" value="${esc(c.notice_period_days||'')}" placeholder="30"></div>
         <div><label class="ch-label">Link to Module</label><select class="ch-input" id="f-linked-mod">${LINKED_MODULES.map(m=>`<option ${c.linked_module===m?'selected':''}>${m}</option>`).join('')}</select></div>
         <div><label class="ch-label">Linked Record ID</label><input class="ch-input" id="f-linked-rec" value="${esc(c.linked_record_id||'')}" placeholder="Optional record ID"></div>
@@ -985,285 +1167,491 @@ function openContractForm(existing) {
       party_id: modal.querySelector('#f-party').value.trim(),
       owner: modal.querySelector('#f-owner').value.trim(),
       department: modal.querySelector('#f-dept').value,
-      value: modal.querySelector('#f-value').value,
+      value: modal.querySelector('#f-value').value || null,
       currency: modal.querySelector('#f-currency').value,
-      start_date: modal.querySelector('#f-start').value,
-      end_date: modal.querySelector('#f-end').value,
-      renewal_type: modal.querySelector('#f-renewal-type').value,
-      renewal_date: modal.querySelector('#f-renewal-date').value,
-      notice_period_days: modal.querySelector('#f-notice').value,
-      linked_module: modal.querySelector('#f-linked-mod').value !== 'None' ? modal.querySelector('#f-linked-mod').value : '',
-      linked_record_id: modal.querySelector('#f-linked-rec').value.trim(),
-      notes: modal.querySelector('#f-notes').value.trim(),
-      created_by: window.WorkVolt.user()?.name || '',
+      start_date: modal.querySelector('#f-start').value || null,
+      end_date: modal.querySelector('#f-end').value || null,
+      renewal_type: modal.querySelector('#f-renewal-type').value || null,
+      renewal_date: modal.querySelector('#f-renewal-date').value || null,
+      notice_period_days: modal.querySelector('#f-notice').value || null,
+      linked_module: modal.querySelector('#f-linked-mod').value !== 'None' ? modal.querySelector('#f-linked-mod').value : null,
+      linked_record_id: modal.querySelector('#f-linked-rec').value.trim() || null,
+      notes: modal.querySelector('#f-notes').value.trim() || null,
+      created_by: window.WorkVolt?.user?.()?.name || '',
     };
-    if (isEdit) payload.id = c.id;
     try {
-      await api(isEdit ? 'update' : 'create', payload);
-      toast(isEdit ? 'Contract updated' : 'Contract created', 'success');
+      if (isEdit) {
+        const updated = await db.update('contracts', c.id, payload);
+        const idx = state.contracts.findIndex(x=>x.id===c.id);
+        if (idx>=0) state.contracts[idx] = { ...state.contracts[idx], ...updated };
+      } else {
+        const created = await db.create('contracts', payload);
+        state.contracts.unshift(created);
+      }
+      toast(isEdit ? 'Contract updated' : 'Contract created','success');
       close();
-      await loadContracts();
-      await loadDashboard();
       render();
     } catch(e) { toast(e.message,'error'); }
   });
+}
+
+// ── Cloud storage helpers ─────────────────────────────────────
+async function uploadToSupabase(file, contractId) {
+  const client = window._wvSupabaseClient;
+  if (!client) throw new Error('Supabase client not available');
+  const path = `${contractId}/${Date.now()}_${file.name}`;
+  const { data, error } = await client.storage.from('contracts').upload(path, file, { upsert: false });
+  if (error) throw new Error(error.message);
+  const { data: { publicUrl } } = client.storage.from('contracts').getPublicUrl(path);
+  return { storage_provider:'supabase', storage_file_id:data.path, file_url:publicUrl, title:file.name };
+}
+
+function loadGooglePickerSDK(clientId, apiKey) {
+  return new Promise((resolve, reject) => {
+    if (window.google?.picker) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://apis.google.com/js/api.js';
+    s.onload = () => {
+      window.gapi.load('auth2,picker', () => {
+        window.gapi.auth2.init({ client_id: clientId, apiKey }).then(resolve).catch(reject);
+      });
+    };
+    s.onerror = () => reject(new Error('Failed to load Google API'));
+    document.head.appendChild(s);
+  });
+}
+
+function openGoogleDrivePicker(cfg, onPicked) {
+  loadGooglePickerSDK(cfg.google_client_id, cfg.google_api_key).then(() => {
+    const auth2 = window.gapi.auth2.getAuthInstance();
+    auth2.signIn().then(user => {
+      const token = user.getAuthResponse().access_token;
+      const picker = new window.google.picker.PickerBuilder()
+        .addView(new window.google.picker.DocsView().setIncludeFolders(true))
+        .setOAuthToken(token)
+        .setCallback(data => {
+          if (data.action === window.google.picker.Action.PICKED) {
+            const f = data.docs[0];
+            onPicked({ storage_provider:'google_drive', storage_file_id:f.id, file_url:`https://drive.google.com/file/d/${f.id}/view`, title:f.name, storage_mime_type:f.mimeType });
+          }
+        }).build();
+      picker.setVisible(true);
+    }).catch(e => toast('Google sign-in failed: '+e.message,'error'));
+  }).catch(e => toast(e.message,'error'));
+}
+
+function loadOneDriveSDK() {
+  return new Promise((resolve, reject) => {
+    if (window.OneDrive) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://js.live.net/v7.2/OneDrive.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load OneDrive SDK'));
+    document.head.appendChild(s);
+  });
+}
+
+function openOneDrivePicker(cfg, onPicked) {
+  loadOneDriveSDK().then(() => {
+    window.OneDrive.open({
+      clientId: cfg.onedrive_client_id,
+      action: 'share', multiSelect: false,
+      advanced: { filter: '.pdf,.docx,.doc,.xlsx', redirectUri: window.location.origin },
+      success: files => {
+        const f = files.value[0];
+        onPicked({ storage_provider:'onedrive', storage_file_id:f.id, file_url:f['@microsoft.graph.downloadUrl']||f.webUrl, title:f.name });
+      },
+      cancel: ()=>{}, error: e => toast('OneDrive error: '+e,'error'),
+    });
+  }).catch(e => toast(e.message,'error'));
+}
+
+function loadDropboxSDK(appKey) {
+  return new Promise((resolve, reject) => {
+    if (window.Dropbox) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://www.dropbox.com/static/api/2/dropins.js';
+    s.id = 'dropboxjs';
+    s.dataset.appKey = appKey;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load Dropbox SDK'));
+    document.head.appendChild(s);
+  });
+}
+
+function openDropboxPicker(cfg, onPicked) {
+  loadDropboxSDK(cfg.dropbox_app_key).then(() => {
+    window.Dropbox.choose({
+      success: files => {
+        const f = files[0];
+        onPicked({ storage_provider:'dropbox', storage_file_id:f.id, file_url:f.link, title:f.name });
+      },
+      linkType:'preview', multiselect:false,
+      extensions:['.pdf','.docx','.doc','.xlsx','.png','.jpg'],
+    });
+  }).catch(e => toast(e.message,'error'));
 }
 
 // ── Event Binding ─────────────────────────────────────────────
 function bindEvents() {
   const el = container;
 
+  // Navigation
   el.querySelectorAll('[data-nav]').forEach(b => b.addEventListener('click', async () => {
     state.view = b.dataset.nav;
-    if (state.view === 'parties')   { await loadParties(); }
-    if (state.view === 'approvals') { await loadApprovals(); }
-    if (state.view === 'renewals')  { await loadRenewals(null); }
+    if (state.view==='parties')   await loadParties();
+    if (state.view==='approvals') await loadApprovals();
+    if (state.view==='renewals')  await loadRenewals();
     render();
   }));
 
   el.querySelectorAll('[data-list-tab]').forEach(b => b.addEventListener('click', () => {
-    state.listTab = b.dataset.listTab;
-    render();
+    state.listTab = b.dataset.listTab; render();
   }));
 
   // Open detail
   el.querySelectorAll('[data-detail]').forEach(b => b.addEventListener('click', async () => {
     const id = b.dataset.detail;
-    state.selectedId = id;
-    state.view = 'detail';
-    state.detailTab = 'overview';
+    state.selectedId = id; state.view = 'detail'; state.detailTab = 'overview'; state.previewDoc = null;
     await Promise.all([loadDocuments(id),loadClauses(id),loadMilestones(id),loadRenewals(id),loadFinancials(id),loadApprovals(id),loadVersions(id),loadParties()]);
     render();
   }));
 
   el.querySelectorAll('[data-detail-tab]').forEach(b => b.addEventListener('click', () => {
-    state.detailTab = b.dataset.detailTab;
-    render();
+    state.detailTab = b.dataset.detailTab; state.previewDoc = null; render();
   }));
 
   // New / edit
   el.querySelectorAll('#ch-new-contract').forEach(b => b.addEventListener('click', () => openContractForm()));
   el.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => {
-    const c = state.contracts.find(x=>x.id===b.dataset.edit);
-    openContractForm(c);
+    openContractForm(state.contracts.find(x=>x.id===b.dataset.edit));
   }));
 
   // Delete contract
   el.querySelectorAll('[data-delete]').forEach(b => b.addEventListener('click', async () => {
     if (!confirm('Delete this contract? This cannot be undone.')) return;
     try {
-      await api('delete', {id: b.dataset.delete});
+      await db.delete('contracts', b.dataset.delete);
+      state.contracts = state.contracts.filter(c=>c.id!==b.dataset.delete);
       toast('Contract deleted','success');
-      state.view = 'list';
-      await loadContracts(); await loadDashboard();
-      render();
+      state.view = 'list'; render();
     } catch(e) { toast(e.message,'error'); }
   }));
 
   // Advance lifecycle
   el.querySelectorAll('[data-advance]').forEach(b => b.addEventListener('click', async () => {
     try {
-      const r = await api('advance-status', {id: b.dataset.advance});
-      toast(`Status → ${r.new_status}`,'success');
-      await loadContracts();
-      const idx = state.contracts.findIndex(c=>c.id===b.dataset.advance);
-      if (idx>=0) state.contracts[idx].status = r.new_status;
-      render();
+      const c = state.contracts.find(x=>x.id===b.dataset.advance);
+      if (!c) return;
+      const idx = LIFECYCLE.indexOf(c.status);
+      if (idx<0||idx>=LIFECYCLE.length-1) return;
+      const newStatus = LIFECYCLE[idx+1];
+      const updated = await db.update('contracts', c.id, { status:newStatus });
+      const si = state.contracts.findIndex(x=>x.id===c.id);
+      if (si>=0) state.contracts[si] = { ...state.contracts[si], ...updated };
+      toast(`Status → ${newStatus}`,'success'); render();
     } catch(e) { toast(e.message,'error'); }
   }));
 
   // Search & filter
-  const searchEl = el.querySelector('#ch-search');
-  if (searchEl) searchEl.addEventListener('input', e => { state.filter.search = e.target.value; render(); });
-  const statusEl = el.querySelector('#ch-filter-status');
-  if (statusEl) statusEl.addEventListener('change', e => { state.filter.status = e.target.value; render(); });
-  const catEl = el.querySelector('#ch-filter-cat');
-  if (catEl) catEl.addEventListener('change', e => { state.filter.category = e.target.value; render(); });
+  el.querySelector('#ch-search')?.addEventListener('input', e => { state.filter.search=e.target.value; render(); });
+  el.querySelector('#ch-filter-status')?.addEventListener('change', e => { state.filter.status=e.target.value; render(); });
+  el.querySelector('#ch-filter-cat')?.addEventListener('change', e => { state.filter.category=e.target.value; render(); });
 
-  // ── Documents ─────────────────────────────────────────────
+  // ── Document preview ────────────────────────────────────────
+  el.querySelectorAll('[data-preview-doc]').forEach(b => b.addEventListener('click', () => {
+    try { state.previewDoc = JSON.parse(b.dataset.previewDoc); } catch(e){ state.previewDoc=null; }
+    render();
+  }));
+  el.querySelector('#close-preview')?.addEventListener('click', () => { state.previewDoc=null; render(); });
+
+  // ── Documents ───────────────────────────────────────────────
   bindToggle(el, '#add-doc', '#doc-form');
   bindToggle(el, '#cancel-doc', '#doc-form', true);
-  el.querySelector('#save-doc')?.addEventListener('click', async () => {
-    const d = {
-      contract_id: state.selectedId,
-      doc_type: el.querySelector('#doc-type').value,
-      title: el.querySelector('#doc-title').value.trim(),
-      file_url: el.querySelector('#doc-url').value.trim(),
-      version: el.querySelector('#doc-version').value.trim(),
-      uploaded_by: window.WorkVolt.user()?.name||'',
-    };
-    await api('documents/create', d);
-    await loadDocuments(state.selectedId);
-    render();
+
+  const fillDocForm = result => {
+    const u=el.querySelector('#doc-url'); if(u) u.value=result.file_url||'';
+    const t=el.querySelector('#doc-title'); if(t&&!t.value) t.value=result.title||'';
+    const p=el.querySelector('#doc-provider'); if(p) p.value=result.storage_provider||'';
+    const fi=el.querySelector('#doc-file-id'); if(fi) fi.value=result.storage_file_id||'';
+  };
+
+  el.querySelector('#pick-gdrive')?.addEventListener('click', () => {
+    const cfg=getCsConfig(); openGoogleDrivePicker(cfg, fillDocForm);
   });
+  el.querySelector('#pick-onedrive')?.addEventListener('click', () => {
+    const cfg=getCsConfig(); openOneDrivePicker(cfg, fillDocForm);
+  });
+  el.querySelector('#pick-dropbox')?.addEventListener('click', () => {
+    const cfg=getCsConfig(); openDropboxPicker(cfg, fillDocForm);
+  });
+  el.querySelector('#pick-upload')?.addEventListener('click', () => {
+    el.querySelector('#doc-file-input')?.click();
+  });
+  el.querySelector('#doc-file-input')?.addEventListener('change', async e => {
+    const file=e.target.files[0]; if(!file) return;
+    toast('Uploading…','info');
+    try { fillDocForm(await uploadToSupabase(file,state.selectedId)); toast('Uploaded!','success'); }
+    catch(err) { toast(err.message,'error'); }
+  });
+
+  el.querySelector('#save-doc')?.addEventListener('click', async () => {
+    const url=el.querySelector('#doc-url')?.value.trim();
+    const title=el.querySelector('#doc-title')?.value.trim();
+    if (!url&&!title) { toast('Please add a title or file URL','error'); return; }
+    try {
+      const row = {
+        contract_id: state.selectedId,
+        doc_type: el.querySelector('#doc-type')?.value,
+        title, file_url: url,
+        storage_provider: el.querySelector('#doc-provider')?.value||'url',
+        storage_file_id:  el.querySelector('#doc-file-id')?.value||null,
+        version: el.querySelector('#doc-version')?.value||'1.0',
+        uploaded_by: window.WorkVolt?.user?.()?.name||'',
+      };
+      const created = await db.create('contract_documents', row);
+      state.documents.unshift(created);
+      toast('Document saved','success'); render();
+    } catch(e) { toast(e.message,'error'); }
+  });
+
   el.querySelectorAll('[data-del-doc]').forEach(b=>b.addEventListener('click', async ()=>{
-    await api('documents/delete',{id:b.dataset.delDoc});
-    await loadDocuments(state.selectedId); render();
+    try { await db.delete('contract_documents',b.dataset.delDoc); state.documents=state.documents.filter(d=>d.id!==b.dataset.delDoc); render(); }
+    catch(e){ toast(e.message,'error'); }
   }));
 
-  // ── Clauses ───────────────────────────────────────────────
-  bindToggle(el, '#add-clause', '#clause-form');
-  bindToggle(el, '#cancel-clause', '#clause-form', true);
-  el.querySelector('#save-clause')?.addEventListener('click', async () => {
-    await api('clauses/create', {
-      contract_id: state.selectedId,
-      clause_type: el.querySelector('#clause-type').value,
-      title: el.querySelector('#clause-title').value.trim(),
-      description: el.querySelector('#clause-desc').value.trim(),
-      is_critical: el.querySelector('#clause-critical').value,
-    });
-    await loadClauses(state.selectedId); render();
+  // ── Clauses ─────────────────────────────────────────────────
+  bindToggle(el,'#add-clause','#clause-form');
+  bindToggle(el,'#cancel-clause','#clause-form',true);
+  el.querySelector('#save-clause')?.addEventListener('click', async ()=>{
+    try {
+      const created=await db.create('contract_clauses',{
+        contract_id:state.selectedId,
+        clause_type:el.querySelector('#clause-type').value,
+        title:el.querySelector('#clause-title').value.trim(),
+        description:el.querySelector('#clause-desc').value.trim(),
+        is_critical:el.querySelector('#clause-critical').value,
+      });
+      state.clauses.push(created); render();
+    } catch(e){ toast(e.message,'error'); }
   });
   el.querySelectorAll('[data-del-clause]').forEach(b=>b.addEventListener('click', async ()=>{
-    await api('clauses/delete',{id:b.dataset.delClause});
-    await loadClauses(state.selectedId); render();
+    try { await db.delete('contract_clauses',b.dataset.delClause); state.clauses=state.clauses.filter(c=>c.id!==b.dataset.delClause); render(); }
+    catch(e){ toast(e.message,'error'); }
   }));
 
-  // ── Milestones ────────────────────────────────────────────
-  bindToggle(el, '#add-milestone', '#milestone-form');
-  bindToggle(el, '#cancel-milestone', '#milestone-form', true);
-  el.querySelector('#save-milestone')?.addEventListener('click', async () => {
-    await api('milestones/create', {
-      contract_id: state.selectedId,
-      event: el.querySelector('#ms-event').value.trim(),
-      date: el.querySelector('#ms-date').value,
-      assigned_to: el.querySelector('#ms-assigned').value.trim(),
-      notify_days_before: el.querySelector('#ms-notify').value,
-      status: 'Pending',
-    });
-    await loadMilestones(state.selectedId); render();
+  // ── Milestones ───────────────────────────────────────────────
+  bindToggle(el,'#add-milestone','#milestone-form');
+  bindToggle(el,'#cancel-milestone','#milestone-form',true);
+  el.querySelector('#save-milestone')?.addEventListener('click', async ()=>{
+    try {
+      const created=await db.create('contract_milestones',{
+        contract_id:state.selectedId,
+        event:el.querySelector('#ms-event').value.trim(),
+        date:el.querySelector('#ms-date').value||null,
+        assigned_to:el.querySelector('#ms-assigned').value.trim(),
+        notify_days_before:el.querySelector('#ms-notify').value||7,
+        status:'Pending',
+      });
+      state.milestones.push(created); render();
+    } catch(e){ toast(e.message,'error'); }
   });
   el.querySelectorAll('[data-complete-ms]').forEach(b=>b.addEventListener('click', async ()=>{
-    await api('milestones/update',{id:b.dataset.completeMilestone||b.dataset.completeMs,status:'Completed'});
-    await loadMilestones(state.selectedId); render();
+    try {
+      const updated=await db.update('contract_milestones',b.dataset.completeMs,{status:'Completed'});
+      const idx=state.milestones.findIndex(m=>m.id===b.dataset.completeMs);
+      if(idx>=0) state.milestones[idx]={...state.milestones[idx],...updated};
+      render();
+    } catch(e){ toast(e.message,'error'); }
   }));
   el.querySelectorAll('[data-del-ms]').forEach(b=>b.addEventListener('click', async ()=>{
-    await api('milestones/delete',{id:b.dataset.delMs});
-    await loadMilestones(state.selectedId); render();
+    try { await db.delete('contract_milestones',b.dataset.delMs); state.milestones=state.milestones.filter(m=>m.id!==b.dataset.delMs); render(); }
+    catch(e){ toast(e.message,'error'); }
   }));
 
-  // ── Financials ────────────────────────────────────────────
-  bindToggle(el, '#add-financial', '#financial-form');
-  bindToggle(el, '#cancel-financial', '#financial-form', true);
-  el.querySelector('#save-financial')?.addEventListener('click', async () => {
-    await api('financials/create', {
-      contract_id: state.selectedId,
-      payment_type: el.querySelector('#fin-type').value.trim(),
-      amount: el.querySelector('#fin-amount').value,
-      currency: el.querySelector('#fin-currency').value,
-      frequency: el.querySelector('#fin-frequency').value,
-      due_date: el.querySelector('#fin-due').value,
-      status: 'Pending',
-    });
-    await loadFinancials(state.selectedId); render();
+  // ── Financials ───────────────────────────────────────────────
+  bindToggle(el,'#add-financial','#financial-form');
+  bindToggle(el,'#cancel-financial','#financial-form',true);
+  el.querySelector('#save-financial')?.addEventListener('click', async ()=>{
+    try {
+      const c=state.contracts.find(x=>x.id===state.selectedId);
+      const created=await db.create('contract_financials',{
+        contract_id:state.selectedId,
+        payment_type:el.querySelector('#fin-type').value.trim(),
+        amount:el.querySelector('#fin-amount').value||null,
+        currency:el.querySelector('#fin-currency').value,
+        frequency:el.querySelector('#fin-frequency').value,
+        due_date:el.querySelector('#fin-due').value||null,
+        status:'Pending',
+      });
+      state.financials.push(created); render();
+    } catch(e){ toast(e.message,'error'); }
   });
   el.querySelectorAll('[data-del-fin]').forEach(b=>b.addEventListener('click', async ()=>{
-    await api('financials/delete',{id:b.dataset.delFin});
-    await loadFinancials(state.selectedId); render();
+    try { await db.delete('contract_financials',b.dataset.delFin); state.financials=state.financials.filter(f=>f.id!==b.dataset.delFin); render(); }
+    catch(e){ toast(e.message,'error'); }
   }));
 
-  // ── Approvals ─────────────────────────────────────────────
-  bindToggle(el, '#add-approval', '#approval-form');
-  bindToggle(el, '#cancel-approval', '#approval-form', true);
-  el.querySelector('#save-approval')?.addEventListener('click', async () => {
-    await api('approvals/create', {
-      contract_id: state.selectedId,
-      approver: el.querySelector('#app-approver').value.trim(),
-      role: el.querySelector('#app-role').value.trim(),
-    });
-    await loadApprovals(state.selectedId); render();
+  // ── Approvals ────────────────────────────────────────────────
+  bindToggle(el,'#add-approval','#approval-form');
+  bindToggle(el,'#cancel-approval','#approval-form',true);
+  el.querySelector('#save-approval')?.addEventListener('click', async ()=>{
+    try {
+      const created=await db.create('contract_approvals',{
+        contract_id:state.selectedId,
+        approver:el.querySelector('#app-approver').value.trim(),
+        role:el.querySelector('#app-role').value.trim(),
+        status:'Pending',
+      });
+      state.approvals.push(created); render();
+    } catch(e){ toast(e.message,'error'); }
   });
   el.querySelectorAll('[data-approve-app]').forEach(b=>b.addEventListener('click', async ()=>{
-    await api('approvals/approve',{id:b.dataset.approveApp});
-    toast('Approved','success');
-    if (state.view==='detail') await loadApprovals(state.selectedId);
-    else await loadApprovals();
-    render();
+    try {
+      const updated=await db.update('contract_approvals',b.dataset.approveApp,{status:'Approved',approved_at:new Date().toISOString()});
+      const idx=state.approvals.findIndex(a=>a.id===b.dataset.approveApp);
+      if(idx>=0) state.approvals[idx]={...state.approvals[idx],...updated};
+      toast('Approved','success'); render();
+    } catch(e){ toast(e.message,'error'); }
   }));
   el.querySelectorAll('[data-reject-app]').forEach(b=>b.addEventListener('click', async ()=>{
-    const comments = prompt('Reason for rejection (optional):') || '';
-    await api('approvals/reject',{id:b.dataset.rejectApp, comments});
-    toast('Rejected','info');
-    if (state.view==='detail') await loadApprovals(state.selectedId);
-    else await loadApprovals();
-    render();
+    const comments=prompt('Reason for rejection (optional):')||'';
+    try {
+      const updated=await db.update('contract_approvals',b.dataset.rejectApp,{status:'Rejected',comments,approved_at:new Date().toISOString()});
+      const idx=state.approvals.findIndex(a=>a.id===b.dataset.rejectApp);
+      if(idx>=0) state.approvals[idx]={...state.approvals[idx],...updated};
+      toast('Rejected','info'); render();
+    } catch(e){ toast(e.message,'error'); }
   }));
   el.querySelectorAll('[data-del-app]').forEach(b=>b.addEventListener('click', async ()=>{
-    await api('approvals/delete',{id:b.dataset.delApp});
-    if (state.view==='detail') await loadApprovals(state.selectedId);
-    else await loadApprovals();
-    render();
+    try { await db.delete('contract_approvals',b.dataset.delApp); state.approvals=state.approvals.filter(a=>a.id!==b.dataset.delApp); render(); }
+    catch(e){ toast(e.message,'error'); }
   }));
 
-  // ── Renewals ──────────────────────────────────────────────
-  bindToggle(el, '#add-renewal', '#renewal-form');
-  bindToggle(el, '#cancel-renewal', '#renewal-form', true);
-  el.querySelector('#save-renewal')?.addEventListener('click', async () => {
-    await api('renewals/create', {
-      contract_id: state.selectedId,
-      renewal_date: el.querySelector('#ren-date').value,
-      type: el.querySelector('#ren-type').value,
-      new_value: el.querySelector('#ren-value').value,
-      notes: el.querySelector('#ren-notes').value.trim(),
-    });
-    await loadRenewals(state.selectedId); render();
+  // ── Renewals ─────────────────────────────────────────────────
+  bindToggle(el,'#add-renewal','#renewal-form');
+  bindToggle(el,'#cancel-renewal','#renewal-form',true);
+  el.querySelector('#save-renewal')?.addEventListener('click', async ()=>{
+    try {
+      const created=await db.create('contract_renewals',{
+        contract_id:state.selectedId,
+        renewal_date:el.querySelector('#ren-date').value||null,
+        type:el.querySelector('#ren-type').value,
+        new_value:el.querySelector('#ren-value').value||null,
+        notes:el.querySelector('#ren-notes').value.trim()||null,
+        status:'Pending',
+      });
+      state.renewals.push(created); render();
+    } catch(e){ toast(e.message,'error'); }
   });
   el.querySelectorAll('[data-complete-ren]').forEach(b=>b.addEventListener('click', async ()=>{
-    await api('renewals/update',{id:b.dataset.completeRen,status:'Completed'});
-    await loadRenewals(state.selectedId); render();
+    try {
+      const updated=await db.update('contract_renewals',b.dataset.completeRen,{status:'Completed'});
+      const idx=state.renewals.findIndex(r=>r.id===b.dataset.completeRen);
+      if(idx>=0) state.renewals[idx]={...state.renewals[idx],...updated};
+      render();
+    } catch(e){ toast(e.message,'error'); }
   }));
   el.querySelectorAll('[data-del-ren]').forEach(b=>b.addEventListener('click', async ()=>{
-    await api('renewals/delete',{id:b.dataset.delRen});
-    await loadRenewals(state.selectedId); render();
+    try { await db.delete('contract_renewals',b.dataset.delRen); state.renewals=state.renewals.filter(r=>r.id!==b.dataset.delRen); render(); }
+    catch(e){ toast(e.message,'error'); }
   }));
 
-  // ── Versions ──────────────────────────────────────────────
-  bindToggle(el, '#add-version', '#version-form');
-  bindToggle(el, '#cancel-version', '#version-form', true);
-  el.querySelector('#save-version')?.addEventListener('click', async () => {
-    await api('versions/create', {
-      contract_id: state.selectedId,
-      version: el.querySelector('#ver-num').value.trim(),
-      title: el.querySelector('#ver-title').value.trim(),
-      changed_by: el.querySelector('#ver-by').value.trim(),
-      file_url: el.querySelector('#ver-url').value.trim(),
-      change_summary: el.querySelector('#ver-summary').value.trim(),
-    });
-    await loadVersions(state.selectedId); render();
+  // ── Versions ─────────────────────────────────────────────────
+  bindToggle(el,'#add-version','#version-form');
+  bindToggle(el,'#cancel-version','#version-form',true);
+  el.querySelector('#ver-upload')?.addEventListener('click',()=>el.querySelector('#ver-file-input')?.click());
+  el.querySelector('#ver-file-input')?.addEventListener('change', async e=>{
+    const file=e.target.files[0]; if(!file) return;
+    toast('Uploading…','info');
+    try {
+      const result=await uploadToSupabase(file,state.selectedId);
+      const u=el.querySelector('#ver-url'); if(u) u.value=result.file_url;
+      const p=el.querySelector('#ver-provider'); if(p) p.value=result.storage_provider;
+      toast('Uploaded!','success');
+    } catch(err){ toast(err.message,'error'); }
+  });
+  el.querySelector('#save-version')?.addEventListener('click', async ()=>{
+    try {
+      const created=await db.create('contract_versions',{
+        contract_id:state.selectedId,
+        version:el.querySelector('#ver-num').value.trim(),
+        title:el.querySelector('#ver-title').value.trim(),
+        changed_by:el.querySelector('#ver-by').value.trim(),
+        file_url:el.querySelector('#ver-url').value.trim()||null,
+        storage_provider:el.querySelector('#ver-provider')?.value||null,
+        change_summary:el.querySelector('#ver-summary').value.trim()||null,
+      });
+      state.versions.unshift(created); render();
+    } catch(e){ toast(e.message,'error'); }
   });
   el.querySelectorAll('[data-del-ver]').forEach(b=>b.addEventListener('click', async ()=>{
-    await api('versions/delete',{id:b.dataset.delVer});
-    await loadVersions(state.selectedId); render();
+    try { await db.delete('contract_versions',b.dataset.delVer); state.versions=state.versions.filter(v=>v.id!==b.dataset.delVer); render(); }
+    catch(e){ toast(e.message,'error'); }
   }));
 
-  // ── Parties ───────────────────────────────────────────────
-  bindToggle(el, '#add-party', '#party-form');
-  bindToggle(el, '#cancel-party', '#party-form', true);
-  el.querySelector('#save-party')?.addEventListener('click', async () => {
-    await api('parties/create', {
-      name: el.querySelector('#party-name').value.trim(),
-      type: el.querySelector('#party-type').value,
-      email: el.querySelector('#party-email').value.trim(),
-      phone: el.querySelector('#party-phone').value.trim(),
-      contact_person: el.querySelector('#party-contact').value.trim(),
-      country: el.querySelector('#party-country').value.trim(),
-      address: el.querySelector('#party-address').value.trim(),
-    });
-    await loadParties(); render();
+  // ── Parties ──────────────────────────────────────────────────
+  bindToggle(el,'#add-party','#party-form');
+  bindToggle(el,'#cancel-party','#party-form',true);
+  el.querySelector('#save-party')?.addEventListener('click', async ()=>{
+    try {
+      const created=await db.create('contract_parties',{
+        name:el.querySelector('#party-name').value.trim(),
+        type:el.querySelector('#party-type').value,
+        email:el.querySelector('#party-email').value.trim()||null,
+        phone:el.querySelector('#party-phone').value.trim()||null,
+        contact_person:el.querySelector('#party-contact').value.trim()||null,
+        country:el.querySelector('#party-country').value.trim()||null,
+        address:el.querySelector('#party-address').value.trim()||null,
+      });
+      state.parties.push(created); render();
+    } catch(e){ toast(e.message,'error'); }
   });
   el.querySelectorAll('[data-del-party]').forEach(b=>b.addEventListener('click', async ()=>{
-    if (!confirm('Remove this party?')) return;
-    await api('parties/delete',{id:b.dataset.delParty});
-    await loadParties(); render();
+    if(!confirm('Remove this party?')) return;
+    try { await db.delete('contract_parties',b.dataset.delParty); state.parties=state.parties.filter(p=>p.id!==b.dataset.delParty); render(); }
+    catch(e){ toast(e.message,'error'); }
   }));
+
+  // ── Cloud Storage Setup ───────────────────────────────────────
+  el.querySelectorAll('[data-select-provider]').forEach(b=>b.addEventListener('click',()=>{
+    state.cloudProvider=b.dataset.selectProvider; render();
+  }));
+
+  el.querySelector('#cs-save')?.addEventListener('click',()=>{
+    const provider = state.cloudProvider||'supabase';
+    const meta     = PROVIDER_META[provider];
+    const cfg      = getCsConfig();
+    // Save all field values for this provider
+    meta.fields.forEach(f=>{
+      const input=el.querySelector(`#cs-field-${f.key}`);
+      if(input) cfg[f.key]=input.value.trim();
+    });
+    cfg[provider+'_enabled'] = true;
+    saveCsConfig(cfg);
+    const msg=el.querySelector('#cs-status-msg');
+    if(msg){ msg.textContent='✓ Saved!'; msg.className='text-xs text-emerald-600 font-bold'; setTimeout(()=>{msg.textContent='';},3000); }
+    toast(`${meta.label} connected`,'success');
+    render();
+  });
+
+  el.querySelector('#cs-disconnect')?.addEventListener('click',()=>{
+    const provider=state.cloudProvider||'supabase';
+    const cfg=getCsConfig();
+    cfg[provider+'_enabled']=false;
+    PROVIDER_META[provider].fields.forEach(f=>{ delete cfg[f.key]; });
+    saveCsConfig(cfg);
+    toast(`${PROVIDER_META[provider].label} disconnected`,'info');
+    render();
+  });
 }
 
 function bindToggle(el, triggerSel, targetSel, hide) {
-  const trigger = el.querySelector(triggerSel);
-  const target  = el.querySelector(targetSel);
-  if (!trigger || !target) return;
-  trigger.addEventListener('click', () => {
-    if (hide) target.classList.add('hidden');
+  const trigger=el.querySelector(triggerSel);
+  const target =el.querySelector(targetSel);
+  if(!trigger||!target) return;
+  trigger.addEventListener('click',()=>{
+    if(hide) target.classList.add('hidden');
     else target.classList.toggle('hidden');
   });
 }
