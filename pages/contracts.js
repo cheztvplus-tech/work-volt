@@ -40,6 +40,15 @@ const PARTY_TYPES    = ['Company','Individual','Government','NGO','Partnership']
 const DEPARTMENTS    = ['Legal','HR','Finance','Sales','IT','Operations','Marketing','Procurement','Executive'];
 const LINKED_MODULES = ['None','hr','finance','assets','projects','crm'];
 
+// Config for each linkable module: which DB table to query and which field is the display name
+const MODULE_CONFIG = {
+  hr:       { table:'users',                nameField:'name',      label:'HR / Employees',   icon:'fa-users' },
+  finance:  { table:'invoices',             nameField:'customer',  label:'Finance / Invoices',icon:'fa-file-invoice-dollar' },
+  assets:   { table:'assets',               nameField:'asset_name',label:'Assets',            icon:'fa-boxes' },
+  projects: { table:'projects',             nameField:'name',      label:'Projects',          icon:'fa-project-diagram' },
+  crm:      { table:'crm_contacts',         nameField:'name',      label:'CRM / Contacts',    icon:'fa-address-book' },
+};
+
 // ── Cloud storage provider config ─────────────────────────────
 // Users set these keys via the "Cloud Storage Setup" modal.
 // Values are persisted in localStorage so they survive page reloads.
@@ -133,6 +142,8 @@ let state = {
   listTab: 'all',
   detailTab: 'overview',
   previewDoc: null,   // document object being previewed
+  linkedRecords: [],  // records loaded from the chosen linked module
+  linkedRecordNames: {}, // cache: record_id → display name across all modules
 };
 
 let container;
@@ -174,6 +185,21 @@ async function loadApprovals(cid) {
 }
 async function loadVersions(cid) {
   try { state.versions   = await db.list('contract_versions',   { contract_id:cid }, { order:'created_at' }); } catch(e) { state.versions = []; }
+}
+
+// Load records from the chosen module for the linked record picker
+async function loadLinkedRecords(module) {
+  const cfg = MODULE_CONFIG[module];
+  if (!cfg) { state.linkedRecords = []; return; }
+  try {
+    const rows = await db.list(cfg.table, {}, { order: cfg.nameField, asc: true, limit: 200 });
+    state.linkedRecords = rows;
+    // Cache id → name for display
+    rows.forEach(r => {
+      const id = r.id || r.asset_id || r.job_id;
+      if (id) state.linkedRecordNames[id] = r[cfg.nameField] || id;
+    });
+  } catch(e) { state.linkedRecords = []; }
 }
 
 // ── Computed dashboard stats (from loaded contracts) ──────────
@@ -518,7 +544,10 @@ function renderDetail() {
 }
 
 function renderOverviewTab(c) {
-  const party = state.parties.find(p=>p.id===c.party_id);
+  const party   = state.parties.find(p=>p.id===c.party_id);
+  const modCfg  = c.linked_module ? MODULE_CONFIG[c.linked_module] : null;
+  const recName = c.linked_record_id ? (state.linkedRecordNames[c.linked_record_id] || c.linked_record_id) : null;
+
   const fields = [
     ['Title',c.title],['Category',c.category],['Status',c.status],
     ['Owner',c.owner],['Department',c.department],
@@ -527,15 +556,33 @@ function renderOverviewTab(c) {
     ['Contract Value',fmtCurrency(c.value,c.currency)],['Currency',c.currency],
     ['Renewal Type',c.renewal_type],['Renewal Date',fmt(c.renewal_date)],
     ['Notice Period',c.notice_period_days?c.notice_period_days+' days':''],
-    ['Linked Module',c.linked_module],['Linked Record',c.linked_record_id],
     ['Notes',c.notes],['Created',fmt(c.created_at)],['Updated',fmt(c.updated_at)],
   ];
+
+  const linkedModuleHtml = modCfg ? `
+    <div class="border-b border-slate-50 pb-3">
+      <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Linked Module</p>
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-xs font-bold text-blue-700">
+        <i class="fas ${modCfg.icon} text-[10px]"></i>${esc(modCfg.label)}
+      </span>
+    </div>` : '';
+
+  const linkedRecordHtml = recName ? `
+    <div class="border-b border-slate-50 pb-3">
+      <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Linked Record</p>
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-xs font-bold text-indigo-700">
+        <i class="fas fa-link text-[10px]"></i>${esc(recName)}
+      </span>
+    </div>` : '';
+
   return `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4">
     ${fields.filter(([,v])=>v&&v!=='—').map(([l,v])=>`
       <div class="border-b border-slate-50 pb-3">
         <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">${l}</p>
         <p class="text-sm font-semibold text-slate-800">${esc(v)}</p>
       </div>`).join('')}
+    ${linkedModuleHtml}
+    ${linkedRecordHtml}
   </div>`;
 }
 
@@ -1142,8 +1189,20 @@ function openContractForm(existing) {
         <div><label class="ch-label">Renewal Type</label><select class="ch-input" id="f-renewal-type"><option value="">None</option>${RENEWAL_TYPES.map(r=>`<option ${c.renewal_type===r?'selected':''}>${r}</option>`).join('')}</select></div>
         <div><label class="ch-label">Renewal Date</label><input type="date" class="ch-input" id="f-renewal-date" value="${c.renewal_date?String(c.renewal_date).slice(0,10):''}"></div>
         <div><label class="ch-label">Notice Period (days)</label><input type="number" class="ch-input" id="f-notice" value="${esc(c.notice_period_days||'')}" placeholder="30"></div>
-        <div><label class="ch-label">Link to Module</label><select class="ch-input" id="f-linked-mod">${LINKED_MODULES.map(m=>`<option ${c.linked_module===m?'selected':''}>${m}</option>`).join('')}</select></div>
-        <div><label class="ch-label">Linked Record ID</label><input class="ch-input" id="f-linked-rec" value="${esc(c.linked_record_id||'')}" placeholder="Optional record ID"></div>
+        <div><label class="ch-label">Link to Module</label><select class="ch-input" id="f-linked-mod">
+          <option value="None" ${!c.linked_module||c.linked_module==='None'?'selected':''}>None</option>
+          ${Object.entries(MODULE_CONFIG).map(([key,m])=>`<option value="${key}" ${c.linked_module===key?'selected':''}>${m.label}</option>`).join('')}
+        </select></div>
+        <div id="f-linked-rec-wrap">
+          <label class="ch-label">Linked Record</label>
+          <div id="f-linked-rec-loading" class="hidden text-xs text-slate-400 py-2"><i class="fas fa-spinner fa-spin mr-1"></i>Loading records…</div>
+          <select class="ch-input" id="f-linked-rec-select" style="display:${c.linked_module&&c.linked_module!=='None'?'block':'none'}">
+            <option value="">— Select a record —</option>
+          </select>
+          <input class="ch-input" id="f-linked-rec-input" placeholder="No module selected" style="display:${c.linked_module&&c.linked_module!=='None'?'none':'block'}" disabled>
+          <input type="hidden" id="f-linked-rec" value="${esc(c.linked_record_id||'')}">
+          <input type="hidden" id="f-linked-rec-name" value="${esc(c.linked_record_id ? (state.linkedRecordNames[c.linked_record_id] || '') : '')}">
+        </div>
         <div class="md:col-span-2"><label class="ch-label">Notes</label><textarea class="ch-input h-20 resize-none" id="f-notes" placeholder="Additional notes…">${esc(c.notes||'')}</textarea></div>
       </div>
       <div class="sticky bottom-0 bg-white border-t border-slate-100 px-6 py-4 flex gap-3 rounded-b-2xl">
@@ -1157,6 +1216,63 @@ function openContractForm(existing) {
   modal.querySelector('#close-modal').addEventListener('click', close);
   modal.querySelector('#close-modal2').addEventListener('click', close);
   modal.querySelector('#modal-overlay').addEventListener('click', close);
+
+  // ── Linked module → record picker ────────────────────────────
+  const modSelect    = modal.querySelector('#f-linked-mod');
+  const recSelect    = modal.querySelector('#f-linked-rec-select');
+  const recInput     = modal.querySelector('#f-linked-rec-input');
+  const recHidden    = modal.querySelector('#f-linked-rec');
+  const recNameHid   = modal.querySelector('#f-linked-rec-name');
+  const recLoading   = modal.querySelector('#f-linked-rec-loading');
+
+  async function populateRecordPicker(module, currentId) {
+    if (!module || module === 'None') {
+      recSelect.style.display = 'none';
+      recInput.style.display  = 'block';
+      recSelect.innerHTML     = '<option value="">— Select a record —</option>';
+      recHidden.value         = '';
+      recNameHid.value        = '';
+      return;
+    }
+    recLoading.classList.remove('hidden');
+    recSelect.style.display = 'none';
+    recInput.style.display  = 'none';
+    await loadLinkedRecords(module);
+    recLoading.classList.add('hidden');
+
+    const cfg = MODULE_CONFIG[module];
+    recSelect.innerHTML = '<option value="">— Select a record —</option>' +
+      state.linkedRecords.map(r => {
+        const id   = r.id || r.asset_id || r.job_id;
+        const name = r[cfg.nameField] || id;
+        const sel  = id === currentId ? 'selected' : '';
+        return `<option value="${esc(id)}" data-name="${esc(name)}" ${sel}>${esc(name)}</option>`;
+      }).join('');
+
+    recSelect.style.display = 'block';
+
+    // If editing and we have a currentId, pre-select it
+    if (currentId) {
+      recHidden.value  = currentId;
+      const opt = recSelect.querySelector(`option[value="${CSS.escape(currentId)}"]`);
+      recNameHid.value = opt ? opt.dataset.name : state.linkedRecordNames[currentId] || currentId;
+    }
+  }
+
+  recSelect.addEventListener('change', () => {
+    const opt = recSelect.options[recSelect.selectedIndex];
+    recHidden.value  = opt.value;
+    recNameHid.value = opt.dataset?.name || opt.text;
+  });
+
+  modSelect.addEventListener('change', () => {
+    populateRecordPicker(modSelect.value, null);
+  });
+
+  // Populate on open if module is already set
+  if (c.linked_module && c.linked_module !== 'None') {
+    populateRecordPicker(c.linked_module, c.linked_record_id);
+  }
 
   modal.querySelector('#modal-save').addEventListener('click', async () => {
     const title = modal.querySelector('#f-title').value.trim();
@@ -1188,6 +1304,10 @@ function openContractForm(existing) {
         const created = await db.create('contracts', payload);
         state.contracts.unshift(created);
       }
+      // Cache the record name so the overview tab can display it without a reload
+      const recId   = payload.linked_record_id;
+      const recName = modal.querySelector('#f-linked-rec-name')?.value;
+      if (recId && recName) state.linkedRecordNames[recId] = recName;
       toast(isEdit ? 'Contract updated' : 'Contract created','success');
       close();
       render();
@@ -1314,6 +1434,11 @@ function bindEvents() {
     const id = b.dataset.detail;
     state.selectedId = id; state.view = 'detail'; state.detailTab = 'overview'; state.previewDoc = null;
     await Promise.all([loadDocuments(id),loadClauses(id),loadMilestones(id),loadRenewals(id),loadFinancials(id),loadApprovals(id),loadVersions(id),loadParties()]);
+    // Pre-load the linked record name for the overview tab
+    const contract = state.contracts.find(x=>x.id===id);
+    if (contract?.linked_module && contract.linked_module !== 'None' && contract.linked_record_id && !state.linkedRecordNames[contract.linked_record_id]) {
+      await loadLinkedRecords(contract.linked_module);
+    }
     render();
   }));
 
