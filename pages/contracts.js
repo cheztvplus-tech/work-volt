@@ -1179,7 +1179,10 @@ function openContractForm(existing) {
         <div class="md:col-span-2"><label class="ch-label">Contract Title *</label><input class="ch-input" id="f-title" value="${esc(c.title||'')}" placeholder="e.g. IT Support Agreement 2026"></div>
         <div><label class="ch-label">Category</label><select class="ch-input" id="f-category">${CATEGORIES.map(x=>`<option ${c.category===x?'selected':''}>${x}</option>`).join('')}</select></div>
         <div><label class="ch-label">Status</label><select class="ch-input" id="f-status">${LIFECYCLE.map(s=>`<option ${c.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
-        <div><label class="ch-label">Party (ID or Name)</label><input class="ch-input" id="f-party" value="${esc(c.party_id||'')}" placeholder="Party ID or name"></div>
+        <div><label class="ch-label">Party</label><select class="ch-input" id="f-party">
+          <option value="">— None —</option>
+          ${state.parties.map(p=>`<option value="${esc(p.id)}" ${c.party_id===p.id?'selected':''}>${esc(p.name)} (${esc(p.type)})</option>`).join('')}
+        </select></div>
         <div><label class="ch-label">Owner</label><input class="ch-input" id="f-owner" value="${esc(c.owner||'')}" placeholder="Internal owner name"></div>
         <div><label class="ch-label">Department</label><select class="ch-input" id="f-dept"><option value="">Select…</option>${DEPARTMENTS.map(d=>`<option ${c.department===d?'selected':''}>${d}</option>`).join('')}</select></div>
         <div><label class="ch-label">Contract Value</label><input type="number" class="ch-input" id="f-value" value="${esc(c.value||'')}" placeholder="0"></div>
@@ -1280,7 +1283,7 @@ function openContractForm(existing) {
     const payload = {
       title, category: modal.querySelector('#f-category').value,
       status: modal.querySelector('#f-status').value,
-      party_id: modal.querySelector('#f-party').value.trim(),
+      party_id: modal.querySelector('#f-party').value || null,
       owner: modal.querySelector('#f-owner').value.trim(),
       department: modal.querySelector('#f-dept').value,
       value: modal.querySelector('#f-value').value || null,
