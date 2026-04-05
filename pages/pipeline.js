@@ -618,41 +618,6 @@ window.WorkVoltPages['pipeline'] = function (container) {
           </div>
         </div>
 
-        <!-- AI Assistant -->
-        <div class="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl overflow-hidden">
-          <div class="px-4 py-3 border-b border-indigo-100 flex items-center gap-2">
-            <div class="w-7 h-7 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <i class="fas fa-robot text-white text-xs"></i>
-            </div>
-            <h3 class="text-sm font-bold text-indigo-900">AI Deal Assistant</h3>
-            <span class="text-[10px] bg-indigo-100 text-indigo-600 font-bold px-2 py-0.5 rounded-full border border-indigo-200">Powered by Claude</span>
-          </div>
-          <div class="p-4">
-            <div id="pv-ai-output-${deal.id}" class="text-xs text-indigo-800 bg-white/60 rounded-xl p-3 mb-3 min-h-[60px] border border-indigo-100 hidden"></div>
-            <div class="flex flex-wrap gap-2 mb-3">
-              ${[
-                { label:'Summarize deal',        prompt:'Summarize this deal for me in 2-3 sentences.' },
-                { label:'Suggest next step',     prompt:'What should be the next action to move this deal forward?' },
-                { label:'Draft follow-up email', prompt:'Write a short, professional follow-up email for this deal.' },
-                { label:'Risk assessment',       prompt:'What are the main risks for this deal closing?' },
-              ].map(a => `
-                <button onclick="_pvAI('${deal.id}', '${a.prompt}')"
-                  class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 rounded-lg text-[11px] font-semibold transition-colors shadow-sm">
-                  <i class="fas fa-magic text-[9px]"></i>${a.label}
-                </button>`).join('')}
-            </div>
-            <div class="flex gap-2">
-              <input id="pv-ai-input-${deal.id}" type="text" placeholder="Ask anything about this deal…"
-                class="flex-1 px-3 py-1.5 border border-indigo-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                onkeydown="if(event.key==='Enter')_pvAI('${deal.id}',this.value)">
-              <button onclick="_pvAI('${deal.id}',document.getElementById('pv-ai-input-${deal.id}').value)"
-                class="px-3 py-1.5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg text-xs font-bold hover:opacity-90 transition-all">
-                <i class="fas fa-paper-plane text-[10px]"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-
         <!-- Integrations -->
         <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
           <div class="px-4 py-3 border-b border-slate-100">
@@ -1012,52 +977,6 @@ window.WorkVoltPages['pipeline'] = function (container) {
         toast('Notification sent!', 'success');
       }
     } catch(e) { toast(e.message, 'error'); }
-  };
-
-  // ================================================================
-  //  AI ASSISTANT
-  // ================================================================
-  window._pvAI = async function(dealId, prompt) {
-    if (!prompt?.trim()) return;
-    const deal      = deals.find(d => d.id === dealId);
-    const outputEl  = document.getElementById(`pv-ai-output-${dealId}`);
-    const inputEl   = document.getElementById(`pv-ai-input-${dealId}`);
-    if (!outputEl) return;
-
-    outputEl.classList.remove('hidden');
-    outputEl.innerHTML = `<div class="flex items-center gap-2 text-indigo-500"><i class="fas fa-circle-notch fa-spin text-xs"></i> <span class="text-xs">Thinking…</span></div>`;
-    if (inputEl) inputEl.value = '';
-
-    const dealContext = `
-Deal: ${deal.title || 'Untitled'}
-Company: ${deal.company || 'Unknown'}
-Contact: ${deal.contact_name || 'Unknown'} (${deal.contact_email || ''})
-Value: ${fmt(deal.value)}
-Stage: ${STAGE_MAP[deal.stage]?.label || deal.stage}
-Probability: ${STAGE_MAP[deal.stage]?.prob || 0}%
-Expected Close: ${deal.expected_close || 'Not set'}
-Notes: ${deal.notes || 'None'}
-Lead Score: ${leadScore(deal)}/100
-Stuck: ${isStuck(deal) ? 'Yes (no activity for 5+ days)' : 'No'}
-`.trim();
-
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model:      'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system:     `You are an expert sales AI assistant integrated in a CRM pipeline. Be concise, practical, and actionable. Format responses cleanly with no markdown headers. Here is the deal context:\n\n${dealContext}`,
-          messages:   [{ role: 'user', content: prompt }],
-        }),
-      });
-      const data   = await res.json();
-      const text   = data.content?.[0]?.text || 'No response received.';
-      outputEl.innerHTML = `<p class="text-xs text-indigo-800 leading-relaxed whitespace-pre-wrap">${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>`;
-    } catch(e) {
-      outputEl.innerHTML = `<p class="text-xs text-red-500">AI request failed: ${e.message}</p>`;
-    }
   };
 
   // ================================================================
