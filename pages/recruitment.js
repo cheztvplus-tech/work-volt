@@ -1727,15 +1727,15 @@ window.WorkVoltPages['recruitment'] = function(container) {
         <div class="grid grid-cols-2 gap-3">
           <button id="app-access-no"
             class="flex flex-col items-center gap-2 px-4 py-5 rounded-2xl border-2 border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all text-slate-600">
-            <i class="fas fa-times-circle text-2xl text-slate-400"></i>
+            <i class="fas fa-user-slash text-2xl text-slate-400"></i>
             <span class="font-extrabold text-sm">No</span>
-            <span class="text-[11px] text-slate-400 text-center leading-tight">Add as Contractor<br>access disabled</span>
+            <span class="text-[11px] text-slate-400 text-center leading-tight">Account created<br>access disabled</span>
           </button>
           <button id="app-access-yes"
             class="flex flex-col items-center gap-2 px-4 py-5 rounded-2xl border-2 border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-slate-600">
-            <i class="fas fa-check-circle text-2xl text-blue-400"></i>
+            <i class="fas fa-user-check text-2xl text-blue-400"></i>
             <span class="font-extrabold text-sm">Yes</span>
-            <span class="text-[11px] text-slate-400 text-center leading-tight">Add as Employee<br>open profile to complete</span>
+            <span class="text-[11px] text-slate-400 text-center leading-tight">Account created<br>access enabled</span>
           </button>
         </div>
 
@@ -1785,15 +1785,37 @@ window.WorkVoltPages['recruitment'] = function(container) {
       try {
         disableBtns();
         setStatus('<i class="fas fa-circle-notch fa-spin mr-1"></i>Processing…', true);
-        await doCompleteHire('Contractor', false);
-        toast(`${c.name || 'Candidate'} hired — added as Contractor with access disabled`, 'success');
+        const res = await doCompleteHire('Employee', false);
+        const newUserId = res.user_account?.id || null;
+        toast(`${c.name || 'Candidate'} hired — account created with access disabled`, 'success');
         closeModal();
         closeDetailPanel();
         await loadCandidates();
         await loadDashboard();
         render();
-      } catch(e) { setStatus(e.message, false); }
-    });
+
+        // Navigate to Settings → User Management so admin can review the profile
+        setTimeout(() => {
+          if (window.WorkVolt?.navigate) window.WorkVolt.navigate('settings');
+          setTimeout(() => {
+            if (typeof window.settingsTab === 'function') window.settingsTab('users');
+            if (newUserId) {
+              let attempts = 0;
+              const tryOpen = () => {
+                attempts++;
+                if (typeof window.usersOpenEdit === 'function') window.usersOpenEdit(newUserId);
+                const backdrop = document.getElementById('user-modal-backdrop');
+                if (backdrop && !backdrop.classList.contains('hidden')) {
+                  window.WorkVolt?.toast('Account created with access disabled. Enable it here when ready.', 'info');
+                } else if (attempts < 25) {
+                  setTimeout(tryOpen, 300);
+                }
+              };
+              setTimeout(tryOpen, 600);
+            }
+          }, 400);
+        }, 600);
+      } catch(e) { setStatus(e.message, false); }\n    });
 
     box.querySelector('#app-access-yes')?.addEventListener('click', async () => {
       try {
@@ -1801,7 +1823,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
         setStatus('<i class="fas fa-circle-notch fa-spin mr-1"></i>Processing…', true);
         const res = await doCompleteHire('Employee', true);
         const newUserId = res.user_account?.id || null;
-        toast(`${c.name || 'Candidate'} hired — user profile created. Send a Supabase invite to complete login setup.`, 'success');
+        toast(`${c.name || 'Candidate'} hired — account created with access enabled`, 'success');
         closeModal();
         closeDetailPanel();
         await loadCandidates();
