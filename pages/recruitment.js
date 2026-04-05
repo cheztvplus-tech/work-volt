@@ -326,8 +326,10 @@ window.WorkVoltPages['recruitment'] = function(container) {
       const { url, anonKey } = stored.credentials || {};
       if (!url || !anonKey) throw new Error('Could not read Supabase credentials.');
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('No active admin session found.');
+      const serviceKey = window._wvSupabaseServiceKey;
+      if (!serviceKey) throw new Error(
+        'Service Role Key not configured. Go to Settings → Database and add your Supabase Service Role Key.'
+      );
 
       const tempPassword =
         'Wv-' + Math.random().toString(36).slice(2, 9) +
@@ -337,8 +339,8 @@ window.WorkVoltPages['recruitment'] = function(container) {
         method:  'POST',
         headers: {
           'Content-Type':  'application/json',
-          'apikey':        anonKey,
-          'Authorization': `Bearer ${session.access_token}`,
+          'apikey':        serviceKey,
+          'Authorization': `Bearer ${serviceKey}`,
         },
         body: JSON.stringify({
           email:         candidate.email,
