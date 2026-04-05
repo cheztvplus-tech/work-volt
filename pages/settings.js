@@ -111,6 +111,7 @@ window.WorkVoltPages['settings'] = function(container) {
     const providerType = window.getAdapterType ? window.getAdapterType() : 'unknown';
     const info = (window.ADAPTER_INFO || {})[providerType] || {};
     const colors = { supabase:'#3ecf8e', firebase:'#f5820d', sheets:'#0f9d58' };
+    const hasServiceKey = !!window._wvSupabaseServiceKey;
 
     return `
       <div class="max-w-2xl space-y-6">
@@ -144,8 +145,65 @@ window.WorkVoltPages['settings'] = function(container) {
             </div>
           </div>
         </div>
+
+        ${providerType === 'supabase' ? `
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
+            <div class="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-key text-amber-600 text-sm"></i>
+            </div>
+            <div class="flex-1">
+              <h2 class="font-bold text-slate-900">Service Role Key</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Required to create user accounts from the Recruitment module</p>
+            </div>
+            <span class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${hasServiceKey ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">
+              <span class="w-1.5 h-1.5 rounded-full ${hasServiceKey ? 'bg-green-500' : 'bg-amber-500'}"></span>
+              ${hasServiceKey ? 'Configured' : 'Not set'}
+            </span>
+          </div>
+          <div class="px-6 py-5 space-y-4">
+            <div class="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
+              <i class="fas fa-exclamation-triangle flex-shrink-0 mt-0.5"></i>
+              <span>Find this in <strong>Supabase Dashboard → Project Settings → API → service_role key</strong>. Stored only in your browser, never sent anywhere except Supabase.</span>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Service Role Key</label>
+              <input id="db-service-key" type="password" placeholder="eyJhbGciOiJIUzI1NiIs…"
+                value="${hasServiceKey ? '••••••••••••••••' : ''}"
+                class="field text-sm font-mono">
+            </div>
+            <div id="db-service-key-status"></div>
+            <button onclick="saveServiceKey()" class="btn-primary w-full">
+              <i class="fas fa-save text-sm"></i> Save Service Role Key
+            </button>
+          </div>
+        </div>` : ''}
       </div>`;
   }
+
+  window.saveServiceKey = function() {
+    const input = document.getElementById('db-service-key');
+    const statusEl = document.getElementById('db-service-key-status');
+    const val = (input?.value || '').trim();
+
+    if (!val || val.startsWith('•')) {
+      statusEl.innerHTML = `<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium bg-red-50 text-red-600 border border-red-200"><i class="fas fa-exclamation-circle"></i><span>Please enter your Service Role Key.</span></div>`;
+      return;
+    }
+
+    // Store in localStorage alongside existing credentials
+    try {
+      const stored = JSON.parse(localStorage.getItem('wv_db_config') || '{}');
+      stored.credentials = stored.credentials || {};
+      stored.credentials.serviceKey = val;
+      localStorage.setItem('wv_db_config', JSON.stringify(stored));
+      window._wvSupabaseServiceKey = val;
+      statusEl.innerHTML = `<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium bg-green-50 text-green-700 border border-green-200"><i class="fas fa-check-circle"></i><span>Service Role Key saved!</span></div>`;
+      setTimeout(() => render(), 1500);
+    } catch(e) {
+      statusEl.innerHTML = `<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium bg-red-50 text-red-600 border border-red-200"><i class="fas fa-exclamation-circle"></i><span>${e.message}</span></div>`;
+    }
+  };
 
   // ================================================================
   //  USERS TAB
