@@ -303,7 +303,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
 
   // ── Complete hire — creates user account ────────────────────────
   async function completeHire(params) {
-    const { candidate_id, role, active, reason, moved_by, mover_name } = params;
+    const { candidate_id, role, active, reason, moved_by, mover_name, tempPassword } = params;
 
     const candidate = await getCandidate(candidate_id);
 
@@ -316,21 +316,54 @@ window.WorkVoltPages['recruitment'] = function(container) {
       mover_name: mover_name || '',
     });
 
-    // 2. Insert a profile row into public.users.
-    //    Supabase Auth user creation requires the service-role key and must be
-    //    done server-side (edge function / backend). We cannot call
-    //    supabase.auth.admin.createUser() or supabase.auth.signUp() safely from
-    //    the browser while another user is already signed in.
-    //    Instead we create the public.users profile row directly so the record
-    //    exists immediately. The admin can then invite the user via
-    //    Supabase Dashboard → Authentication → Users → Invite, which sends a
-    //    magic-link email and auto-links to this profile row on first sign-in.
-    const newUserId = newUUID();
+    // 2. Create the Supabase Auth user + public.users profile.
+    //
+    //    The public.users table has id referencing auth.users(id) as a FK,
+    //    so we MUST create the auth user first — inserting a random UUID
+    //    directly into public.users will always fail with a FK violation.
+    //
+    //    We cannot call supabase.auth.signUp() on the SAME client because
+    //    that would replace the currently signed-in admin's session.
+    //    Instead we spin up a SECOND isolated Supabase client (different
+    //    storageKey so sessions never collide) purely for the signUp call,
+    //    then immediately sign that client out so it leaves no session behind.
     let userAccount = null;
 
     try {
+      // Read credentials from localStorage (set during login)
+      const stored = JSON.parse(localStorage.getItem('wv_db_config') || '{}');
+      const { url, anonKey } = stored.credentials || {};
+      if (!url || !anonKey) throw new Error('Could not read Supabase credentials from storage.');
+
+      // Create a second isolated client — storageKey keeps its session separate
+      const anonClient = window.supabase.createClient(url, anonKey, {
+        auth: { storageKey: 'wv_hire_tmp', persistSession: false },
+      });
+
+      // Generate a secure temporary password the new employee will reset
+      const pw = tempPassword ||
+        'Wv!' + Math.random().toString(36).slice(2, 9) +
+        Math.random().toString(36).slice(2, 5).toUpperCase() + '!';
+
+      const { data: signUpData, error: signUpErr } = await anonClient.auth.signUp({
+        email:    candidate.email,
+        password: pw,
+        options:  { data: { name: candidate.name } },
+      });
+
+      if (signUpErr) throw new Error('Auth sign-up failed: ' + signUpErr.message);
+
+      const authUser = signUpData?.user;
+      if (!authUser?.id) throw new Error('Sign-up succeeded but no user id was returned.');
+
+      // Sign the temp client out immediately — we don't need its session
+      await anonClient.auth.signOut().catch(() => {});
+
+      // 3. Upsert the public.users profile row.
+      //    Supabase's auth trigger may have already created a minimal row;
+      //    upsert handles both cases cleanly.
       const profileRow = {
-        id:         newUserId,
+        id:         authUser.id,
         name:       candidate.name,
         email:      candidate.email,
         role:       role   || 'Employee',
@@ -340,40 +373,24 @@ window.WorkVoltPages['recruitment'] = function(container) {
 
       const { data: profile, error: profErr } = await supabase
         .from('users')
-        .insert(profileRow)
+        .upsert(profileRow, { onConflict: 'id' })
         .select()
         .single();
 
-      if (profErr) {
-        // Row may already exist if the candidate was a returning user
-        console.warn('recruitment: users insert warning:', profErr.message);
+      if (profErr) throw new Error('Profile upsert failed: ' + profErr.message);
+      userAccount = profile || profileRow;
 
-        // Try to fetch the existing row by email so we can still link it
-        const { data: existing } = await supabase
-          .from('users')
-          .select('*')
-          .eq('email', candidate.email)
-          .maybeSingle();
-
-        userAccount = existing || profileRow;
-      } else {
-        userAccount = profile || profileRow;
-      }
-
-      // 3. Link hired user back to the candidate row
+      // 4. Link hired user back to the candidate row
       await supabase
         .from('recruitment_candidates')
-        .update({ user_id_created: userAccount.id || newUserId })
+        .update({ user_id_created: authUser.id })
         .eq('candidate_id', candidate_id);
 
     } catch(e) {
-      // Stage move already succeeded — log the error but don't surface it
-      // as a total failure, since the hire stage is already recorded.
-      console.error('recruitment: completeHire user profile creation failed:', e.message);
+      console.error('recruitment: completeHire failed:', e.message);
       throw new Error(
-        'Candidate marked as Hired, but the user profile could not be created: ' +
-        e.message +
-        '. You can create the user manually from Settings → User Management.'
+        'Candidate marked as Hired, but account creation failed: ' +
+        e.message
       );
     }
 
