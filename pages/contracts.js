@@ -1283,12 +1283,29 @@ function openContractForm(existing) {
   modal.querySelector('#modal-save').addEventListener('click', async () => {
     const title = modal.querySelector('#f-title').value.trim();
     if (!title) { toast('Title is required','error'); return; }
-    const rawPartyId  = modal.querySelector('#f-party').value || null;
-    const rawRecordId = modal.querySelector('#f-linked-rec').value.trim() || null;
+        // Get raw values from form
+    let rawPartyId  = modal.querySelector('#f-party').value || null;
+    let rawRecordId = modal.querySelector('#f-linked-rec').value.trim() || null;
+
+    // DEBUG: Log what we're getting
+    console.log('Party ID from form:', rawPartyId, '| isUUID:', isUUID(rawPartyId));
+    console.log('Linked Record ID from form:', rawRecordId, '| isUUID:', isUUID(rawRecordId));
+
+    // Strict UUID validation - reject non-UUID values like "Maxo"
+    if (rawPartyId && !isUUID(rawPartyId)) {
+        console.error('Invalid party_id (not a UUID):', rawPartyId);
+        toast('Invalid party selected - please choose again from dropdown', 'error');
+        rawPartyId = null;
+    }
+    if (rawRecordId && !isUUID(rawRecordId)) {
+        console.error('Invalid linked_record_id (not a UUID):', rawRecordId);
+        rawRecordId = null;
+    }
+
     const payload = {
       title, category: modal.querySelector('#f-category').value,
       status: modal.querySelector('#f-status').value,
-      party_id:         (rawPartyId  && isUUID(rawPartyId))  ? rawPartyId  : null,
+      party_id: rawPartyId,  // Already validated above
       owner: modal.querySelector('#f-owner').value.trim(),
       department: modal.querySelector('#f-dept').value,
       value: modal.querySelector('#f-value').value || null,
