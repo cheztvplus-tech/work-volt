@@ -42,12 +42,15 @@ const LINKED_MODULES = ['None','hr','finance','assets','projects','crm'];
 
 // Config for each linkable module: which DB table to query and which field is the display name
 const MODULE_CONFIG = {
-  hr:       { table:'users',                nameField:'name',      idField:'id',       label:'HR / Employees',   icon:'fa-users' },
-  finance:  { table:'invoices',             nameField:'customer',  idField:'id',       label:'Finance / Invoices',icon:'fa-file-invoice-dollar' },
-  assets:   { table:'assets',               nameField:'asset_name',idField:'id',       label:'Assets',            icon:'fa-boxes' },
-  projects: { table:'projects',             nameField:'name',      idField:'id',       label:'Projects',          icon:'fa-project-diagram' },
-  crm:      { table:'crm_contacts',         nameField:'name',      idField:'id',       label:'CRM / Contacts',    icon:'fa-address-book' },
+  hr:       { table:'users',                nameField:'name',      idField:'id', label:'HR / Employees',    icon:'fa-users' },
+  finance:  { table:'invoices',             nameField:'customer',  idField:'id', label:'Finance / Invoices', icon:'fa-file-invoice-dollar' },
+  assets:   { table:'assets',               nameField:'asset_name',idField:'id', label:'Assets',             icon:'fa-boxes' },
+  projects: { table:'projects',             nameField:'name',      idField:'id', label:'Projects',           icon:'fa-project-diagram' },
+  crm:      { table:'crm_contacts',         nameField:'name',      idField:'id', label:'CRM / Contacts',     icon:'fa-address-book' },
 };
+
+// UUID validation helper — prevents non-UUID strings from reaching Supabase uuid columns
+const isUUID = v => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v||''));
 
 // ── Cloud storage provider config ─────────────────────────────
 // Users set these keys via the "Cloud Storage Setup" modal.
@@ -194,7 +197,7 @@ async function loadLinkedRecords(module) {
   try {
     const rows = await db.list(cfg.table, {}, { order: cfg.nameField, asc: true, limit: 200 });
     state.linkedRecords = rows;
-    // Cache id → name for display using the correct idField per module
+    // Cache id → name using the explicit idField per module
     rows.forEach(r => {
       const id = r[cfg.idField];
       if (id) state.linkedRecordNames[id] = r[cfg.nameField] || id;
@@ -1203,8 +1206,8 @@ function openContractForm(existing) {
             <option value="">— Select a record —</option>
           </select>
           <input class="ch-input" id="f-linked-rec-input" placeholder="No module selected" style="display:${c.linked_module&&c.linked_module!=='None'?'none':'block'}" disabled>
-          <input type="hidden" id="f-linked-rec" value="${esc(c.linked_record_id||'')}">
-          <input type="hidden" id="f-linked-rec-name" value="${esc(c.linked_record_id ? (state.linkedRecordNames[c.linked_record_id] || '') : '')}">
+          <input type="hidden" id="f-linked-rec" value="${esc(isUUID(c.linked_record_id) ? c.linked_record_id : '')}">
+          <input type="hidden" id="f-linked-rec-name" value="${esc(isUUID(c.linked_record_id) ? (state.linkedRecordNames[c.linked_record_id] || '') : '')}">
         </div>
         <div class="md:col-span-2"><label class="ch-label">Notes</label><textarea class="ch-input h-20 resize-none" id="f-notes" placeholder="Additional notes…">${esc(c.notes||'')}</textarea></div>
       </div>
@@ -1280,10 +1283,12 @@ function openContractForm(existing) {
   modal.querySelector('#modal-save').addEventListener('click', async () => {
     const title = modal.querySelector('#f-title').value.trim();
     if (!title) { toast('Title is required','error'); return; }
+    const rawPartyId  = modal.querySelector('#f-party').value || null;
+    const rawRecordId = modal.querySelector('#f-linked-rec').value.trim() || null;
     const payload = {
       title, category: modal.querySelector('#f-category').value,
       status: modal.querySelector('#f-status').value,
-      party_id: modal.querySelector('#f-party').value || null,
+      party_id:         (rawPartyId  && isUUID(rawPartyId))  ? rawPartyId  : null,
       owner: modal.querySelector('#f-owner').value.trim(),
       department: modal.querySelector('#f-dept').value,
       value: modal.querySelector('#f-value').value || null,
@@ -1294,7 +1299,7 @@ function openContractForm(existing) {
       renewal_date: modal.querySelector('#f-renewal-date').value || null,
       notice_period_days: modal.querySelector('#f-notice').value || null,
       linked_module: modal.querySelector('#f-linked-mod').value !== 'None' ? modal.querySelector('#f-linked-mod').value : null,
-      linked_record_id: modal.querySelector('#f-linked-rec').value.trim() || null,
+      linked_record_id: (rawRecordId && isUUID(rawRecordId)) ? rawRecordId : null,
       notes: modal.querySelector('#f-notes').value.trim() || null,
       created_by: window.WorkVolt?.user?.()?.name || '',
     };
@@ -1450,8 +1455,12 @@ function bindEvents() {
   }));
 
   // New / edit
-  el.querySelectorAll('#ch-new-contract').forEach(b => b.addEventListener('click', () => openContractForm()));
-  el.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => {
+  el.querySelectorAll('#ch-new-contract').forEach(b => b.addEventListener('click', async () => {
+    if (!state.parties.length) await loadParties();
+    openContractForm();
+  }));
+  el.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', async () => {
+    if (!state.parties.length) await loadParties();
     openContractForm(state.contracts.find(x=>x.id===b.dataset.edit));
   }));
 
