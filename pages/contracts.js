@@ -1316,7 +1316,7 @@ function openContractForm(existing) {
       renewal_date: modal.querySelector('#f-renewal-date').value || null,
       notice_period_days: modal.querySelector('#f-notice').value || null,
       linked_module: modal.querySelector('#f-linked-mod').value !== 'None' ? modal.querySelector('#f-linked-mod').value : null,
-      linked_record_id: (rawRecordId && isUUID(rawRecordId)) ? rawRecordId : null,
+      linked_record_id: rawRecordId,
       notes: modal.querySelector('#f-notes').value.trim() || null,
       created_by: window.WorkVolt?.user?.()?.name || '',
     };
