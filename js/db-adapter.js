@@ -59,7 +59,7 @@ class SupabaseAdapter extends BaseAdapter {
   }
 
   async init(credentials) {
-    const { url, anonKey, serviceKey } = credentials;
+    const { url, anonKey } = credentials;
     if (!url || !anonKey) throw new Error('Supabase URL and Anon Key are required.');
     if (!url.includes('supabase.co')) throw new Error('Invalid Supabase URL. Should be: https://xxxx.supabase.co');
     await this._loadSDK();
@@ -67,9 +67,6 @@ class SupabaseAdapter extends BaseAdapter {
     // Expose the live client globally so page modules (e.g. shop.js) can use
     // the already-authenticated client without creating a duplicate connection.
     window._wvSupabaseClient = this._client;
-    // Expose credentials needed for admin API calls (e.g. creating users)
-    window._wvSupabaseUrl        = url;
-    window._wvSupabaseServiceKey = serviceKey || null;
     // Verify connectivity — ping the auth settings endpoint (always public)
     try {
       const res = await fetch(url + '/auth/v1/settings', { headers: { apikey: anonKey } });
@@ -144,9 +141,9 @@ class SupabaseAdapter extends BaseAdapter {
   }
 
   async update(table, id, patch, idCol = 'id') {
-    const { data, error } = await this._client.from(table).update(patch).eq(idCol, id).select().single();
+    const { data, error } = await this._client.from(table).update(patch).eq(idCol, id).select();
     if (error) throw new Error(error.message);
-    return data;
+    return data?.[0] || null;
   }
 
   async delete(table, id, idCol = 'id') {
@@ -257,9 +254,8 @@ const ADAPTER_INFO = {
     color:       '#3ecf8e',
     description: 'Recommended — free tier, built-in auth, real-time',
     fields: [
-      { key: 'url',        label: 'Project URL',       placeholder: 'https://xxxx.supabase.co', type: 'url'      },
-      { key: 'anonKey',    label: 'Anon Key',          placeholder: 'eyJhbGciOiJIUzI1NiIs...', type: 'text'     },
-      { key: 'serviceKey', label: 'Service Role Key',  placeholder: 'eyJhbGciOiJIUzI1NiIs...', type: 'password' },
+      { key: 'url',     label: 'Project URL',  placeholder: 'https://xxxx.supabase.co',  type: 'url'  },
+      { key: 'anonKey', label: 'Anon Key',     placeholder: 'eyJhbGciOiJIUzI1NiIs...',  type: 'text' },
     ],
   },
   firebase: {
