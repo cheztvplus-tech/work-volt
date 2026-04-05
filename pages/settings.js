@@ -494,7 +494,7 @@ window.WorkVoltPages['settings'] = function(container) {
         department:  document.getElementById('uf-department')?.value.trim() || '',
         job_title:   document.getElementById('uf-job_title')?.value.trim() || '',
         phone:       document.getElementById('uf-phone')?.value.trim() || '',
-        pay_type:    document.getElementById('uf-pay_type')?.value || '',
+        pay_type:    document.getElementById('uf-pay_type')?.value || null,
         hourly_rate: document.getElementById('uf-hourly_rate')?.value || null,
         salary:      document.getElementById('uf-salary')?.value || null,
         start_date:  document.getElementById('uf-start_date')?.value || null,
