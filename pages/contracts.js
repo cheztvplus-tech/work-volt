@@ -42,11 +42,11 @@ const LINKED_MODULES = ['None','hr','finance','assets','projects','crm'];
 
 // Config for each linkable module: which DB table to query and which field is the display name
 const MODULE_CONFIG = {
-  hr:       { table:'users',                nameField:'name',      label:'HR / Employees',   icon:'fa-users' },
-  finance:  { table:'invoices',             nameField:'customer',  label:'Finance / Invoices',icon:'fa-file-invoice-dollar' },
-  assets:   { table:'assets',               nameField:'asset_name',label:'Assets',            icon:'fa-boxes' },
-  projects: { table:'projects',             nameField:'name',      label:'Projects',          icon:'fa-project-diagram' },
-  crm:      { table:'crm_contacts',         nameField:'name',      label:'CRM / Contacts',    icon:'fa-address-book' },
+  hr:       { table:'users',                nameField:'name',      idField:'id',       label:'HR / Employees',   icon:'fa-users' },
+  finance:  { table:'invoices',             nameField:'customer',  idField:'id',       label:'Finance / Invoices',icon:'fa-file-invoice-dollar' },
+  assets:   { table:'assets',               nameField:'asset_name',idField:'id',       label:'Assets',            icon:'fa-boxes' },
+  projects: { table:'projects',             nameField:'name',      idField:'id',       label:'Projects',          icon:'fa-project-diagram' },
+  crm:      { table:'crm_contacts',         nameField:'name',      idField:'id',       label:'CRM / Contacts',    icon:'fa-address-book' },
 };
 
 // ── Cloud storage provider config ─────────────────────────────
@@ -194,9 +194,9 @@ async function loadLinkedRecords(module) {
   try {
     const rows = await db.list(cfg.table, {}, { order: cfg.nameField, asc: true, limit: 200 });
     state.linkedRecords = rows;
-    // Cache id → name for display
+    // Cache id → name for display using the correct idField per module
     rows.forEach(r => {
-      const id = r.id || r.asset_id || r.job_id;
+      const id = r[cfg.idField];
       if (id) state.linkedRecordNames[id] = r[cfg.nameField] || id;
     });
   } catch(e) { state.linkedRecords = []; }
@@ -1246,7 +1246,7 @@ function openContractForm(existing) {
     const cfg = MODULE_CONFIG[module];
     recSelect.innerHTML = '<option value="">— Select a record —</option>' +
       state.linkedRecords.map(r => {
-        const id   = r.id || r.asset_id || r.job_id;
+        const id   = r[cfg.idField];
         const name = r[cfg.nameField] || id;
         const sel  = id === currentId ? 'selected' : '';
         return `<option value="${esc(id)}" data-name="${esc(name)}" ${sel}>${esc(name)}</option>`;
