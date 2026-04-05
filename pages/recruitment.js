@@ -303,7 +303,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
 
   // ── Complete hire — creates user account ────────────────────────
   async function completeHire(params) {
-    const { candidate_id, role, active, password, reason, moved_by, mover_name } = params;
+    const { candidate_id, role, active, reason, moved_by, mover_name } = params;
 
     const candidate = await getCandidate(candidate_id);
 
@@ -316,33 +316,19 @@ window.WorkVoltPages['recruitment'] = function(container) {
       mover_name: mover_name || '',
     });
 
-    // 2. Create the user account in the users table
-    //    Password hashing is handled by Supabase Auth — we create
-    //    the auth user first, then upsert the profile row.
-    let newUserId = null;
+    // 2. Insert a profile row into public.users.
+    //    Supabase Auth user creation requires the service-role key and must be
+    //    done server-side (edge function / backend). We cannot call
+    //    supabase.auth.admin.createUser() or supabase.auth.signUp() safely from
+    //    the browser while another user is already signed in.
+    //    Instead we create the public.users profile row directly so the record
+    //    exists immediately. The admin can then invite the user via
+    //    Supabase Dashboard → Authentication → Users → Invite, which sends a
+    //    magic-link email and auto-links to this profile row on first sign-in.
+    const newUserId = newUUID();
     let userAccount = null;
 
     try {
-      // Create Supabase Auth account
-      const { data: authData, error: authErr } =
-        await supabase.auth.admin
-          ? supabase.auth.admin.createUser({
-              email:             candidate.email,
-              password,
-              email_confirm:     true,
-            })
-          // Fallback: signUp (works when admin API is unavailable in browser)
-          : await supabase.auth.signUp({
-              email:    candidate.email,
-              password,
-            });
-
-      if (authErr) throw new Error(authErr.message);
-
-      const authUser = authData?.user;
-      newUserId = authUser?.id || newUUID();
-
-      // 3. Insert profile row into public.users
       const profileRow = {
         id:         newUserId,
         name:       candidate.name,
@@ -359,22 +345,36 @@ window.WorkVoltPages['recruitment'] = function(container) {
         .single();
 
       if (profErr) {
-        // Profile row might already exist if auth user was pre-existing
+        // Row may already exist if the candidate was a returning user
         console.warn('recruitment: users insert warning:', profErr.message);
+
+        // Try to fetch the existing row by email so we can still link it
+        const { data: existing } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', candidate.email)
+          .maybeSingle();
+
+        userAccount = existing || profileRow;
+      } else {
+        userAccount = profile || profileRow;
       }
 
-      userAccount = profile || profileRow;
-
-      // 4. Link hired user back to the candidate row
+      // 3. Link hired user back to the candidate row
       await supabase
         .from('recruitment_candidates')
-        .update({ user_id_created: newUserId })
+        .update({ user_id_created: userAccount.id || newUserId })
         .eq('candidate_id', candidate_id);
 
     } catch(e) {
-      // If user creation fails we still want the stage move to persist
-      console.error('recruitment: completeHire user creation failed:', e.message);
-      throw e;
+      // Stage move already succeeded — log the error but don't surface it
+      // as a total failure, since the hire stage is already recorded.
+      console.error('recruitment: completeHire user profile creation failed:', e.message);
+      throw new Error(
+        'Candidate marked as Hired, but the user profile could not be created: ' +
+        e.message +
+        '. You can create the user manually from Settings → User Management.'
+      );
     }
 
     return { user_account: userAccount };
@@ -1771,13 +1771,10 @@ window.WorkVoltPages['recruitment'] = function(container) {
     };
 
     async function doCompleteHire(role, active) {
-      const tempPass = 'WV-' + Math.random().toString(36).slice(2,8).toUpperCase()
-                     + '-' + Math.random().toString(36).slice(2,8).toUpperCase();
       return completeHire({
         candidate_id: c.candidate_id,
         role,
         active,
-        password:   tempPass,
         reason,
         moved_by:   user.user_id || user.id || '',
         mover_name: user.name || user.email || 'System',
@@ -1804,7 +1801,7 @@ window.WorkVoltPages['recruitment'] = function(container) {
         setStatus('<i class="fas fa-circle-notch fa-spin mr-1"></i>Processing…', true);
         const res = await doCompleteHire('Employee', true);
         const newUserId = res.user_account?.id || null;
-        toast(`${c.name || 'Candidate'} hired — opening user profile…`, 'success');
+        toast(`${c.name || 'Candidate'} hired — user profile created. Send a Supabase invite to complete login setup.`, 'success');
         closeModal();
         closeDetailPanel();
         await loadCandidates();
