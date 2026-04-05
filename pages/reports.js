@@ -344,7 +344,9 @@ window.WorkVoltPages['reports'] = function (container) {
             <button onclick="_rpDrill('won-deals')" class="text-[10px] text-blue-500 hover:text-blue-700 font-semibold">View all →</button>
           </div>
           <div class="p-4">
-            <canvas id="rp-chart-rev-trend" height="180"></canvas>
+            <div style="position:relative;height:180px;">
+              <canvas id="rp-chart-rev-trend"></canvas>
+            </div>
             ${revByDay.length === 0 ? `<p class="text-xs text-slate-400 text-center py-8">No closed deals in this period</p>` : ''}
           </div>
         </div>
@@ -359,7 +361,9 @@ window.WorkVoltPages['reports'] = function (container) {
             <button onclick="_rpSection('financial')" class="text-[10px] text-blue-500 hover:text-blue-700 font-semibold">Detail →</button>
           </div>
           <div class="p-4">
-            <canvas id="rp-chart-inc-exp" height="180"></canvas>
+            <div style="position:relative;height:180px;">
+              <canvas id="rp-chart-inc-exp"></canvas>
+            </div>
           </div>
         </div>
       </div>
@@ -373,7 +377,9 @@ window.WorkVoltPages['reports'] = function (container) {
             <h3 class="font-bold text-slate-900 text-sm">Pipeline by Stage</h3>
           </div>
           <div class="p-4">
-            <canvas id="rp-chart-pipeline" height="160"></canvas>
+            <div style="position:relative;height:160px;">
+              <canvas id="rp-chart-pipeline"></canvas>
+            </div>
           </div>
         </div>
 
@@ -383,7 +389,9 @@ window.WorkVoltPages['reports'] = function (container) {
             <h3 class="font-bold text-slate-900 text-sm">Win / Loss Rate</h3>
           </div>
           <div class="p-4 flex flex-col items-center">
-            <canvas id="rp-chart-winloss" height="160" width="160"></canvas>
+            <div style="position:relative;height:160px;width:160px;">
+              <canvas id="rp-chart-winloss"></canvas>
+            </div>
             <div class="flex gap-4 mt-3">
               <div class="text-center"><p class="text-lg font-extrabold text-emerald-600">${wonDeals.length}</p><p class="text-[10px] text-slate-400">Won</p></div>
               <div class="text-center"><p class="text-lg font-extrabold text-red-500">${lostDeals.length}</p><p class="text-[10px] text-slate-400">Lost</p></div>
@@ -512,14 +520,14 @@ window.WorkVoltPages['reports'] = function (container) {
             <h3 class="font-bold text-slate-900 text-sm">Revenue Over Time</h3>
             <p class="text-[10px] text-slate-400 mt-0.5">Closed deal value by date</p>
           </div>
-          <div class="p-4"><canvas id="rp-chart-sales-trend" height="200"></canvas></div>
+          <div class="p-4"><div style="position:relative;height:200px;"><canvas id="rp-chart-sales-trend"></canvas></div></div>
         </div>
 
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="px-5 py-4 border-b border-slate-100">
             <h3 class="font-bold text-slate-900 text-sm">Deals by Stage</h3>
           </div>
-          <div class="p-4"><canvas id="rp-chart-by-stage" height="200"></canvas></div>
+          <div class="p-4"><div style="position:relative;height:200px;"><canvas id="rp-chart-by-stage"></canvas></div></div>
         </div>
 
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -528,7 +536,7 @@ window.WorkVoltPages['reports'] = function (container) {
           </div>
           <div class="p-4">
             ${Object.keys(byRep).length
-              ? `<canvas id="rp-chart-by-rep" height="200"></canvas>`
+              ? `<div style="position:relative;height:200px;"><canvas id="rp-chart-by-rep"></canvas></div>`
               : `<p class="text-xs text-slate-400 text-center py-12">No assignment data available</p>`}
           </div>
         </div>
@@ -537,7 +545,7 @@ window.WorkVoltPages['reports'] = function (container) {
           <div class="px-5 py-4 border-b border-slate-100">
             <h3 class="font-bold text-slate-900 text-sm">Lead Sources</h3>
           </div>
-          <div class="p-4"><canvas id="rp-chart-by-source" height="200"></canvas></div>
+          <div class="p-4"><div style="position:relative;height:200px;"><canvas id="rp-chart-by-source"></canvas></div></div>
         </div>
       </div>
 
@@ -641,14 +649,14 @@ window.WorkVoltPages['reports'] = function (container) {
           <div class="px-5 py-4 border-b border-slate-100">
             <h3 class="font-bold text-slate-900 text-sm">Monthly Income vs Expenses</h3>
           </div>
-          <div class="p-4"><canvas id="rp-chart-monthly-fin" height="200"></canvas></div>
+          <div class="p-4"><div style="position:relative;height:200px;"><canvas id="rp-chart-monthly-fin"></canvas></div></div>
         </div>
 
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="px-5 py-4 border-b border-slate-100">
             <h3 class="font-bold text-slate-900 text-sm">Expenses by Category</h3>
           </div>
-          <div class="p-4"><canvas id="rp-chart-expense-cat" height="200"></canvas></div>
+          <div class="p-4"><div style="position:relative;height:200px;"><canvas id="rp-chart-expense-cat"></canvas></div></div>
         </div>
       </div>
 
@@ -663,7 +671,7 @@ window.WorkVoltPages['reports'] = function (container) {
           <div><p class="text-2xl font-extrabold text-red-500">${fmtMoney(unpaidInv.filter(i=>i.status==='Overdue').reduce((s,i)=>s+parseFloat(i.amount||0),0))}</p><p class="text-xs text-slate-400 mt-1">Overdue (${unpaidInv.filter(i=>i.status==='Overdue').length})</p></div>
         </div>
         <div class="px-5 pb-5">
-          <canvas id="rp-chart-invoice-status" height="120"></canvas>
+          <div style="position:relative;height:120px;"><canvas id="rp-chart-invoice-status"></canvas></div>
         </div>
       </div>
 
@@ -743,7 +751,7 @@ window.WorkVoltPages['reports'] = function (container) {
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="px-5 py-4 border-b border-slate-100"><h3 class="font-bold text-slate-900 text-sm">Payroll Cost Over Time</h3></div>
-          <div class="p-4"><canvas id="rp-chart-payroll-trend" height="200"></canvas></div>
+          <div class="p-4"><div style="position:relative;height:200px;"><canvas id="rp-chart-payroll-trend"></canvas></div></div>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="px-5 py-4 border-b border-slate-100"><h3 class="font-bold text-slate-900 text-sm">Hours Logged</h3></div>
@@ -753,7 +761,7 @@ window.WorkVoltPages['reports'] = function (container) {
               <div><p class="text-2xl font-extrabold text-amber-500">${overtimeHours.toFixed(0)}</p><p class="text-xs text-slate-400 mt-1">Overtime Hours</p></div>
               <div><p class="text-2xl font-extrabold text-slate-600">${tsFiltered.length}</p><p class="text-xs text-slate-400 mt-1">Timesheets</p></div>
             </div>
-            <canvas id="rp-chart-hours" height="130"></canvas>
+            <div style="position:relative;height:130px;"><canvas id="rp-chart-hours"></canvas></div>
           </div>
         </div>
       </div>
@@ -826,11 +834,11 @@ window.WorkVoltPages['reports'] = function (container) {
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="px-5 py-4 border-b border-slate-100"><h3 class="font-bold text-slate-900 text-sm">Tasks by Status</h3></div>
-          <div class="p-4"><canvas id="rp-chart-task-status" height="200"></canvas></div>
+          <div class="p-4"><div style="position:relative;height:200px;"><canvas id="rp-chart-task-status"></canvas></div></div>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="px-5 py-4 border-b border-slate-100"><h3 class="font-bold text-slate-900 text-sm">Tasks by Priority</h3></div>
-          <div class="p-4"><canvas id="rp-chart-task-priority" height="200"></canvas></div>
+          <div class="p-4"><div style="position:relative;height:200px;"><canvas id="rp-chart-task-priority"></canvas></div></div>
         </div>
       </div>
 
@@ -979,7 +987,7 @@ window.WorkVoltPages['reports'] = function (container) {
           </div>
           ${customBuilder.chartType !== 'table' ? `
             <div class="p-4 border-b border-slate-100">
-              <canvas id="rp-chart-custom" height="200"></canvas>
+              <div style="position:relative;height:200px;"><canvas id="rp-chart-custom"></canvas></div>
             </div>` : ''}
           <div class="overflow-x-auto">
             <table class="w-full text-left text-xs">
