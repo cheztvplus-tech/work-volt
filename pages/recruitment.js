@@ -1815,7 +1815,8 @@ window.WorkVoltPages['recruitment'] = function(container) {
             }
           }, 400);
         }, 600);
-      } catch(e) { setStatus(e.message, false); }\n    });
+      } catch(e) { setStatus(e.message, false); }
+    });
 
     box.querySelector('#app-access-yes')?.addEventListener('click', async () => {
       try {
