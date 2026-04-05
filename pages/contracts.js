@@ -1321,6 +1321,7 @@ function openContractForm(existing) {
       created_by: window.WorkVolt?.user?.()?.name || '',
     };
     try {
+      console.log('FULL PAYLOAD being sent to database:', JSON.stringify(payload, null, 2));
       if (isEdit) {
         const updated = await db.update('contracts', c.id, payload);
         const idx = state.contracts.findIndex(x=>x.id===c.id);
