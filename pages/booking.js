@@ -1,0 +1,1676 @@
+/* =============================================================
+   WORK VOLT — pages/booking.js
+   Full Booking Module — Admin Panel
+   
+   SUPABASE SQL MIGRATION — run once in your SQL editor:
+   
+   -- Services
+   CREATE TABLE IF NOT EXISTS booking_services (
+     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+     name TEXT NOT NULL,
+     description TEXT,
+     duration INTEGER NOT NULL DEFAULT 60,
+     price DECIMAL(10,2) DEFAULT 0,
+     category TEXT,
+     color TEXT DEFAULT '#3b82f6',
+     travel_enabled BOOLEAN DEFAULT false,
+     travel_mode TEXT DEFAULT 'flat',
+     travel_flat_zones JSONB DEFAULT '[]',
+     travel_per_km_rate DECIMAL(10,2) DEFAULT 0,
+     active BOOLEAN DEFAULT true,
+     created_at TIMESTAMPTZ DEFAULT NOW()
+   );
+
+   -- Staff
+   CREATE TABLE IF NOT EXISTS booking_staff (
+     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+     name TEXT NOT NULL,
+     email TEXT,
+     phone TEXT,
+     color TEXT DEFAULT '#8b5cf6',
+     availability JSONB DEFAULT '{}',
+     breaks JSONB DEFAULT '[]',
+     services JSONB DEFAULT '[]',
+     auto_assign BOOLEAN DEFAULT true,
+     active BOOLEAN DEFAULT true,
+     created_at TIMESTAMPTZ DEFAULT NOW()
+   );
+
+   -- Customers
+   CREATE TABLE IF NOT EXISTS booking_customers (
+     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+     name TEXT NOT NULL,
+     email TEXT,
+     phone TEXT,
+     address TEXT,
+     notes TEXT,
+     created_at TIMESTAMPTZ DEFAULT NOW()
+   );
+
+   -- Bookings
+   CREATE TABLE IF NOT EXISTS bookings (
+     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+     customer_id UUID REFERENCES booking_customers(id),
+     service_id UUID REFERENCES booking_services(id),
+     staff_id UUID REFERENCES booking_staff(id),
+     start_time TIMESTAMPTZ NOT NULL,
+     end_time TIMESTAMPTZ NOT NULL,
+     status TEXT DEFAULT 'pending',
+     payment_method TEXT DEFAULT 'free',
+     payment_status TEXT DEFAULT 'unpaid',
+     amount DECIMAL(10,2) DEFAULT 0,
+     travel_fee DECIMAL(10,2) DEFAULT 0,
+     travel_address TEXT,
+     travel_distance DECIMAL(10,2) DEFAULT 0,
+     notes TEXT,
+     recurring TEXT DEFAULT 'none',
+     recurring_end DATE,
+     source TEXT DEFAULT 'admin',
+     created_at TIMESTAMPTZ DEFAULT NOW()
+   );
+
+   -- Waitlist
+   CREATE TABLE IF NOT EXISTS booking_waitlist (
+     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+     service_id UUID REFERENCES booking_services(id),
+     staff_id UUID REFERENCES booking_staff(id),
+     customer_name TEXT NOT NULL,
+     customer_email TEXT,
+     customer_phone TEXT,
+     requested_date DATE,
+     notified BOOLEAN DEFAULT false,
+     created_at TIMESTAMPTZ DEFAULT NOW()
+   );
+
+   -- Settings
+   CREATE TABLE IF NOT EXISTS booking_settings (
+     key TEXT PRIMARY KEY,
+     value TEXT,
+     updated_at TIMESTAMPTZ DEFAULT NOW()
+   );
+
+   -- Indexes
+   CREATE INDEX IF NOT EXISTS idx_bookings_start ON bookings(start_time);
+   CREATE INDEX IF NOT EXISTS idx_bookings_staff ON bookings(staff_id);
+   CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+
+   -- Default settings
+   INSERT INTO booking_settings (key, value) VALUES
+     ('business_hours_start', '09:00'),
+     ('business_hours_end', '18:00'),
+     ('slot_interval', '30'),
+     ('currency', '$'),
+     ('paypal_email', ''),
+     ('travel_mode', 'flat'),
+     ('travel_per_km_rate', '1.50'),
+     ('travel_flat_zones', '[{"label":"Zone 1 (0-10km)","max_km":10,"fee":10},{"label":"Zone 2 (10-25km)","max_km":25,"fee":25},{"label":"Zone 3 (25-50km)","max_km":50,"fee":45}]'),
+     ('business_days', '["Mon","Tue","Wed","Thu","Fri"]')
+   ON CONFLICT (key) DO NOTHING;
+
+   ============================================================= */
+
+(function () {
+  'use strict';
+
+  // ── State ────────────────────────────────────────────────────
+  const state = {
+    tab: 'dashboard',
+    calView: 'week',
+    calDate: new Date(),
+    bookings: [],
+    services: [],
+    staff: [],
+    customers: [],
+    waitlist: [],
+    settings: {},
+    loading: false,
+    bookingView: 'list', // list | kanban
+    dragBooking: null,
+  };
+
+  const STATUS_COLORS = {
+    pending:   { bg: '#fef3c7', text: '#92400e', dot: '#f59e0b', border: '#fde68a' },
+    confirmed: { bg: '#dbeafe', text: '#1e40af', dot: '#3b82f6', border: '#bfdbfe' },
+    completed: { bg: '#d1fae5', text: '#065f46', dot: '#10b981', border: '#a7f3d0' },
+    cancelled: { bg: '#fee2e2', text: '#991b1b', dot: '#ef4444', border: '#fecaca' },
+    waitlist:  { bg: '#f3e8ff', text: '#6b21a8', dot: '#a855f7', border: '#e9d5ff' },
+  };
+
+  const db = () => window.WorkVolt?.db || window.WorkVoltDB;
+  const toast = (m, t='info') => window.WorkVolt?.toast(m, t);
+  const user = () => window.WorkVolt?.user() || window.currentUser;
+
+  // ── Entry point ──────────────────────────────────────────────
+  window.WorkVoltPages = window.WorkVoltPages || {};
+  window.WorkVoltPages.booking = async function (container) {
+    container.innerHTML = renderShell();
+    attachShellEvents();
+    await loadAll();
+    renderTab();
+    startReminderPoller();
+  };
+
+  // ── Shell ────────────────────────────────────────────────────
+  function renderShell() {
+    return `
+    <div id="bk-root" class="flex flex-col h-full min-h-screen bg-slate-50">
+      <!-- Header -->
+      <div class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
+        <div>
+          <h1 class="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <span class="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
+              <i class="fas fa-calendar-check text-white text-sm"></i>
+            </span>
+            Booking Manager
+          </h1>
+          <p class="text-xs text-slate-400 mt-0.5 ml-11">Appointments · Services · Staff · Analytics</p>
+        </div>
+        <button onclick="BK.openNewBooking()" class="btn-primary gap-2 shadow-sm">
+          <i class="fas fa-plus text-xs"></i> New Booking
+        </button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="bg-white border-b border-slate-200 px-6 flex gap-1 flex-shrink-0 overflow-x-auto">
+        ${['dashboard','calendar','bookings','services','staff','settings'].map(t => `
+          <button onclick="BK.switchTab('${t}')" id="bk-tab-${t}"
+            class="bk-tab px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap
+                   ${state.tab===t ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}">
+            <i class="fas ${tabIcon(t)} mr-1.5 text-xs"></i>${capitalize(t)}
+          </button>`).join('')}
+      </div>
+
+      <!-- Content -->
+      <div id="bk-content" class="flex-1 overflow-y-auto"></div>
+    </div>`;
+  }
+
+  function tabIcon(t) {
+    return { dashboard:'fa-chart-bar', calendar:'fa-calendar-week', bookings:'fa-list',
+             services:'fa-concierge-bell', staff:'fa-users', settings:'fa-sliders-h' }[t] || 'fa-circle';
+  }
+
+  function attachShellEvents() {
+    window.BK = publicAPI();
+  }
+
+  function switchTab(tab) {
+    state.tab = tab;
+    document.querySelectorAll('.bk-tab').forEach(btn => {
+      const t = btn.id.replace('bk-tab-', '');
+      btn.className = btn.className.replace(/border-blue-600 text-blue-600|border-transparent text-slate-500 hover:text-slate-700/g, '');
+      btn.className += t === tab ? ' border-blue-600 text-blue-600' : ' border-transparent text-slate-500 hover:text-slate-700';
+    });
+    renderTab();
+  }
+
+  function renderTab() {
+    const c = document.getElementById('bk-content');
+    if (!c) return;
+    c.innerHTML = '<div class="flex items-center justify-center h-40"><i class="fas fa-circle-notch fa-spin text-2xl text-blue-400 opacity-60"></i></div>';
+    requestAnimationFrame(() => {
+      switch (state.tab) {
+        case 'dashboard':  c.innerHTML = renderDashboard(); break;
+        case 'calendar':   c.innerHTML = renderCalendar();  attachCalEvents(); break;
+        case 'bookings':   c.innerHTML = renderBookings();  attachBookingListEvents(); break;
+        case 'services':   c.innerHTML = renderServices();  break;
+        case 'staff':      c.innerHTML = renderStaff();     break;
+        case 'settings':   c.innerHTML = renderSettings();  break;
+      }
+    });
+  }
+
+  // ── Data Loading ─────────────────────────────────────────────
+  async function loadAll() {
+    try {
+      const D = db();
+      const [bookings, services, staff, customers, waitlist, settingsRows] = await Promise.all([
+        D.list('bookings', {}, { order: 'start_time', asc: true }),
+        D.list('booking_services', { active: true }, { order: 'name', asc: true }),
+        D.list('booking_staff', { active: true }, { order: 'name', asc: true }),
+        D.list('booking_customers', {}, { order: 'name', asc: true }),
+        D.list('booking_waitlist', {}, { order: 'created_at' }),
+        D.list('booking_settings'),
+      ]);
+      state.bookings  = bookings  || [];
+      state.services  = services  || [];
+      state.staff     = staff     || [];
+      state.customers = customers || [];
+      state.waitlist  = waitlist  || [];
+      state.settings  = Object.fromEntries((settingsRows || []).map(r => [r.key, r.value]));
+    } catch (e) {
+      console.warn('Booking load error:', e.message);
+      state.bookings = []; state.services = []; state.staff = [];
+      state.customers = []; state.waitlist = []; state.settings = {};
+    }
+  }
+
+  async function reload() { await loadAll(); renderTab(); }
+
+  // ── DASHBOARD ────────────────────────────────────────────────
+  function renderDashboard() {
+    const now  = new Date();
+    const mon  = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthB = state.bookings.filter(b => new Date(b.start_time) >= mon);
+    const total  = state.bookings.length;
+    const active = state.bookings.filter(b => b.status === 'confirmed' || b.status === 'pending').length;
+    const revenue = state.bookings.filter(b => b.payment_status === 'paid').reduce((s,b) => s + (+b.amount||0) + (+b.travel_fee||0), 0);
+    const monthRev = monthB.filter(b => b.payment_status === 'paid').reduce((s,b) => s + (+b.amount||0) + (+b.travel_fee||0), 0);
+    const cur = state.settings.currency || '$';
+
+    // Top services
+    const svcCount = {};
+    state.bookings.forEach(b => { if(b.service_id) svcCount[b.service_id] = (svcCount[b.service_id]||0)+1; });
+    const topServices = Object.entries(svcCount).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([id,cnt]) => ({
+      svc: state.services.find(s=>s.id===id), cnt
+    })).filter(x=>x.svc);
+
+    // Busiest hours
+    const hourCount = Array(24).fill(0);
+    state.bookings.forEach(b => { if(b.start_time) hourCount[new Date(b.start_time).getHours()]++; });
+    const maxHour = Math.max(...hourCount, 1);
+
+    // Upcoming today
+    const todayStr = now.toDateString();
+    const todayBookings = state.bookings.filter(b => new Date(b.start_time).toDateString() === todayStr && b.status !== 'cancelled').slice(0,5);
+
+    // Status breakdown
+    const statusMap = { pending:0, confirmed:0, completed:0, cancelled:0 };
+    state.bookings.forEach(b => { if(statusMap[b.status] !== undefined) statusMap[b.status]++; });
+
+    return `<div class="p-6 space-y-6 fade-in">
+      <!-- KPI Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        ${kpiCard('Total Bookings', total, 'fa-calendar', '#3b82f6', '')}
+        ${kpiCard('Active', active, 'fa-clock', '#f59e0b', '')}
+        ${kpiCard('Total Revenue', cur+fmt(revenue), 'fa-dollar-sign', '#10b981', '')}
+        ${kpiCard('This Month', cur+fmt(monthRev), 'fa-chart-line', '#8b5cf6', '')}
+      </div>
+
+      <div class="grid lg:grid-cols-3 gap-6">
+        <!-- Status Breakdown -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <h3 class="font-bold text-slate-800 mb-4 text-sm">Booking Status</h3>
+          <div class="space-y-3">
+            ${Object.entries(statusMap).map(([status,cnt]) => {
+              const col = STATUS_COLORS[status] || STATUS_COLORS.pending;
+              const pct = total > 0 ? Math.round((cnt/total)*100) : 0;
+              return `<div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs font-semibold capitalize" style="color:${col.text}">${status}</span>
+                  <span class="text-xs text-slate-500">${cnt} (${pct}%)</span>
+                </div>
+                <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div class="h-full rounded-full transition-all" style="width:${pct}%;background:${col.dot}"></div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Top Services -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <h3 class="font-bold text-slate-800 mb-4 text-sm">Top Services</h3>
+          ${topServices.length ? `<div class="space-y-3">
+            ${topServices.map(({svc,cnt}, i) => `
+              <div class="flex items-center gap-3">
+                <div class="w-6 h-6 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                     style="background:${svc.color||'#3b82f6'}">${i+1}</div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-semibold text-slate-700 truncate">${esc(svc.name)}</p>
+                  <p class="text-xs text-slate-400">${cnt} booking${cnt!==1?'s':''}</p>
+                </div>
+              </div>`).join('')}
+          </div>` : '<p class="text-sm text-slate-400 text-center py-4">No bookings yet</p>'}
+        </div>
+
+        <!-- Busiest Hours -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <h3 class="font-bold text-slate-800 mb-4 text-sm">Busiest Hours</h3>
+          <div class="flex items-end gap-0.5 h-24">
+            ${hourCount.slice(7,21).map((cnt,i) => {
+              const h = i+7;
+              const pct = maxHour > 0 ? (cnt/maxHour)*100 : 0;
+              return `<div class="flex-1 flex flex-col items-center gap-1 group relative">
+                <div class="w-full rounded-t transition-all" style="height:${Math.max(pct,2)}%;background:#3b82f6;opacity:${0.3+pct/140}"></div>
+                <span class="text-[8px] text-slate-300 group-hover:text-slate-500">${h}</span>
+                <div class="hidden group-hover:block absolute -top-6 bg-slate-800 text-white text-[10px] px-1.5 py-0.5 rounded z-10 whitespace-nowrap">${cnt} bk</div>
+              </div>`;
+            }).join('')}
+          </div>
+          <p class="text-[10px] text-slate-400 mt-2 text-center">Hours 7AM–9PM</p>
+        </div>
+      </div>
+
+      <!-- Today's Schedule -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h3 class="font-bold text-slate-800 text-sm">Today's Schedule</h3>
+          <button onclick="BK.switchTab('calendar')" class="text-xs text-blue-600 hover:underline font-medium">View calendar →</button>
+        </div>
+        ${todayBookings.length ? `<div class="divide-y divide-slate-100">
+          ${todayBookings.map(b => {
+            const svc = state.services.find(s=>s.id===b.service_id);
+            const stf = state.staff.find(s=>s.id===b.staff_id);
+            const cust = state.customers.find(c=>c.id===b.customer_id);
+            const col = STATUS_COLORS[b.status]||STATUS_COLORS.pending;
+            return `<div class="px-5 py-3 flex items-center gap-4 hover:bg-slate-50 transition-colors">
+              <div class="w-16 text-center flex-shrink-0">
+                <p class="text-sm font-bold text-slate-800">${fmtTime(b.start_time)}</p>
+                <p class="text-[10px] text-slate-400">${fmtTime(b.end_time)}</p>
+              </div>
+              <div class="w-1 h-10 rounded-full flex-shrink-0" style="background:${svc?.color||'#3b82f6'}"></div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold text-slate-800 truncate">${esc(cust?.name||'Unknown Customer')}</p>
+                <p class="text-xs text-slate-400">${esc(svc?.name||'Service')}${stf?' · '+esc(stf.name):''}</p>
+              </div>
+              <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold" style="background:${col.bg};color:${col.text}">${b.status}</span>
+            </div>`;
+          }).join('')}
+        </div>` : `<div class="px-5 py-8 text-center text-sm text-slate-400">No bookings scheduled for today</div>`}
+      </div>
+
+      <!-- Waitlist -->
+      ${state.waitlist.length ? `
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+            <span class="w-5 h-5 bg-purple-100 rounded-full flex items-center justify-center"><i class="fas fa-clock text-purple-500 text-[9px]"></i></span>
+            Waitlist (${state.waitlist.length})
+          </h3>
+        </div>
+        <div class="divide-y divide-slate-100">
+          ${state.waitlist.slice(0,5).map(w => {
+            const svc = state.services.find(s=>s.id===w.service_id);
+            return `<div class="px-5 py-3 flex items-center gap-3">
+              <div class="flex-1">
+                <p class="text-sm font-semibold text-slate-700">${esc(w.customer_name)}</p>
+                <p class="text-xs text-slate-400">${esc(svc?.name||'Service')} · ${w.requested_date||'Flexible'}</p>
+              </div>
+              <button onclick="BK.convertWaitlist('${w.id}')" class="text-xs text-blue-600 hover:underline font-medium">Book now</button>
+              <button onclick="BK.deleteWaitlist('${w.id}')" class="text-xs text-red-400 hover:underline">Remove</button>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>` : ''}
+    </div>`;
+  }
+
+  function kpiCard(label, val, icon, color, sub) {
+    return `<div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:${color}1a">
+          <i class="fas ${icon} text-sm" style="color:${color}"></i>
+        </div>
+      </div>
+      <p class="text-2xl font-extrabold text-slate-900">${val}</p>
+      <p class="text-xs text-slate-400 mt-1">${label}</p>
+    </div>`;
+  }
+
+  // ── CALENDAR ─────────────────────────────────────────────────
+  function renderCalendar() {
+    return `<div class="p-4 md:p-6 fade-in">
+      <!-- Cal Header -->
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div class="flex items-center gap-2">
+          <button onclick="BK.calNav(-1)" class="w-9 h-9 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm">
+            <i class="fas fa-chevron-left text-xs text-slate-600"></i>
+          </button>
+          <button onclick="BK.calNav(1)" class="w-9 h-9 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm">
+            <i class="fas fa-chevron-right text-xs text-slate-600"></i>
+          </button>
+          <button onclick="BK.calToday()" class="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shadow-sm">Today</button>
+          <h2 class="text-sm font-bold text-slate-800 ml-1" id="bk-cal-label"></h2>
+        </div>
+        <div class="flex gap-1 bg-slate-100 p-1 rounded-xl">
+          ${['day','week','month'].map(v => `
+            <button onclick="BK.calSetView('${v}')" id="bk-calview-${v}"
+              class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${state.calView===v?'bg-white text-blue-600 shadow-sm':'text-slate-500 hover:text-slate-700'}">
+              ${capitalize(v)}
+            </button>`).join('')}
+        </div>
+      </div>
+      <div id="bk-cal-grid" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"></div>
+    </div>`;
+  }
+
+  function attachCalEvents() {
+    renderCalGrid();
+  }
+
+  function renderCalGrid() {
+    const grid = document.getElementById('bk-cal-grid');
+    if (!grid) return;
+    const label = document.getElementById('bk-cal-label');
+
+    if (state.calView === 'week') {
+      const week = getWeekDays(state.calDate);
+      if (label) label.textContent = `${fmtDateShort(week[0])} – ${fmtDateShort(week[6])} ${week[0].getFullYear()}`;
+      grid.innerHTML = renderWeekView(week);
+    } else if (state.calView === 'day') {
+      if (label) label.textContent = state.calDate.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+      grid.innerHTML = renderDayView(state.calDate);
+    } else {
+      if (label) label.textContent = state.calDate.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+      grid.innerHTML = renderMonthView(state.calDate);
+    }
+  }
+
+  function renderWeekView(days) {
+    const startH = 7, endH = 21, slots = (endH - startH) * 2;
+    const bookingsByDay = {};
+    days.forEach(d => { bookingsByDay[d.toDateString()] = []; });
+    state.bookings.filter(b => b.status !== 'cancelled').forEach(b => {
+      const ds = new Date(b.start_time).toDateString();
+      if (bookingsByDay[ds] !== undefined) bookingsByDay[ds].push(b);
+    });
+
+    return `<div class="overflow-x-auto">
+      <div style="min-width:600px">
+        <!-- Day headers -->
+        <div class="grid border-b border-slate-200" style="grid-template-columns:56px repeat(7,1fr)">
+          <div class="border-r border-slate-100 p-2"></div>
+          ${days.map(d => {
+            const isToday = d.toDateString() === new Date().toDateString();
+            return `<div class="p-2 text-center border-r border-slate-100 last:border-r-0 ${isToday?'bg-blue-50':''}">
+              <p class="text-[10px] font-semibold uppercase text-slate-400">${d.toLocaleDateString('en-US',{weekday:'short'})}</p>
+              <p class="text-lg font-extrabold ${isToday?'text-blue-600':'text-slate-700'} leading-tight">${d.getDate()}</p>
+            </div>`;
+          }).join('')}
+        </div>
+        <!-- Time grid -->
+        <div class="relative overflow-y-auto" style="max-height:560px">
+          ${Array.from({length:slots}).map((_,i) => {
+            const h = startH + Math.floor(i/2);
+            const m = i%2===0?'00':'30';
+            const isHour = i%2===0;
+            return `<div class="grid border-b border-slate-100 hover:bg-slate-50/50 transition-colors" style="grid-template-columns:56px repeat(7,1fr);min-height:32px">
+              <div class="border-r border-slate-100 px-2 flex items-start pt-0.5">
+                ${isHour?`<span class="text-[10px] text-slate-300 font-medium">${h}:00</span>`:''}
+              </div>
+              ${days.map(d => {
+                const ds = d.toDateString();
+                const slotTime = new Date(d); slotTime.setHours(h,+m,0,0);
+                const slotEnd = new Date(slotTime.getTime() + 30*60000);
+                const slotBookings = (bookingsByDay[ds]||[]).filter(b => {
+                  const bs = new Date(b.start_time), be = new Date(b.end_time);
+                  return bs >= slotTime && bs < slotEnd;
+                });
+                const isToday = d.toDateString() === new Date().toDateString();
+                return `<div class="border-r border-slate-100 last:border-r-0 p-0.5 cursor-pointer ${isToday?'bg-blue-50/30':''}"
+                  onclick="BK.openNewBooking('${slotTime.toISOString()}')">
+                  ${slotBookings.map(b => {
+                    const svc = state.services.find(s=>s.id===b.service_id);
+                    const cust = state.customers.find(c=>c.id===b.customer_id);
+                    const col = STATUS_COLORS[b.status]||STATUS_COLORS.pending;
+                    return `<div onclick="event.stopPropagation();BK.openEditBooking('${b.id}')"
+                      class="rounded px-1.5 py-0.5 mb-0.5 cursor-pointer text-[11px] font-semibold leading-tight truncate"
+                      draggable="true"
+                      ondragstart="BK.dragStart(event,'${b.id}')"
+                      ondragend="BK.dragEnd(event)"
+                      style="background:${col.bg};color:${col.text};border-left:2px solid ${col.dot}">
+                      ${esc(cust?.name||'—')} · ${esc(svc?.name||'—')}
+                    </div>`;
+                  }).join('')}
+                </div>`;
+              }).join('')}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function renderDayView(date) {
+    const startH = 7, endH = 21;
+    const ds = date.toDateString();
+    const dayBookings = state.bookings.filter(b => new Date(b.start_time).toDateString() === ds && b.status !== 'cancelled');
+
+    return `<div class="overflow-y-auto" style="max-height:620px">
+      ${Array.from({length:(endH-startH)*2}).map((_,i) => {
+        const h = startH + Math.floor(i/2);
+        const m = i%2===0?0:30;
+        const slotTime = new Date(date); slotTime.setHours(h,m,0,0);
+        const slotEnd = new Date(slotTime.getTime()+30*60000);
+        const bks = dayBookings.filter(b => { const bs=new Date(b.start_time); return bs>=slotTime && bs<slotEnd; });
+        return `<div class="flex border-b border-slate-100 hover:bg-slate-50 transition-colors min-h-[40px] cursor-pointer"
+          onclick="BK.openNewBooking('${slotTime.toISOString()}')">
+          <div class="w-16 flex-shrink-0 border-r border-slate-100 px-2 pt-1">
+            ${m===0?`<span class="text-xs text-slate-300 font-medium">${h}:00</span>`:''}
+          </div>
+          <div class="flex-1 p-1 flex flex-wrap gap-1">
+            ${bks.map(b => {
+              const svc = state.services.find(s=>s.id===b.service_id);
+              const cust = state.customers.find(c=>c.id===b.customer_id);
+              const stf = state.staff.find(s=>s.id===b.staff_id);
+              const col = STATUS_COLORS[b.status]||STATUS_COLORS.pending;
+              return `<div onclick="event.stopPropagation();BK.openEditBooking('${b.id}')"
+                class="rounded-lg px-3 py-1.5 cursor-pointer text-xs font-semibold"
+                style="background:${col.bg};color:${col.text};border:1px solid ${col.border}">
+                <span class="font-bold">${fmtTime(b.start_time)}</span> · ${esc(cust?.name||'—')} · ${esc(svc?.name||'—')}
+                ${stf?`<span class="opacity-70"> · ${esc(stf.name)}</span>`:''}
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  function renderMonthView(date) {
+    const year = date.getFullYear(), month = date.getMonth();
+    const first = new Date(year, month, 1);
+    const last = new Date(year, month+1, 0);
+    const startDay = first.getDay();
+    const totalCells = Math.ceil((startDay + last.getDate()) / 7) * 7;
+    const today = new Date().toDateString();
+
+    let cells = [];
+    for (let i = 0; i < totalCells; i++) {
+      const dayNum = i - startDay + 1;
+      const d = dayNum > 0 && dayNum <= last.getDate() ? new Date(year, month, dayNum) : null;
+      const ds = d ? d.toDateString() : null;
+      const dayBks = ds ? state.bookings.filter(b => new Date(b.start_time).toDateString() === ds && b.status !== 'cancelled') : [];
+      cells.push({ d, ds, dayBks, dayNum, isToday: ds === today });
+    }
+
+    return `<div>
+      <div class="grid grid-cols-7 border-b border-slate-200">
+        ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d =>
+          `<div class="py-2 text-center text-xs font-bold text-slate-400 uppercase">${d}</div>`).join('')}
+      </div>
+      <div class="grid grid-cols-7">
+        ${cells.map(cell => `
+          <div class="border-b border-r border-slate-100 min-h-[80px] p-1.5 ${cell.d?'cursor-pointer hover:bg-slate-50':'bg-slate-50/50'} transition-colors"
+            ${cell.d?`onclick="BK.openNewBooking('${cell.d.toISOString()}')"`:''}>
+            ${cell.d ? `
+              <p class="text-xs font-bold mb-1 w-6 h-6 flex items-center justify-center rounded-full ${cell.isToday?'bg-blue-600 text-white':'text-slate-600'}">${cell.dayNum}</p>
+              ${cell.dayBks.slice(0,3).map(b => {
+                const svc = state.services.find(s=>s.id===b.service_id);
+                const col = STATUS_COLORS[b.status]||STATUS_COLORS.pending;
+                return `<div onclick="event.stopPropagation();BK.openEditBooking('${b.id}')"
+                  class="text-[10px] font-semibold rounded px-1 py-0.5 mb-0.5 truncate"
+                  style="background:${col.bg};color:${col.text}">${fmtTime(b.start_time)} ${esc(svc?.name||'Booking')}</div>`;
+              }).join('')}
+              ${cell.dayBks.length>3?`<p class="text-[10px] text-slate-400 font-semibold">+${cell.dayBks.length-3} more</p>`:''}
+            ` : ''}
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // ── BOOKINGS LIST ─────────────────────────────────────────────
+  function renderBookings() {
+    const view = state.bookingView;
+    return `<div class="p-4 md:p-6 fade-in">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div class="flex items-center gap-2">
+          <input id="bk-search" type="text" placeholder="Search bookings…" class="field w-48 text-sm" oninput="BK.filterBookings()">
+          <select id="bk-status-filter" class="field w-36 text-sm" onchange="BK.filterBookings()">
+            <option value="">All Status</option>
+            ${['pending','confirmed','completed','cancelled'].map(s=>`<option value="${s}">${capitalize(s)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="flex gap-1 bg-slate-100 p-1 rounded-xl">
+          <button onclick="BK.setBookingView('list')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${view==='list'?'bg-white text-blue-600 shadow-sm':'text-slate-500'}">
+            <i class="fas fa-list mr-1"></i>List
+          </button>
+          <button onclick="BK.setBookingView('kanban')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${view==='kanban'?'bg-white text-blue-600 shadow-sm':'text-slate-500'}">
+            <i class="fas fa-columns mr-1"></i>Kanban
+          </button>
+        </div>
+      </div>
+      <div id="bk-bookings-body">${view==='kanban'?renderKanban():renderBookingList(state.bookings)}</div>
+    </div>`;
+  }
+
+  function renderBookingList(bookings) {
+    if (!bookings.length) return `<div class="text-center py-16 text-slate-400"><i class="fas fa-calendar text-4xl mb-3 opacity-30"></i><p class="font-semibold">No bookings found</p></div>`;
+    return `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>${['Customer','Service','Staff','Date & Time','Payment','Status',''].map(h=>`<th class="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide">${h}</th>`).join('')}</tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          ${bookings.map(b => {
+            const svc = state.services.find(s=>s.id===b.service_id);
+            const stf = state.staff.find(s=>s.id===b.staff_id);
+            const cust = state.customers.find(c=>c.id===b.customer_id);
+            const col = STATUS_COLORS[b.status]||STATUS_COLORS.pending;
+            const cur = state.settings.currency||'$';
+            return `<tr class="hover:bg-slate-50 transition-colors">
+              <td class="px-4 py-3">
+                <p class="font-semibold text-slate-800">${esc(cust?.name||'Unknown')}</p>
+                <p class="text-xs text-slate-400">${esc(cust?.email||'')}</p>
+              </td>
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full flex-shrink-0" style="background:${svc?.color||'#3b82f6'}"></span>
+                  <span class="font-medium text-slate-700">${esc(svc?.name||'—')}</span>
+                </span>
+              </td>
+              <td class="px-4 py-3 text-slate-600">${esc(stf?.name||'Unassigned')}</td>
+              <td class="px-4 py-3">
+                <p class="font-medium text-slate-700">${fmtDate(b.start_time)}</p>
+                <p class="text-xs text-slate-400">${fmtTime(b.start_time)} – ${fmtTime(b.end_time)}</p>
+              </td>
+              <td class="px-4 py-3">
+                <p class="font-semibold text-slate-700">${cur}${fmt((+b.amount||0)+(+b.travel_fee||0))}</p>
+                <p class="text-xs text-slate-400 capitalize">${b.payment_method||'free'} · ${b.payment_status||'unpaid'}</p>
+              </td>
+              <td class="px-4 py-3">
+                <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold" style="background:${col.bg};color:${col.text}">${b.status}</span>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-1">
+                  <button onclick="BK.openEditBooking('${b.id}')" class="w-7 h-7 rounded-lg hover:bg-blue-50 flex items-center justify-center text-blue-500 transition-colors" title="Edit"><i class="fas fa-edit text-xs"></i></button>
+                  <button onclick="BK.confirmDelete('${b.id}','booking')" class="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center text-red-400 transition-colors" title="Delete"><i class="fas fa-trash text-xs"></i></button>
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
+  function renderKanban() {
+    const cols = ['pending','confirmed','completed','cancelled'];
+    return `<div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      ${cols.map(status => {
+        const bks = state.bookings.filter(b=>b.status===status);
+        const col = STATUS_COLORS[status];
+        return `<div class="rounded-2xl border border-slate-200 overflow-hidden">
+          <div class="px-4 py-3 font-bold text-sm flex items-center justify-between" style="background:${col.bg};color:${col.text}">
+            <span>${capitalize(status)}</span>
+            <span class="text-xs opacity-70">${bks.length}</span>
+          </div>
+          <div class="p-2 space-y-2 min-h-[200px] bg-slate-50"
+            ondragover="event.preventDefault()" ondrop="BK.dropOnStatus(event,'${status}')">
+            ${bks.map(b => {
+              const svc = state.services.find(s=>s.id===b.service_id);
+              const cust = state.customers.find(c=>c.id===b.customer_id);
+              return `<div class="bg-white rounded-xl border border-slate-200 p-3 cursor-pointer shadow-sm hover:shadow-md transition-shadow"
+                draggable="true" ondragstart="BK.dragStart(event,'${b.id}')" ondragend="BK.dragEnd(event)"
+                onclick="BK.openEditBooking('${b.id}')">
+                <p class="text-sm font-bold text-slate-800 truncate">${esc(cust?.name||'Unknown')}</p>
+                <p class="text-xs text-slate-500 mt-0.5">${esc(svc?.name||'—')}</p>
+                <p class="text-xs text-slate-400 mt-1">${fmtDate(b.start_time)} ${fmtTime(b.start_time)}</p>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  function attachBookingListEvents() {}
+
+  function filterBookings() {
+    const q = (document.getElementById('bk-search')?.value||'').toLowerCase();
+    const st = document.getElementById('bk-status-filter')?.value||'';
+    let list = state.bookings;
+    if (st) list = list.filter(b => b.status === st);
+    if (q) list = list.filter(b => {
+      const cust = state.customers.find(c=>c.id===b.customer_id);
+      const svc = state.services.find(s=>s.id===b.service_id);
+      return (cust?.name||'').toLowerCase().includes(q) || (svc?.name||'').toLowerCase().includes(q);
+    });
+    const body = document.getElementById('bk-bookings-body');
+    if (body && state.bookingView==='list') body.innerHTML = renderBookingList(list);
+  }
+
+  // ── SERVICES ─────────────────────────────────────────────────
+  function renderServices() {
+    return `<div class="p-4 md:p-6 fade-in">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-bold text-slate-700">${state.services.length} Services</h2>
+        <button onclick="BK.openServiceModal()" class="btn-primary text-sm shadow-sm"><i class="fas fa-plus text-xs mr-1"></i>Add Service</button>
+      </div>
+      ${state.services.length ? `
+      <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+        ${state.services.map(svc => `
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-lg" style="background:${svc.color||'#3b82f6'}">
+                  ${(svc.name||'?')[0].toUpperCase()}
+                </div>
+                <div>
+                  <p class="font-bold text-slate-800">${esc(svc.name)}</p>
+                  <p class="text-xs text-slate-400 capitalize">${esc(svc.category||'General')}</p>
+                </div>
+              </div>
+              <div class="flex gap-1">
+                <button onclick="BK.openServiceModal('${svc.id}')" class="w-7 h-7 rounded-lg hover:bg-blue-50 flex items-center justify-center text-blue-400 transition-colors"><i class="fas fa-edit text-xs"></i></button>
+                <button onclick="BK.confirmDelete('${svc.id}','service')" class="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center text-red-400 transition-colors"><i class="fas fa-trash text-xs"></i></button>
+              </div>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-center mt-3">
+              <div class="bg-slate-50 rounded-xl py-2">
+                <p class="text-sm font-extrabold text-slate-800">${svc.duration}m</p>
+                <p class="text-[10px] text-slate-400">Duration</p>
+              </div>
+              <div class="bg-slate-50 rounded-xl py-2">
+                <p class="text-sm font-extrabold text-slate-800">${state.settings.currency||'$'}${fmt(svc.price)}</p>
+                <p class="text-[10px] text-slate-400">Price</p>
+              </div>
+              <div class="bg-slate-50 rounded-xl py-2">
+                <p class="text-sm font-extrabold ${svc.travel_enabled?'text-green-600':'text-slate-400'}">${svc.travel_enabled?'Yes':'No'}</p>
+                <p class="text-[10px] text-slate-400">Travel</p>
+              </div>
+            </div>
+            ${svc.description?`<p class="text-xs text-slate-400 mt-3 line-clamp-2">${esc(svc.description)}</p>`:''}
+          </div>`).join('')}
+      </div>` : `<div class="text-center py-16 text-slate-400"><i class="fas fa-concierge-bell text-4xl mb-3 opacity-30"></i><p class="font-semibold">No services yet</p><button onclick="BK.openServiceModal()" class="mt-3 text-sm text-blue-600 hover:underline">Add your first service →</button></div>`}
+    </div>`;
+  }
+
+  // ── STAFF ─────────────────────────────────────────────────────
+  function renderStaff() {
+    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    return `<div class="p-4 md:p-6 fade-in">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-bold text-slate-700">${state.staff.length} Staff Members</h2>
+        <button onclick="BK.openStaffModal()" class="btn-primary text-sm shadow-sm"><i class="fas fa-plus text-xs mr-1"></i>Add Staff</button>
+      </div>
+      ${state.staff.length ? `
+      <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+        ${state.staff.map(stf => {
+          const avail = safeJson(stf.availability, {});
+          const activeDays = days.filter(d => avail[d]);
+          const bookingsCount = state.bookings.filter(b=>b.staff_id===stf.id && b.status!=='cancelled').length;
+          return `<div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between mb-4">
+              <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-base shadow-sm" style="background:${stf.color||'#8b5cf6'}">
+                  ${(stf.name||'?').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
+                </div>
+                <div>
+                  <p class="font-bold text-slate-800">${esc(stf.name)}</p>
+                  <p class="text-xs text-slate-400">${esc(stf.email||'')}</p>
+                </div>
+              </div>
+              <div class="flex gap-1">
+                <button onclick="BK.openStaffModal('${stf.id}')" class="w-7 h-7 rounded-lg hover:bg-blue-50 flex items-center justify-center text-blue-400 transition-colors"><i class="fas fa-edit text-xs"></i></button>
+                <button onclick="BK.confirmDelete('${stf.id}','staff')" class="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center text-red-400 transition-colors"><i class="fas fa-trash text-xs"></i></button>
+              </div>
+            </div>
+            <div class="flex gap-1 flex-wrap mb-3">
+              ${days.map(d=>`<span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${activeDays.includes(d)?'bg-blue-100 text-blue-700':'bg-slate-100 text-slate-300'}">${d}</span>`).join('')}
+            </div>
+            <div class="flex items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-3">
+              <span><i class="fas fa-calendar-check text-slate-300 mr-1"></i>${bookingsCount} bookings</span>
+              <span class="${stf.auto_assign?'text-green-600':'text-slate-400'}"><i class="fas fa-magic mr-1"></i>${stf.auto_assign?'Auto-assign on':'Auto-assign off'}</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : `<div class="text-center py-16 text-slate-400"><i class="fas fa-users text-4xl mb-3 opacity-30"></i><p class="font-semibold">No staff members yet</p><button onclick="BK.openStaffModal()" class="mt-3 text-sm text-blue-600 hover:underline">Add your first staff member →</button></div>`}
+    </div>`;
+  }
+
+  // ── SETTINGS ─────────────────────────────────────────────────
+  function renderSettings() {
+    const s = state.settings;
+    return `<div class="p-4 md:p-6 fade-in max-w-2xl mx-auto">
+      <div class="space-y-5">
+        <!-- Business Hours -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <h3 class="font-bold text-slate-800 mb-4 text-sm flex items-center gap-2"><i class="fas fa-clock text-blue-400"></i>Business Hours</h3>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Opens</label>
+              <input type="time" id="bk-s-open" value="${s.business_hours_start||'09:00'}" class="field text-sm"></div>
+            <div><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Closes</label>
+              <input type="time" id="bk-s-close" value="${s.business_hours_end||'18:00'}" class="field text-sm"></div>
+          </div>
+          <div class="mt-4">
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Business Days</label>
+            <div class="flex gap-2 flex-wrap" id="bk-s-days">
+              ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => {
+                const active = (safeJson(s.business_days,'["Mon","Tue","Wed","Thu","Fri"]')||[]).includes(d);
+                return `<button type="button" onclick="this.classList.toggle('bg-blue-600');this.classList.toggle('text-white');this.classList.toggle('bg-slate-100');this.classList.toggle('text-slate-500')"
+                  class="px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${active?'bg-blue-600 text-white':'bg-slate-100 text-slate-500'}"
+                  data-day="${d}">${d}</button>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+
+        <!-- Booking Settings -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <h3 class="font-bold text-slate-800 mb-4 text-sm flex items-center gap-2"><i class="fas fa-cog text-blue-400"></i>Booking Settings</h3>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Slot Interval</label>
+              <select id="bk-s-interval" class="field text-sm">
+                ${[15,30,60].map(v=>`<option value="${v}" ${s.slot_interval==v?'selected':''}>${v} minutes</option>`).join('')}
+              </select>
+            </div>
+            <div><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Currency Symbol</label>
+              <input type="text" id="bk-s-currency" value="${esc(s.currency||'$')}" class="field text-sm" placeholder="$"></div>
+          </div>
+        </div>
+
+        <!-- Travel Settings -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <h3 class="font-bold text-slate-800 mb-4 text-sm flex items-center gap-2"><i class="fas fa-car text-blue-400"></i>Travel Fee Settings</h3>
+          <div class="mb-4">
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Fee Mode</label>
+            <div class="flex gap-2">
+              <button type="button" onclick="BK.setTravelMode('flat',this)" class="flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-colors ${(s.travel_mode||'flat')==='flat'?'border-blue-600 bg-blue-50 text-blue-700':'border-slate-200 text-slate-500'}" id="bk-travel-flat">
+                <i class="fas fa-map-marker-alt mr-1"></i>Flat Rate Zones
+              </button>
+              <button type="button" onclick="BK.setTravelMode('per_km',this)" class="flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-colors ${s.travel_mode==='per_km'?'border-blue-600 bg-blue-50 text-blue-700':'border-slate-200 text-slate-500'}" id="bk-travel-km">
+                <i class="fas fa-road mr-1"></i>Per km/mile
+              </button>
+            </div>
+          </div>
+          <div id="bk-travel-flat-cfg" class="${(s.travel_mode||'flat')!=='per_km'?'':'hidden'}">
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Zones</label>
+            <div id="bk-zones-list" class="space-y-2 mb-2">
+              ${(safeJson(s.travel_flat_zones,'[]')||[]).map((z,i)=>`
+                <div class="flex gap-2 items-center" data-zone="${i}">
+                  <input type="text" value="${esc(z.label)}" placeholder="Zone label" class="field text-xs flex-1" data-zone-label="${i}">
+                  <input type="number" value="${z.max_km}" placeholder="Max km" class="field text-xs w-20" data-zone-km="${i}">
+                  <input type="number" value="${z.fee}" placeholder="Fee" class="field text-xs w-20" data-zone-fee="${i}">
+                  <button onclick="this.closest('[data-zone]').remove()" class="text-red-400 hover:text-red-600 text-xs px-1"><i class="fas fa-times"></i></button>
+                </div>`).join('')}
+            </div>
+            <button onclick="BK.addZone()" type="button" class="text-xs text-blue-600 hover:underline font-semibold"><i class="fas fa-plus mr-1"></i>Add Zone</button>
+          </div>
+          <div id="bk-travel-km-cfg" class="${s.travel_mode==='per_km'?'':'hidden'}">
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Rate per km/mile</label>
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-bold text-slate-500">${s.currency||'$'}</span>
+              <input type="number" id="bk-s-km-rate" value="${s.travel_per_km_rate||1.5}" step="0.1" class="field text-sm w-28">
+              <span class="text-xs text-slate-400">per km</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- PayPal -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <h3 class="font-bold text-slate-800 mb-4 text-sm flex items-center gap-2"><i class="fab fa-paypal text-blue-400"></i>PayPal Integration</h3>
+          <div><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">PayPal Business Email</label>
+            <input type="email" id="bk-s-paypal" value="${esc(s.paypal_email||'')}" class="field text-sm" placeholder="business@email.com"></div>
+          <p class="text-xs text-slate-400 mt-2">Used to generate PayPal payment links for "Pay Now" bookings.</p>
+        </div>
+
+        <button onclick="BK.saveSettings()" class="btn-primary w-full shadow-sm"><i class="fas fa-save text-sm mr-1"></i>Save Settings</button>
+      </div>
+    </div>`;
+  }
+
+  // ── MODALS ────────────────────────────────────────────────────
+  function openNewBooking(startISO) {
+    let defaultDate = '', defaultTime = '';
+    if (startISO) {
+      const d = new Date(startISO);
+      defaultDate = d.toISOString().split('T')[0];
+      defaultTime = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+    showModal(bookingModalHTML(null, defaultDate, defaultTime));
+    attachBookingModalEvents();
+  }
+
+  function openEditBooking(id) {
+    const b = state.bookings.find(x=>x.id===id);
+    if (!b) return;
+    showModal(bookingModalHTML(b));
+    attachBookingModalEvents();
+  }
+
+  function bookingModalHTML(b, defDate='', defTime='') {
+    const isEdit = !!b;
+    const cur = state.settings.currency || '$';
+    const cust = b ? state.customers.find(c=>c.id===b.customer_id) : null;
+    const svc  = b ? state.services.find(s=>s.id===b.service_id)   : null;
+
+    return `<div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+      <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
+        <h3 class="font-bold text-slate-900 text-base">${isEdit?'Edit Booking':'New Booking'}</h3>
+        <button onclick="closeModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400"><i class="fas fa-times text-sm"></i></button>
+      </div>
+      <div class="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
+        <div id="bk-modal-err" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2"></div>
+
+        <!-- Customer -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Customer *</label>
+          <select id="bk-m-customer" class="field text-sm" onchange="BK.onCustomerChange(this)">
+            <option value="">— Select or create customer —</option>
+            <option value="__new__">+ Add new customer</option>
+            ${state.customers.map(c=>`<option value="${c.id}" ${b?.customer_id===c.id?'selected':''}>${esc(c.name)} ${c.email?'('+esc(c.email)+')':''}</option>`).join('')}
+          </select>
+        </div>
+
+        <!-- New Customer Fields (hidden by default) -->
+        <div id="bk-new-cust" class="${isEdit?'hidden':''} space-y-3 bg-blue-50 border border-blue-100 rounded-xl p-3">
+          <p class="text-xs font-bold text-blue-700">New Customer Details</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-semibold text-slate-500 mb-1">Name *</label><input id="bk-m-cname" type="text" class="field text-sm" placeholder="Full name" value="${esc(cust?.name||'')}"></div>
+            <div><label class="block text-xs font-semibold text-slate-500 mb-1">Email</label><input id="bk-m-cemail" type="email" class="field text-sm" placeholder="email@..." value="${esc(cust?.email||'')}"></div>
+            <div><label class="block text-xs font-semibold text-slate-500 mb-1">Phone</label><input id="bk-m-cphone" type="tel" class="field text-sm" placeholder="+1..." value="${esc(cust?.phone||'')}"></div>
+            <div><label class="block text-xs font-semibold text-slate-500 mb-1">Address</label><input id="bk-m-caddr" type="text" class="field text-sm" placeholder="Address" value="${esc(cust?.address||'')}"></div>
+          </div>
+        </div>
+
+        <!-- Service -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Service *</label>
+          <select id="bk-m-service" class="field text-sm" onchange="BK.onServiceChange(this)">
+            <option value="">— Select service —</option>
+            ${state.services.map(s=>`<option value="${s.id}" data-duration="${s.duration}" data-price="${s.price}" data-travel="${s.travel_enabled?1:0}" ${b?.service_id===s.id?'selected':''}>${esc(s.name)} (${s.duration}min · ${cur}${fmt(s.price)})</option>`).join('')}
+          </select>
+        </div>
+
+        <!-- Date & Time -->
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Date *</label>
+            <input id="bk-m-date" type="date" class="field text-sm" value="${b?b.start_time?.split('T')[0]:defDate}"></div>
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Time *</label>
+            <input id="bk-m-time" type="time" class="field text-sm" value="${b?fmtTimeInput(b.start_time):defTime}"></div>
+        </div>
+
+        <!-- Staff -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+            Staff <span class="text-slate-300 font-normal normal-case">(optional)</span>
+            <button type="button" onclick="BK.autoAssignStaff()" class="ml-2 text-blue-500 hover:underline text-[10px] font-semibold normal-case">⚡ Auto-assign</button>
+          </label>
+          <select id="bk-m-staff" class="field text-sm">
+            <option value="">— Unassigned —</option>
+            ${state.staff.map(s=>`<option value="${s.id}" ${b?.staff_id===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}
+          </select>
+        </div>
+
+        <!-- Travel -->
+        <div id="bk-m-travel-section" class="${b?.travel_address?'':'hidden'}">
+          <div class="flex items-center gap-2 mb-2">
+            <input type="checkbox" id="bk-m-travel" class="rounded" onchange="BK.onTravelToggle(this)" ${b?.travel_address?'checked':''}>
+            <label for="bk-m-travel" class="text-xs font-bold text-slate-600">Mobile/Travel Service</label>
+          </div>
+          <div id="bk-m-travel-fields" class="${b?.travel_address?'':'hidden'} space-y-2 bg-amber-50 border border-amber-100 rounded-xl p-3">
+            <input id="bk-m-travel-addr" type="text" class="field text-sm" placeholder="Customer's address" value="${esc(b?.travel_address||'')}">
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="block text-[10px] font-semibold text-slate-500 mb-1">Distance (km)</label>
+                <input id="bk-m-travel-dist" type="number" class="field text-sm" placeholder="0" value="${b?.travel_distance||0}" oninput="BK.calcTravelFee()"></div>
+              <div><label class="block text-[10px] font-semibold text-slate-500 mb-1">Travel Fee</label>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-bold text-slate-500">${cur}</span>
+                  <input id="bk-m-travel-fee" type="number" class="field text-sm" placeholder="0" value="${b?.travel_fee||0}" step="0.01">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recurring -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Recurring</label>
+          <select id="bk-m-recurring" class="field text-sm" onchange="BK.onRecurringChange(this)">
+            ${['none','daily','weekly','monthly'].map(v=>`<option value="${v}" ${b?.recurring===v?'selected':''}>${capitalize(v==='none'?'No Recurrence':v)}</option>`).join('')}
+          </select>
+          <div id="bk-m-rec-end" class="${(b?.recurring&&b.recurring!=='none')?'':'hidden'} mt-2">
+            <label class="block text-[10px] font-semibold text-slate-500 mb-1">Recurring Until</label>
+            <input id="bk-m-rec-end-date" type="date" class="field text-sm" value="${b?.recurring_end||''}">
+          </div>
+        </div>
+
+        <!-- Payment -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Payment Method</label>
+          <select id="bk-m-payment" class="field text-sm" onchange="BK.onPaymentChange(this)">
+            ${['free','pay_later','paypal'].map(v=>`<option value="${v}" ${b?.payment_method===v?'selected':''}>${{free:'Free',pay_later:'Pay Later',paypal:'Pay Now (PayPal)'}[v]}</option>`).join('')}
+          </select>
+          <div id="bk-m-amount-row" class="${b?.payment_method&&b.payment_method!=='free'?'':'hidden'} mt-2 flex items-center gap-2">
+            <span class="text-xs font-bold text-slate-500">${cur}</span>
+            <input id="bk-m-amount" type="number" class="field text-sm" placeholder="0.00" step="0.01" value="${b?.amount||''}">
+          </div>
+          <div id="bk-m-paypal-link" class="hidden mt-2 text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+            PayPal link will be generated on save.
+          </div>
+        </div>
+
+        <!-- Status (edit only) -->
+        ${isEdit?`<div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Status</label>
+          <select id="bk-m-status" class="field text-sm">
+            ${['pending','confirmed','completed','cancelled'].map(v=>`<option value="${v}" ${b.status===v?'selected':''}>${capitalize(v)}</option>`).join('')}
+          </select>
+        </div>`:''}
+
+        <!-- Notes -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Notes</label>
+          <textarea id="bk-m-notes" class="field text-sm resize-none" rows="2" placeholder="Any additional notes…">${esc(b?.notes||'')}</textarea>
+        </div>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-100 flex gap-3">
+        <button onclick="closeModal()" class="btn-secondary flex-1">Cancel</button>
+        <button onclick="BK.saveBooking('${b?.id||''}')" class="btn-primary flex-1"><i class="fas fa-save text-xs mr-1"></i>${isEdit?'Save Changes':'Create Booking'}</button>
+      </div>
+    </div>`;
+  }
+
+  function attachBookingModalEvents() {
+    // Show travel section if service has travel enabled
+    const svcSel = document.getElementById('bk-m-service');
+    if (svcSel) {
+      const svcId = svcSel.value;
+      const svc = state.services.find(s=>s.id===svcId);
+      const sec = document.getElementById('bk-m-travel-section');
+      if (sec && svc?.travel_enabled) sec.classList.remove('hidden');
+    }
+  }
+
+  function openServiceModal(id) {
+    const svc = id ? state.services.find(s=>s.id===id) : null;
+    const cur = state.settings.currency || '$';
+    showModal(`<div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+      <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="font-bold text-slate-900">${svc?'Edit Service':'New Service'}</h3>
+        <button onclick="closeModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400"><i class="fas fa-times text-sm"></i></button>
+      </div>
+      <div class="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
+        <div id="svc-err" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2"></div>
+        <div class="grid grid-cols-3 gap-3">
+          <div class="col-span-2"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Service Name *</label>
+            <input id="svc-name" type="text" class="field text-sm" value="${esc(svc?.name||'')}"></div>
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Color</label>
+            <input id="svc-color" type="color" class="field text-sm h-[42px] p-1 cursor-pointer" value="${svc?.color||'#3b82f6'}"></div>
+        </div>
+        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Category</label>
+          <input id="svc-category" type="text" class="field text-sm" placeholder="e.g. Consultation, Repair" value="${esc(svc?.category||'')}"></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Duration (min) *</label>
+            <input id="svc-duration" type="number" class="field text-sm" value="${svc?.duration||60}" min="5" step="5"></div>
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Price (${cur})</label>
+            <input id="svc-price" type="number" class="field text-sm" value="${svc?.price||0}" step="0.01" min="0"></div>
+        </div>
+        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Description</label>
+          <textarea id="svc-desc" class="field text-sm resize-none" rows="2">${esc(svc?.description||'')}</textarea></div>
+        <!-- Travel -->
+        <div class="bg-amber-50 border border-amber-100 rounded-xl p-4">
+          <div class="flex items-center gap-2 mb-3">
+            <input type="checkbox" id="svc-travel" class="rounded" onchange="document.getElementById('svc-travel-cfg').classList.toggle('hidden',!this.checked)" ${svc?.travel_enabled?'checked':''}>
+            <label for="svc-travel" class="text-sm font-bold text-amber-800">Enable Travel/Mobile Service</label>
+          </div>
+          <div id="svc-travel-cfg" class="${svc?.travel_enabled?'':'hidden'} space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Travel Fee Mode</label>
+              <select id="svc-travel-mode" class="field text-sm">
+                <option value="flat" ${(svc?.travel_mode||'flat')==='flat'?'selected':''}>Flat Rate Zones</option>
+                <option value="per_km" ${svc?.travel_mode==='per_km'?'selected':''}>Per km/mile rate</option>
+                <option value="custom" ${svc?.travel_mode==='custom'?'selected':''}>Custom (manual entry per booking)</option>
+              </select>
+            </div>
+            <div><label class="block text-xs font-semibold text-slate-500 mb-1">Per km Rate Override (${cur})</label>
+              <input id="svc-km-rate" type="number" class="field text-sm" step="0.1" placeholder="Leave blank to use global setting" value="${svc?.travel_per_km_rate||''}"></div>
+          </div>
+        </div>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-100 flex gap-3">
+        <button onclick="closeModal()" class="btn-secondary flex-1">Cancel</button>
+        <button onclick="BK.saveService('${svc?.id||''}')" class="btn-primary flex-1"><i class="fas fa-save text-xs mr-1"></i>Save Service</button>
+      </div>
+    </div>`);
+  }
+
+  function openStaffModal(id) {
+    const stf = id ? state.staff.find(s=>s.id===id) : null;
+    const avail = safeJson(stf?.availability, {});
+    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    showModal(`<div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+      <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="font-bold text-slate-900">${stf?'Edit Staff':'Add Staff Member'}</h3>
+        <button onclick="closeModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400"><i class="fas fa-times text-sm"></i></button>
+      </div>
+      <div class="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
+        <div id="staff-err" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2"></div>
+        <div class="grid grid-cols-3 gap-3">
+          <div class="col-span-2"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Name *</label>
+            <input id="stf-name" type="text" class="field text-sm" value="${esc(stf?.name||'')}"></div>
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Color</label>
+            <input id="stf-color" type="color" class="field text-sm h-[42px] p-1 cursor-pointer" value="${stf?.color||'#8b5cf6'}"></div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Email</label>
+            <input id="stf-email" type="email" class="field text-sm" value="${esc(stf?.email||'')}"></div>
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Phone</label>
+            <input id="stf-phone" type="tel" class="field text-sm" value="${esc(stf?.phone||'')}"></div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Working Hours</label>
+          <div class="space-y-2">
+            ${days.map(d => {
+              const da = avail[d] || {};
+              return `<div class="flex items-center gap-2">
+                <input type="checkbox" id="stf-day-${d}" class="rounded flex-shrink-0" ${da.enabled?'checked':''} onchange="document.getElementById('stf-hours-${d}').classList.toggle('hidden',!this.checked)">
+                <label for="stf-day-${d}" class="text-xs font-semibold text-slate-600 w-8">${d}</label>
+                <div id="stf-hours-${d}" class="flex gap-1 items-center ${da.enabled?'':'hidden'}">
+                  <input type="time" id="stf-start-${d}" value="${da.start||'09:00'}" class="field text-xs py-1 w-24">
+                  <span class="text-slate-300 text-xs">–</span>
+                  <input type="time" id="stf-end-${d}" value="${da.end||'18:00'}" class="field text-xs py-1 w-24">
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="checkbox" id="stf-auto" class="rounded" ${stf?.auto_assign!==false?'checked':''}>
+          <label for="stf-auto" class="text-sm text-slate-700 font-medium">Enable auto-assignment (⚡ Smart Assign)</label>
+        </div>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-100 flex gap-3">
+        <button onclick="closeModal()" class="btn-secondary flex-1">Cancel</button>
+        <button onclick="BK.saveStaff('${stf?.id||''}')" class="btn-primary flex-1"><i class="fas fa-save text-xs mr-1"></i>Save</button>
+      </div>
+    </div>`);
+  }
+
+  // ── SAVE ACTIONS ─────────────────────────────────────────────
+  async function saveBooking(id) {
+    const errEl = document.getElementById('bk-modal-err');
+    const show = (msg) => { errEl.textContent=msg; errEl.classList.remove('hidden'); };
+
+    const custSel = document.getElementById('bk-m-customer')?.value;
+    const date = document.getElementById('bk-m-date')?.value;
+    const time = document.getElementById('bk-m-time')?.value;
+    const serviceId = document.getElementById('bk-m-service')?.value;
+    const staffId = document.getElementById('bk-m-staff')?.value || null;
+    const notes = document.getElementById('bk-m-notes')?.value || '';
+    const payMethod = document.getElementById('bk-m-payment')?.value || 'free';
+    const amount = parseFloat(document.getElementById('bk-m-amount')?.value||0) || 0;
+    const travelChecked = document.getElementById('bk-m-travel')?.checked;
+    const travelAddr = document.getElementById('bk-m-travel-addr')?.value || '';
+    const travelFee = parseFloat(document.getElementById('bk-m-travel-fee')?.value||0) || 0;
+    const travelDist = parseFloat(document.getElementById('bk-m-travel-dist')?.value||0) || 0;
+    const recurring = document.getElementById('bk-m-recurring')?.value || 'none';
+    const recurringEnd = document.getElementById('bk-m-rec-end-date')?.value || null;
+    const status = document.getElementById('bk-m-status')?.value || 'pending';
+
+    if (!date || !time) return show('Please select a date and time.');
+    if (!serviceId) return show('Please select a service.');
+
+    // Customer: existing or new
+    let customerId = custSel;
+    if (custSel === '__new__' || (!custSel && !id)) {
+      const cname = document.getElementById('bk-m-cname')?.value?.trim();
+      if (!cname) return show('Please enter customer name or select existing.');
+      try {
+        const newCust = await db().create('booking_customers', {
+          name: cname,
+          email: document.getElementById('bk-m-cemail')?.value || null,
+          phone: document.getElementById('bk-m-cphone')?.value || null,
+          address: document.getElementById('bk-m-caddr')?.value || null,
+        });
+        customerId = newCust.id;
+        // CRM integration
+        try {
+          await db().create('crm_contacts', { name: cname, email: document.getElementById('bk-m-cemail')?.value||null, phone: document.getElementById('bk-m-cphone')?.value||null, source: 'booking' });
+        } catch(e) {}
+      } catch(e) { return show('Could not create customer: ' + e.message); }
+    }
+
+    const svc = state.services.find(s=>s.id===serviceId);
+    const dur = svc?.duration || 60;
+    const startTime = new Date(`${date}T${time}:00`);
+    const endTime   = new Date(startTime.getTime() + dur*60000);
+
+    // Conflict check
+    const conflict = state.bookings.find(b => {
+      if (b.id === id) return false;
+      if (b.status === 'cancelled') return false;
+      if (staffId && b.staff_id !== staffId) return false;
+      const bs = new Date(b.start_time), be = new Date(b.end_time);
+      return startTime < be && endTime > bs;
+    });
+    if (conflict) {
+      const cc = state.customers.find(c=>c.id===conflict.customer_id);
+      return show(`Conflict: overlaps with "${cc?.name||'another booking'}" at ${fmtTime(conflict.start_time)}`);
+    }
+
+    const row = {
+      customer_id: customerId,
+      service_id: serviceId,
+      staff_id: staffId,
+      start_time: startTime.toISOString(),
+      end_time: endTime.toISOString(),
+      status: id ? status : 'pending',
+      payment_method: payMethod,
+      payment_status: payMethod==='free'?'free':'unpaid',
+      amount: payMethod!=='free' ? amount : 0,
+      travel_fee: travelChecked ? travelFee : 0,
+      travel_address: travelChecked ? travelAddr : null,
+      travel_distance: travelChecked ? travelDist : 0,
+      notes,
+      recurring,
+      recurring_end: recurringEnd,
+    };
+
+    try {
+      if (id) {
+        await db().update('bookings', id, row);
+        toast('Booking updated', 'success');
+        // Notification: status changed
+        if (user()) {
+          try { await db().create('notifications', { user_id: user().id, title: 'Booking Updated', message: `Status: ${status}`, type: 'info', read: false }); } catch(e){}
+        }
+      } else {
+        const created = await db().create('bookings', row);
+        toast('Booking created!', 'success');
+        // Notifications
+        if (user()) {
+          try {
+            await db().create('notifications', { user_id: user().id, title: 'New Booking', message: `Booking confirmed for ${fmtDate(startTime.toISOString())} at ${fmtTime(startTime.toISOString())}`, type: 'success', read: false });
+          } catch(e){}
+        }
+        // Finance integration: if paid
+        if (payMethod==='paypal' && amount>0) {
+          try { await db().create('financial_transactions', { type:'Income', amount: amount+travelFee, description: `Booking: ${svc?.name||'Service'}`, date: date, category: 'Bookings' }); } catch(e){}
+        }
+        // Tasks integration: create task for staff
+        if (staffId) {
+          try { await db().create('tasks', { title: `Booking: ${svc?.name||'Service'} on ${fmtDate(startTime.toISOString())}`, assigned_to: staffId, due_date: date, status: 'Todo', created_by: user()?.id }); } catch(e){}
+        }
+        // Timesheet integration
+        if (staffId) {
+          try { await db().create('timesheets', { employee_id: staffId, date, hours: (dur/60).toFixed(2), description: `Booking: ${svc?.name||'Service'}`, status: 'Pending' }); } catch(e){}
+        }
+        // Recurring bookings
+        if (recurring !== 'none' && recurringEnd) {
+          await createRecurringBookings(row, recurring, new Date(recurringEnd), startTime, endTime);
+        }
+        // PayPal link
+        if (payMethod === 'paypal' && state.settings.paypal_email) {
+          const ppLink = `https://www.paypal.com/paypalme/${encodeURIComponent(state.settings.paypal_email)}/${amount+travelFee}`;
+          toast(`PayPal link: ${ppLink}`, 'info', 6000);
+        }
+      }
+      closeModal();
+      await reload();
+    } catch(e) { show(e.message); }
+  }
+
+  async function createRecurringBookings(baseRow, recurring, endDate, firstStart, firstEnd) {
+    const msMap = { daily: 86400000, weekly: 7*86400000, monthly: null };
+    let cur = new Date(firstStart), curEnd = new Date(firstEnd);
+    const limit = 52;
+    let count = 0;
+    while (count < limit) {
+      if (recurring === 'monthly') { cur.setMonth(cur.getMonth()+1); curEnd.setMonth(curEnd.getMonth()+1); }
+      else { cur = new Date(cur.getTime() + msMap[recurring]); curEnd = new Date(curEnd.getTime() + msMap[recurring]); }
+      if (cur > endDate) break;
+      try { await db().create('bookings', { ...baseRow, start_time: cur.toISOString(), end_time: curEnd.toISOString() }); } catch(e){}
+      count++;
+    }
+  }
+
+  async function saveService(id) {
+    const errEl = document.getElementById('svc-err');
+    const name = document.getElementById('svc-name')?.value?.trim();
+    if (!name) { errEl.textContent='Service name required.'; errEl.classList.remove('hidden'); return; }
+    const row = {
+      name, color: document.getElementById('svc-color')?.value||'#3b82f6',
+      category: document.getElementById('svc-category')?.value||'',
+      duration: parseInt(document.getElementById('svc-duration')?.value)||60,
+      price: parseFloat(document.getElementById('svc-price')?.value)||0,
+      description: document.getElementById('svc-desc')?.value||'',
+      travel_enabled: document.getElementById('svc-travel')?.checked||false,
+      travel_mode: document.getElementById('svc-travel-mode')?.value||'flat',
+      travel_per_km_rate: parseFloat(document.getElementById('svc-km-rate')?.value)||0,
+      active: true,
+    };
+    try {
+      if (id) { await db().update('booking_services', id, row); toast('Service updated','success'); }
+      else     { await db().create('booking_services', row); toast('Service created','success'); }
+      closeModal(); await reload();
+    } catch(e) { errEl.textContent=e.message; errEl.classList.remove('hidden'); }
+  }
+
+  async function saveStaff(id) {
+    const errEl = document.getElementById('staff-err');
+    const name = document.getElementById('stf-name')?.value?.trim();
+    if (!name) { errEl.textContent='Name required.'; errEl.classList.remove('hidden'); return; }
+    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const avail = {};
+    days.forEach(d => {
+      const enabled = document.getElementById(`stf-day-${d}`)?.checked;
+      if (enabled) avail[d] = { enabled:true, start: document.getElementById(`stf-start-${d}`)?.value||'09:00', end: document.getElementById(`stf-end-${d}`)?.value||'18:00' };
+    });
+    const row = {
+      name, color: document.getElementById('stf-color')?.value||'#8b5cf6',
+      email: document.getElementById('stf-email')?.value||'',
+      phone: document.getElementById('stf-phone')?.value||'',
+      availability: JSON.stringify(avail),
+      auto_assign: document.getElementById('stf-auto')?.checked !== false,
+      active: true,
+    };
+    try {
+      if (id) { await db().update('booking_staff', id, row); toast('Staff updated','success'); }
+      else     { await db().create('booking_staff', row); toast('Staff member added','success'); }
+      closeModal(); await reload();
+    } catch(e) { errEl.textContent=e.message; errEl.classList.remove('hidden'); }
+  }
+
+  async function saveSettings() {
+    const open  = document.getElementById('bk-s-open')?.value||'09:00';
+    const close = document.getElementById('bk-s-close')?.value||'18:00';
+    const interval = document.getElementById('bk-s-interval')?.value||'30';
+    const currency = document.getElementById('bk-s-currency')?.value||'$';
+    const paypal = document.getElementById('bk-s-paypal')?.value||'';
+    const kmRate = document.getElementById('bk-s-km-rate')?.value||'1.5';
+
+    // Collect days
+    const activeDays = Array.from(document.querySelectorAll('[data-day]')).filter(b=>b.classList.contains('bg-blue-600')).map(b=>b.dataset.day);
+
+    // Collect zones
+    const zones = [];
+    document.querySelectorAll('[data-zone]').forEach(row => {
+      const label = row.querySelector('[data-zone-label]')?.value||'';
+      const km = parseFloat(row.querySelector('[data-zone-km]')?.value)||0;
+      const fee = parseFloat(row.querySelector('[data-zone-fee]')?.value)||0;
+      if (label) zones.push({ label, max_km: km, fee });
+    });
+
+    // Travel mode
+    const tMode = document.getElementById('bk-travel-flat')?.classList.contains('border-blue-600') ? 'flat' : 'per_km';
+
+    const pairs = [
+      ['business_hours_start', open], ['business_hours_end', close],
+      ['slot_interval', interval], ['currency', currency],
+      ['paypal_email', paypal], ['travel_mode', tMode],
+      ['travel_per_km_rate', kmRate], ['travel_flat_zones', JSON.stringify(zones)],
+      ['business_days', JSON.stringify(activeDays)],
+    ];
+
+    try {
+      await Promise.all(pairs.map(([k,v]) => db().update('booking_settings', k, { value: v }, 'key').catch(()=>
+        db().create('booking_settings', { key:k, value:v })
+      )));
+      toast('Settings saved','success');
+      await reload();
+    } catch(e) { toast('Error saving settings: '+e.message,'error'); }
+  }
+
+  // ── DELETE ────────────────────────────────────────────────────
+  function confirmDelete(id, type) {
+    showModal(`<div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+      <div class="px-6 py-5">
+        <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"><i class="fas fa-trash text-red-500"></i></div>
+        <h3 class="font-bold text-slate-900 text-center mb-1">Delete ${capitalize(type)}?</h3>
+        <p class="text-sm text-slate-500 text-center">This action cannot be undone.</p>
+      </div>
+      <div class="px-6 pb-5 flex gap-3">
+        <button onclick="closeModal()" class="btn-secondary flex-1">Cancel</button>
+        <button onclick="BK.doDelete('${id}','${type}')" class="btn-primary flex-1 !bg-red-600 hover:!bg-red-700">Delete</button>
+      </div>
+    </div>`);
+  }
+
+  async function doDelete(id, type) {
+    const tableMap = { booking:'bookings', service:'booking_services', staff:'booking_staff', customer:'booking_customers', waitlist:'booking_waitlist' };
+    try {
+      await db().delete(tableMap[type]||'bookings', id);
+      toast(`${capitalize(type)} deleted`,'success');
+      closeModal(); await reload();
+    } catch(e) { toast(e.message,'error'); }
+  }
+
+  // ── SMART FEATURES ────────────────────────────────────────────
+  function autoAssignStaff() {
+    const dateVal = document.getElementById('bk-m-date')?.value;
+    const timeVal = document.getElementById('bk-m-time')?.value;
+    if (!dateVal || !timeVal) { toast('Select date and time first','warning'); return; }
+    const start = new Date(`${dateVal}T${timeVal}:00`);
+    const svcId = document.getElementById('bk-m-service')?.value;
+    const svc = state.services.find(s=>s.id===svcId);
+    const dur = svc?.duration || 60;
+    const end = new Date(start.getTime() + dur*60000);
+    const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][start.getDay()];
+
+    const available = state.staff.filter(stf => {
+      if (!stf.auto_assign) return false;
+      const avail = safeJson(stf.availability, {});
+      if (!avail[dayName]?.enabled) return false;
+      const stStart = new Date(`${dateVal}T${avail[dayName].start}:00`);
+      const stEnd   = new Date(`${dateVal}T${avail[dayName].end}:00`);
+      if (start < stStart || end > stEnd) return false;
+      // Check no conflicts
+      const hasConflict = state.bookings.some(b => {
+        if (b.staff_id !== stf.id || b.status==='cancelled') return false;
+        const bs=new Date(b.start_time), be=new Date(b.end_time);
+        return start < be && end > bs;
+      });
+      return !hasConflict;
+    });
+
+    if (!available.length) { toast('No available staff for this slot','warning'); return; }
+    // Pick least busy
+    const best = available.sort((a,b) => {
+      const ca = state.bookings.filter(x=>x.staff_id===a.id&&x.status!=='cancelled').length;
+      const cb = state.bookings.filter(x=>x.staff_id===b.id&&x.status!=='cancelled').length;
+      return ca-cb;
+    })[0];
+    const sel = document.getElementById('bk-m-staff');
+    if (sel) { sel.value = best.id; toast(`Auto-assigned: ${best.name}`,'success'); }
+  }
+
+  function calcTravelFee() {
+    const dist = parseFloat(document.getElementById('bk-m-travel-dist')?.value||0)||0;
+    if (!dist) return;
+    const mode = state.settings.travel_mode || 'flat';
+    let fee = 0;
+    if (mode === 'per_km') {
+      fee = dist * (parseFloat(state.settings.travel_per_km_rate)||1.5);
+    } else {
+      const zones = safeJson(state.settings.travel_flat_zones, []);
+      const zone = zones.sort((a,b)=>a.max_km-b.max_km).find(z=>dist<=z.max_km);
+      fee = zone?.fee || 0;
+    }
+    const feeEl = document.getElementById('bk-m-travel-fee');
+    if (feeEl) feeEl.value = fee.toFixed(2);
+  }
+
+  async function convertWaitlist(id) {
+    const w = state.waitlist.find(x=>x.id===id);
+    if (!w) return;
+    const startISO = w.requested_date ? new Date(w.requested_date).toISOString() : new Date().toISOString();
+    showModal(bookingModalHTML(null, w.requested_date||'', ''));
+    // Pre-fill fields after render
+    setTimeout(() => {
+      const cname = document.getElementById('bk-m-cname'); if(cname) cname.value = w.customer_name||'';
+      const cemail = document.getElementById('bk-m-cemail'); if(cemail) cemail.value = w.customer_email||'';
+      const cphone = document.getElementById('bk-m-cphone'); if(cphone) cphone.value = w.customer_phone||'';
+      const svcSel = document.getElementById('bk-m-service'); if(svcSel&&w.service_id) svcSel.value = w.service_id;
+      const stfSel = document.getElementById('bk-m-staff'); if(stfSel&&w.staff_id) stfSel.value = w.staff_id;
+      const custSel = document.getElementById('bk-m-customer'); if(custSel) custSel.value = '__new__';
+      const newCust = document.getElementById('bk-new-cust'); if(newCust) newCust.classList.remove('hidden');
+    }, 50);
+    attachBookingModalEvents();
+  }
+
+  async function deleteWaitlist(id) {
+    try { await db().delete('booking_waitlist', id); toast('Removed from waitlist','success'); await reload(); }
+    catch(e) { toast(e.message,'error'); }
+  }
+
+  // ── SETTINGS HELPERS ─────────────────────────────────────────
+  function setTravelMode(mode) {
+    const flatBtn = document.getElementById('bk-travel-flat');
+    const kmBtn   = document.getElementById('bk-travel-km');
+    const flatCfg = document.getElementById('bk-travel-flat-cfg');
+    const kmCfg   = document.getElementById('bk-travel-km-cfg');
+    if (mode === 'flat') {
+      flatBtn?.classList.add('border-blue-600','bg-blue-50','text-blue-700'); flatBtn?.classList.remove('border-slate-200','text-slate-500');
+      kmBtn?.classList.add('border-slate-200','text-slate-500'); kmBtn?.classList.remove('border-blue-600','bg-blue-50','text-blue-700');
+      flatCfg?.classList.remove('hidden'); kmCfg?.classList.add('hidden');
+    } else {
+      kmBtn?.classList.add('border-blue-600','bg-blue-50','text-blue-700'); kmBtn?.classList.remove('border-slate-200','text-slate-500');
+      flatBtn?.classList.add('border-slate-200','text-slate-500'); flatBtn?.classList.remove('border-blue-600','bg-blue-50','text-blue-700');
+      kmCfg?.classList.remove('hidden'); flatCfg?.classList.add('hidden');
+    }
+  }
+
+  function addZone() {
+    const list = document.getElementById('bk-zones-list');
+    if (!list) return;
+    const i = list.children.length;
+    const div = document.createElement('div');
+    div.className = 'flex gap-2 items-center';
+    div.dataset.zone = i;
+    div.innerHTML = `
+      <input type="text" placeholder="Zone label" class="field text-xs flex-1" data-zone-label="${i}">
+      <input type="number" placeholder="Max km" class="field text-xs w-20" data-zone-km="${i}">
+      <input type="number" placeholder="Fee" class="field text-xs w-20" data-zone-fee="${i}">
+      <button onclick="this.closest('[data-zone]').remove()" class="text-red-400 hover:text-red-600 text-xs px-1"><i class="fas fa-times"></i></button>`;
+    list.appendChild(div);
+  }
+
+  // ── DRAG & DROP ───────────────────────────────────────────────
+  function dragStart(e, id) { state.dragBooking = id; e.dataTransfer.effectAllowed = 'move'; }
+  function dragEnd(e) { state.dragBooking = null; }
+  async function dropOnStatus(e, status) {
+    e.preventDefault();
+    if (!state.dragBooking) return;
+    try {
+      await db().update('bookings', state.dragBooking, { status });
+      toast(`Moved to ${status}`,'success');
+      await reload();
+    } catch(err) { toast(err.message,'error'); }
+  }
+
+  // ── REMINDER POLLER ───────────────────────────────────────────
+  function startReminderPoller() {
+    checkReminders();
+    setInterval(checkReminders, 5*60000);
+  }
+
+  async function checkReminders() {
+    if (!user()) return;
+    const now = new Date();
+    const soon = new Date(now.getTime() + 60*60000); // 1h window
+    const upcoming = state.bookings.filter(b => {
+      if (b.status !== 'confirmed') return false;
+      const s = new Date(b.start_time);
+      return s > now && s <= soon;
+    });
+    for (const b of upcoming) {
+      const key = `bk_reminded_${b.id}`;
+      if (sessionStorage.getItem(key)) continue;
+      sessionStorage.setItem(key, '1');
+      const cust = state.customers.find(c=>c.id===b.customer_id);
+      const svc  = state.services.find(s=>s.id===b.service_id);
+      try {
+        await db().create('notifications', {
+          user_id: user().id,
+          title: '⏰ Booking Reminder',
+          message: `${svc?.name||'Booking'} with ${cust?.name||'customer'} at ${fmtTime(b.start_time)}`,
+          type: 'info', read: false,
+        });
+      } catch(e) {}
+    }
+  }
+
+  // ── MODAL HELPERS ─────────────────────────────────────────────
+  function showModal(html) {
+    const root = document.getElementById('modals-root') || document.body;
+    root.innerHTML = `<div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 fade-in" id="bk-modal-overlay" onclick="if(event.target===this)closeModal()">${html}</div>`;
+  }
+
+  window.closeModal = function() {
+    const root = document.getElementById('modals-root') || document.body;
+    root.innerHTML = '';
+  };
+
+  // ── CALENDAR NAVIGATION ───────────────────────────────────────
+  function calNav(dir) {
+    if (state.calView === 'week')  { state.calDate = new Date(state.calDate.getTime() + dir*7*86400000); }
+    else if (state.calView==='day') { state.calDate = new Date(state.calDate.getTime() + dir*86400000); }
+    else { state.calDate = new Date(state.calDate.getFullYear(), state.calDate.getMonth()+dir, 1); }
+    renderCalGrid();
+  }
+
+  function calToday() { state.calDate = new Date(); renderCalGrid(); }
+
+  function calSetView(v) {
+    state.calView = v;
+    ['day','week','month'].forEach(x => {
+      const btn = document.getElementById(`bk-calview-${x}`);
+      if (!btn) return;
+      btn.className = btn.className.replace(/bg-white text-blue-600 shadow-sm|text-slate-500 hover:text-slate-700/g,'');
+      btn.className += x===v ? ' bg-white text-blue-600 shadow-sm' : ' text-slate-500 hover:text-slate-700';
+    });
+    renderCalGrid();
+  }
+
+  function setBookingView(v) {
+    state.bookingView = v;
+    switchTab('bookings');
+  }
+
+  // ── BOOKING MODAL EVENT HANDLERS ──────────────────────────────
+  function onCustomerChange(sel) {
+    const newCust = document.getElementById('bk-new-cust');
+    if (!newCust) return;
+    newCust.classList.toggle('hidden', sel.value !== '__new__');
+  }
+
+  function onServiceChange(sel) {
+    const opt = sel.options[sel.selectedIndex];
+    const travelEnabled = opt.dataset.travel === '1';
+    const section = document.getElementById('bk-m-travel-section');
+    if (section) section.classList.toggle('hidden', !travelEnabled);
+    // Update amount
+    const price = parseFloat(opt.dataset.price||0)||0;
+    const amtEl = document.getElementById('bk-m-amount');
+    if (amtEl && price > 0) amtEl.value = price.toFixed(2);
+  }
+
+  function onTravelToggle(cb) {
+    const fields = document.getElementById('bk-m-travel-fields');
+    if (fields) fields.classList.toggle('hidden', !cb.checked);
+  }
+
+  function onRecurringChange(sel) {
+    const end = document.getElementById('bk-m-rec-end');
+    if (end) end.classList.toggle('hidden', sel.value === 'none');
+  }
+
+  function onPaymentChange(sel) {
+    const row = document.getElementById('bk-m-amount-row');
+    const ppLink = document.getElementById('bk-m-paypal-link');
+    if (row) row.classList.toggle('hidden', sel.value === 'free');
+    if (ppLink) ppLink.classList.toggle('hidden', sel.value !== 'paypal');
+  }
+
+  // ── UTILITIES ─────────────────────────────────────────────────
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmt(n) { return (+n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function capitalize(s) { return s?s[0].toUpperCase()+s.slice(1):s; }
+  function safeJson(v, def) { try{ return JSON.parse(typeof v==='string'?v:JSON.stringify(v||def))||def; }catch(e){ return def; } }
+  function fmtDate(iso) { if(!iso) return ''; return new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+  function fmtDateShort(d) { return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+  function fmtTime(iso) { if(!iso) return ''; return new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}); }
+  function fmtTimeInput(iso) { if(!iso) return ''; const d=new Date(iso); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+  function getWeekDays(d) {
+    const day = d.getDay();
+    const mon = new Date(d); mon.setDate(d.getDate() - day);
+    return Array.from({length:7},(_,i) => { const x=new Date(mon); x.setDate(mon.getDate()+i); return x; });
+  }
+
+  // ── PUBLIC API ────────────────────────────────────────────────
+  function publicAPI() {
+    return {
+      switchTab, openNewBooking, openEditBooking, openServiceModal,
+      openStaffModal, saveBooking, saveService, saveStaff, saveSettings,
+      confirmDelete, doDelete, autoAssignStaff, calcTravelFee,
+      convertWaitlist, deleteWaitlist, setTravelMode, addZone,
+      calNav, calToday, calSetView, setBookingView, filterBookings,
+      dragStart, dragEnd, dropOnStatus,
+      onCustomerChange, onServiceChange, onTravelToggle, onRecurringChange, onPaymentChange,
+    };
+  }
+
+})();
