@@ -1394,9 +1394,9 @@ window.WorkVoltPages['projects'] = function(container) {
     var isEdit = !!task;
     function v(k) { return task ? (task[k] || '') : ''; }
 
-    var statusOpts   = TASK_STATUSES.map(function(s) {
-      return '<option value="' + s + '"' + (s === (v('status') || 'To Do') ? ' selected' : '') + '>' + s + '</option>';
-    }).join('');
+    var statusOpts = TASK_STATUSES.map(function(s) {
+  return '<option value="' + s + '"' + (s === (v('status') || 'To Do') ? ' selected' : '') + '>' + s + '</option>';
+}).join('');
     var priorityOpts = TASK_PRIORITIES.map(function(p) {
       return '<option value="' + p + '"' + (p === (v('priority') || 'Medium') ? ' selected' : '') + '>' + p + '</option>';
     }).join('');
@@ -1512,7 +1512,7 @@ window.WorkVoltPages['projects'] = function(container) {
       var params = {
         title:           title,
         description:     document.getElementById('task-tf-desc').value.trim(),
-        status:          document.getElementById('task-tf-status').value,
+        status:          document.getElementById('task-tf-status').value || 'To Do',
         priority:        document.getElementById('task-tf-priority').value || 'Medium',
         assignee:        document.getElementById('task-tf-assignee').value || null,
         due_date:        document.getElementById('task-tf-due').value || null,
