@@ -7,7 +7,7 @@
 
 window.WorkVoltPages = window.WorkVoltPages || {};
 
-window.WorkVoltPages['shop'] = function(container) {
+window.WorkVoltPages['eshop'] = function(container) {
 
   // ── Supabase client ────────────────────────────────────────────
   // Self-contained: works whether db-adapter has already loaded the
@@ -2648,7 +2648,7 @@ window.WorkVoltPages['shop'] = function(container) {
           <p class="font-semibold text-slate-700">${title}</p>
           <p class="text-xs text-slate-500 mt-2 font-mono bg-slate-50 rounded p-2 max-w-md mx-auto">${esc(message)}</p>
           ${e.message.includes('timed out') || e.message.includes('Failed to load') ? `
-            <button onclick="window.WorkVolt?.navigate('shop')" class="mt-4 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700">
+            <button onclick="window.WorkVolt?.navigate('eshop')" class="mt-4 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700">
               <i class="fas fa-redo text-xs mr-1"></i>Retry
             </button>
           ` : ''}
