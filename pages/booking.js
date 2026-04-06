@@ -756,7 +756,7 @@
               <button type="button" onclick="BK.setTravelMode('flat')" class="flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-colors ${(s.travel_mode||'flat')==='flat'?'border-blue-600 bg-blue-50 text-blue-700':'border-slate-200 text-slate-500'}" id="bk-travel-flat">
                 <i class="fas fa-map-marker-alt mr-1"></i>Flat Rate Zones
               </button>
-              <button type="button" onclick="BK.setTravelMode('per_km',this)" class="flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-colors ${s.travel_mode==='per_km'?'border-blue-600 bg-blue-50 text-blue-700':'border-slate-200 text-slate-500'}" id="bk-travel-km">
+              <button type="button" onclick="BK.setTravelMode('per_km')" class="flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-colors ${s.travel_mode==='per_km'?'border-blue-600 bg-blue-50 text-blue-700':'border-slate-200 text-slate-500'}" id="bk-travel-km">
                 <i class="fas fa-road mr-1"></i>Per km/mile
               </button>
             </div>
