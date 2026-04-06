@@ -684,20 +684,53 @@ function renderStepDateTime() {
       <div id="pub-travel-fields" class="${PB.travelEnabled?'':'hidden'} mt-4 space-y-3">
         <div>
           <label class="block text-xs font-semibold text-slate-500 mb-1">Your Address</label>
-          <input type="text" id="pub-travel-addr" class="field text-sm" placeholder="Enter your full address" value="${esc(PB.travelAddress)}" oninput="PB.travelAddress=this.value">
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-slate-500 mb-1">Distance (km)</label>
-            <input type="number" id="pub-travel-dist" class="field text-sm" placeholder="0" value="${PB.travelDistance||''}" oninput="pubCalcTravelFee(this.value)">
+          <div class="relative">
+            <input type="text" id="pub-travel-addr" class="field text-sm pr-20"
+              placeholder="Enter your full address"
+              value="${esc(PB.travelAddress)}"
+              oninput="PB.travelAddress=this.value;pubTravelClearResult()"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();pubGeocode();}">
+            <button type="button" onclick="pubGeocode()"
+              class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 rounded-lg text-xs font-bold transition-colors"
+              style="background:var(--bk-primary);color:#fff"
+              id="pub-travel-calc-btn">
+              Calculate
+            </button>
           </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-500 mb-1">Travel Fee</label>
-            <div class="flex items-center gap-1.5">
-              <span class="text-sm font-bold text-slate-400">${PB.settings.currency||'$'}</span>
-              <input type="number" id="pub-travel-fee-display" class="field text-sm" value="${PB.travelFee||0}" readonly>
+          <p class="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+            <i class="fas fa-info-circle"></i>
+            Enter your address and click Calculate — the travel fee will be set automatically.
+          </p>
+        </div>
+
+        <!-- Result strip (hidden until calculated) -->
+        <div id="pub-travel-result" class="${PB.travelDistance>0?'':'hidden'}">
+          <div class="rounded-xl p-3 flex items-center gap-3" style="background:var(--bk-primary-light);border:1.5px solid var(--bk-border)">
+            <i class="fas fa-route text-sm flex-shrink-0" style="color:var(--bk-primary)"></i>
+            <div class="flex-1 min-w-0">
+              <p class="text-xs font-bold" style="color:var(--bk-text)">
+                <span id="pub-travel-dist-label">${PB.travelDistance ? PB.travelDistance.toFixed(1)+' km away' : ''}</span>
+              </p>
+              <p class="text-[11px]" style="color:var(--bk-text-muted)" id="pub-travel-route-note"></p>
+            </div>
+            <div class="text-right flex-shrink-0">
+              <p class="text-xs font-semibold" style="color:var(--bk-text-muted)">Travel Fee</p>
+              <p class="text-base font-extrabold" style="color:var(--bk-primary)" id="pub-travel-fee-label">
+                ${PB.travelFee > 0 ? (PB.settings.currency||'$')+PB.travelFee.toFixed(2) : 'Free'}
+              </p>
             </div>
           </div>
+        </div>
+
+        <!-- Error strip -->
+        <div id="pub-travel-error" class="hidden rounded-xl p-3 text-xs font-semibold text-red-700 flex items-center gap-2" style="background:#fee2e2;border:1.5px solid #fecaca">
+          <i class="fas fa-exclamation-circle flex-shrink-0"></i>
+          <span id="pub-travel-error-msg">Could not find that address. Please try again.</span>
+        </div>
+
+        <!-- Calculating spinner -->
+        <div id="pub-travel-loading" class="hidden text-xs text-slate-400 flex items-center gap-2 font-semibold">
+          <i class="fas fa-circle-notch fa-spin"></i> Calculating distance…
         </div>
       </div>
     </div>` : ''}
@@ -832,22 +865,114 @@ function calNav(dir) {
 function pubTravelToggle(cb) {
   PB.travelEnabled = cb.checked;
   document.getElementById('pub-travel-fields')?.classList.toggle('hidden', !cb.checked);
+  // If unchecking, clear fee
+  if (!cb.checked) { PB.travelFee = 0; PB.travelDistance = 0; }
 }
-function pubCalcTravelFee(dist) {
-  dist = parseFloat(dist)||0;
-  PB.travelDistance = dist;
-  const mode  = PB.settings.travel_mode||'flat';
-  let fee = 0;
-  if (mode==='per_km') {
-    fee = dist * (parseFloat(PB.settings.travel_per_km_rate)||1.5);
-  } else {
-    const zones = safeJson(PB.settings.travel_flat_zones||'[]', []);
-    const zone = zones.sort((a,b)=>a.max_km-b.max_km).find(z=>dist<=z.max_km);
-    fee = zone?.fee || 0;
+
+function pubTravelClearResult() {
+  // When the address changes, hide the result until recalculated
+  document.getElementById('pub-travel-result')?.classList.add('hidden');
+  document.getElementById('pub-travel-error')?.classList.add('hidden');
+  PB.travelFee = 0;
+  PB.travelDistance = 0;
+}
+
+async function pubGeocode() {
+  const customerAddr = (document.getElementById('pub-travel-addr')?.value || '').trim();
+  if (!customerAddr) {
+    pubTravelShowError('Please enter your address first.');
+    return;
   }
-  PB.travelFee = fee;
-  const el = document.getElementById('pub-travel-fee-display');
-  if (el) el.value = fee.toFixed(2);
+
+  const businessAddr = (PB.settings.footer_address || '').trim();
+  if (!businessAddr) {
+    // No business address configured — fall back to manual fee based on zone 0
+    pubApplyTravelFee(0);
+    return;
+  }
+
+  // Show loading state
+  const btn = document.getElementById('pub-travel-calc-btn');
+  const loading = document.getElementById('pub-travel-loading');
+  const errEl = document.getElementById('pub-travel-error');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>'; }
+  if (loading) loading.classList.remove('hidden');
+  if (errEl) errEl.classList.add('hidden');
+  document.getElementById('pub-travel-result')?.classList.add('hidden');
+
+  try {
+    // Geocode both addresses using Nominatim (free, no API key needed)
+    const [bizCoords, custCoords] = await Promise.all([
+      pubNominatimGeocode(businessAddr),
+      pubNominatimGeocode(customerAddr),
+    ]);
+
+    if (!bizCoords)  throw new Error('Could not locate the business address. Please ensure it is set correctly in settings.');
+    if (!custCoords) throw new Error('Could not find your address. Please check it and try again.');
+
+    // Haversine straight-line distance in km
+    const km = pubHaversine(bizCoords.lat, bizCoords.lon, custCoords.lat, custCoords.lon);
+    // Add ~25% to approximate road distance vs straight-line
+    const roadKm = +(km * 1.25).toFixed(1);
+
+    PB.travelAddress  = customerAddr;
+    PB.travelDistance = roadKm;
+    pubApplyTravelFee(roadKm);
+
+    // Update UI
+    const cur = PB.settings.currency || '$';
+    const distLabel = document.getElementById('pub-travel-dist-label');
+    const routeNote = document.getElementById('pub-travel-route-label') || document.getElementById('pub-travel-route-note');
+    const feeLabel  = document.getElementById('pub-travel-fee-label');
+    if (distLabel) distLabel.textContent = `${roadKm.toFixed(1)} km away`;
+    if (routeNote) routeNote.textContent = `From: ${businessAddr}`;
+    if (feeLabel)  feeLabel.textContent  = PB.travelFee > 0 ? cur + PB.travelFee.toFixed(2) : 'Free';
+    document.getElementById('pub-travel-result')?.classList.remove('hidden');
+
+  } catch(e) {
+    pubTravelShowError(e.message || 'Could not calculate distance. Please try again.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = 'Calculate'; }
+    if (loading) loading.classList.add('hidden');
+  }
+}
+
+function pubApplyTravelFee(distKm) {
+  const mode = PB.settings.travel_mode || 'flat';
+  let fee = 0;
+  if (mode === 'per_km') {
+    fee = distKm * (parseFloat(PB.settings.travel_per_km_rate) || 1.5);
+  } else {
+    const zones = safeJson(PB.settings.travel_flat_zones || '[]', []);
+    const sorted = zones.slice().sort((a, b) => a.max_km - b.max_km);
+    const zone = sorted.find(z => distKm <= z.max_km);
+    fee = zone ? (zone.fee || 0) : (sorted.length ? sorted[sorted.length - 1].fee || 0 : 0);
+  }
+  PB.travelFee = +fee.toFixed(2);
+}
+
+function pubTravelShowError(msg) {
+  const errEl = document.getElementById('pub-travel-error');
+  const errMsg = document.getElementById('pub-travel-error-msg');
+  if (errMsg) errMsg.textContent = msg;
+  if (errEl) errEl.classList.remove('hidden');
+}
+
+async function pubNominatimGeocode(address) {
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+  const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'WorkVoltBooking/1.0' } });
+  if (!res.ok) throw new Error('Geocoding service unavailable.');
+  const data = await res.json();
+  if (!data.length) return null;
+  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+}
+
+function pubHaversine(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth radius km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
 // ── Step 2: Customer Info ─────────────────────────────────────
@@ -875,8 +1000,16 @@ function renderStepInfo() {
       </div>
       ${PB.travelEnabled ? `
       <div>
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Your Address</label>
-        <input type="text" id="pub-caddr" class="field" placeholder="Full address" value="${esc(PB.travelAddress)}" oninput="PB.travelAddress=this.value">
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Travel Address</label>
+        <div class="flex items-center gap-2 rounded-xl px-3 py-2.5" style="background:var(--bk-primary-light);border:1.5px solid var(--bk-border)">
+          <i class="fas fa-map-marker-alt text-sm flex-shrink-0" style="color:var(--bk-primary)"></i>
+          <span class="flex-1 text-sm font-semibold" style="color:var(--bk-text)">${esc(PB.travelAddress||'No address set')}</span>
+          <button type="button" onclick="goToStep(1)" class="text-xs font-bold hover:underline flex-shrink-0" style="color:var(--bk-primary)">Edit</button>
+        </div>
+        <p class="text-[11px] mt-1 font-semibold" style="color:var(--bk-text-muted)">
+          <i class="fas fa-route mr-1"></i>${PB.travelDistance ? PB.travelDistance.toFixed(1)+' km' : '—'} ·
+          Travel fee: ${PB.travelFee > 0 ? (PB.settings.currency||'$')+PB.travelFee.toFixed(2) : 'Free'}
+        </p>
       </div>` : ''}
       <div>
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Notes <span class="font-normal text-slate-300 normal-case">(optional)</span></label>
@@ -919,7 +1052,7 @@ function validateInfo() {
   PB.customer.email = email;
   PB.customer.phone = document.getElementById('pub-cphone')?.value || '';
   PB.notes = document.getElementById('pub-cnotes')?.value || '';
-  if (PB.travelEnabled) PB.travelAddress = document.getElementById('pub-caddr')?.value || PB.travelAddress;
+  // travelAddress/travelDistance/travelFee are already set from step 1 geocoding
   goToStep(3);
 }
 
