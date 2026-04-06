@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book an Appointment</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; }
+    .field { width:100%; padding:.6rem .875rem; border:1.5px solid #e2e8f0; border-radius:10px; font-size:.875rem; outline:none; transition:border-color .15s,box-shadow .15s; font-family:inherit; background:#fff; }
+    .field:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
+    .btn-primary { display:flex; align-items:center; justify-content:center; gap:.5rem; padding:.75rem 1.5rem; background:#2563eb; color:#fff; border:none; border-radius:12px; font-size:.875rem; font-weight:700; cursor:pointer; transition:background .15s,transform .1s; font-family:inherit; }
+    .btn-primary:hover { background:#1d4ed8; }
+    .btn-primary:active { transform:scale(.98); }
+    .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+    .step-card { background:#fff; border-radius:20px; border:1.5px solid #e2e8f0; box-shadow:0 2px 16px rgba(0,0,0,.05); }
+    .slot-btn { padding:.5rem 1rem; border-radius:10px; border:1.5px solid #e2e8f0; font-size:.8rem; font-weight:600; cursor:pointer; transition:all .15s; background:#fff; color:#374151; font-family:inherit; }
+    .slot-btn:hover { border-color:#3b82f6; color:#3b82f6; background:#eff6ff; }
+    .slot-btn.selected { background:#2563eb; color:#fff; border-color:#2563eb; }
+    .slot-btn:disabled { opacity:.4; cursor:not-allowed; background:#f8fafc; }
+    .svc-card { border:2px solid #e2e8f0; border-radius:16px; padding:1.25rem; cursor:pointer; transition:all .2s; background:#fff; }
+    .svc-card:hover { border-color:#3b82f6; box-shadow:0 4px 16px rgba(59,130,246,.12); }
+    .svc-card.selected { border-color:#2563eb; background:#eff6ff; }
+    .step-indicator { display:flex; align-items:center; gap:.5rem; }
+    .step-dot { width:2rem; height:2rem; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.75rem; font-weight:700; transition:all .2s; }
+    .step-dot.done { background:#10b981; color:#fff; }
+    .step-dot.active { background:#2563eb; color:#fff; box-shadow:0 0 0 4px rgba(37,99,235,.2); }
+    .step-dot.pending { background:#f1f5f9; color:#94a3b8; }
+    .fade-in { animation:fadeIn .3s ease both; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+    .cal-day { padding:.5rem; text-align:center; border-radius:10px; cursor:pointer; font-size:.85rem; font-weight:600; transition:all .15s; min-height:2.5rem; display:flex; align-items:center; justify-content:center; }
+    .cal-day:hover:not(.disabled):not(.empty) { background:#eff6ff; color:#2563eb; }
+    .cal-day.selected { background:#2563eb; color:#fff; }
+    .cal-day.today { border:2px solid #2563eb; color:#2563eb; }
+    .cal-day.today.selected { border-color:#2563eb; }
+    .cal-day.disabled { color:#d1d5db; cursor:not-allowed; }
+    .cal-day.empty { cursor:default; }
+    .cal-day.has-slots { position:relative; }
+    .cal-day.has-slots::after { content:''; position:absolute; bottom:3px; left:50%; transform:translateX(-50%); width:4px; height:4px; background:#10b981; border-radius:50%; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <!-- Splash -->
+  <div id="pub-loading" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+    <div class="text-center">
+      <div class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+        <i class="fas fa-bolt text-white text-2xl"></i>
+      </div>
+      <p class="text-slate-500 text-sm font-medium">Loading booking page…</p>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-2xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center"><i class="fas fa-bolt text-white text-sm"></i></div>
+        <span id="pub-biz-name" class="font-extrabold text-slate-900 tracking-tight">Work Volt</span>
+      </div>
+      <div id="pub-header-svc" class="hidden text-xs font-semibold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-full"></div>
+    </div>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-4 py-8 pb-20">
+
+    <!-- Step Indicators -->
+    <div id="pub-steps" class="flex items-center justify-center gap-0 mb-8 hidden">
+      ${['Service','Date & Time','Your Info','Confirm'].map((label,i) => `
+        <div class="flex items-center gap-0">
+          <div class="flex flex-col items-center">
+            <div class="step-dot pending" id="pub-stepdot-${i}">${i+1}</div>
+            <p class="text-[10px] font-semibold text-slate-400 mt-1 whitespace-nowrap" id="pub-steplabel-${i}">${label}</p>
+          </div>
+          ${i<3?`<div class="w-12 h-0.5 bg-slate-200 mb-4 mx-1" id="pub-stepline-${i}"></div>`:''}
+        </div>`).join('')}
+    </div>
+
+    <!-- Content area -->
+    <div id="pub-content"></div>
+  </main>
+
+  <script src="js/db-adapter.js"></script>
+  <script>
+  // ── State ────────────────────────────────────────────────────
+  const PB = {
+    step: 0,
+    services: [],
+    staff: [],
+    settings: {},
+    selectedService: null,
+    selectedDate: null,
+    selectedTime: null,
+    selectedStaff: null,
+    bookings: [],
+    customer: { name:'', email:'', phone:'', address:'' },
+    travelEnabled: false,
+    travelAddress: '',
+    travelDistance: 0,
+    travelFee: 0,
+    paymentMethod: 'free',
+    notes: '',
+  };
+
+  // ── Boot ─────────────────────────────────────────────────────
+  window.addEventListener('load', async () => {
+    try {
+      const adapter = await initAdapter();
+      if (!adapter) { showError('Booking page not configured.'); return; }
+      await loadData();
+      document.getElementById('pub-loading').style.display = 'none';
+      document.getElementById('pub-steps').classList.remove('hidden');
+
+      // If service preset in URL
+      const params = new URLSearchParams(window.location.search);
+      const preService = params.get('service');
+      if (preService) {
+        const svc = PB.services.find(s=>s.id===preService);
+        if (svc) { PB.selectedService = svc; goToStep(1); return; }
+      }
+      goToStep(0);
+    } catch(e) {
+      console.error(e);
+      showError('Could not load booking page: ' + e.message);
+    }
+  });
+
+  async function loadData() {
+    const D = window.WorkVoltDB;
+    const [services, staff, settingsRows, bookings] = await Promise.all([
+      D.list('booking_services', { active: true }, { order: 'name', asc: true }),
+      D.list('booking_staff', { active: true }, { order: 'name', asc: true }),
+      D.list('booking_settings'),
+      D.list('bookings', {}, { order: 'start_time', asc: true }),
+    ]);
+    PB.services  = services  || [];
+    PB.staff     = staff     || [];
+    PB.settings  = Object.fromEntries((settingsRows||[]).map(r=>[r.key,r.value]));
+    PB.bookings  = bookings  || [];
+
+    // Set biz name from settings if available
+    if (PB.settings.business_name) document.getElementById('pub-biz-name').textContent = PB.settings.business_name;
+  }
+
+  // ── Step Routing ─────────────────────────────────────────────
+  function goToStep(n) {
+    PB.step = n;
+    updateStepDots(n);
+    const c = document.getElementById('pub-content');
+    switch(n) {
+      case 0: c.innerHTML = renderStepServices(); break;
+      case 1: c.innerHTML = renderStepDateTime(); initCalendar(); break;
+      case 2: c.innerHTML = renderStepInfo(); break;
+      case 3: c.innerHTML = renderStepConfirm(); break;
+      case 4: c.innerHTML = renderStepSuccess(); break;
+    }
+  }
+
+  function updateStepDots(active) {
+    for(let i=0;i<4;i++) {
+      const dot = document.getElementById(`pub-stepdot-${i}`);
+      const line = document.getElementById(`pub-stepline-${i}`);
+      if (!dot) continue;
+      dot.className = 'step-dot ' + (i<active?'done':i===active?'active':'pending');
+      if (i<active) dot.innerHTML = '<i class="fas fa-check text-xs"></i>';
+      else dot.textContent = i+1;
+      if (line) line.style.background = i<active?'#10b981':'#e2e8f0';
+    }
+  }
+
+  // ── Step 0: Service Selection ─────────────────────────────────
+  function renderStepServices() {
+    const cur = PB.settings.currency || '$';
+    if (!PB.services.length) return `<div class="text-center py-16 text-slate-400"><i class="fas fa-concierge-bell text-4xl mb-3 opacity-30"></i><p class="font-semibold">No services available</p></div>`;
+    const groups = {};
+    PB.services.forEach(s => { const cat = s.category||'Services'; if(!groups[cat]) groups[cat]=[]; groups[cat].push(s); });
+    return `<div class="fade-in">
+      <h1 class="text-2xl font-extrabold text-slate-900 mb-1">Book an Appointment</h1>
+      <p class="text-slate-400 text-sm mb-6">Select a service to get started</p>
+      ${Object.entries(groups).map(([cat, svcs]) => `
+        <div class="mb-6">
+          <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">${esc(cat)}</h2>
+          <div class="grid gap-3">
+            ${svcs.map(svc => `
+              <div class="svc-card ${PB.selectedService?.id===svc.id?'selected':''}" onclick="selectService('${svc.id}')">
+                <div class="flex items-center gap-4">
+                  <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-xl font-bold flex-shrink-0 shadow-sm"
+                       style="background:${svc.color||'#3b82f6'}">${(svc.name||'?')[0].toUpperCase()}</div>
+                  <div class="flex-1">
+                    <p class="font-bold text-slate-800">${esc(svc.name)}</p>
+                    <p class="text-sm text-slate-400">${esc(svc.description||'')}</p>
+                    <div class="flex items-center gap-3 mt-1">
+                      <span class="text-xs font-semibold text-slate-500"><i class="fas fa-clock mr-1 text-slate-300"></i>${svc.duration} min</span>
+                      ${+svc.price>0?`<span class="text-xs font-bold text-blue-600">${cur}${fmtN(svc.price)}</span>`:'<span class="text-xs font-semibold text-green-600">Free</span>'}
+                      ${svc.travel_enabled?'<span class="text-xs font-semibold text-amber-600"><i class="fas fa-car mr-1"></i>Mobile available</span>':''}
+                    </div>
+                  </div>
+                  <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${PB.selectedService?.id===svc.id?'border-blue-600 bg-blue-600':'border-slate-200'}">
+                    ${PB.selectedService?.id===svc.id?'<i class="fas fa-check text-white text-xs"></i>':''}
+                  </div>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>`).join('')}
+      <button onclick="nextStep()" class="btn-primary w-full mt-2" ${!PB.selectedService?'disabled':''} id="pub-next-0">
+        Continue <i class="fas fa-arrow-right text-xs"></i>
+      </button>
+    </div>`;
+  }
+
+  function selectService(id) {
+    PB.selectedService = PB.services.find(s=>s.id===id);
+    const hdr = document.getElementById('pub-header-svc');
+    if (hdr) { hdr.textContent = PB.selectedService?.name||''; hdr.classList.remove('hidden'); }
+    goToStep(0);
+  }
+
+  // ── Step 1: Date & Time ───────────────────────────────────────
+  let calState = { year: new Date().getFullYear(), month: new Date().getMonth() };
+
+  function renderStepDateTime() {
+    return `<div class="fade-in">
+      <button onclick="goToStep(0)" class="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 mb-4 transition-colors"><i class="fas fa-arrow-left text-xs"></i>Back</button>
+      <h2 class="text-xl font-extrabold text-slate-900 mb-1">Choose Date & Time</h2>
+      <p class="text-slate-400 text-sm mb-5">${esc(PB.selectedService?.name||'')} · ${PB.selectedService?.duration} min</p>
+
+      <div class="step-card p-5 mb-4">
+        <!-- Calendar Header -->
+        <div class="flex items-center justify-between mb-4">
+          <button onclick="calNav(-1)" class="w-9 h-9 rounded-xl border border-slate-200 hover:bg-slate-50 flex items-center justify-center transition-colors">
+            <i class="fas fa-chevron-left text-xs text-slate-600"></i>
+          </button>
+          <h3 class="font-bold text-slate-800 text-sm" id="pub-cal-label"></h3>
+          <button onclick="calNav(1)" class="w-9 h-9 rounded-xl border border-slate-200 hover:bg-slate-50 flex items-center justify-center transition-colors">
+            <i class="fas fa-chevron-right text-xs text-slate-600"></i>
+          </button>
+        </div>
+        <!-- Day headers -->
+        <div class="grid grid-cols-7 mb-2">
+          ${['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=>`<div class="text-center text-xs font-bold text-slate-400 py-1">${d}</div>`).join('')}
+        </div>
+        <!-- Calendar grid -->
+        <div id="pub-cal-grid" class="grid grid-cols-7 gap-1"></div>
+      </div>
+
+      <!-- Time Slots -->
+      <div id="pub-slots-section" class="step-card p-5 mb-4 hidden">
+        <h3 class="font-bold text-slate-800 text-sm mb-3" id="pub-slots-date"></h3>
+        <div id="pub-slots-grid" class="grid grid-cols-3 sm:grid-cols-4 gap-2"></div>
+        <div id="pub-slots-empty" class="hidden text-center py-4 text-slate-400 text-sm">No available slots on this day.</div>
+        
+        <!-- Staff selection (if multiple) -->
+        <div id="pub-staff-section" class="hidden mt-4 pt-4 border-t border-slate-100">
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Preferred Staff <span class="text-slate-300 font-normal normal-case">(optional)</span></p>
+          <div id="pub-staff-list" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+
+      <!-- Travel toggle -->
+      ${PB.selectedService?.travel_enabled ? `
+      <div class="step-card p-5 mb-4">
+        <div class="flex items-center gap-3">
+          <input type="checkbox" id="pub-travel-cb" class="rounded" onchange="pubTravelToggle(this)" ${PB.travelEnabled?'checked':''}>
+          <label for="pub-travel-cb" class="font-semibold text-slate-700 text-sm flex items-center gap-2">
+            <i class="fas fa-car text-amber-500"></i> Mobile / Travel to my location
+          </label>
+        </div>
+        <div id="pub-travel-fields" class="${PB.travelEnabled?'':'hidden'} mt-4 space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Your Address</label>
+            <input type="text" id="pub-travel-addr" class="field text-sm" placeholder="Enter your full address" value="${esc(PB.travelAddress)}" oninput="PB.travelAddress=this.value">
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Distance (km)</label>
+              <input type="number" id="pub-travel-dist" class="field text-sm" placeholder="0" value="${PB.travelDistance||''}" oninput="pubCalcTravelFee(this.value)">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Travel Fee</label>
+              <div class="flex items-center gap-1.5">
+                <span class="text-sm font-bold text-slate-400">${PB.settings.currency||'$'}</span>
+                <input type="number" id="pub-travel-fee-display" class="field text-sm" value="${PB.travelFee||0}" readonly>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>` : ''}
+
+      <button onclick="nextStep()" class="btn-primary w-full" ${(!PB.selectedDate||!PB.selectedTime)?'disabled':''} id="pub-next-1">
+        Continue <i class="fas fa-arrow-right text-xs"></i>
+      </button>
+    </div>`;
+  }
+
+  function initCalendar() {
+    calState.year  = new Date().getFullYear();
+    calState.month = new Date().getMonth();
+    renderCalGrid();
+  }
+
+  function renderCalGrid() {
+    const label = document.getElementById('pub-cal-label');
+    const grid  = document.getElementById('pub-cal-grid');
+    if (!grid) return;
+    const d = new Date(calState.year, calState.month, 1);
+    if (label) label.textContent = d.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+    const lastDay = new Date(calState.year, calState.month+1, 0).getDate();
+    const firstDow = d.getDay();
+    const today = new Date(); today.setHours(0,0,0,0);
+    const businessDays = safeJson(PB.settings.business_days||'["Mon","Tue","Wed","Thu","Fri"]');
+    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+    let html = '';
+    for (let i=0;i<firstDow;i++) html += `<div class="cal-day empty"></div>`;
+    for (let day=1;day<=lastDay;day++) {
+      const thisDate = new Date(calState.year, calState.month, day);
+      const isPast = thisDate < today;
+      const dowName = dayNames[thisDate.getDay()];
+      const isBusinessDay = businessDays.includes(dowName);
+      const dateStr = `${calState.year}-${String(calState.month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const isSelected = PB.selectedDate === dateStr;
+      const isToday = thisDate.toDateString()===today.toDateString();
+      const hasSlots = getAvailableSlots(dateStr).length > 0;
+      html += `<div class="cal-day ${isPast||!isBusinessDay?'disabled':''} ${isSelected?'selected':''} ${isToday&&!isSelected?'today':''} ${hasSlots&&!isPast?'has-slots':''}"
+        ${!isPast&&isBusinessDay?`onclick="selectDate('${dateStr}')"`:''}>
+        ${day}
+      </div>`;
+    }
+    grid.innerHTML = html;
+  }
+
+  function selectDate(dateStr) {
+    PB.selectedDate = dateStr;
+    PB.selectedTime = null;
+    renderCalGrid();
+    renderSlots(dateStr);
+    document.getElementById('pub-next-1')?.setAttribute('disabled','');
+  }
+
+  function renderSlots(dateStr) {
+    const section = document.getElementById('pub-slots-section');
+    const grid    = document.getElementById('pub-slots-grid');
+    const empty   = document.getElementById('pub-slots-empty');
+    const dateLabel = document.getElementById('pub-slots-date');
+    if (!section||!grid) return;
+    section.classList.remove('hidden');
+
+    const d = new Date(dateStr);
+    if (dateLabel) dateLabel.textContent = d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+
+    const slots = getAvailableSlots(dateStr);
+    if (!slots.length) {
+      grid.innerHTML = '';
+      empty.classList.remove('hidden');
+    } else {
+      empty.classList.add('hidden');
+      grid.innerHTML = slots.map(t => `
+        <button class="slot-btn ${PB.selectedTime===t?'selected':''}" onclick="selectSlot('${t}')">${fmtTimeSt(t)}</button>
+      `).join('');
+    }
+
+    // Staff
+    const staffSec = document.getElementById('pub-staff-section');
+    const staffList = document.getElementById('pub-staff-list');
+    const avail = PB.staff.filter(stf => {
+      const av = safeJson(stf.availability,{});
+      const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+      return av[dayName]?.enabled;
+    });
+    if (avail.length > 1 && staffSec && staffList) {
+      staffSec.classList.remove('hidden');
+      staffList.innerHTML = `<button class="slot-btn ${!PB.selectedStaff?'selected':''}" onclick="selectStaff(null)">Any</button>` +
+        avail.map(s=>`<button class="slot-btn ${PB.selectedStaff===s.id?'selected':''}" onclick="selectStaff('${s.id}')">${esc(s.name)}</button>`).join('');
+    }
+  }
+
+  function getAvailableSlots(dateStr) {
+    const d = new Date(dateStr);
+    const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    const interval = parseInt(PB.settings.slot_interval)||30;
+    const dur = PB.selectedService?.duration || 60;
+    const startH = PB.settings.business_hours_start||'09:00';
+    const endH   = PB.settings.business_hours_end  ||'18:00';
+    const [sH,sM] = startH.split(':').map(Number);
+    const [eH,eM] = endH.split(':').map(Number);
+
+    const slots = [];
+    const base = new Date(dateStr);
+    base.setHours(sH,sM,0,0);
+    const dayEnd = new Date(dateStr);
+    dayEnd.setHours(eH,eM,0,0);
+
+    let cur = new Date(base);
+    while (true) {
+      const end = new Date(cur.getTime() + dur*60000);
+      if (end > dayEnd) break;
+      const timeStr = `${String(cur.getHours()).padStart(2,'0')}:${String(cur.getMinutes()).padStart(2,'0')}`;
+      // Check conflicts
+      const conflict = PB.bookings.some(b => {
+        if (b.status==='cancelled') return false;
+        if (PB.selectedStaff && b.staff_id !== PB.selectedStaff) return false;
+        const bs=new Date(b.start_time), be=new Date(b.end_time);
+        return cur < be && end > bs;
+      });
+      if (!conflict) slots.push(timeStr);
+      cur = new Date(cur.getTime() + interval*60000);
+    }
+    return slots;
+  }
+
+  function selectSlot(t) {
+    PB.selectedTime = t;
+    renderSlots(PB.selectedDate);
+    const btn = document.getElementById('pub-next-1');
+    if (btn) btn.removeAttribute('disabled');
+  }
+
+  function selectStaff(id) {
+    PB.selectedStaff = id;
+    renderSlots(PB.selectedDate);
+  }
+
+  function calNav(dir) {
+    calState.month += dir;
+    if (calState.month < 0) { calState.month=11; calState.year--; }
+    if (calState.month > 11) { calState.month=0; calState.year++; }
+    renderCalGrid();
+  }
+
+  function pubTravelToggle(cb) {
+    PB.travelEnabled = cb.checked;
+    const fields = document.getElementById('pub-travel-fields');
+    if (fields) fields.classList.toggle('hidden', !cb.checked);
+  }
+
+  function pubCalcTravelFee(dist) {
+    dist = parseFloat(dist)||0;
+    PB.travelDistance = dist;
+    const mode = PB.settings.travel_mode||'flat';
+    let fee = 0;
+    if (mode==='per_km') {
+      fee = dist * (parseFloat(PB.settings.travel_per_km_rate)||1.5);
+    } else {
+      const zones = safeJson(PB.settings.travel_flat_zones||'[]');
+      const zone = zones.sort((a,b)=>a.max_km-b.max_km).find(z=>dist<=z.max_km);
+      fee = zone?.fee || 0;
+    }
+    PB.travelFee = fee;
+    const el = document.getElementById('pub-travel-fee-display');
+    if (el) el.value = fee.toFixed(2);
+  }
+
+  // ── Step 2: Customer Info ─────────────────────────────────────
+  function renderStepInfo() {
+    return `<div class="fade-in">
+      <button onclick="goToStep(1)" class="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 mb-4 transition-colors"><i class="fas fa-arrow-left text-xs"></i>Back</button>
+      <h2 class="text-xl font-extrabold text-slate-900 mb-1">Your Details</h2>
+      <p class="text-slate-400 text-sm mb-5">Please fill in your information</p>
+
+      <div class="step-card p-5 mb-4 space-y-4">
+        <div id="info-err" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2"></div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Full Name *</label>
+          <input type="text" id="pub-cname" class="field" placeholder="Your full name" value="${esc(PB.customer.name)}" oninput="PB.customer.name=this.value">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Email *</label>
+          <input type="email" id="pub-cemail" class="field" placeholder="your@email.com" value="${esc(PB.customer.email)}" oninput="PB.customer.email=this.value">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Phone</label>
+          <input type="tel" id="pub-cphone" class="field" placeholder="+1 (555) 000-0000" value="${esc(PB.customer.phone)}" oninput="PB.customer.phone=this.value">
+        </div>
+        ${PB.travelEnabled ? `
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Your Address</label>
+          <input type="text" id="pub-caddr" class="field" placeholder="Full address" value="${esc(PB.travelAddress)}" oninput="PB.travelAddress=this.value">
+        </div>` : ''}
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Notes <span class="font-normal text-slate-300 normal-case">(optional)</span></label>
+          <textarea id="pub-cnotes" class="field resize-none" rows="2" placeholder="Any special requests…" oninput="PB.notes=this.value">${esc(PB.notes)}</textarea>
+        </div>
+
+        <!-- Payment Method -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Payment</label>
+          <div class="grid grid-cols-3 gap-2">
+            ${['free','pay_later','paypal'].map(pm => `
+              <button type="button" onclick="selectPayment('${pm}')"
+                class="py-2.5 px-3 rounded-xl border-2 text-xs font-bold transition-all ${PB.paymentMethod===pm?'border-blue-600 bg-blue-50 text-blue-700':'border-slate-200 text-slate-500 hover:border-blue-300'}">
+                <i class="fas ${pm==='paypal'?'fab fa-paypal':pm==='pay_later'?'fas fa-clock':'fas fa-gift'} block text-lg mb-1"></i>
+                ${{free:'Free',pay_later:'Pay Later',paypal:'PayPal'}[pm]}
+              </button>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      <button onclick="validateInfo()" class="btn-primary w-full">
+        Review Booking <i class="fas fa-arrow-right text-xs"></i>
+      </button>
+    </div>`;
+  }
+
+  function selectPayment(pm) {
+    PB.paymentMethod = pm;
+    const c = document.getElementById('pub-content');
+    c.innerHTML = renderStepInfo();
+  }
+
+  function validateInfo() {
+    const name = document.getElementById('pub-cname')?.value?.trim()||PB.customer.name;
+    const email = document.getElementById('pub-cemail')?.value?.trim()||PB.customer.email;
+    const errEl = document.getElementById('info-err');
+    const show = (m) => { errEl.textContent=m; errEl.classList.remove('hidden'); };
+    if (!name) return show('Please enter your full name.');
+    if (!email || !email.includes('@')) return show('Please enter a valid email.');
+    PB.customer.name  = name;
+    PB.customer.email = email;
+    PB.customer.phone = document.getElementById('pub-cphone')?.value||'';
+    PB.notes = document.getElementById('pub-cnotes')?.value||'';
+    if (PB.travelEnabled) PB.travelAddress = document.getElementById('pub-caddr')?.value||PB.travelAddress;
+    goToStep(3);
+  }
+
+  // ── Step 3: Confirm ───────────────────────────────────────────
+  function renderStepConfirm() {
+    const cur = PB.settings.currency||'$';
+    const svc = PB.selectedService;
+    const stf = PB.staff.find(s=>s.id===PB.selectedStaff);
+    const total = (+svc?.price||0) + (PB.travelEnabled?PB.travelFee:0);
+    const d = new Date(`${PB.selectedDate}T${PB.selectedTime}:00`);
+    const endD = new Date(d.getTime()+(svc?.duration||60)*60000);
+
+    return `<div class="fade-in">
+      <button onclick="goToStep(2)" class="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 mb-4 transition-colors"><i class="fas fa-arrow-left text-xs"></i>Back</button>
+      <h2 class="text-xl font-extrabold text-slate-900 mb-1">Review & Confirm</h2>
+      <p class="text-slate-400 text-sm mb-5">Please review your booking details</p>
+
+      <div class="step-card p-5 mb-4 space-y-3">
+        <!-- Service -->
+        <div class="flex items-center gap-4 pb-4 border-b border-slate-100">
+          <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-xl flex-shrink-0"
+               style="background:${svc?.color||'#3b82f6'}">${(svc?.name||'?')[0].toUpperCase()}</div>
+          <div>
+            <p class="font-extrabold text-slate-900">${esc(svc?.name||'')}</p>
+            <p class="text-sm text-slate-400">${svc?.duration} min session</p>
+          </div>
+        </div>
+        <!-- Details -->
+        ${row('Date', d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}))}
+        ${row('Time', `${fmtTimeSt(PB.selectedTime)} – ${fmtTimeSt(toTimeStr(endD))}`)}
+        ${stf ? row('Staff', stf.name) : row('Staff','Any available')}
+        ${row('Customer', `${esc(PB.customer.name)} · ${esc(PB.customer.email)}`)}
+        ${PB.travelEnabled ? `
+          ${row('Travel Address', esc(PB.travelAddress))}
+          ${row('Travel Fee', cur+PB.travelFee.toFixed(2))}
+        ` : ''}
+        ${PB.notes ? row('Notes', esc(PB.notes)) : ''}
+        <!-- Total -->
+        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+          <span class="font-bold text-slate-700">Total</span>
+          <span class="text-xl font-extrabold text-blue-600">${total>0?cur+fmtN(total):'Free'}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-slate-400">Payment</span>
+          <span class="text-xs font-semibold text-slate-600 capitalize">${{free:'Free',pay_later:'Pay on arrival',paypal:'PayPal (Pay now)'}[PB.paymentMethod]||PB.paymentMethod}</span>
+        </div>
+      </div>
+
+      <div id="confirm-err" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-4"></div>
+
+      <button onclick="submitBooking()" class="btn-primary w-full" id="pub-submit-btn">
+        <i class="fas fa-calendar-check text-sm"></i> Confirm Booking
+      </button>
+      ${PB.paymentMethod==='paypal'&&PB.settings.paypal_email?`
+      <p class="text-xs text-center text-slate-400 mt-2">You'll be redirected to PayPal to complete payment after confirmation.</p>`:''}
+    </div>`;
+  }
+
+  function row(label, val) {
+    return `<div class="flex items-start justify-between gap-4">
+      <span class="text-xs font-bold text-slate-400 uppercase tracking-wide flex-shrink-0 mt-0.5">${label}</span>
+      <span class="text-sm font-semibold text-slate-700 text-right">${val}</span>
+    </div>`;
+  }
+
+  async function submitBooking() {
+    const btn = document.getElementById('pub-submit-btn');
+    const errEl = document.getElementById('confirm-err');
+    if (btn) { btn.disabled=true; btn.innerHTML='<i class="fas fa-circle-notch fa-spin text-sm"></i> Processing…'; }
+    const show = (m) => { if(errEl){errEl.textContent=m;errEl.classList.remove('hidden');} if(btn){btn.disabled=false;btn.innerHTML='<i class="fas fa-calendar-check text-sm"></i> Confirm Booking';} };
+
+    try {
+      const D = window.WorkVoltDB;
+      // Create/find customer
+      let customerId;
+      const existing = PB.customer.email ? await D.list('booking_customers', {}, {}).then(all => all.find(c=>c.email===PB.customer.email)) : null;
+      if (existing) {
+        customerId = existing.id;
+      } else {
+        const newC = await D.create('booking_customers', {
+          name: PB.customer.name, email: PB.customer.email, phone: PB.customer.phone||null, address: PB.travelAddress||null
+        });
+        customerId = newC.id;
+        // CRM integration
+        try { await D.create('crm_contacts',{name:PB.customer.name,email:PB.customer.email,phone:PB.customer.phone||null,source:'booking_page'}); }catch(e){}
+      }
+
+      const svc = PB.selectedService;
+      const start = new Date(`${PB.selectedDate}T${PB.selectedTime}:00`);
+      const end   = new Date(start.getTime()+(svc?.duration||60)*60000);
+
+      // Auto-assign staff if none chosen
+      let staffId = PB.selectedStaff || null;
+      if (!staffId) {
+        const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][start.getDay()];
+        const avail = PB.staff.filter(stf => {
+          const av = safeJson(stf.availability,{});
+          if (!av[dayName]?.enabled) return false;
+          const hasConflict = PB.bookings.some(b=>{
+            if(b.staff_id!==stf.id||b.status==='cancelled')return false;
+            const bs=new Date(b.start_time),be=new Date(b.end_time);
+            return start<be&&end>bs;
+          });
+          return !hasConflict;
+        });
+        if (avail.length) {
+          const best = avail.sort((a,b)=>{
+            const ca=PB.bookings.filter(x=>x.staff_id===a.id).length;
+            const cb=PB.bookings.filter(x=>x.staff_id===b.id).length;
+            return ca-cb;
+          })[0];
+          staffId = best?.id||null;
+        }
+      }
+
+      const booking = await D.create('bookings', {
+        customer_id: customerId, service_id: svc.id, staff_id: staffId,
+        start_time: start.toISOString(), end_time: end.toISOString(),
+        status: 'pending', payment_method: PB.paymentMethod,
+        payment_status: PB.paymentMethod==='free'?'free':'unpaid',
+        amount: +svc.price||0, travel_fee: PB.travelEnabled?PB.travelFee:0,
+        travel_address: PB.travelEnabled?PB.travelAddress:null,
+        travel_distance: PB.travelEnabled?PB.travelDistance:0,
+        notes: PB.notes, source: 'public',
+      });
+
+      // Notification to admins
+      try {
+        const admins = await D.list('users',{});
+        const adminNotifs = admins.filter(u=>['SuperAdmin','Admin','Manager'].includes(u.role));
+        for (const a of adminNotifs.slice(0,3)) {
+          await D.create('notifications',{user_id:a.id,title:'New Booking Request',message:`${PB.customer.name} booked ${svc.name} on ${fmtDateStr(start)}`,type:'info',read:false});
+        }
+      } catch(e){}
+
+      // PayPal redirect
+      if (PB.paymentMethod==='paypal' && PB.settings.paypal_email) {
+        const total = (+svc.price||0)+(PB.travelEnabled?PB.travelFee:0);
+        if (total > 0) {
+          const ppUrl = `https://www.paypal.com/paypalme/${encodeURIComponent(PB.settings.paypal_email)}/${total.toFixed(2)}`;
+          setTimeout(()=>window.open(ppUrl,'_blank'),1500);
+        }
+      }
+
+      PB.confirmedBooking = booking;
+      goToStep(4);
+    } catch(e) { show(e.message); }
+  }
+
+  // ── Step 4: Success ───────────────────────────────────────────
+  function renderStepSuccess() {
+    const svc = PB.selectedService;
+    const d = new Date(`${PB.selectedDate}T${PB.selectedTime}:00`);
+    return `<div class="fade-in text-center py-8">
+      <div class="w-20 h-20 bg-gradient-to-br from-green-400 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+        <i class="fas fa-check text-white text-3xl"></i>
+      </div>
+      <h2 class="text-2xl font-extrabold text-slate-900 mb-2">You're Booked!</h2>
+      <p class="text-slate-500 mb-6">Your appointment has been confirmed. We'll be in touch shortly.</p>
+
+      <div class="step-card p-5 text-left mb-6 max-w-sm mx-auto">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold"
+               style="background:${svc?.color||'#3b82f6'}">${(svc?.name||'?')[0]}</div>
+          <div>
+            <p class="font-bold text-slate-900">${esc(svc?.name||'')}</p>
+            <p class="text-xs text-slate-400">${svc?.duration} minutes</p>
+          </div>
+        </div>
+        <div class="space-y-2">
+          ${row('Date', d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'}))}
+          ${row('Time', fmtTimeSt(PB.selectedTime))}
+          ${row('Status', '<span class="text-amber-600 font-bold">Pending Confirmation</span>')}
+        </div>
+      </div>
+
+      <p class="text-xs text-slate-400 mb-6">A confirmation will be sent to <strong>${esc(PB.customer.email)}</strong></p>
+      <button onclick="window.location.reload()" class="btn-primary mx-auto px-8">
+        <i class="fas fa-plus text-xs"></i> Book Another Appointment
+      </button>
+    </div>`;
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────
+  function nextStep() { goToStep(PB.step+1); }
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmtN(n) { return (+n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function fmtTimeSt(t) {
+    if (!t) return '';
+    const [h,m] = t.split(':').map(Number);
+    const ampm = h>=12?'PM':'AM';
+    const h12 = h%12||12;
+    return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+  }
+  function toTimeStr(d) { return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+  function fmtDateStr(d) { return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+  function safeJson(v,def='{}') { try{return JSON.parse(typeof v==='string'?v:JSON.stringify(v))||def;}catch(e){return def;} }
+  function showError(msg) {
+    document.getElementById('pub-loading').style.display='none';
+    document.getElementById('pub-content').innerHTML = `<div class="text-center py-16">
+      <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"><i class="fas fa-exclamation-triangle text-red-500 text-xl"></i></div>
+      <h2 class="font-bold text-slate-800 mb-2">Booking Unavailable</h2>
+      <p class="text-sm text-slate-400">${esc(msg)}</p>
+    </div>`;
+    document.getElementById('pub-steps').classList.add('hidden');
+  }
+  </script>
+</body>
+</html>
