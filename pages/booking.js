@@ -706,6 +706,22 @@
   }
 
   // ── SETTINGS ─────────────────────────────────────────────────
+  function discountCodeRow(c, i) {
+    const cur = state.settings.currency || '$';
+    return `<div class="flex gap-2 items-center flex-wrap bg-slate-50 rounded-xl p-2" data-discount="${i}">
+      <input type="text" value="${esc(c.code||'')}" placeholder="CODE" class="field text-xs w-28 font-mono uppercase" data-dc-code="${i}" oninput="this.value=this.value.toUpperCase()">
+      <select class="field text-xs w-28" data-dc-type="${i}">
+        <option value="flat" ${(c.pct>0)?'':'selected'}>Flat (${cur})</option>
+        <option value="pct" ${(c.pct>0)?'selected':''}>Percent (%)</option>
+      </select>
+      <input type="number" value="${c.pct>0?c.pct:(c.flat||'')}" placeholder="Value" class="field text-xs w-20" step="0.01" min="0" data-dc-value="${i}">
+      <label class="text-[10px] text-slate-400 flex items-center gap-1 flex-shrink-0">
+        <input type="checkbox" ${c.active!==false?'checked':''} data-dc-active="${i}"> Active
+      </label>
+      <button onclick="this.closest('[data-discount]').remove()" class="text-red-400 hover:text-red-600 flex-shrink-0"><i class="fas fa-times text-xs"></i></button>
+    </div>`;
+  }
+
   function renderSettings() {
     const s = state.settings;
     return `<div class="p-4 md:p-6 fade-in max-w-2xl mx-auto">
@@ -783,12 +799,60 @@
           </div>
         </div>
 
-        <!-- PayPal -->
+        <!-- Payment Settings -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-5">
+          <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2"><i class="fas fa-credit-card text-blue-400"></i>Payment Settings</h3>
+
+          <!-- PayPal -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5"><i class="fab fa-paypal text-blue-400 mr-1"></i>PayPal Business Email</label>
+            <input type="email" id="bk-s-paypal" value="${esc(s.paypal_email||'')}" class="field text-sm" placeholder="business@paypal.com">
+            <p class="text-xs text-slate-400 mt-1">Used to generate PayPal payment links.</p>
+          </div>
+
+          <!-- E-Transfer -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5"><i class="fas fa-university text-green-500 mr-1"></i>E-Transfer Email</label>
+            <input type="email" id="bk-s-etransfer" value="${esc(s.etransfer_email||'')}" class="field text-sm" placeholder="payments@yourbusiness.com">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">E-Transfer Instructions (shown to client)</label>
+            <textarea id="bk-s-etransfer-msg" class="field text-sm resize-none" rows="2" placeholder="e.g. Use your booking reference as the message.">${esc(s.etransfer_message||'')}</textarea>
+          </div>
+
+          <!-- Deposit -->
+          <div class="bg-amber-50 border border-amber-100 rounded-xl p-4 space-y-3">
+            <div class="flex items-center gap-2">
+              <input type="checkbox" id="bk-s-deposit-req" class="rounded"
+                onchange="document.getElementById('bk-s-deposit-cfg').classList.toggle('hidden',!this.checked)"
+                ${s.deposit_required==='1'?'checked':''}>
+              <label for="bk-s-deposit-req" class="text-sm font-bold text-amber-800">Require a Booking Deposit</label>
+            </div>
+            <div id="bk-s-deposit-cfg" class="${s.deposit_required==='1'?'':'hidden'} space-y-2">
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Deposit Amount (${s.currency||'$'})</label>
+                <input type="number" id="bk-s-deposit-amount" value="${s.deposit_amount||''}" class="field text-sm" step="0.01" min="0" placeholder="e.g. 25.00">
+              </div>
+              <p class="text-xs text-amber-700">Clients will be shown this deposit amount and instructed to pay it via their selected payment method before the booking is confirmed.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Discount Codes -->
         <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <h3 class="font-bold text-slate-800 mb-4 text-sm flex items-center gap-2"><i class="fab fa-paypal text-blue-400"></i>PayPal Integration</h3>
-          <div><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">PayPal Business Email</label>
-            <input type="email" id="bk-s-paypal" value="${esc(s.paypal_email||'')}" class="field text-sm" placeholder="business@email.com"></div>
-          <p class="text-xs text-slate-400 mt-2">Used to generate PayPal payment links for "Pay Now" bookings.</p>
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2"><i class="fas fa-tag text-purple-400"></i>Discount / Coupon Codes</h3>
+            <button onclick="BK.addDiscountCode()" type="button" class="text-xs text-blue-600 hover:underline font-semibold"><i class="fas fa-plus mr-1"></i>Add Code</button>
+          </div>
+          <div id="bk-discount-list" class="space-y-2 mb-2">
+            ${(function(){
+              try {
+                const codes = JSON.parse(s.discount_codes || '[]');
+                return codes.map((c,i) => discountCodeRow(c,i)).join('');
+              } catch(e){ return ''; }
+            })()}
+          </div>
+          <p class="text-[10px] text-slate-400 mt-2">Each code can offer a flat $ amount off or a % percentage discount. Clients enter the code during checkout.</p>
         </div>
 
         <button onclick="BK.saveSettings()" class="btn-primary w-full shadow-sm"><i class="fas fa-save text-sm mr-1"></i>Save Settings</button>
@@ -916,7 +980,7 @@
         <div>
           <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Payment Method</label>
           <select id="bk-m-payment" class="field text-sm" onchange="BK.onPaymentChange(this)">
-            ${['free','pay_later','paypal'].map(v=>`<option value="${v}" ${b?.payment_method===v?'selected':''}>${{free:'Free',pay_later:'Pay Later',paypal:'Pay Now (PayPal)'}[v]}</option>`).join('')}
+            ${['pay_later','etransfer','paypal'].map(v=>`<option value="${v}" ${b?.payment_method===v?'selected':''}>${{'pay_later':'Pay Later','etransfer':'E-Transfer','paypal':'Pay Now (PayPal)'}[v]}</option>`).join('')}
           </select>
           <div id="bk-m-amount-row" class="${b?.payment_method&&b.payment_method!=='free'?'':'hidden'} mt-2 flex items-center gap-2">
             <span class="text-xs font-bold text-slate-500">${cur}</span>
@@ -1235,7 +1299,7 @@
       end_time: endTime.toISOString(),
       status: id ? status : 'pending',
       payment_method: payMethod,
-      payment_status: payMethod==='free'?'free':'unpaid',
+      payment_status: 'unpaid',
       amount: payMethod!=='free' ? amount : 0,
       travel_fee: travelChecked ? travelFee : 0,
       travel_address: travelChecked ? travelAddr : null,
@@ -1348,12 +1412,37 @@
     // Travel mode
     const tMode = document.getElementById('bk-travel-flat')?.classList.contains('border-blue-600') ? 'flat' : 'per_km';
 
+    const etransferEmail = document.getElementById('bk-s-etransfer')?.value||'';
+    const etransferMsg   = document.getElementById('bk-s-etransfer-msg')?.value||'';
+    const depositReq     = document.getElementById('bk-s-deposit-req')?.checked ? '1' : '0';
+    const depositAmt     = document.getElementById('bk-s-deposit-amount')?.value||'0';
+
+    // Collect discount codes
+    const discountCodes = [];
+    document.querySelectorAll('[data-discount]').forEach(row => {
+      const code   = row.querySelector('[data-dc-code]')?.value?.trim().toUpperCase() || '';
+      const type   = row.querySelector('[data-dc-type]')?.value || 'flat';
+      const val    = parseFloat(row.querySelector('[data-dc-value]')?.value) || 0;
+      const active = row.querySelector('[data-dc-active]')?.checked !== false;
+      if (code) discountCodes.push({
+        code,
+        flat: type === 'flat' ? val : 0,
+        pct:  type === 'pct'  ? val : 0,
+        active,
+      });
+    });
+
     const pairs = [
       ['business_hours_start', open], ['business_hours_end', close],
       ['slot_interval', interval], ['currency', currency],
       ['paypal_email', paypal], ['travel_mode', tMode],
       ['travel_per_km_rate', kmRate], ['travel_flat_zones', JSON.stringify(zones)],
       ['business_days', JSON.stringify(activeDays)],
+      ['etransfer_email', etransferEmail],
+      ['etransfer_message', etransferMsg],
+      ['deposit_required', depositReq],
+      ['deposit_amount', depositAmt],
+      ['discount_codes', JSON.stringify(discountCodes)],
     ];
 
     try {
@@ -1642,6 +1731,14 @@
       dragStart, dragEnd, dropOnStatus,
       onCustomerChange, onServiceChange, onTravelToggle, onRecurringChange, onPaymentChange,
       onStaffUserChange,
+      addDiscountCode: function() {
+        const list = document.getElementById('bk-discount-list');
+        if (!list) return;
+        const i = list.children.length;
+        const div = document.createElement('div');
+        div.innerHTML = discountCodeRow({ code:'', flat:0, pct:0, active:true }, i);
+        list.appendChild(div.firstElementChild);
+      },
       reload,
       // Designer
       dsApply, dsSave, dsReset, dsExport, dsPickPreset, dsUpdatePreview,
