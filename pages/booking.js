@@ -857,7 +857,7 @@
           <div class="mb-4">
             <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Fee Mode</label>
             <div class="flex gap-2">
-              <button type="button" onclick="BK.setTravelMode('flat',this)" class="flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-colors ${(s.travel_mode||'flat')==='flat'?'border-blue-600 bg-blue-50 text-blue-700':'border-slate-200 text-slate-500'}" id="bk-travel-flat">
+              <button type="button" onclick="BK.setTravelMode('flat')" class="flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-colors ${(s.travel_mode||'flat')==='flat'?'border-blue-600 bg-blue-50 text-blue-700':'border-slate-200 text-slate-500'}" id="bk-travel-flat">
                 <i class="fas fa-map-marker-alt mr-1"></i>Flat Rate Zones
               </button>
               <button type="button" onclick="BK.setTravelMode('per_km',this)" class="flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-colors ${s.travel_mode==='per_km'?'border-blue-600 bg-blue-50 text-blue-700':'border-slate-200 text-slate-500'}" id="bk-travel-km">
@@ -1436,30 +1436,69 @@ async function saveStaff(id) {
     } catch(e) { errEl.textContent=e.message; errEl.classList.remove('hidden'); }
   }
 
-  async function saveStaff(id) {
-    const errEl = document.getElementById('staff-err');
-    const name = document.getElementById('stf-name')?.value?.trim();
-    if (!name) { errEl.textContent='Name required.'; errEl.classList.remove('hidden'); return; }
-    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    const avail = {};
-    days.forEach(d => {
-      const enabled = document.getElementById(`stf-day-${d}`)?.checked;
-      if (enabled) avail[d] = { enabled:true, start: document.getElementById(`stf-start-${d}`)?.value||'09:00', end: document.getElementById(`stf-end-${d}`)?.value||'18:00' };
-    });
-    const row = {
-      name, color: document.getElementById('stf-color')?.value||'#8b5cf6',
-      email: document.getElementById('stf-email')?.value||'',
-      phone: document.getElementById('stf-phone')?.value||'',
-      availability: JSON.stringify(avail),
-      auto_assign: document.getElementById('stf-auto')?.checked !== false,
-      active: true,
-    };
-    try {
-      if (id) { await db().update('booking_staff', id, row); toast('Staff updated','success'); }
-      else     { await db().create('booking_staff', row); toast('Staff member added','success'); }
-      closeModal(); await reload();
-    } catch(e) { errEl.textContent=e.message; errEl.classList.remove('hidden'); }
+  // REPLACE the SECOND saveStaff function (lines 1046-1081) with this MERGED version:
+
+async function saveStaff(id) {
+  const errEl = document.getElementById('staff-err');
+  const name = document.getElementById('stf-name')?.value?.trim();
+  const userId = document.getElementById('stf-user-select')?.value || null;
+  
+  if (!name) { 
+    errEl.textContent = 'Name required.'; 
+    errEl.classList.remove('hidden'); 
+    return; 
   }
+  
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const avail = {};
+  days.forEach(d => {
+    const enabled = document.getElementById(`stf-day-${d}`)?.checked;
+    if (enabled) avail[d] = { 
+      enabled: true, 
+      start: document.getElementById(`stf-start-${d}`)?.value || '09:00', 
+      end: document.getElementById(`stf-end-${d}`)?.value || '18:00' 
+    };
+  });
+  
+  const row = {
+    user_id: userId || null,  // ← ADDED: user_id from first version
+    name, 
+    color: document.getElementById('stf-color')?.value || '#8b5cf6',
+    email: document.getElementById('stf-email')?.value || '',
+    phone: document.getElementById('stf-phone')?.value || '',
+    availability: JSON.stringify(avail),
+    auto_assign: document.getElementById('stf-auto')?.checked !== false,
+    active: true,
+  };
+  
+  try {
+    if (id) { 
+      await db().update('booking_staff', id, row); 
+      toast('Staff updated', 'success'); 
+    } else { 
+      const newStaff = await db().create('booking_staff', row);
+      
+      // ADDED: Update user role if linked
+      if (userId) {
+        try {
+          const user = await db().get('users', userId);
+          if (user && (!user.role || user.role === 'Employee')) {
+            await db().update('users', userId, { role: 'Contractor' });
+          }
+        } catch(e) {
+          console.log('Could not update user role:', e);
+        }
+      }
+      
+      toast('Staff member added', 'success'); 
+    }
+    closeModal(); 
+    await reload();
+  } catch(e) { 
+    errEl.textContent = e.message; 
+    errEl.classList.remove('hidden'); 
+  }
+}
 
   async function saveSettings() {
     const open  = document.getElementById('bk-s-open')?.value||'09:00';
@@ -1778,6 +1817,7 @@ async function saveStaff(id) {
       dragStart, dragEnd, dropOnStatus,
       onCustomerChange, onServiceChange, onTravelToggle, onRecurringChange, onPaymentChange,
       onStaffUserChange,
+      reload,
     };
   }
 
