@@ -1,8 +1,6 @@
 /* =============================================================
    WORK VOLT — pages/booking.js
    Full Booking Module — Admin Panel
-   
-   SUPABASE SQL MIGRATION — run once in your SQL editor:
    ============================================================= */
 
 (function () {
