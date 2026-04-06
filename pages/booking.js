@@ -1741,7 +1741,7 @@
       },
       reload,
       // Designer
-      dsApply, dsSave, dsSaveAll, dsReset, dsExport, dsPickPreset, dsUpdatePreview,
+      dsApply, dsSaveAll, dsReset, dsExport, dsPickPreset, dsUpdatePreview,
       dsContentSave, dsContentSaveNow, dsAddNavLink, dsAddBanner, dsAddFooterLink,
     };
   }
