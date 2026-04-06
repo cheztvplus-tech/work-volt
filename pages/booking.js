@@ -1645,6 +1645,7 @@
       reload,
       // Designer
       dsApply, dsSave, dsReset, dsExport, dsPickPreset, dsUpdatePreview,
+      dsContentSave, dsAddNavLink, dsAddBanner, dsAddFooterLink,
     };
   }
 
@@ -1845,6 +1846,149 @@
               <label class="block text-xs font-semibold text-slate-500 mb-1">Business Name</label>
               <input type="text" id="ds-bizName" class="field text-sm" placeholder="Your Business Name" value="${esc(d.bizName||state.settings.business_name||'')}" oninput="BK.dsApply()">
             </div>
+          </div>
+
+          <!-- ── CONTENT: Hero ── -->
+          <div class="space-y-3 border-t border-slate-100 pt-5">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <i class="fas fa-image text-blue-400"></i> Hero Banner
+            </p>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Headline</label>
+              <input type="text" id="ds-hero-title" class="field text-sm" placeholder="Book an Appointment"
+                value="${esc(state.settings.hero_title||'Book an Appointment')}"
+                oninput="BK.dsContentSave()">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Subheading</label>
+              <textarea id="ds-hero-subtitle" class="field text-sm resize-none" rows="2"
+                placeholder="Short description shown below headline"
+                oninput="BK.dsContentSave()">${esc(state.settings.hero_subtitle||'')}</textarea>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Badge Text</label>
+              <input type="text" id="ds-hero-badge" class="field text-sm" placeholder="Accepting New Appointments"
+                value="${esc(state.settings.hero_badge||'')}"
+                oninput="BK.dsContentSave()">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Background Image URL</label>
+              <input type="url" id="ds-hero-image" class="field text-sm" placeholder="https://…/hero.jpg"
+                value="${esc(state.settings.hero_image_url||'')}"
+                oninput="BK.dsContentSave()">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Hero Color (if no image)</label>
+              <input type="color" id="ds-heroBg" value="${state.settings.hero_bg_color||'#1e3a8a'}"
+                class="field text-sm h-9 p-0.5 cursor-pointer"
+                onchange="BK.dsContentSave()">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">2nd CTA Label</label>
+                <input type="text" id="ds-hero-cta2-label" class="field text-sm" placeholder="Learn More"
+                  value="${esc(state.settings.hero_cta2_label||'')}"
+                  oninput="BK.dsContentSave()">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">2nd CTA URL</label>
+                <input type="url" id="ds-hero-cta2-url" class="field text-sm" placeholder="https://…"
+                  value="${esc(state.settings.hero_cta2_url||'')}"
+                  oninput="BK.dsContentSave()">
+              </div>
+            </div>
+          </div>
+
+          <!-- ── CONTENT: Nav Links ── -->
+          <div class="space-y-3 border-t border-slate-100 pt-5">
+            <div class="flex items-center justify-between">
+              <p class="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                <i class="fas fa-link text-blue-400"></i> Header Nav Links
+              </p>
+              <button onclick="BK.dsAddNavLink()" type="button" class="text-xs text-blue-600 hover:underline font-semibold">+ Add</button>
+            </div>
+            <p class="text-[10px] text-slate-400">Links shown in the top navigation bar (desktop only)</p>
+            <div id="ds-nav-links-list" class="space-y-2">
+              ${(function(){
+                try {
+                  const links = JSON.parse(state.settings.nav_links||'[]');
+                  return links.map((l,i) => dsNavLinkRow(l,i)).join('');
+                } catch(e){ return ''; }
+              })()}
+            </div>
+          </div>
+
+          <!-- ── CONTENT: Promo Banners ── -->
+          <div class="space-y-3 border-t border-slate-100 pt-5">
+            <div class="flex items-center justify-between">
+              <p class="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                <i class="fas fa-ad text-blue-400"></i> Promo Banners
+              </p>
+              <button onclick="BK.dsAddBanner()" type="button" class="text-xs text-blue-600 hover:underline font-semibold">+ Add</button>
+            </div>
+            <p class="text-[10px] text-slate-400">Clickable image banners shown below the hero</p>
+            <div id="ds-banners-list" class="space-y-3">
+              ${(function(){
+                try {
+                  const banners = JSON.parse(state.settings.promo_banners||'[]');
+                  return banners.map((b,i) => dsBannerRow(b,i)).join('');
+                } catch(e){ return ''; }
+              })()}
+            </div>
+          </div>
+
+          <!-- ── CONTENT: Footer ── -->
+          <div class="space-y-3 border-t border-slate-100 pt-5">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <i class="fas fa-store text-blue-400"></i> Footer Info
+            </p>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Address</label>
+              <input type="text" id="ds-footer-address" class="field text-sm" placeholder="123 Main St, City"
+                value="${esc(state.settings.footer_address||'')}"
+                oninput="BK.dsContentSave()">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Hours Text</label>
+              <input type="text" id="ds-footer-hours" class="field text-sm" placeholder="Mon–Fri 9am–6pm"
+                value="${esc(state.settings.footer_hours||'')}"
+                oninput="BK.dsContentSave()">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Phone</label>
+              <input type="text" id="ds-footer-phone" class="field text-sm" placeholder="+1 (555) 000-0000"
+                value="${esc(state.settings.footer_phone||'')}"
+                oninput="BK.dsContentSave()">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Home URL (back button on success)</label>
+              <input type="url" id="ds-home-url" class="field text-sm" placeholder="https://yoursite.com"
+                value="${esc(state.settings.home_url||'')}"
+                oninput="BK.dsContentSave()">
+            </div>
+            <div class="flex items-center justify-between">
+              <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mt-2">Footer Links</p>
+              <button onclick="BK.dsAddFooterLink()" type="button" class="text-xs text-blue-600 hover:underline font-semibold">+ Add</button>
+            </div>
+            <div id="ds-footer-links-list" class="space-y-2">
+              ${(function(){
+                try {
+                  const links = JSON.parse(state.settings.footer_links||'[]');
+                  return links.map((l,i) => dsFooterLinkRow(l,i)).join('');
+                } catch(e){ return ''; }
+              })()}
+            </div>
+          </div>
+
+          <!-- ── SERVICE FIELDS: Image & Icon ── -->
+          <div class="space-y-3 border-t border-slate-100 pt-5">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <i class="fas fa-concierge-bell text-blue-400"></i> Service Card Images & Icons
+            </p>
+            <p class="text-[10px] text-slate-400 leading-relaxed">Set image URLs or icon classes on each service card. Go to the <strong>Services</strong> tab, edit a service and add <code class="bg-slate-100 px-1 rounded">image_url</code>, <code class="bg-slate-100 px-1 rounded">icon_class</code> (e.g. <code class="bg-slate-100 px-1 rounded">fas fa-stethoscope</code>), <code class="bg-slate-100 px-1 rounded">info_url</code>, <code class="bg-slate-100 px-1 rounded">badge</code> (new/popular), or <code class="bg-slate-100 px-1 rounded">location_note</code> to enrich each card.</p>
+            <button onclick="BK.switchTab('services')" type="button" class="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-1">
+              <i class="fas fa-arrow-right text-[10px]"></i> Go to Services →
+            </button>
           </div>
 
           <!-- Deployment -->
@@ -2132,5 +2276,141 @@
     } catch(e) { return hex || 'rgba(0,0,0,0.08)'; }
   }
 
+  // ── CONTENT MANAGEMENT ────────────────────────────────────────
+
+  function dsNavLinkRow(l, i) {
+    return `<div class="flex gap-2 items-center" data-nav-link="${i}">
+      <input type="text" value="${esc(l.label)}" placeholder="Label" class="field text-xs flex-1" data-nav-label="${i}" oninput="BK.dsContentSave()">
+      <input type="text" value="${esc(l.url)}" placeholder="URL" class="field text-xs flex-1" data-nav-url="${i}" oninput="BK.dsContentSave()">
+      <label class="text-[10px] text-slate-400 flex items-center gap-1 flex-shrink-0">
+        <input type="checkbox" ${l.new_tab?'checked':''} data-nav-newtab="${i}" onchange="BK.dsContentSave()">new tab
+      </label>
+      <button onclick="this.closest('[data-nav-link]').remove();BK.dsContentSave()" class="text-red-400 hover:text-red-600 flex-shrink-0"><i class="fas fa-times text-xs"></i></button>
+    </div>`;
+  }
+
+  function dsFooterLinkRow(l, i) {
+    return `<div class="flex gap-2 items-center" data-footer-link="${i}">
+      <input type="text" value="${esc(l.label)}" placeholder="Label" class="field text-xs flex-1" data-fl-label="${i}" oninput="BK.dsContentSave()">
+      <input type="text" value="${esc(l.url)}" placeholder="URL" class="field text-xs flex-1" data-fl-url="${i}" oninput="BK.dsContentSave()">
+      <label class="text-[10px] text-slate-400 flex items-center gap-1 flex-shrink-0">
+        <input type="checkbox" ${l.new_tab?'checked':''} data-fl-newtab="${i}" onchange="BK.dsContentSave()">new tab
+      </label>
+      <button onclick="this.closest('[data-footer-link]').remove();BK.dsContentSave()" class="text-red-400 hover:text-red-600 flex-shrink-0"><i class="fas fa-times text-xs"></i></button>
+    </div>`;
+  }
+
+  function dsBannerRow(b, i) {
+    return `<div class="border border-slate-200 rounded-xl p-3 space-y-2 bg-white" data-banner="${i}">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-bold text-slate-600">Banner ${i+1}</span>
+        <button onclick="this.closest('[data-banner]').remove();BK.dsContentSave()" class="text-red-400 hover:text-red-600"><i class="fas fa-times text-xs"></i></button>
+      </div>
+      <input type="text" value="${esc(b.title||'')}" placeholder="Title" class="field text-xs" data-bn-title="${i}" oninput="BK.dsContentSave()">
+      <input type="text" value="${esc(b.subtitle||'')}" placeholder="Subtitle (optional)" class="field text-xs" data-bn-subtitle="${i}" oninput="BK.dsContentSave()">
+      <input type="url" value="${esc(b.image||'')}" placeholder="Image URL" class="field text-xs" data-bn-image="${i}" oninput="BK.dsContentSave()">
+      <div class="grid grid-cols-2 gap-2">
+        <input type="text" value="${esc(b.badge||'')}" placeholder="Badge label" class="field text-xs" data-bn-badge="${i}" oninput="BK.dsContentSave()">
+        <input type="url" value="${esc(b.url||'')}" placeholder="Link URL" class="field text-xs" data-bn-url="${i}" oninput="BK.dsContentSave()">
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div><label class="text-[10px] text-slate-400">Height (px)</label>
+          <input type="number" value="${b.height||180}" class="field text-xs" data-bn-height="${i}" oninput="BK.dsContentSave()"></div>
+        <div class="flex items-end pb-0.5">
+          <label class="text-[10px] text-slate-400 flex items-center gap-1">
+            <input type="checkbox" ${b.new_tab?'checked':''} data-bn-newtab="${i}" onchange="BK.dsContentSave()"> Open in new tab
+          </label>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function dsAddNavLink() {
+    const list = document.getElementById('ds-nav-links-list');
+    if (!list) return;
+    const i = list.children.length;
+    const div = document.createElement('div');
+    div.innerHTML = dsNavLinkRow({ label:'', url:'#', new_tab:false }, i);
+    list.appendChild(div.firstElementChild);
+  }
+
+  function dsAddFooterLink() {
+    const list = document.getElementById('ds-footer-links-list');
+    if (!list) return;
+    const i = list.children.length;
+    const div = document.createElement('div');
+    div.innerHTML = dsFooterLinkRow({ label:'', url:'#', new_tab:false }, i);
+    list.appendChild(div.firstElementChild);
+  }
+
+  function dsAddBanner() {
+    const list = document.getElementById('ds-banners-list');
+    if (!list) return;
+    const i = list.children.length;
+    const div = document.createElement('div');
+    div.innerHTML = dsBannerRow({ title:'', image:'', url:'#', height:180 }, i);
+    list.appendChild(div.firstElementChild);
+  }
+
+  async function dsContentSave() {
+    // Collect nav links
+    const navLinks = [];
+    document.querySelectorAll('[data-nav-link]').forEach(row => {
+      const label   = row.querySelector('[data-nav-label]')?.value || '';
+      const url     = row.querySelector('[data-nav-url]')?.value || '#';
+      const newTab  = row.querySelector('[data-nav-newtab]')?.checked || false;
+      if (label) navLinks.push({ label, url, new_tab: newTab });
+    });
+
+    // Collect footer links
+    const footerLinks = [];
+    document.querySelectorAll('[data-footer-link]').forEach(row => {
+      const label  = row.querySelector('[data-fl-label]')?.value || '';
+      const url    = row.querySelector('[data-fl-url]')?.value || '#';
+      const newTab = row.querySelector('[data-fl-newtab]')?.checked || false;
+      if (label) footerLinks.push({ label, url, new_tab: newTab });
+    });
+
+    // Collect banners
+    const banners = [];
+    document.querySelectorAll('[data-banner]').forEach(row => {
+      const title    = row.querySelector('[data-bn-title]')?.value    || '';
+      const subtitle = row.querySelector('[data-bn-subtitle]')?.value || '';
+      const image    = row.querySelector('[data-bn-image]')?.value    || '';
+      const badge    = row.querySelector('[data-bn-badge]')?.value    || '';
+      const url      = row.querySelector('[data-bn-url]')?.value      || '#';
+      const height   = parseInt(row.querySelector('[data-bn-height]')?.value)||180;
+      const newTab   = row.querySelector('[data-bn-newtab]')?.checked || false;
+      banners.push({ title, subtitle, image, badge, url, height, new_tab: newTab });
+    });
+
+    const g = id => document.getElementById(id)?.value || '';
+    const pairs = [
+      ['hero_title',        g('ds-hero-title')],
+      ['hero_subtitle',     g('ds-hero-subtitle')],
+      ['hero_badge',        g('ds-hero-badge')],
+      ['hero_image_url',    g('ds-hero-image')],
+      ['hero_bg_color',     g('ds-heroBg')],
+      ['hero_cta2_label',   g('ds-hero-cta2-label')],
+      ['hero_cta2_url',     g('ds-hero-cta2-url')],
+      ['footer_address',    g('ds-footer-address')],
+      ['footer_hours',      g('ds-footer-hours')],
+      ['footer_phone',      g('ds-footer-phone')],
+      ['home_url',          g('ds-home-url')],
+      ['nav_links',         JSON.stringify(navLinks)],
+      ['footer_links',      JSON.stringify(footerLinks)],
+      ['promo_banners',     JSON.stringify(banners)],
+    ];
+
+    try {
+      const D = db();
+      const save = (k,v) => D.update('booking_settings', k, { value:v }, 'key')
+        .catch(() => D.create('booking_settings', { key:k, value:v }));
+      await Promise.all(pairs.map(([k,v]) => save(k,v)));
+      // Update local state cache
+      pairs.forEach(([k,v]) => { state.settings[k] = v; });
+      toast('Content saved!', 'success');
+    } catch(e) { toast('Save failed: ' + e.message, 'error'); }
+  }
 
 })();
