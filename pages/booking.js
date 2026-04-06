@@ -66,7 +66,7 @@
 
       <!-- Tabs -->
       <div class="bg-white border-b border-slate-200 px-6 flex gap-1 flex-shrink-0 overflow-x-auto">
-        ${['dashboard','calendar','bookings','services','staff','settings'].map(t => `
+        ${['dashboard','calendar','bookings','services','staff','designer','settings'].map(t => `
           <button onclick="BK.switchTab('${t}')" id="bk-tab-${t}"
             class="bk-tab px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap
                    ${state.tab===t ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}">
@@ -81,7 +81,7 @@
 
   function tabIcon(t) {
     return { dashboard:'fa-chart-bar', calendar:'fa-calendar-week', bookings:'fa-list',
-             services:'fa-concierge-bell', staff:'fa-users', settings:'fa-sliders-h' }[t] || 'fa-circle';
+             services:'fa-concierge-bell', staff:'fa-users', designer:'fa-paint-brush', settings:'fa-sliders-h' }[t] || 'fa-circle';
   }
 
   function attachShellEvents() {
@@ -109,6 +109,7 @@
         case 'bookings':   c.innerHTML = renderBookings();  attachBookingListEvents(); break;
         case 'services':   c.innerHTML = renderServices();  break;
         case 'staff':      c.innerHTML = renderStaff();     break;
+        case 'designer':   c.innerHTML = renderDesigner();  attachDesignerEvents(); break;
         case 'settings':   c.innerHTML = renderSettings();  break;
       }
     });
@@ -1642,7 +1643,494 @@
       onCustomerChange, onServiceChange, onTravelToggle, onRecurringChange, onPaymentChange,
       onStaffUserChange,
       reload,
+      // Designer
+      dsApply, dsSave, dsReset, dsExport, dsPickPreset, dsUpdatePreview,
     };
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  PAGE DESIGNER
+  // ═══════════════════════════════════════════════════════════════
+
+  // Default design tokens
+  const DS_DEFAULTS = {
+    primary:       '#2563eb',
+    primaryDark:   '#1d4ed8',
+    primaryLight:  '#eff6ff',
+    accent:        '#10b981',
+    bg:            '#f8fafc',
+    surface:       '#ffffff',
+    border:        '#e2e8f0',
+    text:          '#0f172a',
+    textMuted:     '#64748b',
+    headerBg:      '#ffffff',
+    btnRadius:     '12px',
+    cardRadius:    '20px',
+    cardShadowPreset: 'soft',
+    fontBody:      'Plus Jakarta Sans',
+    fontHeading:   'Plus Jakarta Sans',
+    calStyle:      'classic',
+    stepStyle:     'dots',
+    maxWidth:      '42rem',
+    bizName:       '',
+  };
+
+  const FONT_OPTIONS = [
+    'Plus Jakarta Sans','Inter','Poppins','Nunito','Lato','Raleway',
+    'Montserrat','DM Sans','Outfit','Sora','Manrope','Figtree',
+  ];
+
+  const PRESETS = {
+    default: { label:'Default', primary:'#2563eb', accent:'#10b981', bg:'#f8fafc', surface:'#ffffff', border:'#e2e8f0', text:'#0f172a', headerBg:'#ffffff', fontBody:'Plus Jakarta Sans', fontHeading:'Plus Jakarta Sans', calStyle:'classic', stepStyle:'dots', cardRadius:'20px', btnRadius:'12px', cardShadowPreset:'soft' },
+    midnight: { label:'Midnight', primary:'#818cf8', accent:'#34d399', bg:'#0f172a', surface:'#1e293b', border:'#334155', text:'#f1f5f9', textMuted:'#94a3b8', headerBg:'#1e293b', fontBody:'Inter', fontHeading:'Sora', calStyle:'bubble', stepStyle:'numbers', cardRadius:'16px', btnRadius:'8px', cardShadowPreset:'heavy' },
+    rose:     { label:'Rose', primary:'#e11d48', accent:'#f59e0b', bg:'#fff1f2', surface:'#ffffff', border:'#fecdd3', text:'#1c1917', headerBg:'#ffffff', fontBody:'Nunito', fontHeading:'Raleway', calStyle:'classic', stepStyle:'dots', cardRadius:'24px', btnRadius:'50px', cardShadowPreset:'medium' },
+    forest:   { label:'Forest', primary:'#16a34a', accent:'#0ea5e9', bg:'#f0fdf4', surface:'#ffffff', border:'#bbf7d0', text:'#14532d', headerBg:'#ffffff', fontBody:'Lato', fontHeading:'Montserrat', calStyle:'minimal', stepStyle:'bar', cardRadius:'12px', btnRadius:'6px', cardShadowPreset:'flat' },
+    lavender: { label:'Lavender', primary:'#7c3aed', accent:'#ec4899', bg:'#faf5ff', surface:'#ffffff', border:'#e9d5ff', text:'#1e1b4b', headerBg:'#ffffff', fontBody:'DM Sans', fontHeading:'Outfit', calStyle:'bubble', stepStyle:'dots', cardRadius:'20px', btnRadius:'12px', cardShadowPreset:'soft' },
+    charcoal: { label:'Charcoal', primary:'#f59e0b', accent:'#06b6d4', bg:'#18181b', surface:'#27272a', border:'#3f3f46', text:'#fafafa', textMuted:'#a1a1aa', headerBg:'#27272a', fontBody:'Manrope', fontHeading:'Figtree', calStyle:'classic', stepStyle:'numbers', cardRadius:'8px', btnRadius:'4px', cardShadowPreset:'flat' },
+  };
+
+  let dsDesign = {};         // current working design
+  let dsPreviewReady = false;
+
+  function dsGetSaved() {
+    try { return JSON.parse(state.settings.booking_page_design || '{}'); }
+    catch(e) { return {}; }
+  }
+
+  function dsMerge(base, overrides) {
+    return Object.assign({}, DS_DEFAULTS, base, overrides);
+  }
+
+  // ── Render Designer Tab ────────────────────────────────────────
+  function renderDesigner() {
+    dsDesign = dsMerge(dsGetSaved());
+    const d = dsDesign;
+    const cur = state.settings.currency || '$';
+    const bookUrl = state.settings.book_page_url || (window.location.origin + '/book.html');
+
+    return `<div class="flex flex-col lg:flex-row h-full min-h-[600px] fade-in" id="ds-root">
+
+      <!-- Left Panel: Controls -->
+      <div class="w-full lg:w-80 xl:w-96 flex-shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto" style="max-height:calc(100vh - 140px)">
+
+        <!-- Panel header -->
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+          <h2 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+            <i class="fas fa-paint-brush text-blue-400"></i> Page Designer
+          </h2>
+          <div class="flex gap-2">
+            <button onclick="BK.dsReset()" class="text-xs text-slate-400 hover:text-red-500 transition-colors" title="Reset to defaults">
+              <i class="fas fa-undo"></i>
+            </button>
+            <button onclick="BK.dsSave()" class="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+              <i class="fas fa-save mr-1"></i>Save
+            </button>
+          </div>
+        </div>
+
+        <div class="p-4 space-y-5">
+
+          <!-- Presets -->
+          <div>
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Quick Presets</p>
+            <div class="grid grid-cols-3 gap-2">
+              ${Object.entries(PRESETS).map(([key, p]) => `
+                <button onclick="BK.dsPickPreset('${key}')"
+                  class="rounded-xl border-2 p-2 text-center transition-all hover:scale-105 ${dsDesign._preset===key?'border-blue-600 shadow-md':'border-slate-200'}"
+                  style="background:${p.bg}">
+                  <div class="w-6 h-6 rounded-full mx-auto mb-1 shadow-sm" style="background:${p.primary}"></div>
+                  <p class="text-[10px] font-bold" style="color:${p.text}">${p.label}</p>
+                </button>`).join('')}
+            </div>
+          </div>
+
+          <!-- Colors -->
+          <div class="space-y-3">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">Colors</p>
+            ${colorRow('Primary', 'primary', d.primary)}
+            ${colorRow('Accent / Success', 'accent', d.accent)}
+            ${colorRow('Background', 'bg', d.bg)}
+            ${colorRow('Card Surface', 'surface', d.surface)}
+            ${colorRow('Border', 'border', d.border)}
+            ${colorRow('Text', 'text', d.text)}
+            ${colorRow('Header Background', 'headerBg', d.headerBg)}
+          </div>
+
+          <!-- Typography -->
+          <div class="space-y-3">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">Typography</p>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Body Font</label>
+              <select id="ds-fontBody" class="field text-sm" onchange="BK.dsApply()">
+                ${FONT_OPTIONS.map(f=>`<option value="${f}" ${d.fontBody===f?'selected':''}>${f}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Heading Font</label>
+              <select id="ds-fontHeading" class="field text-sm" onchange="BK.dsApply()">
+                ${FONT_OPTIONS.map(f=>`<option value="${f}" ${d.fontHeading===f?'selected':''}>${f}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+
+          <!-- Shape & Shadow -->
+          <div class="space-y-3">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">Shape & Shadow</p>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Card Radius</label>
+                <select id="ds-cardRadius" class="field text-sm" onchange="BK.dsApply()">
+                  ${[['4px','Sharp'],['8px','Slight'],['12px','Rounded'],['20px','Soft'],['28px','Pill']].map(([v,l])=>`<option value="${v}" ${d.cardRadius===v?'selected':''}>${l}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Button Radius</label>
+                <select id="ds-btnRadius" class="field text-sm" onchange="BK.dsApply()">
+                  ${[['4px','Square'],['8px','Slight'],['12px','Rounded'],['50px','Full Pill']].map(([v,l])=>`<option value="${v}" ${d.btnRadius===v?'selected':''}>${l}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Card Shadow</label>
+              <div class="grid grid-cols-4 gap-1">
+                ${[['flat','Flat'],['soft','Soft'],['medium','Medium'],['heavy','Heavy']].map(([v,l])=>`
+                  <button onclick="document.getElementById('ds-cardShadowPreset').value='${v}';BK.dsApply()"
+                    id="ds-shadow-${v}"
+                    class="py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${d.cardShadowPreset===v?'border-blue-600 bg-blue-50 text-blue-700':'border-slate-200 text-slate-500 hover:border-slate-300'}">
+                    ${l}
+                  </button>`).join('')}
+              </div>
+              <input type="hidden" id="ds-cardShadowPreset" value="${d.cardShadowPreset}">
+            </div>
+          </div>
+
+          <!-- Calendar Style -->
+          <div>
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Calendar Style</p>
+            <div class="grid grid-cols-3 gap-2">
+              ${[['classic','Classic','fa-calendar'],['bubble','Bubble','fa-circle'],['minimal','Minimal','fa-minus']].map(([v,l,ic])=>`
+                <button onclick="document.getElementById('ds-calStyle').value='${v}';BK.dsApply()"
+                  class="rounded-xl border-2 p-3 transition-all ${d.calStyle===v?'border-blue-600 bg-blue-50':'border-slate-200 hover:border-slate-300'}">
+                  <i class="fas ${ic} block text-lg mb-1 ${d.calStyle===v?'text-blue-600':'text-slate-400'}"></i>
+                  <p class="text-[11px] font-bold ${d.calStyle===v?'text-blue-700':'text-slate-500'}">${l}</p>
+                </button>`).join('')}
+            </div>
+            <input type="hidden" id="ds-calStyle" value="${d.calStyle}">
+          </div>
+
+          <!-- Step Indicator Style -->
+          <div>
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Step Indicator</p>
+            <div class="grid grid-cols-3 gap-2">
+              ${[['dots','Dots','fa-ellipsis-h'],['numbers','Numbers','fa-list-ol'],['bar','Bar','fa-grip-lines']].map(([v,l,ic])=>`
+                <button onclick="document.getElementById('ds-stepStyle').value='${v}';BK.dsApply()"
+                  class="rounded-xl border-2 p-3 transition-all ${d.stepStyle===v?'border-blue-600 bg-blue-50':'border-slate-200 hover:border-slate-300'}">
+                  <i class="fas ${ic} block text-lg mb-1 ${d.stepStyle===v?'text-blue-600':'text-slate-400'}"></i>
+                  <p class="text-[11px] font-bold ${d.stepStyle===v?'text-blue-700':'text-slate-500'}">${l}</p>
+                </button>`).join('')}
+            </div>
+            <input type="hidden" id="ds-stepStyle" value="${d.stepStyle}">
+          </div>
+
+          <!-- Layout -->
+          <div class="space-y-3">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">Layout & Branding</p>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Page Width</label>
+              <select id="ds-maxWidth" class="field text-sm" onchange="BK.dsApply()">
+                ${[['36rem','Narrow (576px)'],['42rem','Default (672px)'],['48rem','Wide (768px)'],['56rem','Extra Wide (896px)']].map(([v,l])=>`<option value="${v}" ${d.maxWidth===v?'selected':''}>${l}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Business Name</label>
+              <input type="text" id="ds-bizName" class="field text-sm" placeholder="Your Business Name" value="${esc(d.bizName||state.settings.business_name||'')}" oninput="BK.dsApply()">
+            </div>
+          </div>
+
+          <!-- Deployment -->
+          <div class="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-3">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">Deployment</p>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Public Booking Page URL</label>
+              <div class="flex gap-2">
+                <input type="text" id="ds-bookUrl" class="field text-xs flex-1" placeholder="https://yoursite.com/book.html" value="${esc(bookUrl)}"
+                  oninput="BK.dsUpdatePreview(this.value)">
+                <button onclick="BK.dsUpdatePreview(document.getElementById('ds-bookUrl').value)" class="px-3 py-1.5 bg-slate-200 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-300 transition-colors flex-shrink-0" title="Reload preview">
+                  <i class="fas fa-sync-alt"></i>
+                </button>
+              </div>
+              <p class="text-[10px] text-slate-400 mt-1">Where your book.html is hosted. Used to reload the live preview.</p>
+            </div>
+            <button onclick="BK.dsExport()" class="btn-primary w-full text-xs !py-2.5 shadow-sm">
+              <i class="fas fa-download mr-1"></i> Download Deployable book.html
+            </button>
+            <p class="text-[10px] text-slate-400 text-center">Design tokens baked in — host anywhere, no extra config needed</p>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Right Panel: Preview -->
+      <div class="flex-1 flex flex-col bg-slate-100 overflow-hidden">
+        <div class="px-4 py-3 bg-white border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+          <div class="flex items-center gap-3">
+            <div class="flex gap-1.5">
+              <div class="w-3 h-3 rounded-full bg-red-400"></div>
+              <div class="w-3 h-3 rounded-full bg-amber-400"></div>
+              <div class="w-3 h-3 rounded-full bg-green-400"></div>
+            </div>
+            <span class="text-xs text-slate-400 font-mono truncate max-w-xs" id="ds-preview-url-label">${esc(bookUrl)}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="flex gap-1 bg-slate-100 p-0.5 rounded-lg">
+              <button onclick="dsSetDevice('desktop')" id="ds-dev-desktop" class="px-2 py-1 rounded text-xs font-semibold transition-colors bg-white text-blue-600 shadow-sm">
+                <i class="fas fa-desktop"></i>
+              </button>
+              <button onclick="dsSetDevice('tablet')" id="ds-dev-tablet" class="px-2 py-1 rounded text-xs font-semibold transition-colors text-slate-400 hover:text-slate-600">
+                <i class="fas fa-tablet-alt"></i>
+              </button>
+              <button onclick="dsSetDevice('mobile')" id="ds-dev-mobile" class="px-2 py-1 rounded text-xs font-semibold transition-colors text-slate-400 hover:text-slate-600">
+                <i class="fas fa-mobile-alt"></i>
+              </button>
+            </div>
+            <a id="ds-open-tab" href="${esc(bookUrl)}" target="_blank" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1">
+              <i class="fas fa-external-link-alt text-xs"></i> Open
+            </a>
+          </div>
+        </div>
+        <div class="flex-1 flex items-start justify-center p-4 overflow-auto">
+          <div id="ds-preview-wrap" class="transition-all duration-300 w-full h-full" style="max-width:100%">
+            <iframe id="ds-preview-iframe"
+              src="${esc(bookUrl)}"
+              class="w-full rounded-xl shadow-xl border border-slate-200 bg-white transition-all duration-300"
+              style="height:calc(100vh - 220px);min-height:500px"
+              sandbox="allow-scripts allow-same-origin allow-forms"
+              id="ds-preview-iframe">
+            </iframe>
+          </div>
+        </div>
+        <div id="ds-preview-status" class="px-4 py-2 text-xs text-slate-400 text-center bg-white border-t border-slate-200 flex-shrink-0">
+          <i class="fas fa-info-circle mr-1"></i>
+          Preview updates in real-time. Save to persist changes.
+          <span id="ds-preview-note" class="text-amber-500 ml-2 hidden">
+            <i class="fas fa-exclamation-triangle mr-1"></i>Cross-origin preview: design applied via postMessage
+          </span>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function colorRow(label, key, val) {
+    return `<div class="flex items-center justify-between gap-3">
+      <label class="text-xs font-semibold text-slate-600 flex-1">${label}</label>
+      <div class="flex items-center gap-2">
+        <input type="color" id="ds-${key}" value="${val||'#000000'}"
+          class="w-8 h-8 rounded-lg border border-slate-200 cursor-pointer p-0.5 flex-shrink-0"
+          oninput="document.getElementById('ds-${key}-hex').value=this.value;BK.dsApply()"
+          onchange="BK.dsApply()">
+        <input type="text" id="ds-${key}-hex" value="${val||'#000000'}"
+          class="field text-xs w-24 font-mono py-1.5"
+          oninput="if(this.value.match(/^#[0-9a-fA-F]{6}$/)){document.getElementById('ds-${key}').value=this.value;BK.dsApply()}"
+          maxlength="7">
+      </div>
+    </div>`;
+  }
+
+  function attachDesignerEvents() {
+    dsPreviewReady = false;
+    const iframe = document.getElementById('ds-preview-iframe');
+    if (iframe) {
+      iframe.addEventListener('load', () => {
+        dsPreviewReady = true;
+        dsPostToIframe(dsDesign);
+        // Check if cross-origin
+        try {
+          iframe.contentWindow.document;
+        } catch(e) {
+          const note = document.getElementById('ds-preview-note');
+          if (note) note.classList.remove('hidden');
+        }
+      });
+    }
+  }
+
+  function dsPostToIframe(design) {
+    const iframe = document.getElementById('ds-preview-iframe');
+    if (!iframe) return;
+    try {
+      iframe.contentWindow.postMessage({ type: 'BK_DESIGN', design }, '*');
+    } catch(e) {}
+  }
+
+  function dsReadControls() {
+    const g = id => document.getElementById(id)?.value || '';
+    return {
+      primary:          g('ds-primary'),
+      accent:           g('ds-accent'),
+      bg:               g('ds-bg'),
+      surface:          g('ds-surface'),
+      border:           g('ds-border'),
+      text:             g('ds-text'),
+      headerBg:         g('ds-headerBg'),
+      fontBody:         g('ds-fontBody'),
+      fontHeading:      g('ds-fontHeading'),
+      cardRadius:       g('ds-cardRadius'),
+      btnRadius:        g('ds-btnRadius'),
+      cardShadowPreset: g('ds-cardShadowPreset'),
+      calStyle:         g('ds-calStyle'),
+      stepStyle:        g('ds-stepStyle'),
+      maxWidth:         g('ds-maxWidth'),
+      bizName:          g('ds-bizName'),
+    };
+  }
+
+  function dsApply() {
+    const vals = dsReadControls();
+    dsDesign = dsMerge(dsDesign, vals);
+    dsPostToIframe(dsDesign);
+    // Update shadow button highlights
+    ['flat','soft','medium','heavy'].forEach(v => {
+      const btn = document.getElementById(`ds-shadow-${v}`);
+      if (!btn) return;
+      const active = vals.cardShadowPreset === v;
+      btn.className = btn.className.replace(/border-blue-600 bg-blue-50 text-blue-700|border-slate-200 text-slate-500 hover:border-slate-300/g,'');
+      btn.className += active ? ' border-blue-600 bg-blue-50 text-blue-700' : ' border-slate-200 text-slate-500 hover:border-slate-300';
+    });
+  }
+
+  async function dsSave() {
+    const vals = dsReadControls();
+    dsDesign = dsMerge(dsDesign, vals);
+    // Save bookUrl too
+    const bookUrl = document.getElementById('ds-bookUrl')?.value || '';
+    try {
+      const D = db();
+      const save = (k,v) => D.update('booking_settings', k, { value: v }, 'key')
+        .catch(() => D.create('booking_settings', { key: k, value: v }));
+      await Promise.all([
+        save('booking_page_design', JSON.stringify(dsDesign)),
+        bookUrl ? save('book_page_url', bookUrl) : Promise.resolve(),
+      ]);
+      state.settings.booking_page_design = JSON.stringify(dsDesign);
+      state.settings.book_page_url = bookUrl;
+      toast('Design saved!', 'success');
+    } catch(e) { toast('Save failed: ' + e.message, 'error'); }
+  }
+
+  function dsReset() {
+    if (!confirm('Reset all design settings to defaults?')) return;
+    dsDesign = { ...DS_DEFAULTS };
+    dsPostToIframe(dsDesign);
+    switchTab('designer'); // re-render controls
+  }
+
+  function dsPickPreset(key) {
+    const preset = PRESETS[key];
+    if (!preset) return;
+    dsDesign = dsMerge({}, { ...preset, _preset: key });
+    dsPostToIframe(dsDesign);
+    switchTab('designer'); // re-render with new values
+    toast('Preset applied — click Save to keep it', 'info');
+  }
+
+  function dsUpdatePreview(url) {
+    if (!url) return;
+    const iframe = document.getElementById('ds-preview-iframe');
+    const label = document.getElementById('ds-preview-url-label');
+    const openBtn = document.getElementById('ds-open-tab');
+    dsPreviewReady = false;
+    if (iframe) { iframe.src = url; }
+    if (label) label.textContent = url;
+    if (openBtn) openBtn.href = url;
+  }
+
+  function dsSetDevice(device) {
+    const wrap = document.getElementById('ds-preview-wrap');
+    const iframe = document.getElementById('ds-preview-iframe');
+    ['desktop','tablet','mobile'].forEach(d => {
+      const btn = document.getElementById(`ds-dev-${d}`);
+      if (!btn) return;
+      const active = d === device;
+      btn.className = btn.className.replace(/bg-white text-blue-600 shadow-sm|text-slate-400 hover:text-slate-600/g,'');
+      btn.className += active ? ' bg-white text-blue-600 shadow-sm' : ' text-slate-400 hover:text-slate-600';
+    });
+    if (!wrap || !iframe) return;
+    if (device === 'mobile')  { wrap.style.maxWidth = '390px';  iframe.style.height = '812px'; }
+    if (device === 'tablet')  { wrap.style.maxWidth = '768px';  iframe.style.height = '1024px'; }
+    if (device === 'desktop') { wrap.style.maxWidth = '100%';   iframe.style.height = 'calc(100vh - 220px)'; }
+  }
+
+  function dsExport() {
+    toast('Preparing download…', 'info');
+    fetch('book.html')
+      .then(r => r.text())
+      .then(html => {
+        // Inject design tokens as inline CSS custom properties
+        const tokenCSS = dsDesignToCSS(dsDesign);
+        // Replace the token style block content
+        html = html.replace(
+          /<style id="bk-design-tokens">[\s\S]*?<\/style>/,
+          `<style id="bk-design-tokens">\n    :root {\n${tokenCSS}\n    }\n  </style>`
+        );
+        // Bake in font imports
+        if (dsDesign.fontBody || dsDesign.fontHeading) {
+          const families = [dsDesign.fontBody, dsDesign.fontHeading].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+          const importUrl = `https://fonts.googleapis.com/css2?${families.map(f=>'family='+encodeURIComponent(f)+':wght@400;500;600;700;800').join('&')}&display=swap`;
+          html = html.replace(
+            'href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans',
+            `href="${importUrl}"`
+          );
+        }
+        const blob = new Blob([html], { type: 'text/html' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'book.html';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast('book.html downloaded — deploy to any web host!', 'success');
+      })
+      .catch(() => toast('Could not fetch book.html. Make sure it\'s in the same folder.', 'error'));
+  }
+
+  function dsDesignToCSS(d) {
+    const lines = [];
+    const shadow = { flat:'none', soft:'0 2px 16px rgba(0,0,0,.05)', medium:'0 4px 24px rgba(0,0,0,.08)', heavy:'0 8px 40px rgba(0,0,0,.14)' };
+    const add = (k,v) => { if(v) lines.push(`      ${k}: ${v};`); };
+    add('--bk-primary',        d.primary);
+    add('--bk-primary-dark',   dsShade(d.primary, -15));
+    add('--bk-primary-light',  dsRgba(d.primary, 0.08));
+    add('--bk-accent',         d.accent);
+    add('--bk-bg',             d.bg);
+    add('--bk-surface',        d.surface);
+    add('--bk-border',         d.border);
+    add('--bk-text',           d.text);
+    add('--bk-text-muted',     d.textMuted || '#64748b');
+    add('--bk-header-bg',      d.headerBg);
+    add('--bk-btn-radius',     d.btnRadius);
+    add('--bk-card-radius',    d.cardRadius);
+    add('--bk-card-shadow',    shadow[d.cardShadowPreset] || shadow.soft);
+    add('--bk-font-body',      d.fontBody ? `'${d.fontBody}', sans-serif` : '');
+    add('--bk-font-heading',   d.fontHeading ? `'${d.fontHeading}', sans-serif` : '');
+    add('--bk-max-width',      d.maxWidth);
+    return lines.join('\n');
+  }
+
+  function dsShade(hex, pct) {
+    try {
+      let r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+      r = Math.max(0,Math.min(255, r+Math.round(r*pct/100)));
+      g = Math.max(0,Math.min(255, g+Math.round(g*pct/100)));
+      b = Math.max(0,Math.min(255, b+Math.round(b*pct/100)));
+      return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+    } catch(e) { return hex || '#000'; }
+  }
+
+  function dsRgba(hex, alpha) {
+    try {
+      const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+      return `rgba(${r},${g},${b},${alpha})`;
+    } catch(e) { return hex || 'rgba(0,0,0,0.08)'; }
+  }
+
 
 })();
