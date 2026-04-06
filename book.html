@@ -340,7 +340,13 @@ const PB = {
   travelAddress: '',
   travelDistance: 0,
   travelFee: 0,
-  paymentMethod: 'free',
+  paymentMethod: 'pay_later',
+  depositAmount: 0,
+  depositMethod: 'pay_later',   // which method pays the deposit
+  couponCode: '',
+  couponDiscount: 0,            // flat $ discount applied
+  couponPct: 0,                 // % discount applied
+  couponApplied: false,
   notes: '',
   // Content config (loaded from settings)
   navLinks: [],
@@ -886,8 +892,18 @@ async function pubGeocode() {
 
   const businessAddr = (PB.settings.footer_address || '').trim();
   if (!businessAddr) {
-    // No business address configured — fall back to manual fee based on zone 0
+    // No business address configured — apply fee at 0 km and show result
+    PB.travelAddress  = customerAddr;
+    PB.travelDistance = 0;
     pubApplyTravelFee(0);
+    const cur2 = PB.settings.currency || '$';
+    const dl2  = document.getElementById('pub-travel-dist-label');
+    const fn2  = document.getElementById('pub-travel-fee-label');
+    const rn2  = document.getElementById('pub-travel-route-note');
+    if (dl2) dl2.textContent = 'Distance not calculated (no business address set)';
+    if (fn2) fn2.textContent = PB.travelFee > 0 ? cur2 + PB.travelFee.toFixed(2) : 'Free';
+    if (rn2) rn2.textContent = 'Set your business address in Settings → Footer Info for auto-calculation';
+    document.getElementById('pub-travel-result')?.classList.remove('hidden');
     return;
   }
 
@@ -1018,15 +1034,74 @@ function renderStepInfo() {
 
       <!-- Payment Method -->
       <div>
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Payment</label>
-        <div class="grid grid-cols-3 gap-2">
-          ${['free','pay_later','paypal'].map(pm => `
-            <button type="button" onclick="selectPayment('${pm}')"
-              class="py-3 px-2 rounded-xl border-2 text-xs font-bold transition-all text-center ${PB.paymentMethod===pm?'border-blue-600 bg-blue-50 text-blue-700':'border-slate-200 text-slate-500 hover:border-blue-300'}">
-              <i class="${pm==='paypal'?'fab fa-paypal text-blue-500':pm==='pay_later'?'fas fa-clock text-amber-500':'fas fa-gift text-green-500'} block text-xl mb-1.5"></i>
-              ${{free:'Free',pay_later:'Pay Later',paypal:'PayPal'}[pm]}
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">How would you like to pay?</label>
+        <div class="grid grid-cols-3 gap-2 mb-3">
+          ${[
+            { id:'pay_later',   icon:'fas fa-hourglass-half', color:'text-amber-500',  label:'Pay Later' },
+            { id:'etransfer',   icon:'fas fa-university',     color:'text-green-600',  label:'E-Transfer' },
+            { id:'paypal',      icon:'fab fa-paypal',         color:'text-blue-500',   label:'PayPal' },
+          ].map(pm => `
+            <button type="button" onclick="selectPayment('${pm.id}')"
+              class="py-3 px-2 rounded-xl border-2 text-xs font-bold transition-all text-center ${PB.paymentMethod===pm.id?'border-blue-600 bg-blue-50 text-blue-700':'border-slate-200 text-slate-500 hover:border-blue-300'}">
+              <i class="${pm.icon} ${pm.color} block text-xl mb-1.5"></i>
+              ${pm.label}
             </button>`).join('')}
         </div>
+
+        <!-- Pay Later sub-options -->
+        ${PB.paymentMethod==='pay_later' ? `
+        <div class="rounded-xl p-3 space-y-2 text-xs" style="background:var(--bk-primary-light);border:1.5px solid var(--bk-border)">
+          <p class="font-bold text-slate-600">Booking Deposit</p>
+          <p class="text-slate-500">A deposit may be required to secure your appointment. The remainder is due on the day.</p>
+          ${PB.settings.deposit_required==='1' ? `
+          <div class="flex items-center gap-2 mt-2">
+            <span class="font-semibold text-slate-600">Deposit:</span>
+            <span class="font-extrabold" style="color:var(--bk-primary)">${PB.settings.currency||'$'}${parseFloat(PB.settings.deposit_amount||0).toFixed(2)}</span>
+            <span class="text-slate-400">due now · balance on arrival</span>
+          </div>` : '<p class="text-green-700 font-semibold">No deposit required — pay in full on the day.</p>'}
+        </div>` : ''}
+
+        <!-- E-Transfer info -->
+        ${PB.paymentMethod==='etransfer' ? `
+        <div class="rounded-xl p-3 space-y-1 text-xs" style="background:var(--bk-primary-light);border:1.5px solid var(--bk-border)">
+          <p class="font-bold text-slate-600 flex items-center gap-1.5"><i class="fas fa-university text-green-600"></i> E-Transfer Instructions</p>
+          ${PB.settings.etransfer_email ? `<p class="text-slate-600">Send to: <strong>${esc(PB.settings.etransfer_email)}</strong></p>` : ''}
+          ${PB.settings.etransfer_message ? `<p class="text-slate-500">${esc(PB.settings.etransfer_message)}</p>` : '<p class="text-slate-400">E-Transfer details will be sent by email after booking.</p>'}
+          ${PB.settings.deposit_required==='1' ? `
+          <p class="text-amber-700 font-semibold mt-1">Deposit of ${PB.settings.currency||'$'}${parseFloat(PB.settings.deposit_amount||0).toFixed(2)} required to confirm.</p>` : ''}
+        </div>` : ''}
+
+        <!-- PayPal info -->
+        ${PB.paymentMethod==='paypal' ? `
+        <div class="rounded-xl p-3 text-xs" style="background:var(--bk-primary-light);border:1.5px solid var(--bk-border)">
+          <p class="font-bold text-slate-600 flex items-center gap-1.5"><i class="fab fa-paypal text-blue-500"></i> PayPal</p>
+          ${PB.settings.deposit_required==='1'
+            ? `<p class="text-slate-500 mt-1">A deposit of <strong>${PB.settings.currency||'$'}${parseFloat(PB.settings.deposit_amount||0).toFixed(2)}</strong> will be collected via PayPal. Balance due on arrival.</p>`
+            : `<p class="text-slate-500 mt-1">You'll be redirected to PayPal to complete payment after confirming.</p>`}
+        </div>` : ''}
+      </div>
+
+      <!-- Coupon / Discount Code -->
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+          Discount / Coupon Code <span class="font-normal text-slate-300 normal-case">(optional)</span>
+        </label>
+        <div class="flex gap-2">
+          <input type="text" id="pub-coupon-input" class="field text-sm flex-1 font-mono uppercase"
+            placeholder="Enter code…"
+            value="${esc(PB.couponCode)}"
+            oninput="PB.couponCode=this.value.toUpperCase();this.value=PB.couponCode;pubCouponClear()">
+          <button type="button" onclick="pubApplyCoupon()"
+            class="px-4 py-2 rounded-xl text-xs font-bold transition-colors flex-shrink-0"
+            style="background:var(--bk-primary);color:#fff"
+            id="pub-coupon-btn">Apply</button>
+        </div>
+        <div id="pub-coupon-ok" class="${PB.couponApplied?'':'hidden'} mt-2 flex items-center gap-2 text-xs font-semibold text-green-700 rounded-xl px-3 py-2" style="background:#d1fae5;border:1.5px solid #a7f3d0">
+          <i class="fas fa-tag"></i>
+          <span id="pub-coupon-ok-msg">${PB.couponApplied ? pubCouponDesc() : ''}</span>
+          <button type="button" onclick="pubCouponRemove()" class="ml-auto text-green-600 hover:text-green-800"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="pub-coupon-err" class="hidden mt-2 text-xs font-semibold text-red-600 rounded-xl px-3 py-2" style="background:#fee2e2;border:1.5px solid #fecaca"></div>
       </div>
     </div>
 
@@ -1039,6 +1114,70 @@ function renderStepInfo() {
 function selectPayment(pm) {
   PB.paymentMethod = pm;
   document.getElementById('pub-content').innerHTML = renderStepInfo();
+}
+
+// ── Coupon helpers ─────────────────────────────────────────────
+function pubCouponDesc() {
+  if (!PB.couponApplied) return '';
+  const cur = PB.settings.currency || '$';
+  if (PB.couponPct > 0) return `Code "${PB.couponCode}" applied — ${PB.couponPct}% off!`;
+  if (PB.couponDiscount > 0) return `Code "${PB.couponCode}" applied — ${cur}${PB.couponDiscount.toFixed(2)} off!`;
+  return `Code "${PB.couponCode}" applied!`;
+}
+
+function pubCouponClear() {
+  PB.couponApplied = false; PB.couponDiscount = 0; PB.couponPct = 0;
+  document.getElementById('pub-coupon-ok')?.classList.add('hidden');
+  document.getElementById('pub-coupon-err')?.classList.add('hidden');
+}
+
+function pubCouponRemove() {
+  PB.couponCode = ''; PB.couponApplied = false; PB.couponDiscount = 0; PB.couponPct = 0;
+  const inp = document.getElementById('pub-coupon-input');
+  if (inp) inp.value = '';
+  document.getElementById('pub-coupon-ok')?.classList.add('hidden');
+}
+
+async function pubApplyCoupon() {
+  const code = (document.getElementById('pub-coupon-input')?.value || '').trim().toUpperCase();
+  const errEl = document.getElementById('pub-coupon-err');
+  const okEl  = document.getElementById('pub-coupon-ok');
+  const okMsg = document.getElementById('pub-coupon-ok-msg');
+  const showErr = (m) => { if(errEl){errEl.textContent=m;errEl.classList.remove('hidden');} if(okEl)okEl.classList.add('hidden'); };
+
+  if (!code) { showErr('Please enter a coupon code.'); return; }
+
+  // Load coupons from settings (stored as JSON array)
+  let coupons = [];
+  try { coupons = safeJson(PB.settings.discount_codes || '[]', []); } catch(e){}
+
+  const match = coupons.find(c => (c.code||'').toUpperCase() === code && c.active !== false);
+  if (!match) {
+    // Also try fetching live in case settings was stale
+    try {
+      const D = window.WorkVoltDB;
+      const rows = await D.list('booking_settings', {});
+      const dcRow = rows.find(r => r.key === 'discount_codes');
+      if (dcRow) {
+        coupons = safeJson(dcRow.value || '[]', []);
+        const liveMatch = coupons.find(c => (c.code||'').toUpperCase() === code && c.active !== false);
+        if (liveMatch) { applyMatchedCoupon(liveMatch, okEl, okMsg, errEl); return; }
+      }
+    } catch(e){}
+    showErr(`Code "${code}" is not valid or has expired.`);
+    return;
+  }
+  applyMatchedCoupon(match, okEl, okMsg, errEl);
+}
+
+function applyMatchedCoupon(match, okEl, okMsg, errEl) {
+  PB.couponCode     = match.code.toUpperCase();
+  PB.couponApplied  = true;
+  PB.couponPct      = parseFloat(match.pct  || 0);
+  PB.couponDiscount = parseFloat(match.flat || 0);
+  if (errEl) errEl.classList.add('hidden');
+  if (okEl)  okEl.classList.remove('hidden');
+  if (okMsg) okMsg.textContent = pubCouponDesc();
 }
 
 function validateInfo() {
@@ -1061,7 +1200,13 @@ function renderStepConfirm() {
   const cur   = PB.settings.currency || '$';
   const svc   = PB.selectedService;
   const stf   = PB.staff.find(s => s.id === PB.selectedStaff);
-  const total = (+svc?.price||0) + (PB.travelEnabled ? PB.travelFee : 0);
+  const subtotal    = (+svc?.price||0) + (PB.travelEnabled ? PB.travelFee : 0);
+  const discountAmt = PB.couponApplied
+    ? (PB.couponPct > 0 ? +(subtotal * PB.couponPct / 100).toFixed(2) : PB.couponDiscount)
+    : 0;
+  const total       = Math.max(0, subtotal - discountAmt);
+  const depositAmt  = PB.settings.deposit_required === '1' ? parseFloat(PB.settings.deposit_amount || 0) : 0;
+  const dueNow      = depositAmt > 0 ? Math.min(depositAmt, total) : (PB.paymentMethod !== 'pay_later' ? total : 0);
   const d     = new Date(`${PB.selectedDate}T${PB.selectedTime}:00`);
   const endD  = new Date(d.getTime() + (svc?.duration||60)*60000);
 
@@ -1095,13 +1240,31 @@ function renderStepConfirm() {
         ${PB.notes ? row('Notes', esc(PB.notes)) : ''}
 
         <!-- Total -->
+        ${PB.couponApplied && discountAmt > 0 ? `
+        <div class="flex items-center justify-between pt-3 mt-1 border-t border-slate-100">
+          <span class="text-sm text-slate-500">Subtotal</span>
+          <span class="text-sm font-semibold text-slate-500">${cur}${fmtN(subtotal)}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-sm text-green-700 font-semibold flex items-center gap-1.5"><i class="fas fa-tag text-xs"></i> Discount (${esc(PB.couponCode)})</span>
+          <span class="text-sm font-bold text-green-700">− ${cur}${fmtN(discountAmt)}</span>
+        </div>` : ''}
         <div class="flex items-center justify-between pt-3 mt-1 border-t border-slate-100">
           <span class="font-bold text-slate-700">Total</span>
           <span class="text-2xl font-extrabold" style="color:var(--bk-primary)">${total>0?cur+fmtN(total):'Free'}</span>
         </div>
+        ${depositAmt > 0 ? `
+        <div class="flex items-center justify-between mt-1 py-2 px-3 rounded-xl" style="background:var(--bk-primary-light)">
+          <span class="text-xs font-bold" style="color:var(--bk-primary)">Due now (deposit)</span>
+          <span class="text-sm font-extrabold" style="color:var(--bk-primary)">${cur}${fmtN(dueNow)}</span>
+        </div>
         <div class="flex items-center justify-between">
+          <span class="text-xs text-slate-400">Balance due on arrival</span>
+          <span class="text-xs font-semibold text-slate-600">${cur}${fmtN(Math.max(0, total - dueNow))}</span>
+        </div>` : ''}
+        <div class="flex items-center justify-between ${depositAmt>0?'':'mt-1'}">
           <span class="text-xs text-slate-400">Payment method</span>
-          <span class="text-xs font-semibold text-slate-600 capitalize">${{free:'Free',pay_later:'Pay on arrival',paypal:'PayPal (Pay now)'}[PB.paymentMethod]||PB.paymentMethod}</span>
+          <span class="text-xs font-semibold text-slate-600">${{'pay_later':'Pay on arrival','etransfer':'E-Transfer','paypal':'PayPal'}[PB.paymentMethod]||PB.paymentMethod}</span>
         </div>
       </div>
     </div>
@@ -1161,12 +1324,23 @@ async function submitBooking() {
       if (avail.length) staffId = avail.sort((a,b)=>PB.bookings.filter(x=>x.staff_id===a.id).length-PB.bookings.filter(x=>x.staff_id===b.id).length)[0]?.id||null;
     }
 
+    const subtotal2   = (+svc.price||0) + (PB.travelEnabled ? PB.travelFee : 0);
+    const discAmt2    = PB.couponApplied
+      ? (PB.couponPct > 0 ? +(subtotal2 * PB.couponPct / 100).toFixed(2) : PB.couponDiscount)
+      : 0;
+    const finalTotal  = Math.max(0, subtotal2 - discAmt2);
+    const depositAmt2 = PB.settings.deposit_required === '1' ? parseFloat(PB.settings.deposit_amount || 0) : 0;
+
     const booking = await D.create('bookings', {
       customer_id:customerId, service_id:svc.id, staff_id:staffId,
       start_time:start.toISOString(), end_time:end.toISOString(),
       status:'pending', payment_method:PB.paymentMethod,
-      payment_status:PB.paymentMethod==='free'?'free':'unpaid',
-      amount:+svc.price||0, travel_fee:PB.travelEnabled?PB.travelFee:0,
+      payment_status:'unpaid',
+      amount:finalTotal,
+      discount_code: PB.couponApplied ? PB.couponCode : null,
+      discount_amount: discAmt2 || 0,
+      deposit_amount: depositAmt2 || 0,
+      travel_fee:PB.travelEnabled?PB.travelFee:0,
       travel_address:PB.travelEnabled?PB.travelAddress:null,
       travel_distance:PB.travelEnabled?PB.travelDistance:0,
       notes:PB.notes, source:'public',
@@ -1180,8 +1354,11 @@ async function submitBooking() {
     } catch(e){}
 
     if (PB.paymentMethod==='paypal' && PB.settings.paypal_email) {
-      const total = (+svc.price||0) + (PB.travelEnabled?PB.travelFee:0);
-      if (total>0) setTimeout(()=>window.open(`https://www.paypal.com/paypalme/${encodeURIComponent(PB.settings.paypal_email)}/${total.toFixed(2)}`,'_blank'),1500);
+      const payAmount = depositAmt2 > 0 ? Math.min(depositAmt2, finalTotal) : finalTotal;
+      if (payAmount > 0) setTimeout(()=>window.open(`https://www.paypal.com/paypalme/${encodeURIComponent(PB.settings.paypal_email)}/${payAmount.toFixed(2)}`,'_blank'),1500);
+    }
+    if (PB.paymentMethod==='etransfer' && PB.settings.etransfer_email) {
+      // E-Transfer: show instructions in success screen — no redirect needed
     }
 
     PB.confirmedBooking = booking;
@@ -1222,6 +1399,14 @@ function renderStepSuccess() {
     </div>
 
     <p class="text-xs text-slate-400 mb-6">A confirmation will be sent to <strong>${esc(PB.customer.email)}</strong></p>
+
+    ${PB.paymentMethod === 'etransfer' ? `
+    <div class="step-card p-4 text-left mb-5 max-w-sm mx-auto text-sm">
+      <p class="font-bold text-slate-700 mb-2 flex items-center gap-2"><i class="fas fa-university text-green-600"></i> E-Transfer Instructions</p>
+      ${PB.settings.etransfer_email ? `<p class="text-slate-600 mb-1">Send to: <strong>${esc(PB.settings.etransfer_email)}</strong></p>` : ''}
+      ${PB.settings.deposit_required === '1' ? `<p class="text-amber-700 font-semibold mb-1">Deposit required: ${PB.settings.currency||'$'}${parseFloat(PB.settings.deposit_amount||0).toFixed(2)}</p>` : ''}
+      ${PB.settings.etransfer_message ? `<p class="text-slate-500 text-xs">${esc(PB.settings.etransfer_message)}</p>` : ''}
+    </div>` : ''}
 
     <div class="flex flex-col sm:flex-row gap-3 justify-center">
       <button onclick="window.location.reload()" class="btn-primary px-8 shadow-md">
