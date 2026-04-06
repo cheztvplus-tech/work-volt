@@ -1117,57 +1117,164 @@
     </div>`);
   }
 
-  function openStaffModal(id) {
-    const stf = id ? state.staff.find(s=>s.id===id) : null;
-    const avail = safeJson(stf?.availability, {});
-    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    showModal(`<div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-      <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-        <h3 class="font-bold text-slate-900">${stf?'Edit Staff':'Add Staff Member'}</h3>
-        <button onclick="closeModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400"><i class="fas fa-times text-sm"></i></button>
+  // REPLACE your existing openStaffModal function with this:
+
+function openStaffModal(id) {
+  const stf = id ? state.staff.find(s=>s.id===id) : null;
+  const avail = safeJson(stf?.availability, {});
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  
+  // Get existing users who aren't already staff
+  const existingStaffIds = state.staff.map(s => s.user_id).filter(Boolean);
+  const availableUsers = []; // We'll populate this from users table
+  
+  // Load users for dropdown
+  db().list('users', {}, { order: 'name', asc: true }).then(users => {
+    const userSelect = document.getElementById('stf-user-select');
+    if (userSelect) {
+      const nonStaffUsers = users.filter(u => !existingStaffIds.includes(u.id) || u.id === stf?.user_id);
+      userSelect.innerHTML = '<option value="">— Create new staff profile —</option>' +
+        nonStaffUsers.map(u => {
+          const roleBadge = u.role || 'Employee';
+          return `<option value="${u.id}" data-email="${esc(u.email||'')}" data-name="${esc(u.name||'')}" ${stf?.user_id===u.id?'selected':''}>${esc(u.name||u.email||'Unknown')} (${roleBadge})</option>`;
+        }).join('');
+    }
+  }).catch(() => {});
+  
+  showModal(`<div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+      <h3 class="font-bold text-slate-900">${stf?'Edit Staff':'Add Staff Member'}</h3>
+      <button onclick="closeModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400"><i class="fas fa-times text-sm"></i></button>
+    </div>
+    <div class="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
+      <div id="staff-err" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2"></div>
+      
+      <!-- Link to existing user -->
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Link to Existing User</label>
+        <select id="stf-user-select" class="field text-sm" onchange="BK.onStaffUserChange(this)">
+          <option value="">— Create new staff profile —</option>
+        </select>
+        <p class="text-[10px] text-slate-400 mt-1">Select a user to link this staff profile to their account</p>
       </div>
-      <div class="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
-        <div id="staff-err" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2"></div>
-        <div class="grid grid-cols-3 gap-3">
-          <div class="col-span-2"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Name *</label>
-            <input id="stf-name" type="text" class="field text-sm" value="${esc(stf?.name||'')}"></div>
-          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Color</label>
-            <input id="stf-color" type="color" class="field text-sm h-[42px] p-1 cursor-pointer" value="${stf?.color||'#8b5cf6'}"></div>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Email</label>
-            <input id="stf-email" type="email" class="field text-sm" value="${esc(stf?.email||'')}"></div>
-          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Phone</label>
-            <input id="stf-phone" type="tel" class="field text-sm" value="${esc(stf?.phone||'')}"></div>
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Working Hours</label>
-          <div class="space-y-2">
-            ${days.map(d => {
-              const da = avail[d] || {};
-              return `<div class="flex items-center gap-2">
-                <input type="checkbox" id="stf-day-${d}" class="rounded flex-shrink-0" ${da.enabled?'checked':''} onchange="document.getElementById('stf-hours-${d}').classList.toggle('hidden',!this.checked)">
-                <label for="stf-day-${d}" class="text-xs font-semibold text-slate-600 w-8">${d}</label>
-                <div id="stf-hours-${d}" class="flex gap-1 items-center ${da.enabled?'':'hidden'}">
-                  <input type="time" id="stf-start-${d}" value="${da.start||'09:00'}" class="field text-xs py-1 w-24">
-                  <span class="text-slate-300 text-xs">–</span>
-                  <input type="time" id="stf-end-${d}" value="${da.end||'18:00'}" class="field text-xs py-1 w-24">
-                </div>
-              </div>`;
-            }).join('')}
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <input type="checkbox" id="stf-auto" class="rounded" ${stf?.auto_assign!==false?'checked':''}>
-          <label for="stf-auto" class="text-sm text-slate-700 font-medium">Enable auto-assignment (⚡ Smart Assign)</label>
+      
+      <div class="grid grid-cols-3 gap-3">
+        <div class="col-span-2"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Name *</label>
+          <input id="stf-name" type="text" class="field text-sm" value="${esc(stf?.name||'')}" placeholder="Staff name"></div>
+        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Color</label>
+          <input id="stf-color" type="color" class="field text-sm h-[42px] p-1 cursor-pointer" value="${stf?.color||'#8b5cf6'}"></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Email</label>
+          <input id="stf-email" type="email" class="field text-sm" value="${esc(stf?.email||'')}" placeholder="staff@email.com"></div>
+        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Phone</label>
+          <input id="stf-phone" type="tel" class="field text-sm" value="${esc(stf?.phone||'')}" placeholder="+1..."></div>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Working Hours</label>
+        <div class="space-y-2">
+          ${days.map(d => {
+            const da = avail[d] || {};
+            return `<div class="flex items-center gap-2">
+              <input type="checkbox" id="stf-day-${d}" class="rounded flex-shrink-0" ${da.enabled?'checked':''} onchange="document.getElementById('stf-hours-${d}').classList.toggle('hidden',!this.checked)">
+              <label for="stf-day-${d}" class="text-xs font-semibold text-slate-600 w-8">${d}</label>
+              <div id="stf-hours-${d}" class="flex gap-1 items-center ${da.enabled?'':'hidden'}">
+                <input type="time" id="stf-start-${d}" value="${da.start||'09:00'}" class="field text-xs py-1 w-24">
+                <span class="text-slate-300 text-xs">–</span>
+                <input type="time" id="stf-end-${d}" value="${da.end||'18:00'}" class="field text-xs py-1 w-24">
+              </div>
+            </div>`;
+          }).join('')}
         </div>
       </div>
-      <div class="px-6 py-4 border-t border-slate-100 flex gap-3">
-        <button onclick="closeModal()" class="btn-secondary flex-1">Cancel</button>
-        <button onclick="BK.saveStaff('${stf?.id||''}')" class="btn-primary flex-1"><i class="fas fa-save text-xs mr-1"></i>Save</button>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" id="stf-auto" class="rounded" ${stf?.auto_assign!==false?'checked':''}>
+        <label for="stf-auto" class="text-sm text-slate-700 font-medium">Enable auto-assignment (⚡ Smart Assign)</label>
       </div>
-    </div>`);
+    </div>
+    <div class="px-6 py-4 border-t border-slate-100 flex gap-3">
+      <button onclick="closeModal()" class="btn-secondary flex-1">Cancel</button>
+      <button onclick="BK.saveStaff('${stf?.id||''}')" class="btn-primary flex-1"><i class="fas fa-save text-xs mr-1"></i>Save</button>
+    </div>
+  </div>`);
+}
+
+// ADD these new functions:
+
+window.BK.onStaffUserChange = function(select) {
+  const option = select.options[select.selectedIndex];
+  if (option && option.value) {
+    // Auto-fill from user data
+    const nameEl = document.getElementById('stf-name');
+    const emailEl = document.getElementById('stf-email');
+    if (nameEl && option.dataset.name) nameEl.value = option.dataset.name;
+    if (emailEl && option.dataset.email) emailEl.value = option.dataset.email;
   }
+};
+
+// REPLACE your saveStaff function with this:
+
+async function saveStaff(id) {
+  const errEl = document.getElementById('staff-err');
+  const name = document.getElementById('stf-name')?.value?.trim();
+  const userId = document.getElementById('stf-user-select')?.value || null;
+  
+  if (!name) { 
+    errEl.textContent = 'Name required.'; 
+    errEl.classList.remove('hidden'); 
+    return; 
+  }
+  
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const avail = {};
+  days.forEach(d => {
+    const enabled = document.getElementById(`stf-day-${d}`)?.checked;
+    if (enabled) avail[d] = { 
+      enabled: true, 
+      start: document.getElementById(`stf-start-${d}`)?.value || '09:00', 
+      end: document.getElementById(`stf-end-${d}`)?.value || '18:00' 
+    };
+  });
+  
+  const row = {
+    user_id: userId || null,
+    name, 
+    color: document.getElementById('stf-color')?.value || '#8b5cf6',
+    email: document.getElementById('stf-email')?.value || '',
+    phone: document.getElementById('stf-phone')?.value || '',
+    availability: JSON.stringify(avail),
+    auto_assign: document.getElementById('stf-auto')?.checked !== false,
+    active: true,
+  };
+  
+  try {
+    if (id) { 
+      await db().update('booking_staff', id, row); 
+      toast('Staff updated', 'success'); 
+    } else { 
+      const newStaff = await db().create('booking_staff', row);
+      
+      // If linked to user, update their role to Contractor if not already set
+      if (userId) {
+        try {
+          const user = await db().get('users', userId);
+          if (user && !user.role || user.role === 'Employee') {
+            await db().update('users', userId, { role: 'Contractor' });
+          }
+        } catch(e) {
+          console.log('Could not update user role:', e);
+        }
+      }
+      
+      toast('Staff member added', 'success'); 
+    }
+    closeModal(); 
+    await reload();
+  } catch(e) { 
+    errEl.textContent = e.message; 
+    errEl.classList.remove('hidden'); 
+  }
+}
 
   // ── SAVE ACTIONS ─────────────────────────────────────────────
   async function saveBooking(id) {
@@ -1670,6 +1777,7 @@
       calNav, calToday, calSetView, setBookingView, filterBookings,
       dragStart, dragEnd, dropOnStatus,
       onCustomerChange, onServiceChange, onTravelToggle, onRecurringChange, onPaymentChange,
+      onStaffUserChange,
     };
   }
 
