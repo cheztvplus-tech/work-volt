@@ -1184,7 +1184,7 @@ window.WorkVoltPages['projects'] = function(container) {
       project_id:  activeProject.id,
       status:     'To Do',
       priority:   'Medium',
-      created_by:  myId,
+      
     }).then(function(data) {
       tasksCache[data.id] = data;
       statsCache = computeStats(Object.values(tasksCache));
@@ -1520,7 +1520,7 @@ window.WorkVoltPages['projects'] = function(container) {
         project_id:         activeProject ? activeProject.id : null,
       };
       if (linkedTaskEl) params.linked_task_id = linkedTaskEl.value || null;
-      if (!isEdit) params.created_by = myId || null;
+      
 
       var promise = isEdit
         ? dbUpdateTask(task.id, params)
