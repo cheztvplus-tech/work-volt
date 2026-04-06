@@ -1110,9 +1110,9 @@ window.WorkVoltPages['projects'] = function(container) {
       });
     });
 
-    var stSel = container.querySelector('#tf-status');
+    var stSel = container.querySelector('#task-tf-status');
     if (stSel) stSel.addEventListener('change', function() { taskFilter.status = this.value; refreshCenter(); });
-    var prSel = container.querySelector('#tf-priority');
+    var prSel = container.querySelector('#task-tf-priority');
     if (prSel) prSel.addEventListener('change', function() { taskFilter.priority = this.value; refreshCenter(); });
 
     var srch = container.querySelector('#task-search');
@@ -1178,43 +1178,74 @@ window.WorkVoltPages['projects'] = function(container) {
   }
 
   // ── Quick task operations ────────────────────────────────────────
-  function quickCreateTask(title) {
-    dbCreateTask({
-      title:      title,
-      project_id:  activeProject.id,
-      status:     'To Do',
-      priority:   'Medium',
-      
-    }).then(function(data) {
-      tasksCache[data.id] = data;
-      statsCache = computeStats(Object.values(tasksCache));
-      refreshCenter();
-      refreshRightPanel();
-      dbLogActivity(activeProject.id, myId, 'created task', title);
-      // Sync task_count back to the project row
-      dbUpdateProject(activeProject.id, {
-        task_count: statsCache.total,
-        tasks_done: statsCache.done,
-        progress:   statsCache.progress,
-      }).catch(function() {});
-      toast('Task created ✓', 'success');
-    }).catch(function(e) { toast(e.message, 'error'); });
-  }
+function quickCreateTask(title) {
+  dbCreateTask({
+    title:       title,
+    project:  activeProject.id,
+    status:      'To Do',
+    priority:    'Medium',
+    assignee:    null,  // explicitly set
+    created_by:  myId || null,
+  }).then(function(data) {
+    if (!data || !data.id) {
+      toast('Task created but response was invalid', 'error');
+      return;
+    }
+    tasksCache[data.id] = data;
+    statsCache = computeStats(Object.values(tasksCache));
+    refreshCenter();
+    refreshRightPanel();
+    dbLogActivity(activeProject.id, myId, 'created task', title);
+    // Sync task_count back to the project row
+    dbUpdateProject(activeProject.id, {
+      task_count: statsCache.total,
+      tasks_done: statsCache.done,
+      progress:   statsCache.progress,
+    }).catch(function() {});
+    toast('Task created ✓', 'success');
+  }).catch(function(e) { 
+    toast(e.message || 'Failed to create task', 'error'); 
+  });
+}
 
-  function quickUpdateTask(id, status) {
-    dbUpdateTask(id, { status: status }).then(function(data) {
-      tasksCache[id] = Object.assign({}, tasksCache[id], { status: status });
-      statsCache = computeStats(Object.values(tasksCache));
-      refreshCenter();
-      refreshRightPanel();
-      dbLogActivity(activeProject.id, myId, 'marked ' + status.toLowerCase(), tasksCache[id] ? tasksCache[id].title : id);
+function quickUpdateTask(id, status) {
+  var task = tasksCache[id];
+  if (!task) {
+    toast('Task not found in cache', 'error');
+    return;
+  }
+  
+  // Optimistic update
+  var oldStatus = task.status;
+  task.status = status;
+  refreshCenter();
+  
+  dbUpdateTask(id, { status: status }).then(function(data) {
+    // Merge server response to get updated timestamps
+    if (data) {
+      tasksCache[id] = Object.assign({}, tasksCache[id], data);
+    }
+    statsCache = computeStats(Object.values(tasksCache));
+    refreshCenter();
+    refreshRightPanel();
+    
+    // Log activity and update project stats
+    if (activeProject) {
+      dbLogActivity(activeProject.id, myId, 'marked ' + status.toLowerCase(), tasksCache[id].title || id);
       dbUpdateProject(activeProject.id, {
         task_count: statsCache.total,
         tasks_done: statsCache.done,
         progress:   statsCache.progress,
       }).catch(function() {});
-    }).catch(function(e) { toast(e.message, 'error'); });
-  }
+    }
+    toast('Status updated to ' + status, 'success');
+  }).catch(function(e) { 
+    // Revert on error
+    if (tasksCache[id]) tasksCache[id].status = oldStatus;
+    refreshCenter();
+    toast(e.message || 'Failed to update status', 'error'); 
+  });
+}
 
   function refreshRightPanel() {
     var rp = document.getElementById('proj-right-panel');
@@ -1517,7 +1548,7 @@ window.WorkVoltPages['projects'] = function(container) {
         assignee:        document.getElementById('task-tf-assignee').value || null,
         due_date:        document.getElementById('task-tf-due').value || null,
         estimated_hours: parseFloat(document.getElementById('task-tf-est').value) || null,
-        project_id:         activeProject ? activeProject.id : null,
+        project:         activeProject ? activeProject.id : null,
       };
       if (linkedTaskEl) params.linked_task_id = linkedTaskEl.value || null;
       
