@@ -1520,7 +1520,7 @@ window.WorkVoltPages['projects'] = function(container) {
         project:         activeProject ? activeProject.id : null,
       };
       if (linkedTaskEl) params.linked_task_id = linkedTaskEl.value || null;
-      if (!isEdit) params.created_by = myId || null;
+      if (!isEdit) params.creator = myId || null;
 
       var promise = isEdit
         ? dbUpdateTask(task.id, params)
