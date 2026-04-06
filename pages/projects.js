@@ -19,7 +19,7 @@ window.WorkVoltPages['projects'] = function(container) {
 
   // Detail-view sub-state
   var taskView   = sessionStorage.getItem('proj_task_view') || 'list';
-  var taskFilter = { status: '', priority: '', assigned_to: '' };
+  var taskFilter = { status: '', priority: '', assignee: '' };
   var taskSearch = '';
   var focusMode  = false;
   var _searchTimer = null;
@@ -184,7 +184,7 @@ window.WorkVoltPages['projects'] = function(container) {
 
   // tasks table (project-scoped)
   function dbListTasks(projectId) {
-    return db.list('tasks', { project_id: projectId }, { order: 'created_at' });
+    return db.list('tasks', { project: projectId }, { order: 'created_at' });
   }
   function dbCreateTask(params) {
     return db.create('tasks', params);
@@ -214,7 +214,7 @@ window.WorkVoltPages['projects'] = function(container) {
     tasks.forEach(function(t) {
       byStatus[t.status]     = (byStatus[t.status] || 0) + 1;
       if (t.priority) byPriority[t.priority] = (byPriority[t.priority] || 0) + 1;
-      var aid = t.assigned_to || t.assignee;
+      var aid = t.assignee || t.assignee;
       if (aid) byAssignee[aid] = (byAssignee[aid] || 0) + 1;
     });
 
@@ -473,7 +473,7 @@ window.WorkVoltPages['projects'] = function(container) {
     membersCache  = [];
     activityCache = [];
     statsCache    = {};
-    taskFilter    = { status: '', priority: '', assigned_to: '' };
+    taskFilter    = { status: '', priority: '', assignee: '' };
     taskSearch    = '';
     focusMode     = false;
 
@@ -691,7 +691,7 @@ window.WorkVoltPages['projects'] = function(container) {
       html += '<p class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2">Quick Filters</p>';
       var quickLinks = [
         { k: '',        icon: 'fa-th-large',    lbl: 'All Tasks',     count: Object.values(tasksCache).length },
-        { k: 'mine',    icon: 'fa-user',         lbl: 'Assigned to Me', count: Object.values(tasksCache).filter(function(t) { return t.assigned_to === myId; }).length },
+        { k: 'mine',    icon: 'fa-user',         lbl: 'Assigned to Me', count: Object.values(tasksCache).filter(function(t) { return t.assignee === myId; }).length },
         { k: 'overdue', icon: 'fa-fire',         lbl: 'Overdue',       count: Object.values(tasksCache).filter(isOverdue).length },
         { k: 'today',   icon: 'fa-calendar-day', lbl: 'Due Today',     count: Object.values(tasksCache).filter(function(t) {
           if (!t.due_date) return false;
@@ -809,7 +809,7 @@ window.WorkVoltPages['projects'] = function(container) {
     if (focusMode) {
       var today = new Date(); today.setHours(0, 0, 0, 0);
       tasks = tasks.filter(function(t) {
-        if (t.assigned_to !== myId) return false;
+        if (t.assignee !== myId) return false;
         if (!t.due_date) return false;
         var d = new Date(t.due_date); d.setHours(0, 0, 0, 0);
         return d.getTime() === today.getTime();
@@ -817,8 +817,8 @@ window.WorkVoltPages['projects'] = function(container) {
     }
     if (taskFilter.status)      tasks = tasks.filter(function(t) { return t.status === taskFilter.status; });
     if (taskFilter.priority)    tasks = tasks.filter(function(t) { return t.priority === taskFilter.priority; });
-    if (taskFilter.assigned_to) tasks = tasks.filter(function(t) { return t.assigned_to === taskFilter.assigned_to; });
-    if (taskFilter.quick === 'mine')    tasks = tasks.filter(function(t) { return t.assigned_to === myId; });
+    if (taskFilter.assignee) tasks = tasks.filter(function(t) { return t.assignee === taskFilter.assignee; });
+    if (taskFilter.quick === 'mine')    tasks = tasks.filter(function(t) { return t.assignee === myId; });
     if (taskFilter.quick === 'overdue') tasks = tasks.filter(isOverdue);
     if (taskFilter.quick === 'today') {
       tasks = tasks.filter(function(t) {
@@ -910,7 +910,7 @@ window.WorkVoltPages['projects'] = function(container) {
         '</div>' +
       '</div>' +
       '<div class="flex items-center gap-2 flex-shrink-0">' +
-        (t.assigned_to ? userAvatar(t.assigned_to, 'w-6 h-6 text-[10px]') : '') +
+        (t.assignee ? userAvatar(t.assignee, 'w-6 h-6 text-[10px]') : '') +
         '<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">' +
           '<button data-task-action="edit" data-task-id="' + esc(t.id) + '" title="Edit" class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-blue-100 hover:text-blue-600 text-slate-400 flex items-center justify-center text-[10px] border-none cursor-pointer transition-colors"><i class="fas fa-pen"></i></button>' +
           (t.status !== 'Done'
@@ -943,7 +943,7 @@ window.WorkVoltPages['projects'] = function(container) {
                     '<p class="text-xs font-semibold text-slate-800 leading-snug mb-2 ' + (over ? 'text-red-700' : '') + '">' + esc(t.title) + '</p>' +
                     '<div class="flex items-center justify-between">' +
                       '<span class="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-px rounded ' + pc.bg + ' ' + pc.text + '">' + esc(t.priority || '—') + '</span>' +
-                      (t.assigned_to ? userAvatar(t.assigned_to, 'w-5 h-5 text-[9px]') : '') +
+                      (t.assignee ? userAvatar(t.assignee, 'w-5 h-5 text-[9px]') : '') +
                     '</div>' +
                     (t.due_date ? '<p class="text-[10px] ' + (over ? 'text-red-500 font-bold mt-1' : 'text-slate-400 mt-1') + '">' + fmtDate(t.due_date) + '</p>' : '') +
                   '</div>';
@@ -1181,10 +1181,10 @@ window.WorkVoltPages['projects'] = function(container) {
   function quickCreateTask(title) {
     dbCreateTask({
       title:      title,
-      project_id: activeProject.id,
+      project:  activeProject.id,
       status:     'To Do',
       priority:   'Medium',
-      created_by: myId,
+      creator:  myId,
     }).then(function(data) {
       tasksCache[data.id] = data;
       statsCache = computeStats(Object.values(tasksCache));
@@ -1321,7 +1321,7 @@ window.WorkVoltPages['projects'] = function(container) {
         tags:        document.getElementById('pf-tags').value.trim(),
         color:       selectedColor,
       };
-      if (!isEdit) params.created_by = myId || null;
+      if (!isEdit) params.creator = myId || null;
 
       var promise = isEdit
         ? dbUpdateProject(proj.id, params)
@@ -1403,7 +1403,7 @@ window.WorkVoltPages['projects'] = function(container) {
     var assigneeOpts = '<option value="">— Unassigned —</option>' +
       usersCache.map(function(u) {
         var uid = u.user_id || u.id;
-        return '<option value="' + esc(uid) + '"' + (uid === v('assigned_to') ? ' selected' : '') + '>' + esc(u.name || u.email) + '</option>';
+        return '<option value="' + esc(uid) + '"' + (uid === v('assignee') ? ' selected' : '') + '>' + esc(u.name || u.email) + '</option>';
       }).join('');
 
     // Linked task dropdown (all tasks in the same project, excluding self)
@@ -1514,13 +1514,13 @@ window.WorkVoltPages['projects'] = function(container) {
         description:     document.getElementById('tf-desc').value.trim(),
         status:          document.getElementById('tf-status').value,
         priority:        document.getElementById('tf-priority').value,
-        assigned_to:     document.getElementById('tf-assignee').value || null,
+        assignee:        document.getElementById('tf-assignee').value || null,
         due_date:        document.getElementById('tf-due').value || null,
         estimated_hours: parseFloat(document.getElementById('tf-est').value) || null,
-        project_id:      activeProject ? activeProject.id : null,
+        project:         activeProject ? activeProject.id : null,
       };
       if (linkedTaskEl) params.linked_task_id = linkedTaskEl.value || null;
-      if (!isEdit) params.created_by = myId || null;
+      if (!isEdit) params.creator = myId || null;
 
       var promise = isEdit
         ? dbUpdateTask(task.id, params)
@@ -1599,7 +1599,7 @@ window.WorkVoltPages['projects'] = function(container) {
       btn.disabled = true;
       dbAddMember(activeProject.id, uid, role)
         .then(function() {
-          membersCache.push({ project_id: activeProject.id, user_id: uid, role: role });
+          membersCache.push({ project:  activeProject.id, user_id: uid, role: role });
           closeModal();
           var lp = document.getElementById('proj-left-panel');
           if (lp) { lp.innerHTML = renderLeftPanel(); wireLeftPanel(); }
