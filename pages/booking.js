@@ -2239,146 +2239,194 @@
     });
   }
 
-  // ── Unified save: design tokens + all content fields → one DB write, one toast ──
-  async function dsSaveAll() {
-    // Cancel any pending debounced auto-save
-    clearTimeout(_contentSaveTimer);
+// ═══════════════════════════════════════════════════════════════
+//  UNIFIED SAVE: Design tokens + Content → ONE DB write
+// ═══════════════════════════════════════════════════════════════
 
-    // 1. Collect design tokens
-    const vals = dsReadControls();
-    dsDesign = dsMerge(dsDesign, vals);
-    const bookUrl = document.getElementById('ds-bookUrl')?.value || '';
+async function dsSaveAll() {
+  // Cancel any pending debounced auto-save
+  clearTimeout(_contentSaveTimer);
 
-    // 2. Collect content fields (same logic as _doContentSave)
-    const navLinks = [];
-    document.querySelectorAll('[data-nav-link]').forEach(row => {
-      const label  = row.querySelector('[data-nav-label]')?.value || '';
-      const url    = row.querySelector('[data-nav-url]')?.value   || '#';
-      const newTab = row.querySelector('[data-nav-newtab]')?.checked || false;
-      if (label) navLinks.push({ label, url, new_tab: newTab });
-    });
+  // 1. Collect design tokens
+  const vals = dsReadControls();
+  dsDesign = dsMerge(dsDesign, vals);
+  const bookUrl = document.getElementById('ds-bookUrl')?.value || '';
 
-    const footerLinks = [];
-    document.querySelectorAll('[data-footer-link]').forEach(row => {
-      const label  = row.querySelector('[data-fl-label]')?.value  || '';
-      const url    = row.querySelector('[data-fl-url]')?.value    || '#';
-      const newTab = row.querySelector('[data-fl-newtab]')?.checked || false;
-      if (label) footerLinks.push({ label, url, new_tab: newTab });
-    });
+  // 2. Collect content fields
+  const navLinks = [];
+  document.querySelectorAll('[data-nav-link]').forEach(row => {
+    const label  = row.querySelector('[data-nav-label]')?.value || '';
+    const url    = row.querySelector('[data-nav-url]')?.value   || '#';
+    const newTab = row.querySelector('[data-nav-newtab]')?.checked || false;
+    if (label) navLinks.push({ label, url, new_tab: newTab });
+  });
 
-    const banners = [];
-    document.querySelectorAll('[data-banner]').forEach(row => {
-      const title    = row.querySelector('[data-bn-title]')?.value    || '';
-      const subtitle = row.querySelector('[data-bn-subtitle]')?.value || '';
-      const image    = row.querySelector('[data-bn-image]')?.value    || '';
-      const badge    = row.querySelector('[data-bn-badge]')?.value    || '';
-      const url      = row.querySelector('[data-bn-url]')?.value      || '#';
-      const height   = parseInt(row.querySelector('[data-bn-height]')?.value) || 180;
-      const newTab   = row.querySelector('[data-bn-newtab]')?.checked || false;
-      banners.push({ title, subtitle, image, badge, url, height, new_tab: newTab });
-    });
+  const footerLinks = [];
+  document.querySelectorAll('[data-footer-link]').forEach(row => {
+    const label  = row.querySelector('[data-fl-label]')?.value  || '';
+    const url    = row.querySelector('[data-fl-url]')?.value    || '#';
+    const newTab = row.querySelector('[data-fl-newtab]')?.checked || false;
+    if (label) footerLinks.push({ label, url, new_tab: newTab });
+  });
 
-    const g = id => document.getElementById(id)?.value || '';
+  const banners = [];
+  document.querySelectorAll('[data-banner]').forEach(row => {
+    const title    = row.querySelector('[data-bn-title]')?.value    || '';
+    const subtitle = row.querySelector('[data-bn-subtitle]')?.value || '';
+    const image    = row.querySelector('[data-bn-image]')?.value    || '';
+    const badge    = row.querySelector('[data-bn-badge]')?.value    || '';
+    const url      = row.querySelector('[data-bn-url]')?.value      || '#';
+    const height   = parseInt(row.querySelector('[data-bn-height]')?.value) || 180;
+    const newTab   = row.querySelector('[data-bn-newtab]')?.checked || false;
+    banners.push({ title, subtitle, image, badge, url, height, new_tab: newTab });
+  });
 
-    // 3. Build one flat list of all key-value pairs to persist
-    const pairs = [
-      // Design tokens
-      ['booking_page_design', JSON.stringify(dsDesign)],
-      // Content — hero
-      ['hero_title',          g('ds-hero-title')],
-      ['hero_subtitle',       g('ds-hero-subtitle')],
-      ['hero_badge',          g('ds-hero-badge')],
-      ['hero_image_url',      g('ds-hero-image')],
-      ['hero_bg_color',       g('ds-heroBg')],
-      ['hero_cta2_label',     g('ds-hero-cta2-label')],
-      ['hero_cta2_url',       g('ds-hero-cta2-url')],
-      // Content — footer
-      ['footer_address',      g('ds-footer-address')],
-      ['footer_hours',        g('ds-footer-hours')],
-      ['footer_phone',        g('ds-footer-phone')],
-      ['home_url',            g('ds-home-url')],
-      // Content — nav / banners / links
-      ['nav_links',           JSON.stringify(navLinks)],
-      ['footer_links',        JSON.stringify(footerLinks)],
-      ['promo_banners',       JSON.stringify(banners)],
-    ];
-    if (bookUrl) pairs.push(['book_page_url', bookUrl]);
+  const g = id => document.getElementById(id)?.value || '';
 
-    try {
-      const D = db();
-      const save = (k, v) => D.update('booking_settings', k, { value: v }, 'key')
-        .catch(() => D.create('booking_settings', { key: k, value: v }));
+  // 3. Build all key-value pairs to persist
+  const pairs = [
+    ['booking_page_design', JSON.stringify(dsDesign)],
+    ['hero_title',          g('ds-hero-title')],
+    ['hero_subtitle',       g('ds-hero-subtitle')],
+    ['hero_badge',          g('ds-hero-badge')],
+    ['hero_image_url',      g('ds-hero-image')],
+    ['hero_bg_color',       g('ds-heroBg')],
+    ['hero_cta2_label',     g('ds-hero-cta2-label')],
+    ['hero_cta2_url',       g('ds-hero-cta2-url')],
+    ['footer_address',      g('ds-footer-address')],
+    ['footer_hours',        g('ds-footer-hours')],
+    ['footer_phone',        g('ds-footer-phone')],
+    ['home_url',            g('ds-home-url')],
+    ['nav_links',           JSON.stringify(navLinks)],
+    ['footer_links',        JSON.stringify(footerLinks)],
+    ['promo_banners',       JSON.stringify(banners)],
+  ];
+  if (bookUrl) pairs.push(['book_page_url', bookUrl]);
 
-      await Promise.all(pairs.map(([k, v]) => save(k, v)));
+  try {
+    const D = db();
+    
+    // FIXED: Proper upsert pattern for key-value store
+    // First, get all existing settings to know which exist
+    const existingRows = await D.list('booking_settings', {}, {});
+    const existingKeys = new Set((existingRows || []).map(r => r.key));
+    
+    // Separate into updates and creates
+    const updates = [];
+    const creates = [];
+    
+    for (const [k, v] of pairs) {
+      if (existingKeys.has(k)) {
+        // Update existing - need to find the row ID first
+        const row = existingRows.find(r => r.key === k);
+        updates.push({ id: row.id, key: k, value: v });
+      } else {
+        // Create new
+        creates.push({ key: k, value: v });
+      }
+    }
+    
+    // Execute updates (using row.id, not key)
+    await Promise.all(updates.map(u => 
+      D.update('booking_settings', u.id, { value: u.value })
+    ));
+    
+    // Execute creates
+    await Promise.all(creates.map(c => 
+      D.create('booking_settings', { key: c.key, value: c.value })
+    ));
 
-      // Update local state so the tab re-renders correctly on next load
-      pairs.forEach(([k, v]) => { state.settings[k] = v; });
+    // Update local state
+    pairs.forEach(([k, v]) => { state.settings[k] = v; });
 
-      toast('Settings saved!', 'success'); // ← exactly ONE toast
-    } catch(e) {
-      toast('Save failed: ' + e.message, 'error');
+    toast('Settings saved!', 'success');
+  } catch(e) {
+    console.error('Save error:', e);
+    toast('Save failed: ' + e.message, 'error');
+  }
+}
+
+// Silent version for auto-save debounce
+async function dsSaveAll_silent() {
+  const vals = dsReadControls();
+  dsDesign = dsMerge(dsDesign, vals);
+  const bookUrl = document.getElementById('ds-bookUrl')?.value || '';
+
+  const navLinks = [];
+  document.querySelectorAll('[data-nav-link]').forEach(row => {
+    const label  = row.querySelector('[data-nav-label]')?.value || '';
+    const url    = row.querySelector('[data-nav-url]')?.value   || '#';
+    const newTab = row.querySelector('[data-nav-newtab]')?.checked || false;
+    if (label) navLinks.push({ label, url, new_tab: newTab });
+  });
+  
+  const footerLinks = [];
+  document.querySelectorAll('[data-footer-link]').forEach(row => {
+    const label  = row.querySelector('[data-fl-label]')?.value  || '';
+    const url    = row.querySelector('[data-fl-url]')?.value    || '#';
+    const newTab = row.querySelector('[data-fl-newtab]')?.checked || false;
+    if (label) footerLinks.push({ label, url, new_tab: newTab });
+  });
+  
+  const banners = [];
+  document.querySelectorAll('[data-banner]').forEach(row => {
+    const title    = row.querySelector('[data-bn-title]')?.value    || '';
+    const subtitle = row.querySelector('[data-bn-subtitle]')?.value || '';
+    const image    = row.querySelector('[data-bn-image]')?.value    || '';
+    const badge    = row.querySelector('[data-bn-badge]')?.value    || '';
+    const url      = row.querySelector('[data-bn-url]')?.value      || '#';
+    const height   = parseInt(row.querySelector('[data-bn-height]')?.value) || 180;
+    const newTab   = row.querySelector('[data-bn-newtab]')?.checked || false;
+    banners.push({ title, subtitle, image, badge, url, height, new_tab: newTab });
+  });
+  
+  const g = id => document.getElementById(id)?.value || '';
+  const pairs = [
+    ['booking_page_design', JSON.stringify(dsDesign)],
+    ['hero_title',          g('ds-hero-title')],
+    ['hero_subtitle',       g('ds-hero-subtitle')],
+    ['hero_badge',          g('ds-hero-badge')],
+    ['hero_image_url',      g('ds-hero-image')],
+    ['hero_bg_color',       g('ds-heroBg')],
+    ['hero_cta2_label',     g('ds-hero-cta2-label')],
+    ['hero_cta2_url',       g('ds-hero-cta2-url')],
+    ['footer_address',      g('ds-footer-address')],
+    ['footer_hours',        g('ds-footer-hours')],
+    ['footer_phone',        g('ds-footer-phone')],
+    ['home_url',            g('ds-home-url')],
+    ['nav_links',           JSON.stringify(navLinks)],
+    ['footer_links',        JSON.stringify(footerLinks)],
+    ['promo_banners',       JSON.stringify(banners)],
+  ];
+  if (bookUrl) pairs.push(['book_page_url', bookUrl]);
+  
+  const D = db();
+  
+  // FIXED: Same pattern as above
+  const existingRows = await D.list('booking_settings', {}, {});
+  const existingKeys = new Set((existingRows || []).map(r => r.key));
+  
+  const updates = [];
+  const creates = [];
+  
+  for (const [k, v] of pairs) {
+    if (existingKeys.has(k)) {
+      const row = existingRows.find(r => r.key === k);
+      updates.push({ id: row.id, key: k, value: v });
+    } else {
+      creates.push({ key: k, value: v });
     }
   }
-
-  // Keep dsSave as a no-op alias so any other callers don't break
-  async function dsSave() { return dsSaveAll(); }
-
-  // Silent version used by the auto-save debounce — no toast, no error popup
-  async function dsSaveAll_silent() {
-    const vals = dsReadControls();
-    dsDesign = dsMerge(dsDesign, vals);
-    const bookUrl = document.getElementById('ds-bookUrl')?.value || '';
-
-    const navLinks = [];
-    document.querySelectorAll('[data-nav-link]').forEach(row => {
-      const label  = row.querySelector('[data-nav-label]')?.value || '';
-      const url    = row.querySelector('[data-nav-url]')?.value   || '#';
-      const newTab = row.querySelector('[data-nav-newtab]')?.checked || false;
-      if (label) navLinks.push({ label, url, new_tab: newTab });
-    });
-    const footerLinks = [];
-    document.querySelectorAll('[data-footer-link]').forEach(row => {
-      const label  = row.querySelector('[data-fl-label]')?.value  || '';
-      const url    = row.querySelector('[data-fl-url]')?.value    || '#';
-      const newTab = row.querySelector('[data-fl-newtab]')?.checked || false;
-      if (label) footerLinks.push({ label, url, new_tab: newTab });
-    });
-    const banners = [];
-    document.querySelectorAll('[data-banner]').forEach(row => {
-      const title    = row.querySelector('[data-bn-title]')?.value    || '';
-      const subtitle = row.querySelector('[data-bn-subtitle]')?.value || '';
-      const image    = row.querySelector('[data-bn-image]')?.value    || '';
-      const badge    = row.querySelector('[data-bn-badge]')?.value    || '';
-      const url      = row.querySelector('[data-bn-url]')?.value      || '#';
-      const height   = parseInt(row.querySelector('[data-bn-height]')?.value) || 180;
-      const newTab   = row.querySelector('[data-bn-newtab]')?.checked || false;
-      banners.push({ title, subtitle, image, badge, url, height, new_tab: newTab });
-    });
-    const g = id => document.getElementById(id)?.value || '';
-    const pairs = [
-      ['booking_page_design', JSON.stringify(dsDesign)],
-      ['hero_title',          g('ds-hero-title')],
-      ['hero_subtitle',       g('ds-hero-subtitle')],
-      ['hero_badge',          g('ds-hero-badge')],
-      ['hero_image_url',      g('ds-hero-image')],
-      ['hero_bg_color',       g('ds-heroBg')],
-      ['hero_cta2_label',     g('ds-hero-cta2-label')],
-      ['hero_cta2_url',       g('ds-hero-cta2-url')],
-      ['footer_address',      g('ds-footer-address')],
-      ['footer_hours',        g('ds-footer-hours')],
-      ['footer_phone',        g('ds-footer-phone')],
-      ['home_url',            g('ds-home-url')],
-      ['nav_links',           JSON.stringify(navLinks)],
-      ['footer_links',        JSON.stringify(footerLinks)],
-      ['promo_banners',       JSON.stringify(banners)],
-    ];
-    if (bookUrl) pairs.push(['book_page_url', bookUrl]);
-    const D = db();
-    const save = (k, v) => D.update('booking_settings', k, { value: v }, 'key')
-      .catch(() => D.create('booking_settings', { key: k, value: v }));
-    await Promise.all(pairs.map(([k, v]) => save(k, v)));
-    pairs.forEach(([k, v]) => { state.settings[k] = v; });
-  }
+  
+  await Promise.all(updates.map(u => 
+    D.update('booking_settings', u.id, { value: u.value })
+  ));
+  await Promise.all(creates.map(c => 
+    D.create('booking_settings', { key: c.key, value: c.value })
+  ));
+  
+  pairs.forEach(([k, v]) => { state.settings[k] = v; });
+}
 
   function dsReset() {
     if (!confirm('Reset all design settings to defaults?')) return;
