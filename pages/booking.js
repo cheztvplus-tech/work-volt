@@ -1011,9 +1011,8 @@
     </div>`);
   }
 
-  // REPLACE your existing openStaffModal function with this:
-
-function openStaffModal(id) {
+  // STAFF MODAL
+  function openStaffModal(id) {
   const stf = id ? state.staff.find(s=>s.id===id) : null;
   const avail = safeJson(stf?.availability, {});
   const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -1091,22 +1090,19 @@ function openStaffModal(id) {
       <button onclick="BK.saveStaff('${stf?.id||''}')" class="btn-primary flex-1"><i class="fas fa-save text-xs mr-1"></i>Save</button>
     </div>
   </div>`);
-}
-
-// ADD these new functions:
-
-window.BK.onStaffUserChange = function(select) {
-  const option = select.options[select.selectedIndex];
-  if (option && option.value) {
-    // Auto-fill from user data
-    const nameEl = document.getElementById('stf-name');
-    const emailEl = document.getElementById('stf-email');
-    if (nameEl && option.dataset.name) nameEl.value = option.dataset.name;
-    if (emailEl && option.dataset.email) emailEl.value = option.dataset.email;
   }
-};
 
-async function saveStaff(id) {
+  function onStaffUserChange(select) {
+    const option = select.options[select.selectedIndex];
+    if (option && option.value) {
+      const nameEl = document.getElementById('stf-name');
+      const emailEl = document.getElementById('stf-email');
+      if (nameEl && option.dataset.name) nameEl.value = option.dataset.name;
+      if (emailEl && option.dataset.email) emailEl.value = option.dataset.email;
+    }
+  }
+
+  async function saveStaff(id) {
   const errEl = document.getElementById('staff-err');
   const name = document.getElementById('stf-name')?.value?.trim();
   const userId = document.getElementById('stf-user-select')?.value || null;
@@ -1166,7 +1162,7 @@ async function saveStaff(id) {
     errEl.textContent = e.message; 
     errEl.classList.remove('hidden'); 
   }
-}
+  }
 
   // ── SAVE ACTIONS ─────────────────────────────────────────────
   async function saveBooking(id) {
