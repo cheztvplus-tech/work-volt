@@ -67,17 +67,36 @@
 
   <main class="max-w-2xl mx-auto px-4 py-8 pb-20">
 
-    <!-- Step Indicators -->
-    <div id="pub-steps" class="flex items-center justify-center gap-0 mb-8 hidden">
-      ${['Service','Date & Time','Your Info','Confirm'].map((label,i) => `
-        <div class="flex items-center gap-0">
-          <div class="flex flex-col items-center">
-            <div class="step-dot pending" id="pub-stepdot-${i}">${i+1}</div>
-            <p class="text-[10px] font-semibold text-slate-400 mt-1 whitespace-nowrap" id="pub-steplabel-${i}">${label}</p>
-          </div>
-          ${i<3?`<div class="w-12 h-0.5 bg-slate-200 mb-4 mx-1" id="pub-stepline-${i}"></div>`:''}
-        </div>`).join('')}
+   <!-- Step Indicators -->
+<div id="pub-steps" class="flex items-center justify-center gap-0 mb-8 hidden">
+  <div class="flex items-center gap-0">
+    <div class="flex flex-col items-center">
+      <div class="step-dot pending" id="pub-stepdot-0">1</div>
+      <p class="text-[10px] font-semibold text-slate-400 mt-1 whitespace-nowrap" id="pub-steplabel-0">Service</p>
     </div>
+    <div class="w-12 h-0.5 bg-slate-200 mb-4 mx-1" id="pub-stepline-0"></div>
+  </div>
+  <div class="flex items-center gap-0">
+    <div class="flex flex-col items-center">
+      <div class="step-dot pending" id="pub-stepdot-1">2</div>
+      <p class="text-[10px] font-semibold text-slate-400 mt-1 whitespace-nowrap" id="pub-steplabel-1">Date & Time</p>
+    </div>
+    <div class="w-12 h-0.5 bg-slate-200 mb-4 mx-1" id="pub-stepline-1"></div>
+  </div>
+  <div class="flex items-center gap-0">
+    <div class="flex flex-col items-center">
+      <div class="step-dot pending" id="pub-stepdot-2">3</div>
+      <p class="text-[10px] font-semibold text-slate-400 mt-1 whitespace-nowrap" id="pub-steplabel-2">Your Info</p>
+    </div>
+    <div class="w-12 h-0.5 bg-slate-200 mb-4 mx-1" id="pub-stepline-2"></div>
+  </div>
+  <div class="flex items-center gap-0">
+    <div class="flex flex-col items-center">
+      <div class="step-dot pending" id="pub-stepdot-3">4</div>
+      <p class="text-[10px] font-semibold text-slate-400 mt-1 whitespace-nowrap" id="pub-steplabel-3">Confirm</p>
+    </div>
+  </div>
+</div>
 
     <!-- Content area -->
     <div id="pub-content"></div>
