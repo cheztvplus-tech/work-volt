@@ -1470,9 +1470,9 @@ function quickUpdateTask(id, status) {
         '<textarea id="task-tf-desc" class="field text-sm" rows="2" style="resize:none">' + esc(v('description')) + '</textarea></div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
           '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Status</label>' +
-          '<select id="task-tf-status" class="field text-sm">' + statusOpts + '</select></div>' +
+          '<select id="taskform-status" class="field text-sm">' + statusOpts + '</select></div>' +
           '<div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Priority</label>' +
-          '<select id="task-tf-priority" class="field text-sm">' + priorityOpts + '</select></div>' +
+          '<select id="taskform-priority" class="field text-sm">' + priorityOpts + '</select></div>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">' +
           '<div>' +
@@ -1543,8 +1543,8 @@ function quickUpdateTask(id, status) {
       var params = {
         title:           title,
         description:     document.getElementById('task-tf-desc').value.trim(),
-        status:          document.getElementById('task-tf-status').value || 'To Do',
-        priority:        document.getElementById('task-tf-priority').value || 'Medium',
+        status:          document.getElementById('taskform-status').value || 'To Do',
+        priority:        document.getElementById('taskform-priority').value || 'Medium',
         assignee:        document.getElementById('task-tf-assignee').value || null,
         due_date:        document.getElementById('task-tf-due').value || null,
         estimated_hours: parseFloat(document.getElementById('task-tf-est').value) || null,
