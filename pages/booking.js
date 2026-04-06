@@ -1645,7 +1645,7 @@
       reload,
       // Designer
       dsApply, dsSave, dsReset, dsExport, dsPickPreset, dsUpdatePreview,
-      dsContentSave, dsAddNavLink, dsAddBanner, dsAddFooterLink,
+      dsContentSave, dsContentSaveNow, dsAddNavLink, dsAddBanner, dsAddFooterLink,
     };
   }
 
@@ -1723,7 +1723,7 @@
             <button onclick="BK.dsReset()" class="text-xs text-slate-400 hover:text-red-500 transition-colors" title="Reset to defaults">
               <i class="fas fa-undo"></i>
             </button>
-            <button onclick="BK.dsSave()" class="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+            <button onclick="BK.dsSave();BK.dsContentSaveNow()" class="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
               <i class="fas fa-save mr-1"></i>Save
             </button>
           </div>
@@ -2352,26 +2352,38 @@
     list.appendChild(div.firstElementChild);
   }
 
-  async function dsContentSave() {
-    // Collect nav links
+  // Debounce timer for silent auto-save
+  let _contentSaveTimer = null;
+
+  // Called on every keystroke/change — silently debounces, no toast
+  function dsContentSave() {
+    clearTimeout(_contentSaveTimer);
+    _contentSaveTimer = setTimeout(() => _doContentSave(false), 1200);
+  }
+
+  // Called by the Save button — saves immediately with toast
+  async function dsContentSaveNow() {
+    clearTimeout(_contentSaveTimer);
+    await _doContentSave(true);
+  }
+
+  async function _doContentSave(showToast) {
     const navLinks = [];
     document.querySelectorAll('[data-nav-link]').forEach(row => {
-      const label   = row.querySelector('[data-nav-label]')?.value || '';
-      const url     = row.querySelector('[data-nav-url]')?.value || '#';
-      const newTab  = row.querySelector('[data-nav-newtab]')?.checked || false;
+      const label  = row.querySelector('[data-nav-label]')?.value || '';
+      const url    = row.querySelector('[data-nav-url]')?.value   || '#';
+      const newTab = row.querySelector('[data-nav-newtab]')?.checked || false;
       if (label) navLinks.push({ label, url, new_tab: newTab });
     });
 
-    // Collect footer links
     const footerLinks = [];
     document.querySelectorAll('[data-footer-link]').forEach(row => {
-      const label  = row.querySelector('[data-fl-label]')?.value || '';
-      const url    = row.querySelector('[data-fl-url]')?.value || '#';
+      const label  = row.querySelector('[data-fl-label]')?.value  || '';
+      const url    = row.querySelector('[data-fl-url]')?.value    || '#';
       const newTab = row.querySelector('[data-fl-newtab]')?.checked || false;
       if (label) footerLinks.push({ label, url, new_tab: newTab });
     });
 
-    // Collect banners
     const banners = [];
     document.querySelectorAll('[data-banner]').forEach(row => {
       const title    = row.querySelector('[data-bn-title]')?.value    || '';
@@ -2379,38 +2391,39 @@
       const image    = row.querySelector('[data-bn-image]')?.value    || '';
       const badge    = row.querySelector('[data-bn-badge]')?.value    || '';
       const url      = row.querySelector('[data-bn-url]')?.value      || '#';
-      const height   = parseInt(row.querySelector('[data-bn-height]')?.value)||180;
+      const height   = parseInt(row.querySelector('[data-bn-height]')?.value) || 180;
       const newTab   = row.querySelector('[data-bn-newtab]')?.checked || false;
       banners.push({ title, subtitle, image, badge, url, height, new_tab: newTab });
     });
 
     const g = id => document.getElementById(id)?.value || '';
     const pairs = [
-      ['hero_title',        g('ds-hero-title')],
-      ['hero_subtitle',     g('ds-hero-subtitle')],
-      ['hero_badge',        g('ds-hero-badge')],
-      ['hero_image_url',    g('ds-hero-image')],
-      ['hero_bg_color',     g('ds-heroBg')],
-      ['hero_cta2_label',   g('ds-hero-cta2-label')],
-      ['hero_cta2_url',     g('ds-hero-cta2-url')],
-      ['footer_address',    g('ds-footer-address')],
-      ['footer_hours',      g('ds-footer-hours')],
-      ['footer_phone',      g('ds-footer-phone')],
-      ['home_url',          g('ds-home-url')],
-      ['nav_links',         JSON.stringify(navLinks)],
-      ['footer_links',      JSON.stringify(footerLinks)],
-      ['promo_banners',     JSON.stringify(banners)],
+      ['hero_title',      g('ds-hero-title')],
+      ['hero_subtitle',   g('ds-hero-subtitle')],
+      ['hero_badge',      g('ds-hero-badge')],
+      ['hero_image_url',  g('ds-hero-image')],
+      ['hero_bg_color',   g('ds-heroBg')],
+      ['hero_cta2_label', g('ds-hero-cta2-label')],
+      ['hero_cta2_url',   g('ds-hero-cta2-url')],
+      ['footer_address',  g('ds-footer-address')],
+      ['footer_hours',    g('ds-footer-hours')],
+      ['footer_phone',    g('ds-footer-phone')],
+      ['home_url',        g('ds-home-url')],
+      ['nav_links',       JSON.stringify(navLinks)],
+      ['footer_links',    JSON.stringify(footerLinks)],
+      ['promo_banners',   JSON.stringify(banners)],
     ];
 
     try {
       const D = db();
-      const save = (k,v) => D.update('booking_settings', k, { value:v }, 'key')
-        .catch(() => D.create('booking_settings', { key:k, value:v }));
-      await Promise.all(pairs.map(([k,v]) => save(k,v)));
-      // Update local state cache
-      pairs.forEach(([k,v]) => { state.settings[k] = v; });
-      toast('Content saved!', 'success');
-    } catch(e) { toast('Save failed: ' + e.message, 'error'); }
+      const save = (k, v) => D.update('booking_settings', k, { value: v }, 'key')
+        .catch(() => D.create('booking_settings', { key: k, value: v }));
+      await Promise.all(pairs.map(([k, v]) => save(k, v)));
+      pairs.forEach(([k, v]) => { state.settings[k] = v; });
+      if (showToast) toast('Content saved!', 'success');
+    } catch(e) {
+      if (showToast) toast('Save failed: ' + e.message, 'error');
+    }
   }
 
 })();
