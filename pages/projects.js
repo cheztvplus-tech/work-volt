@@ -1181,10 +1181,10 @@ window.WorkVoltPages['projects'] = function(container) {
   function quickCreateTask(title) {
     dbCreateTask({
       title:      title,
-      project:  activeProject.id,
+      project_id:  activeProject.id,
       status:     'To Do',
       priority:   'Medium',
-      creator:  myId,
+      created_by:  myId,
     }).then(function(data) {
       tasksCache[data.id] = data;
       statsCache = computeStats(Object.values(tasksCache));
@@ -1517,10 +1517,10 @@ window.WorkVoltPages['projects'] = function(container) {
         assignee:        document.getElementById('task-tf-assignee').value || null,
         due_date:        document.getElementById('task-tf-due').value || null,
         estimated_hours: parseFloat(document.getElementById('task-tf-est').value) || null,
-        project:         activeProject ? activeProject.id : null,
+        project_id:         activeProject ? activeProject.id : null,
       };
       if (linkedTaskEl) params.linked_task_id = linkedTaskEl.value || null;
-      if (!isEdit) params.creator = myId || null;
+      if (!isEdit) params.created_by = myId || null;
 
       var promise = isEdit
         ? dbUpdateTask(task.id, params)
