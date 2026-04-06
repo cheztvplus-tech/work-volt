@@ -184,7 +184,7 @@ window.WorkVoltPages['projects'] = function(container) {
 
   // tasks table (project-scoped)
   function dbListTasks(projectId) {
-    return db.list('tasks', { project: projectId }, { order: 'created_at' });
+    return db.list('tasks', { project_id: projectId }, { order: 'created_at' });
   }
   function dbCreateTask(params) {
     return db.create('tasks', params);
