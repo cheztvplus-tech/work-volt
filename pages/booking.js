@@ -2305,35 +2305,12 @@ async function dsSaveAll() {
 
   try {
     const D = db();
-    
-    // FIXED: Proper upsert pattern for key-value store
-    // First, get all existing settings to know which exist
-    const existingRows = await D.list('booking_settings', {}, {});
-    const existingKeys = new Set((existingRows || []).map(r => r.key));
-    
-    // Separate into updates and creates
-    const updates = [];
-    const creates = [];
-    
-    for (const [k, v] of pairs) {
-      if (existingKeys.has(k)) {
-        // Update existing - need to find the row ID first
-        const row = existingRows.find(r => r.key === k);
-        updates.push({ id: row.id, key: k, value: v });
-      } else {
-        // Create new
-        creates.push({ key: k, value: v });
-      }
-    }
-    
-    // Execute updates (using row.id, not key)
-    await Promise.all(updates.map(u => 
-      D.update('booking_settings', u.id, { value: u.value })
-    ));
-    
-    // Execute creates
-    await Promise.all(creates.map(c => 
-      D.create('booking_settings', { key: c.key, value: c.value })
+
+    // Upsert each pair by key (same pattern as saveSettings)
+    await Promise.all(pairs.map(([k, v]) =>
+      D.update('booking_settings', k, { value: v }, 'key').catch(() =>
+        D.create('booking_settings', { key: k, value: v })
+      )
     ));
 
     // Update local state
@@ -2401,28 +2378,12 @@ async function dsSaveAll_silent() {
   if (bookUrl) pairs.push(['book_page_url', bookUrl]);
   
   const D = db();
-  
-  // FIXED: Same pattern as above
-  const existingRows = await D.list('booking_settings', {}, {});
-  const existingKeys = new Set((existingRows || []).map(r => r.key));
-  
-  const updates = [];
-  const creates = [];
-  
-  for (const [k, v] of pairs) {
-    if (existingKeys.has(k)) {
-      const row = existingRows.find(r => r.key === k);
-      updates.push({ id: row.id, key: k, value: v });
-    } else {
-      creates.push({ key: k, value: v });
-    }
-  }
-  
-  await Promise.all(updates.map(u => 
-    D.update('booking_settings', u.id, { value: u.value })
-  ));
-  await Promise.all(creates.map(c => 
-    D.create('booking_settings', { key: c.key, value: c.value })
+
+  // Upsert each pair by key (same pattern as saveSettings)
+  await Promise.all(pairs.map(([k, v]) =>
+    D.update('booking_settings', k, { value: v }, 'key').catch(() =>
+      D.create('booking_settings', { key: k, value: v })
+    )
   ));
   
   pairs.forEach(([k, v]) => { state.settings[k] = v; });
