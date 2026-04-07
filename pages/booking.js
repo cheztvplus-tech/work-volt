@@ -2469,31 +2469,51 @@
         .filter(Boolean)
         .filter((v, i, a) => a.indexOf(v) === i);
       const url = 'https://fonts.googleapis.com/css2?' +
-        families.map(f => 'family=' + encodeURIComponent(f) + ':wght@400;500;600;700;800').join('&') +
+        families.map(f => 'family=' + encodeURIComponent(f).replace(/%20/g,'+') + ':wght@400;500;600;700;800').join('&') +
         '&display=swap';
-      let existing = document.getElementById('ds-admin-font-link');
-      if (!existing) {
-        existing = document.createElement('link');
-        existing.id  = 'ds-admin-font-link';
-        existing.rel = 'stylesheet';
-        document.head.appendChild(existing);
+      let linkEl = document.getElementById('ds-admin-font-link');
+      if (!linkEl) {
+        linkEl = document.createElement('link');
+        linkEl.id  = 'ds-admin-font-link';
+        linkEl.rel = 'stylesheet';
+        document.head.appendChild(linkEl);
       }
-      if (existing.href !== url) existing.href = url;
-
-      // Apply fonts to the preview panel immediately
-      const preview = document.getElementById('ds-live-preview');
-      if (preview) preview.style.fontFamily = "'" + dsDesign.fontBody + "', sans-serif";
-      const prevTitle = document.getElementById('ds-prev-title');
-      if (prevTitle) prevTitle.style.fontFamily = "'" + (dsDesign.fontHeading || dsDesign.fontBody) + "', sans-serif";
+      linkEl.href = url;  // always set — no comparison needed
     }
 
     // Update shadow button highlights
     ['flat','soft','medium','heavy'].forEach(v => {
       const btn = document.getElementById('ds-shadow-' + v);
       if (!btn) return;
-      const active = vals.cardShadowPreset === v;
+      const active = dsDesign.cardShadowPreset === v;
       btn.className = btn.className.replace(/border-blue-600 bg-blue-50 text-blue-700|border-slate-200 text-slate-500 hover:border-slate-300/g,'');
       btn.className += active ? ' border-blue-600 bg-blue-50 text-blue-700' : ' border-slate-200 text-slate-500 hover:border-slate-300';
+    });
+
+    // Update Calendar Style button states
+    ['classic','bubble','minimal'].forEach(v => {
+      const btn = document.querySelector('[onclick*="ds-calStyle"][onclick*="' + v + '"]');
+      if (!btn) return;
+      const active = dsDesign.calStyle === v;
+      btn.className = btn.className.replace(/border-blue-600 bg-blue-50|border-slate-200 hover:border-slate-300/g,'');
+      btn.className += active ? ' border-blue-600 bg-blue-50' : ' border-slate-200 hover:border-slate-300';
+      const icon = btn.querySelector('i');
+      const label = btn.querySelector('p');
+      if (icon)  { icon.className  = icon.className.replace(/text-blue-600|text-slate-400/g,'');  icon.className  += active ? ' text-blue-600' : ' text-slate-400'; }
+      if (label) { label.className = label.className.replace(/text-blue-700|text-slate-500/g,''); label.className += active ? ' text-blue-700' : ' text-slate-500'; }
+    });
+
+    // Update Step Indicator button states
+    ['dots','numbers','bar'].forEach(v => {
+      const btn = document.querySelector('[onclick*="ds-stepStyle"][onclick*="' + v + '"]');
+      if (!btn) return;
+      const active = dsDesign.stepStyle === v;
+      btn.className = btn.className.replace(/border-blue-600 bg-blue-50|border-slate-200 hover:border-slate-300/g,'');
+      btn.className += active ? ' border-blue-600 bg-blue-50' : ' border-slate-200 hover:border-slate-300';
+      const icon = btn.querySelector('i');
+      const label = btn.querySelector('p');
+      if (icon)  { icon.className  = icon.className.replace(/text-blue-600|text-slate-400/g,'');  icon.className  += active ? ' text-blue-600' : ' text-slate-400'; }
+      if (label) { label.className = label.className.replace(/text-blue-700|text-slate-500/g,''); label.className += active ? ' text-blue-700' : ' text-slate-500'; }
     });
 
     // Update live inline preview
@@ -2501,6 +2521,9 @@
   }
 
   function dsUpdateInlinePreview(d) {
+    const bodyFont    = "'" + (d.fontBody    || 'Plus Jakarta Sans') + "', sans-serif";
+    const headingFont = "'" + (d.fontHeading || d.fontBody || 'Plus Jakarta Sans') + "', sans-serif";
+
     // Hero gradient
     const hero = document.getElementById('ds-prev-hero');
     if (hero) hero.style.background = 'linear-gradient(135deg,' + (d.primary||'#1e3a8a') + ',' + (d.primary||'#2563eb') + ')';
@@ -2513,12 +2536,12 @@
     const titleEl = document.getElementById('ds-prev-title');
     if (titleEl) {
       if (d.bizName) titleEl.textContent = d.bizName;
-      titleEl.style.fontFamily = "'" + (d.fontHeading || d.fontBody || 'Plus Jakarta Sans') + "', sans-serif";
+      titleEl.style.fontFamily = headingFont;
     }
 
-    // Subtitle font
+    // Subtitle
     const subEl = document.getElementById('ds-prev-subtitle');
-    if (subEl) subEl.style.fontFamily = "'" + (d.fontBody || 'Plus Jakarta Sans') + "', sans-serif";
+    if (subEl) subEl.style.fontFamily = bodyFont;
 
     // Palette swatches
     ['primary','accent','bg','surface','text'].forEach(k => {
@@ -2526,15 +2549,15 @@
       if (sw && d[k]) sw.style.background = d[k];
     });
 
-    // Mini service cards — update color, border, radius, and text color
+    // Mini service cards
     document.querySelectorAll('#ds-prev-body .ds-mini-card').forEach(card => {
-      card.style.background    = d.surface  || '#fff';
-      card.style.borderColor   = d.border   || '#e2e8f0';
-      card.style.borderRadius  = d.cardRadius || '20px';
+      card.style.background   = d.surface   || '#fff';
+      card.style.borderColor  = d.border    || '#e2e8f0';
+      card.style.borderRadius = d.cardRadius || '20px';
     });
     document.querySelectorAll('#ds-prev-body .ds-mini-card-name').forEach(el => {
-      el.style.color = d.text || '#0f172a';
-      el.style.fontFamily = "'" + (d.fontBody || 'Plus Jakarta Sans') + "', sans-serif";
+      el.style.color       = d.text || '#0f172a';
+      el.style.fontFamily  = bodyFont;
     });
     document.querySelectorAll('#ds-prev-body .ds-mini-card-sub').forEach(el => {
       el.style.color = d.textMuted || '#64748b';
@@ -2546,9 +2569,21 @@
     // Continue button
     const miniBtn = document.getElementById('ds-prev-btn');
     if (miniBtn) {
-      miniBtn.style.background   = d.primary    || '#2563eb';
-      miniBtn.style.borderRadius = d.btnRadius  || '12px';
-      miniBtn.style.fontFamily   = "'" + (d.fontBody || 'Plus Jakarta Sans') + "', sans-serif";
+      miniBtn.style.background   = d.primary   || '#2563eb';
+      miniBtn.style.borderRadius = d.btnRadius || '12px';
+      miniBtn.style.fontFamily   = bodyFont;
+    }
+
+    // After fonts load, re-apply font-family so the browser actually switches
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => {
+        if (titleEl) titleEl.style.fontFamily = headingFont;
+        if (subEl)   subEl.style.fontFamily   = bodyFont;
+        if (miniBtn) miniBtn.style.fontFamily  = bodyFont;
+        document.querySelectorAll('#ds-prev-body .ds-mini-card-name').forEach(el => {
+          el.style.fontFamily = bodyFont;
+        });
+      });
     }
   }
 
@@ -2721,21 +2756,43 @@ async function dsSaveAll_silent() {
 }
 
 // ── Robust upsert helper ─────────────────────────────────────
-// Fetches all existing booking_settings rows once, then updates
-// rows that already exist (by their numeric id) and creates the rest.
-// This avoids the broken D.update(..., key, data, 'key') pattern.
+// Serialized: only one save can run at a time to prevent duplicate-key
+// errors from concurrent create attempts.
+let _upsertInFlight = false;
 async function dsUpsertSettings(D, pairs) {
-  const existing = await D.list('booking_settings', {});
-  const rowMap = {};
-  (existing || []).forEach(r => { rowMap[r.key] = r.id; });
+  // Wait for any in-flight save to finish
+  while (_upsertInFlight) {
+    await new Promise(r => setTimeout(r, 50));
+  }
+  _upsertInFlight = true;
+  try {
+    // Fetch current rows fresh each time so we always have the latest IDs
+    const existing = await D.list('booking_settings', {});
+    const rowMap = {};
+    (existing || []).forEach(r => { rowMap[r.key] = r.id; });
 
-  await Promise.all(pairs.map(([k, v]) => {
-    if (rowMap[k] !== undefined) {
-      return D.update('booking_settings', rowMap[k], { value: v });
-    } else {
-      return D.create('booking_settings', { key: k, value: v });
+    // Run sequentially (not parallel) to avoid race conditions
+    for (const [k, v] of pairs) {
+      if (rowMap[k] !== undefined) {
+        await D.update('booking_settings', rowMap[k], { value: v });
+      } else {
+        try {
+          await D.create('booking_settings', { key: k, value: v });
+        } catch(e) {
+          // Row was created by a concurrent save between our list and now — fetch and update
+          if (e.message && e.message.includes('duplicate')) {
+            const fresh = await D.list('booking_settings', {});
+            const row = (fresh || []).find(r => r.key === k);
+            if (row) await D.update('booking_settings', row.id, { value: v });
+          } else {
+            throw e;
+          }
+        }
+      }
     }
-  }));
+  } finally {
+    _upsertInFlight = false;
+  }
 }
 
   function dsReset() {
