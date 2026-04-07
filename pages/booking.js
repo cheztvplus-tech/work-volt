@@ -1041,15 +1041,57 @@
     const svc = id ? state.services.find(s=>s.id===id) : null;
     const cur = state.settings.currency || '$';
 
-    // Common FA icons for services
+    // Comprehensive FA icons grouped by category
     const faIcons = [
-      'fa-cut','fa-spa','fa-tooth','fa-heartbeat','fa-dumbbell','fa-camera','fa-car-side',
-      'fa-home','fa-laptop','fa-wrench','fa-broom','fa-dog','fa-baby','fa-graduation-cap',
-      'fa-utensils','fa-leaf','fa-paint-brush','fa-music','fa-stethoscope','fa-eye',
-      'fa-hand-sparkles','fa-hands-helping','fa-user-md','fa-bicycle','fa-running',
-      'fa-swimming-pool','fa-hat-wizard','fa-gem','fa-star','fa-bolt',
+      // Beauty & Wellness
+      'fa-cut','fa-spa','fa-leaf','fa-hand-sparkles','fa-magic','fa-paint-brush',
+      // Health & Medical
+      'fa-tooth','fa-heartbeat','fa-stethoscope','fa-user-md','fa-eye','fa-pills',
+      'fa-syringe','fa-brain','fa-lungs','fa-bone','fa-ambulance','fa-hospital',
+      // Fitness & Sport
+      'fa-dumbbell','fa-running','fa-bicycle','fa-swimming-pool','fa-football-ball',
+      'fa-golf-ball','fa-table-tennis','fa-skiing','fa-medal','fa-trophy',
+      // Home & Repair
+      'fa-home','fa-wrench','fa-hammer','fa-screwdriver','fa-tools','fa-broom',
+      'fa-paint-roller','fa-couch','fa-lightbulb','fa-plug','fa-shower','fa-bath',
+      // Technology
+      'fa-laptop','fa-mobile-alt','fa-wifi','fa-code','fa-microchip','fa-print',
+      'fa-camera','fa-video','fa-headphones','fa-tv',
+      // Education & Business
+      'fa-graduation-cap','fa-book','fa-chalkboard-teacher','fa-briefcase',
+      'fa-chart-bar','fa-calculator','fa-pen-nib','fa-language','fa-music',
+      // Food & Lifestyle
+      'fa-utensils','fa-coffee','fa-wine-glass','fa-birthday-cake','fa-pizza-slice',
+      // Transport & Delivery
+      'fa-car-side','fa-truck','fa-shipping-fast','fa-map-marker-alt','fa-plane',
+      // Pets & Kids
+      'fa-dog','fa-cat','fa-baby','fa-baby-carriage','fa-paw',
+      // Creative & Events
+      'fa-gem','fa-star','fa-bolt','fa-hat-wizard','fa-theater-masks',
+      'fa-camera-retro','fa-palette','fa-film','fa-microphone',
     ];
-    const commonEmojis = ['✂️','💆','🧖','💅','💄','🪮','🦷','🩺','💪','🏋️','🧘','📸','🔧','✨','🏠','🐶','👶','📚','🎵','🌿','🍽️','🚗','💎','⭐','🔥','🌟','🎨','💻','🏅','🌺'];
+    const commonEmojis = [
+      // Beauty
+      '✂️','💆','🧖','💅','💄','🪮','💇','🧴','🧹','🪥',
+      // Health
+      '🦷','🩺','💊','🩻','🧠','👁️','💉','🩹','🏥',
+      // Fitness
+      '💪','🏋️','🧘','🚴','🏊','🤸','⚽','🎾','🏈','🥊',
+      // Home
+      '🏠','🔧','🔨','🪛','🪚','🧺','🛁','🚿','💡','🪴',
+      // Tech
+      '💻','📱','📷','🎥','🎧','📺','🖨️','⌨️',
+      // Education
+      '📚','🎓','✏️','📝','🏆','🎯','🌐','🎵','🎸',
+      // Food
+      '🍽️','☕','🍕','🎂','🥗','🍷',
+      // Transport
+      '🚗','✈️','🚀','📦','🗺️',
+      // Pets & Kids
+      '🐶','🐱','🐾','👶','🧸',
+      // Other
+      '💎','⭐','🔥','🌟','🌺','🎨','🙌','🌿','❤️','✨',
+    ];
 
     showModal(`<div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
       <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
@@ -1064,7 +1106,8 @@
           <div class="col-span-2"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Service Name *</label>
             <input id="svc-name" type="text" class="field text-sm" value="${esc(svc?.name||'')}"></div>
           <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Color</label>
-            <input id="svc-color" type="color" class="field text-sm h-[42px] p-1 cursor-pointer" value="${svc?.color||'#3b82f6'}"></div>
+            <input id="svc-color" type="color" class="field text-sm h-[42px] p-1 cursor-pointer" value="${svc?.color||'#3b82f6'}"
+              oninput="const p=document.getElementById('svc-fa-preview');if(p)p.style.color=this.value"></div>
         </div>
 
         <!-- Category + Badge -->
@@ -1107,39 +1150,50 @@
         <!-- ── ICON SECTION ── -->
         <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
           <p class="text-xs font-bold text-slate-600 uppercase tracking-wide">Service Icon / Image</p>
+          <p class="text-[10px] text-slate-400">Priority: Image URL → FontAwesome icon → Emoji → Auto-detected keyword icon</p>
 
           <!-- Image URL (highest priority) -->
           <div>
-            <label class="block text-xs font-semibold text-slate-500 mb-1">Image URL <span class="font-normal text-slate-300">(overrides icon — use a square/landscape photo)</span></label>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Image URL <span class="font-normal text-slate-300">(overrides icon)</span></label>
             <input id="svc-image-url" type="url" class="field text-sm" placeholder="https://… jpg, png, webp" value="${esc(svc?.image_url||'')}">
           </div>
 
-          <!-- FontAwesome icon class -->
+          <!-- FontAwesome icon -->
           <div>
-            <label class="block text-xs font-semibold text-slate-500 mb-1.5">FontAwesome Icon Class <span class="font-normal text-slate-300">(used when no image)</span></label>
-            <div class="flex gap-2">
-              <input id="svc-icon-class" type="text" class="field text-sm flex-1 font-mono" placeholder="e.g. fas fa-cut" value="${esc(svc?.icon_class||'')}">
-              <button type="button" onclick="document.getElementById('svc-icon-class').value='';document.getElementById('svc-fa-preview').className='text-3xl text-slate-300 fas fa-question'" class="px-2 py-1 text-xs text-red-400 hover:text-red-600">Clear</button>
+            <label class="block text-xs font-semibold text-slate-500 mb-1.5">FontAwesome Icon <span class="font-normal text-slate-300">(pick from grid or type class)</span></label>
+            <div class="flex gap-2 mb-2">
+              <input id="svc-icon-class" type="text" class="field text-sm flex-1 font-mono" placeholder="e.g. fas fa-cut"
+                value="${esc(svc?.icon_class||'')}"
+                oninput="const p=document.getElementById('svc-fa-preview');p.className=this.value||'fas fa-question text-slate-300';p.style.color=document.getElementById('svc-color').value||'#3b82f6'">
+              <button type="button" onclick="document.getElementById('svc-icon-class').value='';const p=document.getElementById('svc-fa-preview');p.className='fas fa-question text-slate-300';p.style.color=''" class="px-3 py-1 text-xs text-red-400 hover:text-red-600 border border-slate-200 rounded-lg">Clear</button>
             </div>
-            <!-- FA icon picker -->
-            <div class="flex flex-wrap gap-1.5 mt-2 p-2 bg-white border border-slate-200 rounded-xl max-h-28 overflow-y-auto">
-              ${faIcons.map(ic=>`<button type="button" title="${ic}" onclick="document.getElementById('svc-icon-class').value='fas ${ic}';document.getElementById('svc-fa-preview').className='fas ${ic} text-3xl'" class="w-8 h-8 rounded-lg hover:bg-blue-50 flex items-center justify-center text-slate-500 hover:text-blue-600 transition-colors text-sm" style="font-size:1.1rem"><i class="fas ${ic}"></i></button>`).join('')}
+            <!-- Icon grid — 8 cols, scrollable -->
+            <div class="grid gap-1 p-2 bg-white border border-slate-200 rounded-xl overflow-y-auto" style="grid-template-columns:repeat(8,1fr);max-height:160px">
+              ${faIcons.map(ic => `<button type="button" title="${ic.replace('fa-','')}"
+                onclick="document.getElementById('svc-icon-class').value='fas ${ic}';const p=document.getElementById('svc-fa-preview');p.className='fas ${ic}';p.style.color=document.getElementById('svc-color').value||'#3b82f6';p.style.fontSize='1.75rem'"
+                class="w-8 h-8 rounded-lg hover:bg-blue-50 flex items-center justify-center text-slate-500 hover:text-blue-600 transition-colors">
+                <i class="fas ${ic}" style="font-size:1rem"></i>
+              </button>`).join('')}
             </div>
-            <div class="mt-2 flex items-center gap-2">
-              <span class="text-xs text-slate-400">Preview:</span>
-              <i id="svc-fa-preview" class="${svc?.icon_class ? esc(svc.icon_class) : 'fas fa-question'} text-3xl" style="color:${svc?.color||'#3b82f6'}"></i>
+            <!-- Live preview -->
+            <div class="mt-2 flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-3 py-2">
+              <span class="text-xs text-slate-400 flex-shrink-0">Preview:</span>
+              <i id="svc-fa-preview" class="${svc?.icon_class ? esc(svc.icon_class) : 'fas fa-question text-slate-300'}"
+                style="font-size:1.75rem;color:${svc?.icon_class ? (svc?.color||'#3b82f6') : ''}"></i>
+              <span class="text-xs text-slate-400 ml-1">← updates as you pick</span>
             </div>
+            <p class="text-[10px] text-slate-400 mt-1">Color matches the service color picker above. <a href="https://fontawesome.com/icons" target="_blank" class="text-blue-500 hover:underline">Browse all FA icons ↗</a></p>
           </div>
 
           <!-- Emoji icon -->
           <div>
-            <label class="block text-xs font-semibold text-slate-500 mb-1.5">Emoji Icon <span class="font-normal text-slate-300">(fallback if no image or FA icon)</span></label>
+            <label class="block text-xs font-semibold text-slate-500 mb-1.5">Emoji Icon <span class="font-normal text-slate-300">(fallback when no image or FA icon set)</span></label>
             <div class="flex gap-2 items-center mb-2">
-              <input id="svc-icon-emoji" type="text" class="field text-sm w-20 text-center text-2xl" placeholder="⭐" value="${esc(svc?.icon_emoji||'')}">
-              <span class="text-xs text-slate-400">or pick one:</span>
+              <input id="svc-icon-emoji" type="text" class="field text-sm w-20 text-center" style="font-size:1.4rem" placeholder="⭐" value="${esc(svc?.icon_emoji||'')}">
+              <span class="text-xs text-slate-400">or pick:</span>
             </div>
-            <div class="flex flex-wrap gap-1 p-2 bg-white border border-slate-200 rounded-xl">
-              ${commonEmojis.map(e=>`<button type="button" onclick="document.getElementById('svc-icon-emoji').value='${e}'" class="text-xl hover:bg-slate-100 rounded-lg w-8 h-8 flex items-center justify-center transition-colors">${e}</button>`).join('')}
+            <div class="grid gap-0.5 p-2 bg-white border border-slate-200 rounded-xl overflow-y-auto" style="grid-template-columns:repeat(10,1fr);max-height:120px">
+              ${commonEmojis.map(e=>`<button type="button" onclick="document.getElementById('svc-icon-emoji').value='${e}'" class="hover:bg-slate-100 rounded-lg flex items-center justify-center transition-colors" style="width:2rem;height:2rem;font-size:1.2rem">${e}</button>`).join('')}
             </div>
           </div>
         </div>
@@ -1550,9 +1604,8 @@
     ];
 
     try {
-      await Promise.all(pairs.map(([k,v]) => db().update('booking_settings', k, { value: v }, 'key').catch(()=>
-        db().create('booking_settings', { key:k, value:v })
-      )));
+      const D = db();
+      await dsUpsertSettings(D, pairs);
       toast('Settings saved','success');
       await reload();
     } catch(e) { toast('Error saving settings: '+e.message,'error'); }
@@ -2288,14 +2341,14 @@
           <!-- Live colour swatch preview -->
           <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden" id="ds-live-preview">
             <!-- Mini hero -->
-            <div class="p-6 flex items-end gap-4" id="ds-prev-hero" style="background:linear-gradient(135deg,${dsDesign.heroBg||'#1e3a8a'},${dsDesign.primary||'#2563eb'});min-height:120px">
+            <div class="p-6 flex items-end gap-4" id="ds-prev-hero" style="background:linear-gradient(135deg,${dsDesign.primary||'#1e3a8a'},${dsDesign.primary||'#2563eb'});min-height:120px">
               <div>
                 <div class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 mb-2 text-xs font-semibold" style="background:rgba(255,255,255,.15);color:#fff">
                   <span style="width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block"></span>
                   Accepting Appointments
                 </div>
-                <div class="text-xl font-extrabold text-white mb-1" id="ds-prev-title" style="font-family:var(--bk-font-heading,sans-serif)">${esc(state.settings.hero_title||'Book an Appointment')}</div>
-                <div class="text-white/70 text-xs" id="ds-prev-subtitle">${esc(state.settings.hero_subtitle||'Schedule your visit in minutes')}</div>
+                <div class="text-xl font-extrabold text-white mb-1" id="ds-prev-title" style="font-family:'${dsDesign.fontHeading||'Plus Jakarta Sans'}',sans-serif">${esc(state.settings.hero_title||state.settings.business_name||'Book an Appointment')}</div>
+                <div class="text-white/70 text-xs" id="ds-prev-subtitle" style="font-family:'${dsDesign.fontBody||'Plus Jakarta Sans'}',sans-serif">${esc(state.settings.hero_subtitle||'Schedule your visit in minutes')}</div>
               </div>
             </div>
             <!-- Mini service cards -->
@@ -2303,16 +2356,16 @@
               <p class="text-[10px] font-bold uppercase tracking-widest mb-3" style="color:${dsDesign.textMuted||'#64748b'}">Services</p>
               <div class="grid grid-cols-2 gap-2">
                 ${state.services.slice(0,4).map(sv=>`
-                  <div class="rounded-xl p-3 border-2" style="background:${dsDesign.surface||'#fff'};border-color:${dsDesign.border||'#e2e8f0'};border-radius:${dsDesign.cardRadius||'20px'}">
-                    <div class="w-8 h-8 rounded-lg mb-2 flex items-center justify-center text-white text-sm font-bold" style="background:${sv.color||dsDesign.primary||'#2563eb'}">${(sv.name||'?')[0]}</div>
-                    <p class="text-xs font-bold truncate" style="color:${dsDesign.text||'#0f172a'}">${esc(sv.name)}</p>
-                    <p class="text-[10px] mt-0.5" style="color:${dsDesign.textMuted||'#64748b'}">${sv.duration}min</p>
+                  <div class="ds-mini-card rounded-xl p-3 border-2" style="background:${dsDesign.surface||'#fff'};border-color:${dsDesign.border||'#e2e8f0'};border-radius:${dsDesign.cardRadius||'20px'}">
+                    <div class="ds-mini-card-icon w-8 h-8 rounded-lg mb-2 flex items-center justify-center text-white text-sm font-bold" style="background:${sv.color||dsDesign.primary||'#2563eb'}">${(sv.name||'?')[0]}</div>
+                    <p class="ds-mini-card-name text-xs font-bold truncate" style="color:${dsDesign.text||'#0f172a'};font-family:'${dsDesign.fontBody||'Plus Jakarta Sans'}',sans-serif">${esc(sv.name)}</p>
+                    <p class="ds-mini-card-sub text-[10px] mt-0.5" style="color:${dsDesign.textMuted||'#64748b'}">${sv.duration}min</p>
                   </div>`).join('')}
                 ${state.services.length === 0 ? `<div class="col-span-2 text-center py-4 text-xs" style="color:${dsDesign.textMuted||'#94a3b8'}">Add services to preview cards</div>` : ''}
               </div>
               <!-- Mini button -->
               <div class="mt-4">
-                <div class="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white" style="background:${dsDesign.primary||'#2563eb'};border-radius:${dsDesign.btnRadius||'12px'}">
+                <div id="ds-prev-btn" class="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white" style="background:${dsDesign.primary||'#2563eb'};border-radius:${dsDesign.btnRadius||'12px'};font-family:'${dsDesign.fontBody||'Plus Jakarta Sans'}',sans-serif">
                   <i class="fas fa-calendar-check text-xs"></i> Continue
                 </div>
               </div>
@@ -2409,44 +2462,93 @@
     const vals = dsReadControls();
     dsDesign = dsMerge(dsDesign, vals);
     dsPostToIframe(dsDesign);
+
+    // Inject Google Fonts into admin head so font previews actually render
+    if (dsDesign.fontBody || dsDesign.fontHeading) {
+      const families = [dsDesign.fontBody, dsDesign.fontHeading]
+        .filter(Boolean)
+        .filter((v, i, a) => a.indexOf(v) === i);
+      const url = 'https://fonts.googleapis.com/css2?' +
+        families.map(f => 'family=' + encodeURIComponent(f) + ':wght@400;500;600;700;800').join('&') +
+        '&display=swap';
+      let existing = document.getElementById('ds-admin-font-link');
+      if (!existing) {
+        existing = document.createElement('link');
+        existing.id  = 'ds-admin-font-link';
+        existing.rel = 'stylesheet';
+        document.head.appendChild(existing);
+      }
+      if (existing.href !== url) existing.href = url;
+
+      // Apply fonts to the preview panel immediately
+      const preview = document.getElementById('ds-live-preview');
+      if (preview) preview.style.fontFamily = "'" + dsDesign.fontBody + "', sans-serif";
+      const prevTitle = document.getElementById('ds-prev-title');
+      if (prevTitle) prevTitle.style.fontFamily = "'" + (dsDesign.fontHeading || dsDesign.fontBody) + "', sans-serif";
+    }
+
     // Update shadow button highlights
     ['flat','soft','medium','heavy'].forEach(v => {
-      const btn = document.getElementById(`ds-shadow-${v}`);
+      const btn = document.getElementById('ds-shadow-' + v);
       if (!btn) return;
       const active = vals.cardShadowPreset === v;
       btn.className = btn.className.replace(/border-blue-600 bg-blue-50 text-blue-700|border-slate-200 text-slate-500 hover:border-slate-300/g,'');
       btn.className += active ? ' border-blue-600 bg-blue-50 text-blue-700' : ' border-slate-200 text-slate-500 hover:border-slate-300';
     });
+
     // Update live inline preview
-    dsUpdateInlinePreview(vals);
+    dsUpdateInlinePreview(dsDesign);
   }
 
   function dsUpdateInlinePreview(d) {
+    // Hero gradient
     const hero = document.getElementById('ds-prev-hero');
+    if (hero) hero.style.background = 'linear-gradient(135deg,' + (d.primary||'#1e3a8a') + ',' + (d.primary||'#2563eb') + ')';
+
+    // Body background
     const body = document.getElementById('ds-prev-body');
-    const title = document.getElementById('ds-prev-title');
-    const sub   = document.getElementById('ds-prev-subtitle');
-    const openBtn = document.getElementById('ds-open-tab');
-    if (hero) hero.style.background = `linear-gradient(135deg,${d.primary||'#1e3a8a'},${d.primary||'#2563eb'})`;
-    if (body) body.style.background = d.bg||'#f8fafc';
-    if (title && d.bizName) title.textContent = d.bizName;
-    // Refresh palette swatches
+    if (body) body.style.background = d.bg || '#f8fafc';
+
+    // Business name
+    const titleEl = document.getElementById('ds-prev-title');
+    if (titleEl) {
+      if (d.bizName) titleEl.textContent = d.bizName;
+      titleEl.style.fontFamily = "'" + (d.fontHeading || d.fontBody || 'Plus Jakarta Sans') + "', sans-serif";
+    }
+
+    // Subtitle font
+    const subEl = document.getElementById('ds-prev-subtitle');
+    if (subEl) subEl.style.fontFamily = "'" + (d.fontBody || 'Plus Jakarta Sans') + "', sans-serif";
+
+    // Palette swatches
     ['primary','accent','bg','surface','text'].forEach(k => {
-      const sw = document.getElementById(`ds-swatch-${k}`);
+      const sw = document.getElementById('ds-swatch-' + k);
       if (sw && d[k]) sw.style.background = d[k];
     });
-    // Update mini service cards
-    const cards = document.querySelectorAll('#ds-prev-body [style*="border-radius"]');
-    cards.forEach(card => {
-      card.style.background = d.surface||'#fff';
-      card.style.borderColor = d.border||'#e2e8f0';
-      card.style.borderRadius = d.cardRadius||'20px';
+
+    // Mini service cards — update color, border, radius, and text color
+    document.querySelectorAll('#ds-prev-body .ds-mini-card').forEach(card => {
+      card.style.background    = d.surface  || '#fff';
+      card.style.borderColor   = d.border   || '#e2e8f0';
+      card.style.borderRadius  = d.cardRadius || '20px';
     });
-    // Update continue button
-    const miniBtn = document.querySelector('#ds-prev-body [style*="border-radius"][class=""]');
+    document.querySelectorAll('#ds-prev-body .ds-mini-card-name').forEach(el => {
+      el.style.color = d.text || '#0f172a';
+      el.style.fontFamily = "'" + (d.fontBody || 'Plus Jakarta Sans') + "', sans-serif";
+    });
+    document.querySelectorAll('#ds-prev-body .ds-mini-card-sub').forEach(el => {
+      el.style.color = d.textMuted || '#64748b';
+    });
+    document.querySelectorAll('#ds-prev-body .ds-mini-card-icon').forEach(el => {
+      el.style.background = d.primary || '#2563eb';
+    });
+
+    // Continue button
+    const miniBtn = document.getElementById('ds-prev-btn');
     if (miniBtn) {
-      miniBtn.style.background = d.primary||'#2563eb';
-      miniBtn.style.borderRadius = d.btnRadius||'12px';
+      miniBtn.style.background   = d.primary    || '#2563eb';
+      miniBtn.style.borderRadius = d.btnRadius  || '12px';
+      miniBtn.style.fontFamily   = "'" + (d.fontBody || 'Plus Jakarta Sans') + "', sans-serif";
     }
   }
 
@@ -2533,17 +2635,9 @@ async function dsSaveAll() {
 
   try {
     const D = db();
-
-    // Upsert each pair by key (same pattern as saveSettings)
-    await Promise.all(pairs.map(([k, v]) =>
-      D.update('booking_settings', k, { value: v }, 'key').catch(() =>
-        D.create('booking_settings', { key: k, value: v })
-      )
-    ));
-
+    await dsUpsertSettings(D, pairs);
     // Update local state
     pairs.forEach(([k, v]) => { state.settings[k] = v; });
-
     toast('Settings saved!', 'success');
   } catch(e) {
     console.error('Save error:', e);
@@ -2622,30 +2716,86 @@ async function dsSaveAll_silent() {
   if (bookUrl) pairs.push(['book_page_url', bookUrl]);
   
   const D = db();
-
-  // Upsert each pair by key (same pattern as saveSettings)
-  await Promise.all(pairs.map(([k, v]) =>
-    D.update('booking_settings', k, { value: v }, 'key').catch(() =>
-      D.create('booking_settings', { key: k, value: v })
-    )
-  ));
-  
+  await dsUpsertSettings(D, pairs);
   pairs.forEach(([k, v]) => { state.settings[k] = v; });
 }
 
+// ── Robust upsert helper ─────────────────────────────────────
+// Fetches all existing booking_settings rows once, then updates
+// rows that already exist (by their numeric id) and creates the rest.
+// This avoids the broken D.update(..., key, data, 'key') pattern.
+async function dsUpsertSettings(D, pairs) {
+  const existing = await D.list('booking_settings', {});
+  const rowMap = {};
+  (existing || []).forEach(r => { rowMap[r.key] = r.id; });
+
+  await Promise.all(pairs.map(([k, v]) => {
+    if (rowMap[k] !== undefined) {
+      return D.update('booking_settings', rowMap[k], { value: v });
+    } else {
+      return D.create('booking_settings', { key: k, value: v });
+    }
+  }));
+}
+
   function dsReset() {
-    if (!confirm('Reset all design settings to defaults?')) return;
-    dsDesign = { ...DS_DEFAULTS };
-    dsPostToIframe(dsDesign);
-    switchTab('designer'); // re-render controls
+    if (!confirm('Reset design tokens to defaults? (Content fields like hero text and about section will not be affected)')) return;
+    dsDesign = Object.assign({}, DS_DEFAULTS);
+    // Re-use dsPickPreset logic by directly setting DOM values
+    const colorKeys = ['primary','accent','bg','surface','border','text','headerBg'];
+    colorKeys.forEach(k => {
+      const val = DS_DEFAULTS[k] || '';
+      const picker = document.getElementById('ds-' + k);
+      const hexEl  = document.getElementById('ds-' + k + '-hex');
+      if (picker) picker.value = val;
+      if (hexEl)  hexEl.value  = val;
+    });
+    const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    setEl('ds-fontBody',         DS_DEFAULTS.fontBody);
+    setEl('ds-fontHeading',      DS_DEFAULTS.fontHeading);
+    setEl('ds-cardRadius',       DS_DEFAULTS.cardRadius);
+    setEl('ds-btnRadius',        DS_DEFAULTS.btnRadius);
+    setEl('ds-maxWidth',         DS_DEFAULTS.maxWidth);
+    setEl('ds-cardShadowPreset', DS_DEFAULTS.cardShadowPreset);
+    setEl('ds-calStyle',         DS_DEFAULTS.calStyle);
+    setEl('ds-stepStyle',        DS_DEFAULTS.stepStyle);
+    dsApply();
+    toast('Design reset to defaults', 'info');
   }
 
   function dsPickPreset(key) {
     const preset = PRESETS[key];
     if (!preset) return;
     dsDesign = dsMerge({}, { ...preset, _preset: key });
-    dsPostToIframe(dsDesign);
-    switchTab('designer'); // re-render with new values
+
+    // Apply to existing DOM controls — no re-render, no data loss
+    const colorKeys = ['primary','accent','bg','surface','border','text','headerBg'];
+    colorKeys.forEach(k => {
+      const val = preset[k] || DS_DEFAULTS[k] || '';
+      const picker = document.getElementById('ds-' + k);
+      const hexEl  = document.getElementById('ds-' + k + '-hex');
+      if (picker) picker.value = val;
+      if (hexEl)  hexEl.value  = val;
+    });
+    const setEl = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+    setEl('ds-fontBody',         preset.fontBody         || DS_DEFAULTS.fontBody);
+    setEl('ds-fontHeading',      preset.fontHeading      || DS_DEFAULTS.fontHeading);
+    setEl('ds-cardRadius',       preset.cardRadius       || DS_DEFAULTS.cardRadius);
+    setEl('ds-btnRadius',        preset.btnRadius        || DS_DEFAULTS.btnRadius);
+    setEl('ds-maxWidth',         preset.maxWidth         || DS_DEFAULTS.maxWidth);
+    setEl('ds-cardShadowPreset', preset.cardShadowPreset || DS_DEFAULTS.cardShadowPreset);
+    setEl('ds-calStyle',         preset.calStyle         || DS_DEFAULTS.calStyle);
+    setEl('ds-stepStyle',        preset.stepStyle        || DS_DEFAULTS.stepStyle);
+
+    // Highlight active preset button
+    document.querySelectorAll('#ds-root button[onclick*="dsPickPreset"]').forEach(btn => {
+      btn.classList.remove('border-blue-600', 'shadow-md');
+      btn.classList.add('border-slate-200');
+    });
+    const activeBtn = document.querySelector('[onclick="BK.dsPickPreset(\'' + key + '\')"]');
+    if (activeBtn) { activeBtn.classList.remove('border-slate-200'); activeBtn.classList.add('border-blue-600','shadow-md'); }
+
+    dsApply();
     toast('Preset applied — click Save to keep it', 'info');
   }
 
