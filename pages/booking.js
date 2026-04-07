@@ -1520,29 +1520,65 @@
     const errEl = document.getElementById('svc-err');
     const name = document.getElementById('svc-name')?.value?.trim();
     if (!name) { errEl.textContent='Service name required.'; errEl.classList.remove('hidden'); return; }
-    const row = {
-      name, color: document.getElementById('svc-color')?.value||'#3b82f6',
-      category: document.getElementById('svc-category')?.value||'',
-      badge: document.getElementById('svc-badge')?.value||'',
-      duration: parseInt(document.getElementById('svc-duration')?.value)||60,
-      price: parseFloat(document.getElementById('svc-price')?.value)||0,
-      description: document.getElementById('svc-desc')?.value||'',
-      long_description: document.getElementById('svc-long-desc')?.value||'',
-      location_note: document.getElementById('svc-location-note')?.value||'',
-      info_url: document.getElementById('svc-info-url')?.value||'',
-      image_url: document.getElementById('svc-image-url')?.value||'',
-      icon_class: document.getElementById('svc-icon-class')?.value||'',
-      icon_emoji: document.getElementById('svc-icon-emoji')?.value||'',
-      travel_enabled: document.getElementById('svc-travel')?.checked||false,
-      travel_mode: document.getElementById('svc-travel-mode')?.value||'flat',
-      travel_per_km_rate: parseFloat(document.getElementById('svc-km-rate')?.value)||0,
-      active: true,
+
+    // Base columns — guaranteed to exist in the original booking_services schema
+    const baseRow = {
+      name,
+      color:              document.getElementById('svc-color')?.value || '#3b82f6',
+      category:           document.getElementById('svc-category')?.value || '',
+      duration:           parseInt(document.getElementById('svc-duration')?.value) || 60,
+      price:              parseFloat(document.getElementById('svc-price')?.value) || 0,
+      description:        document.getElementById('svc-desc')?.value || '',
+      travel_enabled:     document.getElementById('svc-travel')?.checked || false,
+      travel_mode:        document.getElementById('svc-travel-mode')?.value || 'flat',
+      travel_per_km_rate: parseFloat(document.getElementById('svc-km-rate')?.value) || 0,
+      active:             true,
     };
+
+    // Extended columns — added by migration SQL. Try to include them; if the
+    // column doesn't exist yet the DB will throw and we fall back to base only.
+    const extRow = {
+      badge:            document.getElementById('svc-badge')?.value || '',
+      long_description: document.getElementById('svc-long-desc')?.value || '',
+      location_note:    document.getElementById('svc-location-note')?.value || '',
+      info_url:         document.getElementById('svc-info-url')?.value || '',
+      image_url:        document.getElementById('svc-image-url')?.value || '',
+      icon_class:       document.getElementById('svc-icon-class')?.value || '',
+      icon_emoji:       document.getElementById('svc-icon-emoji')?.value || '',
+    };
+
     try {
-      if (id) { await db().update('booking_services', id, row); toast('Service updated','success'); }
-      else     { await db().create('booking_services', row); toast('Service created','success'); }
-      closeModal(); await reload();
-    } catch(e) { errEl.textContent=e.message; errEl.classList.remove('hidden'); }
+      // Try with all columns first
+      const fullRow = { ...baseRow, ...extRow };
+      if (id) {
+        await db().update('booking_services', id, fullRow);
+      } else {
+        await db().create('booking_services', fullRow);
+      }
+      toast(id ? 'Service updated' : 'Service created', 'success');
+      closeModal();
+      await reload();
+    } catch(e) {
+      // If it failed because a column doesn't exist, retry with base columns only
+      if (e.message && (e.message.includes('column') || e.message.includes('schema'))) {
+        try {
+          if (id) {
+            await db().update('booking_services', id, baseRow);
+          } else {
+            await db().create('booking_services', baseRow);
+          }
+          toast((id ? 'Service updated' : 'Service created') + ' (run migration SQL to enable all fields)', 'success');
+          closeModal();
+          await reload();
+        } catch(e2) {
+          errEl.textContent = e2.message;
+          errEl.classList.remove('hidden');
+        }
+      } else {
+        errEl.textContent = e.message;
+        errEl.classList.remove('hidden');
+      }
+    }
   }
 
   async function saveSettings() {
@@ -2755,37 +2791,30 @@ async function dsSaveAll_silent() {
   pairs.forEach(([k, v]) => { state.settings[k] = v; });
 }
 
-// ── Robust upsert helper ─────────────────────────────────────
-// Serialized: only one save can run at a time to prevent duplicate-key
-// errors from concurrent create attempts.
+// ── Settings upsert helper ────────────────────────────────────
+// booking_settings has NO numeric id — its primary key IS the `key` column.
+// D.update(table, pkValue, data, pkColumn) is the correct WorkVolt pattern.
 let _upsertInFlight = false;
 async function dsUpsertSettings(D, pairs) {
-  // Wait for any in-flight save to finish
   while (_upsertInFlight) {
     await new Promise(r => setTimeout(r, 50));
   }
   _upsertInFlight = true;
   try {
-    // Fetch current rows fresh each time so we always have the latest IDs
-    const existing = await D.list('booking_settings', {});
-    const rowMap = {};
-    (existing || []).forEach(r => { rowMap[r.key] = r.id; });
-
-    // Run sequentially (not parallel) to avoid race conditions
     for (const [k, v] of pairs) {
-      if (rowMap[k] !== undefined) {
-        await D.update('booking_settings', rowMap[k], { value: v });
-      } else {
+      try {
+        // Try update first (row exists) — key IS the primary key column
+        await D.update('booking_settings', k, { value: v }, 'key');
+      } catch(updateErr) {
         try {
+          // Row doesn't exist yet — create it
           await D.create('booking_settings', { key: k, value: v });
-        } catch(e) {
-          // Row was created by a concurrent save between our list and now — fetch and update
-          if (e.message && e.message.includes('duplicate')) {
-            const fresh = await D.list('booking_settings', {});
-            const row = (fresh || []).find(r => r.key === k);
-            if (row) await D.update('booking_settings', row.id, { value: v });
+        } catch(createErr) {
+          if (createErr.message && createErr.message.includes('duplicate')) {
+            // Lost a race — update again now that we know it exists
+            await D.update('booking_settings', k, { value: v }, 'key');
           } else {
-            throw e;
+            throw createErr;
           }
         }
       }
