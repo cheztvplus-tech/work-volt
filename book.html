@@ -251,6 +251,24 @@
 </section>
 
 <!-- ══════════════════════════════════════════════
+     ABOUT / INTRO SECTION
+══════════════════════════════════════════════ -->
+<section id="pub-about-section" class="bk-max mx-auto px-4 py-8 hidden">
+  <div class="grid md:grid-cols-2 gap-8 items-center">
+    <!-- Text side -->
+    <div>
+      <h2 class="text-2xl font-extrabold text-slate-900 mb-3" id="pub-about-title" style="font-family:var(--bk-font-heading)"></h2>
+      <div class="prose-sm whitespace-pre-line mb-4" id="pub-about-body"></div>
+      <div id="pub-about-highlights" class="space-y-2"></div>
+    </div>
+    <!-- Gallery side -->
+    <div id="pub-about-gallery" class="hidden">
+      <div id="pub-about-gallery-grid" class="grid grid-cols-2 gap-3"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════
      MAIN BOOKING FLOW
 ══════════════════════════════════════════════ -->
 <main class="bk-max mx-auto px-4 py-8 pb-24" id="pub-main-anchor">
@@ -331,6 +349,7 @@ const PB = {
   staff: [],
   settings: {},
   selectedService: null,
+  selectedServices: [],   // multi-service cart
   selectedDate: null,
   selectedTime: null,
   selectedStaff: null,
@@ -460,6 +479,43 @@ function applyContentFromSettings() {
   if (S.footer_address) { const el = document.getElementById('pub-footer-address'); el.textContent = S.footer_address; el.classList.remove('hidden'); }
   if (S.footer_hours)   { const el = document.getElementById('pub-footer-hours');   el.textContent = S.footer_hours;   el.classList.remove('hidden'); }
   if (S.footer_phone)   { const el = document.getElementById('pub-footer-phone');   el.innerHTML = `<a href="tel:${esc(S.footer_phone)}" class="hover:text-blue-600">${esc(S.footer_phone)}</a>`; el.classList.remove('hidden'); }
+
+  // About / Intro section
+  if (S.about_title || S.about_body) {
+    const sec = document.getElementById('pub-about-section');
+    if (sec) sec.classList.remove('hidden');
+    const titleEl = document.getElementById('pub-about-title');
+    const bodyEl  = document.getElementById('pub-about-body');
+    if (titleEl && S.about_title) titleEl.textContent = S.about_title;
+    if (bodyEl  && S.about_body)  bodyEl.textContent  = S.about_body;
+
+    // Highlights (bullet points)
+    try {
+      const highlights = safeJson(S.about_highlights || '[]', []);
+      const hl = document.getElementById('pub-about-highlights');
+      if (hl && highlights.length) {
+        hl.innerHTML = highlights.map(h => `
+          <div class="flex items-center gap-2 text-sm text-slate-700">
+            <i class="fas fa-check-circle text-xs flex-shrink-0" style="color:var(--bk-accent)"></i>
+            <span>${esc(h)}</span>
+          </div>`).join('');
+      }
+    } catch(e) {}
+
+    // Gallery
+    try {
+      const gallery = safeJson(S.about_gallery || '[]', []);
+      const galleryWrap = document.getElementById('pub-about-gallery');
+      const galleryGrid = document.getElementById('pub-about-gallery-grid');
+      if (gallery.length && galleryWrap && galleryGrid) {
+        galleryWrap.classList.remove('hidden');
+        galleryGrid.innerHTML = gallery.map(img => `
+          <div class="rounded-2xl overflow-hidden aspect-square">
+            <img src="${esc(img.url)}" alt="${esc(img.alt||'')}" class="w-full h-full object-cover">
+          </div>`).join('');
+      }
+    } catch(e) {}
+  }
 }
 
 // ── Scroll helper ─────────────────────────────────────────────
@@ -494,6 +550,8 @@ function updateStepDots(active) {
 }
 
 // ── Step 0: Services ──────────────────────────────────────────
+const multiMode = () => PB.settings.multi_service_mode === '1';
+
 function renderStepServices() {
   const cur = PB.settings.currency || '$';
   if (!PB.services.length) {
@@ -503,6 +561,8 @@ function renderStepServices() {
     </div>`;
   }
 
+  const isMulti = multiMode();
+
   // Group by category
   const groups = {};
   PB.services.forEach(s => {
@@ -511,10 +571,39 @@ function renderStepServices() {
     groups[cat].push(s);
   });
 
-  // Featured services (first 2, or those marked featured)
+  // Featured services
   const featuredSvcs = PB.services.filter(s => s.featured).slice(0, 3);
 
+  // Multi-mode: cart summary
+  const cartTotal = PB.selectedServices.reduce((s,sv) => s + (+sv.price||0), 0);
+  const cartDuration = PB.selectedServices.reduce((s,sv) => s + (+sv.duration||0), 0);
+  const cartBar = isMulti && PB.selectedServices.length ? `
+    <div class="step-card p-4 mb-4 flex items-center justify-between gap-4 fade-in" style="border-color:var(--bk-primary);border-width:2px">
+      <div>
+        <p class="font-bold text-slate-800 text-sm">${PB.selectedServices.length} service${PB.selectedServices.length!==1?'s':''} selected</p>
+        <p class="text-xs text-slate-400 mt-0.5">${cartDuration} min total · ${cartTotal>0?cur+fmtN(cartTotal):'Free'}</p>
+        <div class="flex flex-wrap gap-1 mt-2">
+          ${PB.selectedServices.map(sv=>`<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold" style="background:${sv.color||'#3b82f6'}22;color:${sv.color||'#3b82f6'}">
+            ${esc(sv.name)}
+            <button onclick="event.stopPropagation();removeFromCart('${sv.id}')" class="ml-0.5 opacity-60 hover:opacity-100">×</button>
+          </span>`).join('')}
+        </div>
+      </div>
+      <button onclick="nextStep()" class="btn-primary flex-shrink-0 shadow-md text-sm px-5 py-2.5">
+        Continue <i class="fas fa-arrow-right text-xs"></i>
+      </button>
+    </div>` : '';
+
+  const canContinue = isMulti ? PB.selectedServices.length > 0 : !!PB.selectedService;
+
   return `<div class="fade-in space-y-8">
+
+    ${isMulti ? `<div class="flex items-center gap-2 text-xs text-slate-500 font-semibold bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5">
+      <i class="fas fa-layer-group text-blue-400"></i>
+      You can select multiple services — they'll each get their own time slot.
+    </div>` : ''}
+
+    ${cartBar}
 
     <!-- Featured / Quick-pick row -->
     ${featuredSvcs.length ? `
@@ -524,7 +613,7 @@ function renderStepServices() {
         <span class="badge-popular">Popular</span>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-${Math.min(featuredSvcs.length,3)} gap-3">
-        ${featuredSvcs.map(svc => renderServiceCard(svc, cur, true)).join('')}
+        ${featuredSvcs.map(svc => renderServiceCard(svc, cur)).join('')}
       </div>
     </div>` : ''}
 
@@ -537,7 +626,7 @@ function renderStepServices() {
         <span class="text-xs text-slate-300 font-semibold">${svcs.length} service${svcs.length!==1?'s':''}</span>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        ${svcs.map(svc => renderServiceCard(svc, cur, false)).join('')}
+        ${svcs.map(svc => renderServiceCard(svc, cur)).join('')}
       </div>
     </div>`).join('')}
 
@@ -548,24 +637,28 @@ function renderStepServices() {
       <div class="flex items-center gap-2"><i class="fas fa-bell text-amber-500"></i> Confirmation sent by email</div>
     </div>
 
-    <button onclick="nextStep()" class="btn-primary w-full text-base py-3.5 shadow-md" ${!PB.selectedService?'disabled':''} id="pub-next-0">
+    ${!isMulti ? `<button onclick="nextStep()" class="btn-primary w-full text-base py-3.5 shadow-md" ${!canContinue?'disabled':''} id="pub-next-0">
       Continue <i class="fas fa-arrow-right text-xs"></i>
-    </button>
+    </button>` : ''}
   </div>`;
 }
 
-function renderServiceCard(svc, cur, compact) {
-  const isSelected = PB.selectedService?.id === svc.id;
+function renderServiceCard(svc, cur) {
+  const isMulti = multiMode();
+  const isSelected = isMulti
+    ? PB.selectedServices.some(s => s.id === svc.id)
+    : PB.selectedService?.id === svc.id;
   const price = +svc.price || 0;
-  // Icon emoji fallback map
-  const iconFallbacks = { consultation:'🩺', massage:'💆', cleaning:'✨', haircut:'✂️', repair:'🔧', tutoring:'📚', photography:'📸', fitness:'💪', dental:'🦷', therapy:'🧠' };
+
+  // Icon resolution: image_url > icon_class (FA) > icon_emoji > keyword fallback
+  const iconFallbacks = { consultation:'🩺', massage:'💆', cleaning:'✨', haircut:'✂️', repair:'🔧', tutoring:'📚', photography:'📸', fitness:'💪', dental:'🦷', therapy:'🧠', nail:'💅', makeup:'💄', wax:'🪮', laser:'✨', facial:'🧖', tattoo:'🖊️', piercing:'💎', yoga:'🧘', training:'🏋️', coaching:'🏅' };
   const iconKey = Object.keys(iconFallbacks).find(k => (svc.name||'').toLowerCase().includes(k));
-  const fallbackIcon = iconFallbacks[iconKey] || '⭐';
+  const fallbackIcon = svc.icon_emoji || iconFallbacks[iconKey] || '⭐';
+  const iconClass = svc.icon_class || null;
 
-  // Custom icon from service settings
-  const iconClass = svc.icon_class || null; // e.g. "fas fa-stethoscope"
+  const clickHandler = isMulti ? `toggleCartService('${svc.id}')` : `selectService('${svc.id}')`;
 
-  return `<div class="svc-card ${isSelected ? 'selected' : ''}" onclick="selectService('${svc.id}')">
+  return `<div class="svc-card ${isSelected ? 'selected' : ''}" onclick="${clickHandler}">
     <!-- Image / icon area -->
     ${svc.image_url
       ? `<img class="svc-card-img" src="${esc(svc.image_url)}" alt="${esc(svc.name)}" loading="lazy">`
@@ -588,7 +681,7 @@ function renderServiceCard(svc, cur, compact) {
         </div>
         <!-- Select indicator -->
         <div class="ring-check flex-shrink-0 mt-0.5 ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}">
-          ${isSelected ? '<i class="fas fa-check text-white text-xs"></i>' : ''}
+          ${isSelected ? '<i class="fas fa-check text-white text-xs"></i>' : (isMulti ? '<i class="fas fa-plus text-slate-300 text-xs"></i>' : '')}
         </div>
       </div>
 
@@ -613,11 +706,33 @@ function renderServiceCard(svc, cur, compact) {
   </div>`;
 }
 
+// Single-service selection
 function selectService(id) {
   PB.selectedService = PB.services.find(s => s.id === id);
   const hdr = document.getElementById('pub-header-svc');
   if (hdr) { hdr.textContent = PB.selectedService?.name || ''; hdr.classList.remove('hidden'); }
   goToStep(0); // re-render with selection
+}
+
+// Multi-service cart toggle
+function toggleCartService(id) {
+  const svc = PB.services.find(s => s.id === id);
+  if (!svc) return;
+  const idx = PB.selectedServices.findIndex(s => s.id === id);
+  if (idx >= 0) {
+    PB.selectedServices.splice(idx, 1);
+  } else {
+    PB.selectedServices.push(svc);
+  }
+  // Also keep selectedService in sync (for backwards compat with step 1)
+  PB.selectedService = PB.selectedServices[0] || null;
+  goToStep(0);
+}
+
+function removeFromCart(id) {
+  PB.selectedServices = PB.selectedServices.filter(s => s.id !== id);
+  PB.selectedService = PB.selectedServices[0] || null;
+  goToStep(0);
 }
 
 // ── Step 1: Date & Time ───────────────────────────────────────
@@ -890,9 +1005,10 @@ async function pubGeocode() {
     return;
   }
 
-  const businessAddr = (PB.settings.footer_address || '').trim();
+  // Use business_address setting first, then fall back to footer_address
+  const businessAddr = (PB.settings.business_address || PB.settings.footer_address || '').trim();
   if (!businessAddr) {
-    // No business address configured — apply fee at 0 km and show result
+    // No business address configured — apply flat/zone fee at 0 km and show result
     PB.travelAddress  = customerAddr;
     PB.travelDistance = 0;
     pubApplyTravelFee(0);
@@ -900,9 +1016,9 @@ async function pubGeocode() {
     const dl2  = document.getElementById('pub-travel-dist-label');
     const fn2  = document.getElementById('pub-travel-fee-label');
     const rn2  = document.getElementById('pub-travel-route-note');
-    if (dl2) dl2.textContent = 'Distance not calculated (no business address set)';
+    if (dl2) dl2.textContent = 'Distance not calculated (no business address configured)';
     if (fn2) fn2.textContent = PB.travelFee > 0 ? cur2 + PB.travelFee.toFixed(2) : 'Free';
-    if (rn2) rn2.textContent = 'Set your business address in Settings → Footer Info for auto-calculation';
+    if (rn2) rn2.textContent = 'Contact us for an exact travel fee estimate';
     document.getElementById('pub-travel-result')?.classList.remove('hidden');
     return;
   }
@@ -1198,9 +1314,11 @@ function validateInfo() {
 // ── Step 3: Confirm ───────────────────────────────────────────
 function renderStepConfirm() {
   const cur   = PB.settings.currency || '$';
-  const svc   = PB.selectedService;
+  const isMulti = multiMode() && PB.selectedServices.length > 1;
+  const svcs  = isMulti ? PB.selectedServices : [PB.selectedService];
   const stf   = PB.staff.find(s => s.id === PB.selectedStaff);
-  const subtotal    = (+svc?.price||0) + (PB.travelEnabled ? PB.travelFee : 0);
+  const svcSubtotal  = svcs.reduce((s, sv) => s + (+sv?.price||0), 0);
+  const subtotal    = svcSubtotal + (PB.travelEnabled ? PB.travelFee : 0);
   const discountAmt = PB.couponApplied
     ? (PB.couponPct > 0 ? +(subtotal * PB.couponPct / 100).toFixed(2) : PB.couponDiscount)
     : 0;
@@ -1208,7 +1326,8 @@ function renderStepConfirm() {
   const depositAmt  = PB.settings.deposit_required === '1' ? parseFloat(PB.settings.deposit_amount || 0) : 0;
   const dueNow      = depositAmt > 0 ? Math.min(depositAmt, total) : (PB.paymentMethod !== 'pay_later' ? total : 0);
   const d     = new Date(`${PB.selectedDate}T${PB.selectedTime}:00`);
-  const endD  = new Date(d.getTime() + (svc?.duration||60)*60000);
+  const primarySvc = PB.selectedService;
+  const endD  = new Date(d.getTime() + (primarySvc?.duration||60)*60000);
 
   return `<div class="fade-in">
     <button onclick="goToStep(2)" class="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-700 mb-5 transition-colors font-semibold">
@@ -1218,17 +1337,31 @@ function renderStepConfirm() {
     <p class="text-slate-400 text-sm mb-5">Please review your booking details before confirming</p>
 
     <div class="step-card p-5 mb-4">
-      <!-- Service header -->
+      <!-- Service header(s) -->
+      ${isMulti ? `
+      <div class="pb-4 mb-4 border-b border-slate-100">
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">${svcs.length} Services Booked</p>
+        <div class="space-y-2">
+          ${svcs.map(sv => `
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style="background:${sv.color||'#3b82f6'}">${(sv.name||'?')[0]}</div>
+              <div class="flex-1">
+                <p class="text-sm font-bold text-slate-800">${esc(sv.name)}</p>
+                <p class="text-xs text-slate-400">${sv.duration} min · ${+sv.price>0?cur+fmtN(sv.price):'Free'}</p>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>` : `
       <div class="flex items-center gap-4 pb-4 mb-4 border-b border-slate-100">
         <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-2xl flex-shrink-0 shadow-sm"
-             style="background:${svc?.color||'#3b82f6'}">
-          ${(svc?.name||'?')[0].toUpperCase()}
+             style="background:${primarySvc?.color||'#3b82f6'}">
+          ${(primarySvc?.name||'?')[0].toUpperCase()}
         </div>
         <div>
-          <p class="font-extrabold text-slate-900 text-lg">${esc(svc?.name||'')}</p>
-          <p class="text-sm text-slate-400">${svc?.duration} min session</p>
+          <p class="font-extrabold text-slate-900 text-lg">${esc(primarySvc?.name||'')}</p>
+          <p class="text-sm text-slate-400">${primarySvc?.duration} min session</p>
         </div>
-      </div>
+      </div>`}
 
       <!-- Details grid -->
       <div class="space-y-3">
@@ -1299,6 +1432,7 @@ async function submitBooking() {
 
   try {
     const D = window.WorkVoltDB;
+    // Upsert customer
     let customerId;
     const existing = PB.customer.email ? await D.list('booking_customers',{},{}).then(all=>all.find(c=>c.email===PB.customer.email)) : null;
     if (existing) {
@@ -1309,10 +1443,21 @@ async function submitBooking() {
       try { await D.create('crm_contacts', { name:PB.customer.name, email:PB.customer.email, phone:PB.customer.phone||null, source:'booking_page' }); } catch(e){}
     }
 
-    const svc   = PB.selectedService;
-    const start = new Date(`${PB.selectedDate}T${PB.selectedTime}:00`);
-    const end   = new Date(start.getTime() + (svc?.duration||60)*60000);
+    // Build list of services to book (multi or single)
+    const isMulti = multiMode() && PB.selectedServices.length > 1;
+    const svcsToBook = isMulti ? PB.selectedServices : [PB.selectedService];
+    const depositAmt2 = PB.settings.deposit_required === '1' ? parseFloat(PB.settings.deposit_amount || 0) : 0;
 
+    // Calculate total across all services
+    const svcSubtotal = svcsToBook.reduce((s, sv) => s + (+sv?.price||0), 0);
+    const subtotal2   = svcSubtotal + (PB.travelEnabled ? PB.travelFee : 0);
+    const discAmt2    = PB.couponApplied
+      ? (PB.couponPct > 0 ? +(subtotal2 * PB.couponPct / 100).toFixed(2) : PB.couponDiscount)
+      : 0;
+    const finalTotal  = Math.max(0, subtotal2 - discAmt2);
+
+    // Auto-assign staff for first slot
+    const start = new Date(`${PB.selectedDate}T${PB.selectedTime}:00`);
     let staffId = PB.selectedStaff || null;
     if (!staffId) {
       const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][start.getDay()];
@@ -1324,32 +1469,44 @@ async function submitBooking() {
       if (avail.length) staffId = avail.sort((a,b)=>PB.bookings.filter(x=>x.staff_id===a.id).length-PB.bookings.filter(x=>x.staff_id===b.id).length)[0]?.id||null;
     }
 
-    const subtotal2   = (+svc.price||0) + (PB.travelEnabled ? PB.travelFee : 0);
-    const discAmt2    = PB.couponApplied
-      ? (PB.couponPct > 0 ? +(subtotal2 * PB.couponPct / 100).toFixed(2) : PB.couponDiscount)
-      : 0;
-    const finalTotal  = Math.max(0, subtotal2 - discAmt2);
-    const depositAmt2 = PB.settings.deposit_required === '1' ? parseFloat(PB.settings.deposit_amount || 0) : 0;
+    // Create one booking per service; stagger start times in multi mode
+    let cursor = new Date(start);
+    let lastBooking = null;
+    for (let i = 0; i < svcsToBook.length; i++) {
+      const sv = svcsToBook[i];
+      const end = new Date(cursor.getTime() + (sv?.duration||60)*60000);
+      // Per-service amount: distribute total proportionally
+      const svPrice = (+sv?.price||0);
+      const svTravel = (i === 0 && PB.travelEnabled) ? PB.travelFee : 0;
+      const svSubtotal = svPrice + svTravel;
+      const svDisc = svcsToBook.length > 1 && i === 0 ? discAmt2 : 0; // apply discount to first booking
+      const svTotal = Math.max(0, svSubtotal - svDisc);
 
-    const booking = await D.create('bookings', {
-      customer_id:customerId, service_id:svc.id, staff_id:staffId,
-      start_time:start.toISOString(), end_time:end.toISOString(),
-      status:'pending', payment_method:PB.paymentMethod,
-      payment_status:'unpaid',
-      amount:finalTotal,
-      discount_code: PB.couponApplied ? PB.couponCode : null,
-      discount_amount: discAmt2 || 0,
-      deposit_amount: depositAmt2 || 0,
-      travel_fee:PB.travelEnabled?PB.travelFee:0,
-      travel_address:PB.travelEnabled?PB.travelAddress:null,
-      travel_distance:PB.travelEnabled?PB.travelDistance:0,
-      notes:PB.notes, source:'public',
-    });
+      const booking = await D.create('bookings', {
+        customer_id: customerId, service_id: sv.id, staff_id: staffId,
+        start_time: cursor.toISOString(), end_time: end.toISOString(),
+        status: 'pending', payment_method: PB.paymentMethod,
+        payment_status: 'unpaid',
+        amount: svcsToBook.length === 1 ? finalTotal : svTotal,
+        discount_code: (i===0 && PB.couponApplied) ? PB.couponCode : null,
+        discount_amount: i===0 ? (discAmt2||0) : 0,
+        deposit_amount: i===0 ? (depositAmt2||0) : 0,
+        travel_fee: svTravel,
+        travel_address: PB.travelEnabled ? PB.travelAddress : null,
+        travel_distance: PB.travelEnabled ? PB.travelDistance : 0,
+        notes: PB.notes, source: 'public',
+      });
+      if (i === 0) lastBooking = booking;
+      // Next service starts right after this one
+      cursor = end;
+    }
 
+    // Notifications to admins
     try {
       const admins = await D.list('users',{});
+      const svcNames = svcsToBook.map(sv=>sv.name).join(', ');
       for (const a of admins.filter(u=>['SuperAdmin','Admin','Manager'].includes(u.role)).slice(0,3)) {
-        await D.create('notifications',{user_id:a.id,title:'New Booking Request',message:`${PB.customer.name} booked ${svc.name} on ${fmtDateStr(start)}`,type:'info',read:false});
+        await D.create('notifications',{user_id:a.id,title:'New Booking Request',message:`${PB.customer.name} booked ${svcNames} on ${fmtDateStr(start)}`,type:'info',read:false});
       }
     } catch(e){}
 
@@ -1357,11 +1514,9 @@ async function submitBooking() {
       const payAmount = depositAmt2 > 0 ? Math.min(depositAmt2, finalTotal) : finalTotal;
       if (payAmount > 0) setTimeout(()=>window.open(`https://www.paypal.com/paypalme/${encodeURIComponent(PB.settings.paypal_email)}/${payAmount.toFixed(2)}`,'_blank'),1500);
     }
-    if (PB.paymentMethod==='etransfer' && PB.settings.etransfer_email) {
-      // E-Transfer: show instructions in success screen — no redirect needed
-    }
 
-    PB.confirmedBooking = booking;
+    PB.confirmedBooking = lastBooking;
+    PB.confirmedServices = svcsToBook;
     goToStep(4);
   } catch(e) { show(e.message); }
 }
