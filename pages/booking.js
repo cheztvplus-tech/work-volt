@@ -760,6 +760,20 @@
             <div><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Currency Symbol</label>
               <input type="text" id="bk-s-currency" value="${esc(s.currency||'$')}" class="field text-sm" placeholder="$"></div>
           </div>
+          <!-- Business Address (used for travel distance calc) -->
+          <div class="mt-4">
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Business Address <span class="font-normal text-slate-300 normal-case">(used for travel fee calculation)</span></label>
+            <input type="text" id="bk-s-business-address" value="${esc(s.business_address||s.footer_address||'')}" class="field text-sm" placeholder="123 Main St, City, Province/State, Postal Code">
+            <p class="text-[10px] text-slate-400 mt-1">Enter your full address so the booking page can automatically calculate travel distances from your location to your clients.</p>
+          </div>
+          <!-- Multi-service mode -->
+          <div class="mt-4 flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl p-3">
+            <input type="checkbox" id="bk-s-multi-service" class="rounded mt-0.5" ${s.multi_service_mode==='1'?'checked':''}>
+            <div>
+              <label for="bk-s-multi-service" class="text-sm font-bold text-blue-800 block cursor-pointer">Allow Multiple Services Per Booking</label>
+              <p class="text-xs text-blue-600 mt-0.5">When enabled, customers can add several services to one booking session. Each service gets its own time slot stacked consecutively.</p>
+            </div>
+          </div>
         </div>
 
         <!-- Travel Settings -->
@@ -1026,29 +1040,110 @@
   function openServiceModal(id) {
     const svc = id ? state.services.find(s=>s.id===id) : null;
     const cur = state.settings.currency || '$';
-    showModal(`<div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+
+    // Common FA icons for services
+    const faIcons = [
+      'fa-cut','fa-spa','fa-tooth','fa-heartbeat','fa-dumbbell','fa-camera','fa-car-side',
+      'fa-home','fa-laptop','fa-wrench','fa-broom','fa-dog','fa-baby','fa-graduation-cap',
+      'fa-utensils','fa-leaf','fa-paint-brush','fa-music','fa-stethoscope','fa-eye',
+      'fa-hand-sparkles','fa-hands-helping','fa-user-md','fa-bicycle','fa-running',
+      'fa-swimming-pool','fa-hat-wizard','fa-gem','fa-star','fa-bolt',
+    ];
+    const commonEmojis = ['✂️','💆','🧖','💅','💄','🪮','🦷','🩺','💪','🏋️','🧘','📸','🔧','✨','🏠','🐶','👶','📚','🎵','🌿','🍽️','🚗','💎','⭐','🔥','🌟','🎨','💻','🏅','🌺'];
+
+    showModal(`<div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
       <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
         <h3 class="font-bold text-slate-900">${svc?'Edit Service':'New Service'}</h3>
         <button onclick="closeModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400"><i class="fas fa-times text-sm"></i></button>
       </div>
-      <div class="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
+      <div class="px-6 py-5 space-y-4 overflow-y-auto max-h-[75vh]">
         <div id="svc-err" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2"></div>
+
+        <!-- Name + Color -->
         <div class="grid grid-cols-3 gap-3">
           <div class="col-span-2"><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Service Name *</label>
             <input id="svc-name" type="text" class="field text-sm" value="${esc(svc?.name||'')}"></div>
           <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Color</label>
             <input id="svc-color" type="color" class="field text-sm h-[42px] p-1 cursor-pointer" value="${svc?.color||'#3b82f6'}"></div>
         </div>
-        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Category</label>
-          <input id="svc-category" type="text" class="field text-sm" placeholder="e.g. Consultation, Repair" value="${esc(svc?.category||'')}"></div>
+
+        <!-- Category + Badge -->
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Category</label>
+            <input id="svc-category" type="text" class="field text-sm" placeholder="e.g. Hair, Skin, Nails" value="${esc(svc?.category||'')}"></div>
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Badge</label>
+            <select id="svc-badge" class="field text-sm">
+              <option value="" ${!svc?.badge?'selected':''}>None</option>
+              <option value="new" ${svc?.badge==='new'?'selected':''}>🆕 New</option>
+              <option value="popular" ${svc?.badge==='popular'?'selected':''}>⭐ Popular</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Duration + Price -->
         <div class="grid grid-cols-2 gap-3">
           <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Duration (min) *</label>
             <input id="svc-duration" type="number" class="field text-sm" value="${svc?.duration||60}" min="5" step="5"></div>
           <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Price (${cur})</label>
             <input id="svc-price" type="number" class="field text-sm" value="${svc?.price||0}" step="0.01" min="0"></div>
         </div>
-        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Description</label>
-          <textarea id="svc-desc" class="field text-sm resize-none" rows="2">${esc(svc?.description||'')}</textarea></div>
+
+        <!-- Short Description (card preview) -->
+        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Short Description <span class="font-normal text-slate-300 normal-case">(shown on card)</span></label>
+          <textarea id="svc-desc" class="field text-sm resize-none" rows="2" placeholder="Brief summary shown on service card…">${esc(svc?.description||'')}</textarea></div>
+
+        <!-- Long Description / About -->
+        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Full Description <span class="font-normal text-slate-300 normal-case">(optional, shown in detail view)</span></label>
+          <textarea id="svc-long-desc" class="field text-sm resize-none" rows="4" placeholder="Detailed description of this service — what's included, benefits, what to expect…">${esc(svc?.long_description||'')}</textarea></div>
+
+        <!-- Location Note + Info URL -->
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Location Note</label>
+            <input id="svc-location-note" type="text" class="field text-sm" placeholder="e.g. Studio only, At your home" value="${esc(svc?.location_note||'')}"></div>
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">More Info URL</label>
+            <input id="svc-info-url" type="url" class="field text-sm" placeholder="https://…" value="${esc(svc?.info_url||'')}"></div>
+        </div>
+
+        <!-- ── ICON SECTION ── -->
+        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
+          <p class="text-xs font-bold text-slate-600 uppercase tracking-wide">Service Icon / Image</p>
+
+          <!-- Image URL (highest priority) -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Image URL <span class="font-normal text-slate-300">(overrides icon — use a square/landscape photo)</span></label>
+            <input id="svc-image-url" type="url" class="field text-sm" placeholder="https://… jpg, png, webp" value="${esc(svc?.image_url||'')}">
+          </div>
+
+          <!-- FontAwesome icon class -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1.5">FontAwesome Icon Class <span class="font-normal text-slate-300">(used when no image)</span></label>
+            <div class="flex gap-2">
+              <input id="svc-icon-class" type="text" class="field text-sm flex-1 font-mono" placeholder="e.g. fas fa-cut" value="${esc(svc?.icon_class||'')}">
+              <button type="button" onclick="document.getElementById('svc-icon-class').value='';document.getElementById('svc-fa-preview').className='text-3xl text-slate-300 fas fa-question'" class="px-2 py-1 text-xs text-red-400 hover:text-red-600">Clear</button>
+            </div>
+            <!-- FA icon picker -->
+            <div class="flex flex-wrap gap-1.5 mt-2 p-2 bg-white border border-slate-200 rounded-xl max-h-28 overflow-y-auto">
+              ${faIcons.map(ic=>`<button type="button" title="${ic}" onclick="document.getElementById('svc-icon-class').value='fas ${ic}';document.getElementById('svc-fa-preview').className='fas ${ic} text-3xl'" class="w-8 h-8 rounded-lg hover:bg-blue-50 flex items-center justify-center text-slate-500 hover:text-blue-600 transition-colors text-sm" style="font-size:1.1rem"><i class="fas ${ic}"></i></button>`).join('')}
+            </div>
+            <div class="mt-2 flex items-center gap-2">
+              <span class="text-xs text-slate-400">Preview:</span>
+              <i id="svc-fa-preview" class="${svc?.icon_class ? esc(svc.icon_class) : 'fas fa-question'} text-3xl" style="color:${svc?.color||'#3b82f6'}"></i>
+            </div>
+          </div>
+
+          <!-- Emoji icon -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1.5">Emoji Icon <span class="font-normal text-slate-300">(fallback if no image or FA icon)</span></label>
+            <div class="flex gap-2 items-center mb-2">
+              <input id="svc-icon-emoji" type="text" class="field text-sm w-20 text-center text-2xl" placeholder="⭐" value="${esc(svc?.icon_emoji||'')}">
+              <span class="text-xs text-slate-400">or pick one:</span>
+            </div>
+            <div class="flex flex-wrap gap-1 p-2 bg-white border border-slate-200 rounded-xl">
+              ${commonEmojis.map(e=>`<button type="button" onclick="document.getElementById('svc-icon-emoji').value='${e}'" class="text-xl hover:bg-slate-100 rounded-lg w-8 h-8 flex items-center justify-center transition-colors">${e}</button>`).join('')}
+            </div>
+          </div>
+        </div>
+
         <!-- Travel -->
         <div class="bg-amber-50 border border-amber-100 rounded-xl p-4">
           <div class="flex items-center gap-2 mb-3">
@@ -1374,9 +1469,16 @@
     const row = {
       name, color: document.getElementById('svc-color')?.value||'#3b82f6',
       category: document.getElementById('svc-category')?.value||'',
+      badge: document.getElementById('svc-badge')?.value||'',
       duration: parseInt(document.getElementById('svc-duration')?.value)||60,
       price: parseFloat(document.getElementById('svc-price')?.value)||0,
       description: document.getElementById('svc-desc')?.value||'',
+      long_description: document.getElementById('svc-long-desc')?.value||'',
+      location_note: document.getElementById('svc-location-note')?.value||'',
+      info_url: document.getElementById('svc-info-url')?.value||'',
+      image_url: document.getElementById('svc-image-url')?.value||'',
+      icon_class: document.getElementById('svc-icon-class')?.value||'',
+      icon_emoji: document.getElementById('svc-icon-emoji')?.value||'',
       travel_enabled: document.getElementById('svc-travel')?.checked||false,
       travel_mode: document.getElementById('svc-travel-mode')?.value||'flat',
       travel_per_km_rate: parseFloat(document.getElementById('svc-km-rate')?.value)||0,
@@ -1443,6 +1545,8 @@
       ['deposit_required', depositReq],
       ['deposit_amount', depositAmt],
       ['discount_codes', JSON.stringify(discountCodes)],
+      ['business_address', document.getElementById('bk-s-business-address')?.value||''],
+      ['multi_service_mode', document.getElementById('bk-s-multi-service')?.checked ? '1' : '0'],
     ];
 
     try {
@@ -1741,8 +1845,31 @@
       },
       reload,
       // Designer
-      dsApply, dsSaveAll, dsReset, dsExport, dsPickPreset, dsUpdatePreview,
+      dsApply, dsSaveAll, dsReset, dsExport, dsPickPreset, dsUpdatePreview, dsUpdateInlinePreview,
       dsContentSave, dsContentSaveNow, dsAddNavLink, dsAddBanner, dsAddFooterLink,
+      dsAddHighlight: function() {
+        const list = document.getElementById('ds-highlights-list');
+        if (!list) return;
+        const i = list.children.length;
+        const div = document.createElement('div');
+        div.innerHTML = `<div class="flex gap-2 items-center" data-highlight="${i}">
+          <input type="text" placeholder="e.g. Licensed & Insured" class="field text-xs flex-1" data-hl-text="${i}" oninput="BK.dsContentSave()">
+          <button onclick="this.closest('[data-highlight]').remove();BK.dsContentSave()" class="text-red-400 hover:text-red-600 flex-shrink-0"><i class="fas fa-times text-xs"></i></button>
+        </div>`;
+        list.appendChild(div.firstElementChild);
+      },
+      dsAddGalleryImage: function() {
+        const list = document.getElementById('ds-gallery-list');
+        if (!list) return;
+        const i = list.children.length;
+        const div = document.createElement('div');
+        div.innerHTML = `<div class="flex gap-2 items-center" data-gallery="${i}">
+          <input type="url" placeholder="https://… image URL" class="field text-xs flex-1" data-gal-url="${i}" oninput="BK.dsContentSave()">
+          <input type="text" placeholder="Alt text" class="field text-xs w-24" data-gal-alt="${i}" oninput="BK.dsContentSave()">
+          <button onclick="this.closest('[data-gallery]').remove();BK.dsContentSave()" class="text-red-400 hover:text-red-600 flex-shrink-0"><i class="fas fa-times text-xs"></i></button>
+        </div>`;
+        list.appendChild(div.firstElementChild);
+      },
     };
   }
 
@@ -2077,85 +2204,150 @@
             </div>
           </div>
 
+          <!-- ── CONTENT: About / Intro Section ── -->
+          <div class="space-y-3 border-t border-slate-100 pt-5">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <i class="fas fa-info-circle text-blue-400"></i> About / Intro Section
+            </p>
+            <p class="text-[10px] text-slate-400">Shown between the hero banner and the booking form. Great for explaining your business and services.</p>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Section Title</label>
+              <input type="text" id="ds-about-title" class="field text-sm" placeholder="About Us / Why Choose Us"
+                value="${esc(state.settings.about_title||'')}"
+                oninput="BK.dsContentSave()">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Body Text</label>
+              <textarea id="ds-about-body" class="field text-sm resize-none" rows="4"
+                placeholder="Introduce your business, what you specialize in, your experience, and what makes you different…"
+                oninput="BK.dsContentSave()">${esc(state.settings.about_body||'')}</textarea>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-xs font-semibold text-slate-500">Bullet Highlights</label>
+                <button onclick="BK.dsAddHighlight()" type="button" class="text-xs text-blue-600 hover:underline font-semibold">+ Add</button>
+              </div>
+              <p class="text-[10px] text-slate-400 mb-2">Short bullet points shown below the body text (e.g. "Licensed & Insured", "5 years experience")</p>
+              <div id="ds-highlights-list" class="space-y-2">
+                ${(function(){
+                  try {
+                    const hl = JSON.parse(state.settings.about_highlights||'[]');
+                    return hl.map((h,i) => `<div class="flex gap-2 items-center" data-highlight="${i}">
+                      <input type="text" value="${esc(h)}" placeholder="e.g. Licensed & Insured" class="field text-xs flex-1" data-hl-text="${i}" oninput="BK.dsContentSave()">
+                      <button onclick="this.closest('[data-highlight]').remove();BK.dsContentSave()" class="text-red-400 hover:text-red-600 flex-shrink-0"><i class="fas fa-times text-xs"></i></button>
+                    </div>`).join('');
+                  } catch(e){ return ''; }
+                })()}
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-xs font-semibold text-slate-500">Gallery Images</label>
+                <button onclick="BK.dsAddGalleryImage()" type="button" class="text-xs text-blue-600 hover:underline font-semibold">+ Add</button>
+              </div>
+              <p class="text-[10px] text-slate-400 mb-2">Optional photo grid shown alongside the about text (square or portrait images work best)</p>
+              <div id="ds-gallery-list" class="space-y-2">
+                ${(function(){
+                  try {
+                    const gallery = JSON.parse(state.settings.about_gallery||'[]');
+                    return gallery.map((g,i) => `<div class="flex gap-2 items-center" data-gallery="${i}">
+                      <input type="url" value="${esc(g.url||'')}" placeholder="https://… image URL" class="field text-xs flex-1" data-gal-url="${i}" oninput="BK.dsContentSave()">
+                      <input type="text" value="${esc(g.alt||'')}" placeholder="Alt text" class="field text-xs w-24" data-gal-alt="${i}" oninput="BK.dsContentSave()">
+                      <button onclick="this.closest('[data-gallery]').remove();BK.dsContentSave()" class="text-red-400 hover:text-red-600 flex-shrink-0"><i class="fas fa-times text-xs"></i></button>
+                    </div>`).join('');
+                  } catch(e){ return ''; }
+                })()}
+              </div>
+            </div>
+          </div>
+
           <!-- ── SERVICE FIELDS: Image & Icon ── -->
           <div class="space-y-3 border-t border-slate-100 pt-5">
             <p class="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
               <i class="fas fa-concierge-bell text-blue-400"></i> Service Card Images & Icons
             </p>
-            <p class="text-[10px] text-slate-400 leading-relaxed">Set image URLs or icon classes on each service card. Go to the <strong>Services</strong> tab, edit a service and add <code class="bg-slate-100 px-1 rounded">image_url</code>, <code class="bg-slate-100 px-1 rounded">icon_class</code> (e.g. <code class="bg-slate-100 px-1 rounded">fas fa-stethoscope</code>), <code class="bg-slate-100 px-1 rounded">info_url</code>, <code class="bg-slate-100 px-1 rounded">badge</code> (new/popular), or <code class="bg-slate-100 px-1 rounded">location_note</code> to enrich each card.</p>
+            <p class="text-[10px] text-slate-400 leading-relaxed">Go to the <strong>Services</strong> tab and edit any service to set its image, icon, badge, description, and more.</p>
             <button onclick="BK.switchTab('services')" type="button" class="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-1">
               <i class="fas fa-arrow-right text-[10px]"></i> Go to Services →
             </button>
           </div>
 
-          <!-- Deployment -->
-          <div class="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-3">
+        </div>
+      </div>
+
+      <!-- Right Panel: Live Design Preview -->
+      <div class="flex-1 flex flex-col bg-slate-100 overflow-hidden">
+        <div class="px-4 py-3 bg-white border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+          <span class="text-xs font-bold text-slate-600 flex items-center gap-2"><i class="fas fa-eye text-blue-400"></i> Live Design Preview</span>
+          <a id="ds-open-tab" href="${esc(bookUrl)||'#'}" target="_blank" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm ${bookUrl?'':'opacity-40 pointer-events-none'}">
+            <i class="fas fa-external-link-alt text-xs"></i> Open Booking Page
+          </a>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6 space-y-5">
+
+          <!-- Live colour swatch preview -->
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden" id="ds-live-preview">
+            <!-- Mini hero -->
+            <div class="p-6 flex items-end gap-4" id="ds-prev-hero" style="background:linear-gradient(135deg,${dsDesign.heroBg||'#1e3a8a'},${dsDesign.primary||'#2563eb'});min-height:120px">
+              <div>
+                <div class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 mb-2 text-xs font-semibold" style="background:rgba(255,255,255,.15);color:#fff">
+                  <span style="width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block"></span>
+                  Accepting Appointments
+                </div>
+                <div class="text-xl font-extrabold text-white mb-1" id="ds-prev-title" style="font-family:var(--bk-font-heading,sans-serif)">${esc(state.settings.hero_title||'Book an Appointment')}</div>
+                <div class="text-white/70 text-xs" id="ds-prev-subtitle">${esc(state.settings.hero_subtitle||'Schedule your visit in minutes')}</div>
+              </div>
+            </div>
+            <!-- Mini service cards -->
+            <div class="p-4" id="ds-prev-body" style="background:${dsDesign.bg||'#f8fafc'}">
+              <p class="text-[10px] font-bold uppercase tracking-widest mb-3" style="color:${dsDesign.textMuted||'#64748b'}">Services</p>
+              <div class="grid grid-cols-2 gap-2">
+                ${state.services.slice(0,4).map(sv=>`
+                  <div class="rounded-xl p-3 border-2" style="background:${dsDesign.surface||'#fff'};border-color:${dsDesign.border||'#e2e8f0'};border-radius:${dsDesign.cardRadius||'20px'}">
+                    <div class="w-8 h-8 rounded-lg mb-2 flex items-center justify-center text-white text-sm font-bold" style="background:${sv.color||dsDesign.primary||'#2563eb'}">${(sv.name||'?')[0]}</div>
+                    <p class="text-xs font-bold truncate" style="color:${dsDesign.text||'#0f172a'}">${esc(sv.name)}</p>
+                    <p class="text-[10px] mt-0.5" style="color:${dsDesign.textMuted||'#64748b'}">${sv.duration}min</p>
+                  </div>`).join('')}
+                ${state.services.length === 0 ? `<div class="col-span-2 text-center py-4 text-xs" style="color:${dsDesign.textMuted||'#94a3b8'}">Add services to preview cards</div>` : ''}
+              </div>
+              <!-- Mini button -->
+              <div class="mt-4">
+                <div class="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white" style="background:${dsDesign.primary||'#2563eb'};border-radius:${dsDesign.btnRadius||'12px'}">
+                  <i class="fas fa-calendar-check text-xs"></i> Continue
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Colour palette display -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Active Palette</p>
+            <div class="flex gap-2 flex-wrap" id="ds-palette-swatches">
+              ${['primary','accent','bg','surface','text'].map(k => `
+                <div class="flex flex-col items-center gap-1">
+                  <div class="w-10 h-10 rounded-xl border border-slate-200 shadow-sm" id="ds-swatch-${k}" style="background:${dsDesign[k]||'#ccc'}"></div>
+                  <span class="text-[9px] text-slate-400 font-semibold capitalize">${k}</span>
+                </div>`).join('')}
+            </div>
+          </div>
+
+          <!-- URL & export -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
             <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">Deployment</p>
             <div>
               <label class="block text-xs font-semibold text-slate-500 mb-1">Public Booking Page URL</label>
               <div class="flex gap-2">
                 <input type="text" id="ds-bookUrl" class="field text-xs flex-1" placeholder="https://yoursite.com/book.html" value="${esc(bookUrl)}"
-                  oninput="BK.dsUpdatePreview(this.value)">
-                <button onclick="BK.dsUpdatePreview(document.getElementById('ds-bookUrl').value)" class="px-3 py-1.5 bg-slate-200 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-300 transition-colors flex-shrink-0" title="Reload preview">
-                  <i class="fas fa-sync-alt"></i>
-                </button>
+                  oninput="document.getElementById('ds-open-tab').href=this.value||'#'">
               </div>
-              <p class="text-[10px] text-slate-400 mt-1">Where your book.html is hosted. Used to reload the live preview.</p>
+              <p class="text-[10px] text-slate-400 mt-1">Paste the URL where your book.html is hosted, then click "Open Booking Page" above to view it live.</p>
             </div>
             <button onclick="BK.dsExport()" class="btn-primary w-full text-xs !py-2.5 shadow-sm">
               <i class="fas fa-download mr-1"></i> Download Deployable book.html
             </button>
-            <p class="text-[10px] text-slate-400 text-center">Design tokens baked in — host anywhere, no extra config needed</p>
+            <p class="text-[10px] text-slate-400 text-center">Design tokens baked in — upload to any web host</p>
           </div>
 
-        </div>
-      </div>
-
-      <!-- Right Panel: Preview -->
-      <div class="flex-1 flex flex-col bg-slate-100 overflow-hidden">
-        <div class="px-4 py-3 bg-white border-b border-slate-200 flex items-center justify-between flex-shrink-0">
-          <div class="flex items-center gap-3">
-            <div class="flex gap-1.5">
-              <div class="w-3 h-3 rounded-full bg-red-400"></div>
-              <div class="w-3 h-3 rounded-full bg-amber-400"></div>
-              <div class="w-3 h-3 rounded-full bg-green-400"></div>
-            </div>
-            <span class="text-xs text-slate-400 font-mono truncate max-w-xs" id="ds-preview-url-label">${esc(bookUrl)}</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="flex gap-1 bg-slate-100 p-0.5 rounded-lg">
-              <button onclick="dsSetDevice('desktop')" id="ds-dev-desktop" class="px-2 py-1 rounded text-xs font-semibold transition-colors bg-white text-blue-600 shadow-sm">
-                <i class="fas fa-desktop"></i>
-              </button>
-              <button onclick="dsSetDevice('tablet')" id="ds-dev-tablet" class="px-2 py-1 rounded text-xs font-semibold transition-colors text-slate-400 hover:text-slate-600">
-                <i class="fas fa-tablet-alt"></i>
-              </button>
-              <button onclick="dsSetDevice('mobile')" id="ds-dev-mobile" class="px-2 py-1 rounded text-xs font-semibold transition-colors text-slate-400 hover:text-slate-600">
-                <i class="fas fa-mobile-alt"></i>
-              </button>
-            </div>
-            <a id="ds-open-tab" href="${esc(bookUrl)}" target="_blank" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1">
-              <i class="fas fa-external-link-alt text-xs"></i> Open
-            </a>
-          </div>
-        </div>
-        <div class="flex-1 flex items-start justify-center p-4 overflow-auto">
-          <div id="ds-preview-wrap" class="transition-all duration-300 w-full h-full" style="max-width:100%">
-            <iframe id="ds-preview-iframe"
-              src="${esc(bookUrl)}"
-              class="w-full rounded-xl shadow-xl border border-slate-200 bg-white transition-all duration-300"
-              style="height:calc(100vh - 220px);min-height:500px"
-              sandbox="allow-scripts allow-same-origin allow-forms"
-              id="ds-preview-iframe">
-            </iframe>
-          </div>
-        </div>
-        <div id="ds-preview-status" class="px-4 py-2 text-xs text-slate-400 text-center bg-white border-t border-slate-200 flex-shrink-0">
-          <i class="fas fa-info-circle mr-1"></i>
-          Preview updates in real-time. Save to persist changes.
-          <span id="ds-preview-note" class="text-amber-500 ml-2 hidden">
-            <i class="fas fa-exclamation-triangle mr-1"></i>Cross-origin preview: design applied via postMessage
-          </span>
         </div>
       </div>
     </div>`;
@@ -2178,29 +2370,17 @@
   }
 
   function attachDesignerEvents() {
-    dsPreviewReady = false;
-    const iframe = document.getElementById('ds-preview-iframe');
-    if (iframe) {
-      iframe.addEventListener('load', () => {
-        dsPreviewReady = true;
-        dsPostToIframe(dsDesign);
-        // Check if cross-origin
-        try {
-          iframe.contentWindow.document;
-        } catch(e) {
-          const note = document.getElementById('ds-preview-note');
-          if (note) note.classList.remove('hidden');
-        }
-      });
-    }
+    // No iframe anymore — inline preview updates via dsApply()
+    // Still call apply once to sync the preview panel on first load
+    setTimeout(() => dsApply(), 50);
   }
 
   function dsPostToIframe(design) {
+    // If the user has their book.html open in another tab and it's same-origin,
+    // this will still work. No-op if no iframe present.
     const iframe = document.getElementById('ds-preview-iframe');
     if (!iframe) return;
-    try {
-      iframe.contentWindow.postMessage({ type: 'BK_DESIGN', design }, '*');
-    } catch(e) {}
+    try { iframe.contentWindow.postMessage({ type: 'BK_DESIGN', design }, '*'); } catch(e) {}
   }
 
   function dsReadControls() {
@@ -2237,6 +2417,37 @@
       btn.className = btn.className.replace(/border-blue-600 bg-blue-50 text-blue-700|border-slate-200 text-slate-500 hover:border-slate-300/g,'');
       btn.className += active ? ' border-blue-600 bg-blue-50 text-blue-700' : ' border-slate-200 text-slate-500 hover:border-slate-300';
     });
+    // Update live inline preview
+    dsUpdateInlinePreview(vals);
+  }
+
+  function dsUpdateInlinePreview(d) {
+    const hero = document.getElementById('ds-prev-hero');
+    const body = document.getElementById('ds-prev-body');
+    const title = document.getElementById('ds-prev-title');
+    const sub   = document.getElementById('ds-prev-subtitle');
+    const openBtn = document.getElementById('ds-open-tab');
+    if (hero) hero.style.background = `linear-gradient(135deg,${d.primary||'#1e3a8a'},${d.primary||'#2563eb'})`;
+    if (body) body.style.background = d.bg||'#f8fafc';
+    if (title && d.bizName) title.textContent = d.bizName;
+    // Refresh palette swatches
+    ['primary','accent','bg','surface','text'].forEach(k => {
+      const sw = document.getElementById(`ds-swatch-${k}`);
+      if (sw && d[k]) sw.style.background = d[k];
+    });
+    // Update mini service cards
+    const cards = document.querySelectorAll('#ds-prev-body [style*="border-radius"]');
+    cards.forEach(card => {
+      card.style.background = d.surface||'#fff';
+      card.style.borderColor = d.border||'#e2e8f0';
+      card.style.borderRadius = d.cardRadius||'20px';
+    });
+    // Update continue button
+    const miniBtn = document.querySelector('#ds-prev-body [style*="border-radius"][class=""]');
+    if (miniBtn) {
+      miniBtn.style.background = d.primary||'#2563eb';
+      miniBtn.style.borderRadius = d.btnRadius||'12px';
+    }
   }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2281,6 +2492,19 @@ async function dsSaveAll() {
     banners.push({ title, subtitle, image, badge, url, height, new_tab: newTab });
   });
 
+  // About section
+  const highlights = [];
+  document.querySelectorAll('[data-highlight]').forEach(row => {
+    const text = row.querySelector('[data-hl-text]')?.value || '';
+    if (text.trim()) highlights.push(text.trim());
+  });
+  const gallery = [];
+  document.querySelectorAll('[data-gallery]').forEach(row => {
+    const url = row.querySelector('[data-gal-url]')?.value || '';
+    const alt = row.querySelector('[data-gal-alt]')?.value || '';
+    if (url.trim()) gallery.push({ url: url.trim(), alt });
+  });
+
   const g = id => document.getElementById(id)?.value || '';
 
   // 3. Build all key-value pairs to persist
@@ -2300,6 +2524,10 @@ async function dsSaveAll() {
     ['nav_links',           JSON.stringify(navLinks)],
     ['footer_links',        JSON.stringify(footerLinks)],
     ['promo_banners',       JSON.stringify(banners)],
+    ['about_title',         g('ds-about-title')],
+    ['about_body',          g('ds-about-body')],
+    ['about_highlights',    JSON.stringify(highlights)],
+    ['about_gallery',       JSON.stringify(gallery)],
   ];
   if (bookUrl) pairs.push(['book_page_url', bookUrl]);
 
@@ -2356,6 +2584,18 @@ async function dsSaveAll_silent() {
     const newTab   = row.querySelector('[data-bn-newtab]')?.checked || false;
     banners.push({ title, subtitle, image, badge, url, height, new_tab: newTab });
   });
+
+  const highlights = [];
+  document.querySelectorAll('[data-highlight]').forEach(row => {
+    const text = row.querySelector('[data-hl-text]')?.value || '';
+    if (text.trim()) highlights.push(text.trim());
+  });
+  const gallery = [];
+  document.querySelectorAll('[data-gallery]').forEach(row => {
+    const url = row.querySelector('[data-gal-url]')?.value || '';
+    const alt = row.querySelector('[data-gal-alt]')?.value || '';
+    if (url.trim()) gallery.push({ url: url.trim(), alt });
+  });
   
   const g = id => document.getElementById(id)?.value || '';
   const pairs = [
@@ -2374,6 +2614,10 @@ async function dsSaveAll_silent() {
     ['nav_links',           JSON.stringify(navLinks)],
     ['footer_links',        JSON.stringify(footerLinks)],
     ['promo_banners',       JSON.stringify(banners)],
+    ['about_title',         g('ds-about-title')],
+    ['about_body',          g('ds-about-body')],
+    ['about_highlights',    JSON.stringify(highlights)],
+    ['about_gallery',       JSON.stringify(gallery)],
   ];
   if (bookUrl) pairs.push(['book_page_url', bookUrl]);
   
@@ -2406,31 +2650,12 @@ async function dsSaveAll_silent() {
   }
 
   function dsUpdatePreview(url) {
-    if (!url) return;
-    const iframe = document.getElementById('ds-preview-iframe');
-    const label = document.getElementById('ds-preview-url-label');
+    // Legacy — just update the open-tab button href
     const openBtn = document.getElementById('ds-open-tab');
-    dsPreviewReady = false;
-    if (iframe) { iframe.src = url; }
-    if (label) label.textContent = url;
-    if (openBtn) openBtn.href = url;
+    if (openBtn && url) openBtn.href = url;
   }
 
-  function dsSetDevice(device) {
-    const wrap = document.getElementById('ds-preview-wrap');
-    const iframe = document.getElementById('ds-preview-iframe');
-    ['desktop','tablet','mobile'].forEach(d => {
-      const btn = document.getElementById(`ds-dev-${d}`);
-      if (!btn) return;
-      const active = d === device;
-      btn.className = btn.className.replace(/bg-white text-blue-600 shadow-sm|text-slate-400 hover:text-slate-600/g,'');
-      btn.className += active ? ' bg-white text-blue-600 shadow-sm' : ' text-slate-400 hover:text-slate-600';
-    });
-    if (!wrap || !iframe) return;
-    if (device === 'mobile')  { wrap.style.maxWidth = '390px';  iframe.style.height = '812px'; }
-    if (device === 'tablet')  { wrap.style.maxWidth = '768px';  iframe.style.height = '1024px'; }
-    if (device === 'desktop') { wrap.style.maxWidth = '100%';   iframe.style.height = 'calc(100vh - 220px)'; }
-  }
+  function dsSetDevice(device) { /* no-op: iframe preview removed */ }
 
   function dsExport() {
     toast('Preparing download…', 'info');
