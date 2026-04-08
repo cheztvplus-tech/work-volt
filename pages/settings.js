@@ -181,27 +181,30 @@ window.WorkVoltPages['settings'] = function(container) {
       </div>`;
   }
 
-  window.saveServiceKey = function() {
-    const input = document.getElementById('db-service-key');
+  window.saveServiceKey = async function() {
+    const input    = document.getElementById('db-service-key');
     const statusEl = document.getElementById('db-service-key-status');
-    const val = (input?.value || '').trim();
+    const btn      = document.querySelector('[onclick="saveServiceKey()"]');
+    const val      = (input?.value || '').trim();
 
-    if (!val || val.startsWith('•')) {
+    if (val.startsWith('\u2022')) {
+      statusEl.innerHTML = `<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200"><i class="fas fa-info-circle"></i><span>Key already saved. Clear the field and paste a new key to update it.</span></div>`;
+      return;
+    }
+    if (!val) {
       statusEl.innerHTML = `<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium bg-red-50 text-red-600 border border-red-200"><i class="fas fa-exclamation-circle"></i><span>Please enter your Service Role Key.</span></div>`;
       return;
     }
 
-    // Store in localStorage alongside existing credentials
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-sm"></i> Saving\u2026'; }
     try {
-      const stored = JSON.parse(localStorage.getItem('wv_db_config') || '{}');
-      stored.credentials = stored.credentials || {};
-      stored.credentials.serviceKey = val;
-      localStorage.setItem('wv_db_config', JSON.stringify(stored));
+      await db.config.set('supabase_service_key', val);
       window._wvSupabaseServiceKey = val;
       statusEl.innerHTML = `<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium bg-green-50 text-green-700 border border-green-200"><i class="fas fa-check-circle"></i><span>Service Role Key saved!</span></div>`;
       setTimeout(() => render(), 1500);
     } catch(e) {
       statusEl.innerHTML = `<div class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium bg-red-50 text-red-600 border border-red-200"><i class="fas fa-exclamation-circle"></i><span>${e.message}</span></div>`;
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save text-sm"></i> Save Service Role Key'; }
     }
   };
 
@@ -814,5 +817,12 @@ window.WorkVoltPages['settings'] = function(container) {
   };
 
   // ── Boot ────────────────────────────────────────────────────────
-  render();
+  // Restore service key from server config so hasServiceKey is correct on load
+  (async () => {
+    try {
+      const cfg = await db.config.getAll();
+      if (cfg?.supabase_service_key) window._wvSupabaseServiceKey = cfg.supabase_service_key;
+    } catch(_) {}
+    render();
+  })();
 };
