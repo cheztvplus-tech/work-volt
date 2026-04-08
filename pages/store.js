@@ -38,23 +38,23 @@ window.WorkVoltPages['store'] = function(container) {
   let activeModal    = null;
   let availablePages = null; // null = not yet probed, Set = probed
 
-  // ── Auto-detect which pages exist by probing pages/{id}.js ──────────
+  // ── Explicit whitelist of page files that exist ─────────────────────
+  // Replaces the HEAD-probe which fails on many servers / file:// setups.
+  // Add a module id here once its pages/{id}.js file is ready.
+  const AVAILABLE_PAGES = new Set([
+    'notifications','tasks','pipeline','payroll','timesheets',
+    'financials','crm','projects','reports','assets','attendance',
+    'invoices','inventory','scheduler','expenses','contracts',
+    'helpdesk','recruitment','eshop','booking',
+    'garage',
+  ]);
+
   async function probeAvailablePages() {
-    if (availablePages !== null) return;
-    availablePages = new Set();
-    await Promise.all(
-      CATALOGUE.map(async m => {
-        try {
-          const res = await fetch(`pages/${m.id}.js`, { method: 'HEAD', cache: 'no-store' });
-          if (res.ok) availablePages.add(m.id);
-        } catch(e) { /* not available */ }
-      })
-    );
+    availablePages = AVAILABLE_PAGES; // no network probe needed
   }
 
   function isComingSoon(m) {
-    if (availablePages === null) return false; // still probing — assume ready
-    return !availablePages.has(m.id);
+    return !AVAILABLE_PAGES.has(m.id);
   }
 
   // ── Load installed modules ──────────────────────────────────────
