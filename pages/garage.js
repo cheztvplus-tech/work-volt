@@ -18,6 +18,19 @@
 (function () {
   'use strict';
 
+  // ── Shared DB client (anonymized data only — separate Supabase project) ──
+  const SHARED_URL = 'https://mvpicqvmrheqssxbbzty.supabase.co';
+  const SHARED_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12cGljcXZtcmhlcXNzeGJienR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2ODU4NzIsImV4cCI6MjA5MTI2MTg3Mn0._8Cr0B3FNTA_X9HzQQFnmcM0Lcz7gltxJxCySREwWzU';
+
+  // Lazily initialised — created once the Supabase SDK is available
+  let _sharedClient = null;
+  function getSharedClient() {
+    if (_sharedClient) return _sharedClient;
+    if (!window.supabase) throw new Error('Supabase SDK not loaded yet');
+    _sharedClient = window.supabase.createClient(SHARED_URL, SHARED_KEY);
+    return _sharedClient;
+  }
+
   // ── Helpers ────────────────────────────────────────────────────
   const $ = (sel, ctx = document) => ctx.querySelector(sel);
   const fmt = (n) =>
@@ -74,15 +87,19 @@
     if (shareAnon) {
       try {
         // CRITICAL: no prices, no client, no garage identity
-        await WorkVoltDB.create('shared_repairs', {
-          vin:         data.vin.trim().toUpperCase(),
-          vehicle:     { make: data.make, model: data.model, year: data.year },
-          repairs:     data.repairLines.filter(r => r.description.trim()).map(r => ({ description: r.description })),
-          parts:       data.partLines.filter(p => p.name.trim()).map(p => ({ name: p.name, supplier: p.supplier })),
-          serviced_at: today(),
-        });
+        // Writes to the SHARED Supabase project (mvpicqvmrheqssxbbzty)
+        const { error } = await getSharedClient()
+          .from('shared_repairs')
+          .insert({
+            vin:         data.vin.trim().toUpperCase(),
+            vehicle:     { make: data.make, model: data.model, year: data.year },
+            repairs:     data.repairLines.filter(r => r.description.trim()).map(r => ({ description: r.description })),
+            parts:       data.partLines.filter(p => p.name.trim()).map(p => ({ name: p.name, supplier: p.supplier })),
+            serviced_at: today(),
+          });
+        if (error) throw new Error(error.message);
       } catch (e) {
-        // Shared insert is non-fatal
+        // Shared insert is non-fatal — private repair is already saved
         console.warn('Shared insert skipped:', e.message);
       }
     }
@@ -90,8 +107,15 @@
 
   async function searchShared(vin) {
     try {
-      return await WorkVoltDB.list('shared_repairs', { vin: vin.trim().toUpperCase() });
+      const { data, error } = await getSharedClient()
+        .from('shared_repairs')
+        .select('*')
+        .eq('vin', vin.trim().toUpperCase())
+        .order('serviced_at', { ascending: false });
+      if (error) throw new Error(error.message);
+      return data || [];
     } catch (e) {
+      console.warn('Shared search error:', e.message);
       return [];
     }
   }
